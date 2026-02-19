@@ -382,27 +382,49 @@ export function LoginPage({
   const onRegisterSubmit = async (data: RegisterForm) => {
     setIsLoading(true);
     try {
-      await api.signUp(data.email, data.password, data.name);
-      const { data: authData, error } = await supabase.auth.signInWithPassword({
+      // 1) Crear el usuario directamente en Supabase Auth
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            name: data.name || data.email.split("@")[0],
+          },
+        },
+      });
+
+      if (signUpError) {
+        throw signUpError;
+      }
+
+      // 2) Iniciar sesión inmediatamente después del registro
+      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
-      if (error) throw error;
+
+      if (signInError) {
+        throw signInError;
+      }
+
       toast.success("CUENTA REGISTRADA. ACCESO CONCEDIDO.", {
         className: "bg-background border border-primary text-primary font-mono",
       });
       onLogin(data.email, authData.user?.user_metadata?.name);
     } catch (error: any) {
       console.error("Register Error:", error);
-      if (error.message?.includes("ya esta registrado") || error.message?.includes("already been registered")) {
+
+      const message: string = error?.message || "";
+      if (
+        message.includes("already registered") ||
+        message.includes("User already registered") ||
+        message.includes("ya esta registrado")
+      ) {
         setIsRegistering(false);
         setValue("email", data.email);
         toast.info("Cuenta existente. Intente iniciar sesion.");
       } else {
-        if (error.message !== "Este correo ya esta registrado en el sistema." &&
-          !error.message?.includes("registrando")) {
-          toast.error(error.message || "Error al completar el registro.");
-        }
+        toast.error(message || "Error al completar el registro.");
       }
     } finally {
       setIsLoading(false);
