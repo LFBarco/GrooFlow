@@ -229,8 +229,8 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
         <p className="text-muted-foreground">Administra la configuración general de tu negocio</p>
       </div>
 
-      <Tabs defaultValue="operations" className="flex-1 flex flex-col">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent space-x-6">
+      <Tabs defaultValue="operations" className="flex-1 flex flex-col min-h-0">
+        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap space-x-2 sm:space-x-6 scrollbar-none">
           <TabsTrigger 
             value="business" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"

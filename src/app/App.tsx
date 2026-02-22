@@ -894,7 +894,7 @@ export default function App() {
       <main className={`min-h-screen relative z-10 pt-6 md:pt-0 ${isSidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[256px]'}`}
         style={{ transition: 'padding-left 500ms cubic-bezier(0.2, 0, 0, 1)' }}
       >
-        <div className={`w-full max-w-[1800px] mx-auto ${view !== 'treasury' ? 'px-4 sm:px-6 md:px-8 py-8' : ''}`}>
+        <div className={`w-full ${view !== 'treasury' ? 'px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 lg:py-8' : ''}`}>
           
           {/* Header Section for Views using Generic Wrapper */}
           {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'requisitions'].includes(view) && (
@@ -1038,7 +1038,7 @@ export default function App() {
           )}
 
           {view === 'alerts' && (
-             <div className="h-[calc(100vh-12rem)] min-h-[500px]">
+             <div className="h-[calc(100vh-10rem)] min-h-[500px]">
                  <AlertsCenter 
                      alerts={alerts}
                      onMarkAsRead={handleMarkAlertAsRead}
@@ -1148,7 +1148,7 @@ export default function App() {
           )}
 
           {view === 'cashflow' && (
-             <div className="h-[calc(100vh-140px)] animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="h-[calc(100vh-120px)] min-h-[500px] animate-in fade-in slide-in-from-bottom-4 duration-500">
                <CashFlowGrid 
                  transactions={transactions} 
                  config={config} 

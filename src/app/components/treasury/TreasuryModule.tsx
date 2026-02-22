@@ -199,29 +199,29 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({ pendingFeeReceip
     <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-background text-foreground font-sans animate-in fade-in duration-500">
       
       {/* Header */}
-      <header className="bg-card border-b border-border px-8 py-6 flex items-center justify-between sticky top-0 z-20">
+      <header className="bg-card border-b border-border px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sticky top-0 z-20">
         <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Building2 className="w-8 h-8 text-orange-500" />
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Building2 className="w-6 h-6 sm:w-8 sm:h-8 text-orange-500" />
             Tesorería Centralizada
           </h1>
-          <p className="text-muted-foreground text-sm">GrooFlow Finance Suite • 5 Sedes Conectadas</p>
+          <p className="text-muted-foreground text-xs sm:text-sm">GrooFlow Finance Suite • 5 Sedes Conectadas</p>
         </div>
         
-        <div className="flex items-center gap-6">
-           <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full border border-emerald-500/20">
+        <div className="flex items-center gap-3 sm:gap-6">
+           <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full border border-emerald-500/20">
              <Landmark className="w-4 h-4" />
-             <span className="text-sm font-semibold">Caja Global: S/ {bankBalance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+             <span className="text-xs sm:text-sm font-semibold">Caja Global: S/ {bankBalance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
            </div>
-           <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground border border-border">
+           <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground border border-border">
              JD
            </div>
         </div>
       </header>
 
       {/* Navigation Tabs */}
-      <div className="bg-card border-b border-border px-8 sticky top-[88px] z-10">
-        <nav className="flex space-x-8" aria-label="Tabs">
+      <div className="bg-card border-b border-border px-4 sm:px-6 lg:px-8 sticky top-[88px] z-10 overflow-x-auto">
+        <nav className="flex space-x-4 sm:space-x-8 min-w-max" aria-label="Tabs">
           {[
             { id: 'ingest', name: 'Buzón de Recepción', icon: UploadCloud },
             { id: 'workbench', name: 'Mesa de Pagos', icon: LayoutDashboard },
@@ -255,7 +255,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({ pendingFeeReceip
       </div>
 
       {/* Content Area */}
-      <main className="flex-1 overflow-hidden p-8 relative bg-muted/5">
+      <main className="flex-1 overflow-hidden p-4 sm:p-6 lg:p-8 relative bg-muted/5">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
