@@ -7,7 +7,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from '../ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from '../ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '../ui/dialog';
 import { 
     DropdownMenu, 
     DropdownMenuContent, 
@@ -27,11 +27,23 @@ import {
     Shield, 
     MoreVertical, 
     Trash2, 
-    Edit 
+    Edit,
+    KeyRound,
+    Clock,
+    Mail,
+    Eye,
+    EyeOff,
+    UserCheck,
+    UserX,
+    Copy,
+    CheckCheck
 } from 'lucide-react';
 
 import { Role } from './types';
 import { RoleConfigDialog } from './RoleConfigDialog';
+import { supabase } from '../../../../utils/supabase/client';
+import { formatDistanceToNow } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface UserManagerProps {
     users: User[];
@@ -45,26 +57,37 @@ interface UserManagerProps {
 export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUser, onDeleteUser }: UserManagerProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
+    const [statusFilter, setStatusFilter] = useState('all');
 
-    // Ensure uniqueness of users to prevent duplicate key errors
     const uniqueUsers = users.filter((user, index, self) => 
         index === self.findIndex((u) => u.id === user.id)
     );
     
-    // Dialog States
     const [isNewUserOpen, setIsNewUserOpen] = useState(false);
     const [isEditUserOpen, setIsEditUserOpen] = useState(false);
     const [isRolesConfigOpen, setIsRolesConfigOpen] = useState(false);
+    const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
 
-    // Form State
-    const [currentUserForm, setCurrentUserForm] = useState<Partial<User>>({
+    const [currentUserForm, setCurrentUserForm] = useState<Partial<User> & { password?: string; confirmPassword?: string }>({
         name: '',
-        role: 'manager',
+        role: roles[1]?.id || 'manager',
         initials: '',
-        email: ''
+        email: '',
+        password: '',
+        confirmPassword: '',
+        status: 'active'
+    });
+    
+    const [resetPasswordForm, setResetPasswordForm] = useState<{ userId: string; newPassword: string; confirmPassword: string }>({
+        userId: '',
+        newPassword: '',
+        confirmPassword: ''
     });
 
-    // Contar usuarios reales por rol
     const roleCounts = uniqueUsers.reduce((acc, user) => {
         const roleKey = user.role; 
         acc[roleKey] = (acc[roleKey] || 0) + 1;
@@ -74,39 +97,109 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
     const openNewUserDialog = () => {
         setCurrentUserForm({
             name: '',
-            role: 'manager',
+            role: roles[1]?.id || 'manager',
             initials: '',
-            email: ''
+            email: '',
+            password: '',
+            confirmPassword: '',
+            status: 'active'
         });
+        setShowPassword(false);
         setIsNewUserOpen(true);
     };
 
     const openEditUserDialog = (user: User) => {
-        setCurrentUserForm({ ...user });
+        setCurrentUserForm({ ...user, password: '', confirmPassword: '' });
         setIsEditUserOpen(true);
     };
 
-    const handleCreateUser = () => {
-        if (!currentUserForm.name || !currentUserForm.initials || !currentUserForm.role) {
-            toast.error("Complete todos los campos obligatorios");
+    const openResetPasswordDialog = (user: User) => {
+        setResetPasswordForm({ userId: user.id, newPassword: '', confirmPassword: '' });
+        setIsResetPasswordOpen(true);
+    };
+
+    const autoGenerateInitials = (name: string) => {
+        const parts = name.trim().split(' ').filter(Boolean);
+        if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return '';
+    };
+
+    const handleCreateUser = async () => {
+        if (!currentUserForm.name || !currentUserForm.email || !currentUserForm.role) {
+            toast.error("Complete todos los campos obligatorios (Nombre, Email y Rol)");
+            return;
+        }
+        if (!currentUserForm.password || currentUserForm.password.length < 6) {
+            toast.error("La contraseña debe tener al menos 6 caracteres");
+            return;
+        }
+        if (currentUserForm.password !== currentUserForm.confirmPassword) {
+            toast.error("Las contraseñas no coinciden");
+            return;
+        }
+        if (uniqueUsers.some(u => u.email === currentUserForm.email)) {
+            toast.error("Ya existe un usuario con ese correo electrónico");
             return;
         }
 
-        const user: User = {
-            id: `usr-${Math.random().toString(36).substr(2, 5)}`,
-            name: currentUserForm.name,
-            role: currentUserForm.role as User['role'], // Type assertion safe due to role being string now
-            initials: currentUserForm.initials.toUpperCase(),
-            email: currentUserForm.email || `${currentUserForm.initials.toLowerCase()}@grooflow.com`
-        };
+        setIsCreating(true);
+        try {
+            const { data: authData, error: authError } = await supabase.auth.signUp({
+                email: currentUserForm.email!,
+                password: currentUserForm.password!,
+                options: {
+                    data: { name: currentUserForm.name }
+                }
+            });
 
-        onAddUser(user);
-        setIsNewUserOpen(false);
-        toast.success("Usuario creado exitosamente");
+            if (authError && !authError.message.includes('already registered')) {
+                throw authError;
+            }
+
+            const initials = currentUserForm.initials || autoGenerateInitials(currentUserForm.name!);
+
+            const user: User = {
+                id: authData?.user?.id || `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                name: currentUserForm.name!,
+                role: currentUserForm.role as User['role'],
+                initials: initials.toUpperCase(),
+                email: currentUserForm.email!,
+                status: 'active',
+            };
+
+            onAddUser(user);
+            setIsNewUserOpen(false);
+            toast.success(`Usuario "${user.name}" creado exitosamente`, {
+                description: `Correo: ${user.email} | Contraseña asignada correctamente`
+            });
+        } catch (error: any) {
+            console.error('Error creating user:', error);
+            if (error.message?.includes('already registered') || error.message?.includes('already been registered')) {
+                const initials = currentUserForm.initials || autoGenerateInitials(currentUserForm.name!);
+                const user: User = {
+                    id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    name: currentUserForm.name!,
+                    role: currentUserForm.role as User['role'],
+                    initials: initials.toUpperCase(),
+                    email: currentUserForm.email!,
+                    status: 'active',
+                };
+                onAddUser(user);
+                setIsNewUserOpen(false);
+                toast.info(`Usuario "${user.name}" registrado`, {
+                    description: `El correo ya existía en Auth. Usuario añadido al sistema.`
+                });
+            } else {
+                toast.error("Error al crear el usuario: " + (error.message || 'Error desconocido'));
+            }
+        } finally {
+            setIsCreating(false);
+        }
     };
 
     const handleUpdateUser = () => {
-         if (!currentUserForm.id || !currentUserForm.name || !currentUserForm.initials || !currentUserForm.role) {
+        if (!currentUserForm.id || !currentUserForm.name || !currentUserForm.role) {
             toast.error("Error al actualizar usuario");
             return;
         }
@@ -115,8 +208,12 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
             id: currentUserForm.id,
             name: currentUserForm.name,
             role: currentUserForm.role as User['role'],
-            initials: currentUserForm.initials.toUpperCase(),
-            email: currentUserForm.email
+            initials: (currentUserForm.initials || autoGenerateInitials(currentUserForm.name)).toUpperCase(),
+            email: currentUserForm.email,
+            status: currentUserForm.status || 'active',
+            lastLogin: currentUserForm.lastLogin,
+            pettyCashLimit: currentUserForm.pettyCashLimit,
+            location: currentUserForm.location,
         };
 
         onUpdateUser(user);
@@ -124,12 +221,74 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
         toast.success("Usuario actualizado exitosamente");
     };
 
-    const confirmDeleteUser = (userId: string) => {
-        if (confirm("¿Está seguro de que desea eliminar este usuario? Esta acción no se puede deshacer.")) {
+    const handleResetPassword = async () => {
+        if (!resetPasswordForm.newPassword || resetPasswordForm.newPassword.length < 6) {
+            toast.error("La nueva contraseña debe tener al menos 6 caracteres");
+            return;
+        }
+        if (resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword) {
+            toast.error("Las contraseñas no coinciden");
+            return;
+        }
+
+        const targetUser = uniqueUsers.find(u => u.id === resetPasswordForm.userId);
+        if (!targetUser) return;
+
+        toast.success(`Contraseña de "${targetUser.name}" restablecida`, {
+            description: `Nueva contraseña asignada. El usuario deberá usarla en su próximo acceso.`
+        });
+        
+        const updated = uniqueUsers.find(u => u.id === resetPasswordForm.userId);
+        if (updated) {
+            onUpdateUser({ ...updated, tempPassword: resetPasswordForm.newPassword });
+        }
+        
+        setIsResetPasswordOpen(false);
+    };
+
+    const handleToggleStatus = (user: User) => {
+        const newStatus: 'active' | 'inactive' = user.status === 'inactive' ? 'active' : 'inactive';
+        onUpdateUser({ ...user, status: newStatus });
+        toast.success(`Usuario ${newStatus === 'active' ? 'activado' : 'desactivado'}: ${user.name}`);
+    };
+
+    const confirmDeleteUser = (userId: string, userName: string) => {
+        if (confirm(`¿Está seguro de que desea eliminar al usuario "${userName}"? Esta acción no se puede deshacer.`)) {
             onDeleteUser(userId);
             toast.success("Usuario eliminado");
         }
     };
+
+    const copyCredentials = (user: User) => {
+        const text = `Usuario: ${user.name}\nEmail: ${user.email || 'N/A'}\nRol: ${roles.find(r => r.id === user.role)?.name || user.role}`;
+        navigator.clipboard.writeText(text).then(() => {
+            setCopiedUserId(user.id);
+            setTimeout(() => setCopiedUserId(null), 2000);
+        });
+    };
+
+    const formatLastLogin = (lastLogin?: string) => {
+        if (!lastLogin) return 'Nunca';
+        try {
+            return formatDistanceToNow(new Date(lastLogin), { addSuffix: true, locale: es });
+        } catch {
+            return 'Desconocido';
+        }
+    };
+
+    const activeCount = uniqueUsers.filter(u => u.status !== 'inactive').length;
+    const inactiveCount = uniqueUsers.filter(u => u.status === 'inactive').length;
+
+    const filteredUsers = uniqueUsers.filter(u => {
+        const matchSearch = u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (u.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+            u.id.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchRole = roleFilter === 'all' || u.role === roleFilter;
+        const matchStatus = statusFilter === 'all' || 
+            (statusFilter === 'active' && u.status !== 'inactive') ||
+            (statusFilter === 'inactive' && u.status === 'inactive');
+        return matchSearch && matchRole && matchStatus;
+    });
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -143,9 +302,9 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                     <div className="flex items-center gap-2 text-muted-foreground text-sm">
                         <span>{uniqueUsers.length} usuarios registrados</span>
                         <span>•</span>
-                        <span className="text-green-600 font-medium">{uniqueUsers.length} activos</span>
+                        <span className="text-green-600 font-medium">{activeCount} activos</span>
                         <span>•</span>
-                        <span>0 inactivos</span>
+                        <span className="text-slate-500">{inactiveCount} inactivos</span>
                         <Button variant="ghost" size="icon" className="h-5 w-5 ml-1">
                             <RefreshCw className="w-3 h-3" />
                         </Button>
@@ -164,12 +323,12 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
             </div>
 
             {/* Info Banner */}
-            <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+            <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-4 flex items-start gap-3 dark:bg-blue-900/10 dark:border-blue-800">
                 <Info className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
                 <div>
-                    <h4 className="font-semibold text-blue-900 text-sm">Sistema de Permisos por Rol</h4>
-                    <p className="text-blue-700 text-sm mt-0.5">
-                        Cada usuario tiene acceso solo a los módulos asignados a su rol. Los Super Administradores tienen acceso completo.
+                    <h4 className="font-semibold text-blue-900 dark:text-blue-300 text-sm">Acceso controlado por Super Administrador</h4>
+                    <p className="text-blue-700 dark:text-blue-400 text-sm mt-0.5">
+                        Solo el Super Administrador puede crear cuentas. Cada usuario recibe su correo y contraseña de acceso. Los módulos visibles se sincronizan con el rol asignado.
                     </p>
                 </div>
             </div>
@@ -180,16 +339,16 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                     <Card 
                         key={role.id} 
                         className={`${role.bgColor} border ${role.borderColor} shadow-sm hover:shadow-md transition-shadow cursor-pointer`}
-                        onClick={() => setRoleFilter(role.id)}
+                        onClick={() => setRoleFilter(roleFilter === role.id ? 'all' : role.id)}
                     >
                         <CardContent className="p-4">
                             <div className="flex justify-between items-start mb-2">
                                 <Shield className={`w-5 h-5 ${role.color}`} />
-                                <Badge variant="secondary" className="bg-white/80 font-mono text-xs">
+                                <Badge variant="secondary" className="bg-white/80 font-mono text-xs dark:bg-black/30">
                                     {roleCounts[role.id] || 0}
                                 </Badge>
                             </div>
-                            <h3 className="font-semibold text-sm mb-1 text-slate-900">{role.name}</h3>
+                            <h3 className="font-semibold text-sm mb-1 text-slate-900 dark:text-slate-100">{role.name}</h3>
                             <p className="text-xs text-slate-500 leading-snug">
                                 {role.description}
                             </p>
@@ -230,7 +389,7 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                         </div>
                         <div className="w-full md:w-[200px] space-y-2">
                             <label className="text-sm font-medium text-muted-foreground">Estado</label>
-                            <Select defaultValue="all">
+                            <Select value={statusFilter} onValueChange={setStatusFilter}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Todos" />
                                 </SelectTrigger>
@@ -243,7 +402,7 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                         </div>
                     </div>
 
-                    {/* Users Table (Preview) */}
+                    {/* Users Table */}
                     <div className="mt-6 border rounded-md overflow-hidden">
                         <Table>
                             <TableHeader className="bg-muted/50">
@@ -251,24 +410,29 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                     <TableHead>Usuario</TableHead>
                                     <TableHead>Rol</TableHead>
                                     <TableHead>Estado</TableHead>
-                                    <TableHead>Último Acceso</TableHead>
+                                    <TableHead>
+                                        <div className="flex items-center gap-1">
+                                            <Clock className="w-3.5 h-3.5" />
+                                            Último Acceso
+                                        </div>
+                                    </TableHead>
                                     <TableHead className="text-right">Acciones</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {uniqueUsers.filter(u => 
-                                    u.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
-                                    (roleFilter === 'all' || u.role === roleFilter)
-                                ).map((user) => (
-                                    <TableRow key={user.id}>
+                                {filteredUsers.map((user) => (
+                                    <TableRow key={user.id} className={user.status === 'inactive' ? 'opacity-60' : ''}>
                                         <TableCell>
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center font-bold text-slate-600 border border-slate-200">
+                                                <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-sm">
                                                     {user.initials}
                                                 </div>
                                                 <div>
                                                     <div className="font-medium">{user.name}</div>
-                                                    <div className="text-xs text-muted-foreground">ID: {user.id}</div>
+                                                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                                        <Mail className="w-3 h-3" />
+                                                        {user.email || 'Sin correo'}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </TableCell>
@@ -278,12 +442,30 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200 shadow-none">
-                                                Activo
-                                            </Badge>
+                                            {user.status === 'inactive' ? (
+                                                <Badge className="bg-slate-100 text-slate-600 hover:bg-slate-100 border-slate-300 shadow-none dark:bg-slate-800 dark:text-slate-400">
+                                                    Inactivo
+                                                </Badge>
+                                            ) : (
+                                                <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-green-200 shadow-none dark:bg-green-900/20 dark:text-green-400">
+                                                    Activo
+                                                </Badge>
+                                            )}
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">
-                                            Hace 2 minutos
+                                            <div className="flex items-center gap-1.5">
+                                                {user.lastLogin ? (
+                                                    <>
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+                                                        {formatLastLogin(user.lastLogin)}
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300 shrink-0" />
+                                                        <span className="text-slate-400">Nunca</span>
+                                                    </>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-right">
                                             <DropdownMenu>
@@ -292,26 +474,55 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                                         <MoreVertical className="w-4 h-4 text-muted-foreground" />
                                                     </Button>
                                                 </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
+                                                <DropdownMenuContent align="end" className="w-52">
                                                     <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                                                     <DropdownMenuItem onClick={() => openEditUserDialog(user)}>
                                                         <Edit className="w-4 h-4 mr-2" />
-                                                        Editar
+                                                        Editar datos
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => openResetPasswordDialog(user)}>
+                                                        <KeyRound className="w-4 h-4 mr-2" />
+                                                        Restablecer contraseña
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => copyCredentials(user)}>
+                                                        {copiedUserId === user.id ? (
+                                                            <CheckCheck className="w-4 h-4 mr-2 text-green-500" />
+                                                        ) : (
+                                                            <Copy className="w-4 h-4 mr-2" />
+                                                        )}
+                                                        Copiar datos de acceso
                                                     </DropdownMenuItem>
                                                     <DropdownMenuSeparator />
-                                                    <DropdownMenuItem className="text-red-600" onClick={() => confirmDeleteUser(user.id)}>
+                                                    <DropdownMenuItem onClick={() => handleToggleStatus(user)}>
+                                                        {user.status === 'inactive' ? (
+                                                            <>
+                                                                <UserCheck className="w-4 h-4 mr-2 text-green-600" />
+                                                                <span className="text-green-700">Activar usuario</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <UserX className="w-4 h-4 mr-2 text-amber-600" />
+                                                                <span className="text-amber-700">Desactivar usuario</span>
+                                                            </>
+                                                        )}
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem 
+                                                        className="text-red-600" 
+                                                        onClick={() => confirmDeleteUser(user.id, user.name)}
+                                                    >
                                                         <Trash2 className="w-4 h-4 mr-2" />
-                                                        Eliminar
+                                                        Eliminar usuario
                                                     </DropdownMenuItem>
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                         </TableCell>
                                     </TableRow>
                                 ))}
-                                {uniqueUsers.length === 0 && (
+                                {filteredUsers.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                                            No se encontraron usuarios.
+                                            No se encontraron usuarios con los filtros aplicados.
                                         </TableCell>
                                     </TableRow>
                                 )}
@@ -323,25 +534,35 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
 
             {/* DIALOG: Nuevo Usuario */}
             <Dialog open={isNewUserOpen} onOpenChange={setIsNewUserOpen}>
-                <DialogContent className="sm:max-w-[500px]">
+                <DialogContent className="sm:max-w-[520px]">
                     <DialogHeader>
-                        <DialogTitle>Registrar Nuevo Usuario</DialogTitle>
+                        <DialogTitle className="flex items-center gap-2">
+                            <KeyRound className="w-5 h-5 text-blue-600" />
+                            Registrar Nuevo Usuario
+                        </DialogTitle>
                         <DialogDescription>
-                            Ingrese los datos del nuevo colaborador para darle acceso al sistema.
+                            El Super Administrador asigna el correo y la contraseña de acceso. El usuario podrá ingresar con estas credenciales.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label>Nombre Completo</Label>
+                                <Label>Nombre Completo <span className="text-red-500">*</span></Label>
                                 <Input 
                                     placeholder="Ej. Juan Pérez" 
                                     value={currentUserForm.name}
-                                    onChange={(e) => setCurrentUserForm({...currentUserForm, name: e.target.value})}
+                                    onChange={(e) => {
+                                        const name = e.target.value;
+                                        setCurrentUserForm(prev => ({
+                                            ...prev, 
+                                            name,
+                                            initials: prev.initials || autoGenerateInitials(name)
+                                        }));
+                                    }}
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Iniciales (Firma)</Label>
+                                <Label>Iniciales</Label>
                                 <Input 
                                     placeholder="JP" 
                                     maxLength={3}
@@ -352,16 +573,19 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                             </div>
                         </div>
                         <div className="space-y-2">
-                            <Label>Correo Electrónico</Label>
+                            <Label className="flex items-center gap-1.5">
+                                <Mail className="w-3.5 h-3.5 text-muted-foreground" />
+                                Correo Electrónico <span className="text-red-500">*</span>
+                            </Label>
                             <Input 
                                 type="email" 
-                                placeholder="juan@grooflow.com" 
+                                placeholder="juan@empresa.com" 
                                 value={currentUserForm.email}
                                 onChange={(e) => setCurrentUserForm({...currentUserForm, email: e.target.value})}
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label>Rol Asignado</Label>
+                            <Label>Rol Asignado <span className="text-red-500">*</span></Label>
                             <Select 
                                 value={currentUserForm.role} 
                                 onValueChange={(v: any) => setCurrentUserForm({...currentUserForm, role: v})}
@@ -371,21 +595,99 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                 </SelectTrigger>
                                 <SelectContent>
                                     {roles.map(role => (
-                                        <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                                        <SelectItem key={role.id} value={role.id}>
+                                            <div className="flex items-center gap-2">
+                                                <Shield className={`w-3.5 h-3.5 ${role.color}`} />
+                                                {role.name}
+                                            </div>
+                                        </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
+                            {currentUserForm.role && (
+                                <p className="text-xs text-muted-foreground">
+                                    Módulos con acceso: {
+                                        Object.entries(roles.find(r => r.id === currentUserForm.role)?.permissions || {})
+                                            .filter(([, v]) => v)
+                                            .map(([k]) => k)
+                                            .join(', ') || 'Ninguno'
+                                    }
+                                </p>
+                            )}
+                        </div>
+                        <div className="border-t pt-4 space-y-3">
+                            <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-1">
+                                <KeyRound className="w-4 h-4" />
+                                Credenciales de Acceso
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Contraseña <span className="text-red-500">*</span></Label>
+                                <div className="relative">
+                                    <Input 
+                                        type={showPassword ? "text" : "password"}
+                                        placeholder="Mínimo 6 caracteres" 
+                                        value={currentUserForm.password}
+                                        onChange={(e) => setCurrentUserForm({...currentUserForm, password: e.target.value})}
+                                        className="pr-10"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    >
+                                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Confirmar Contraseña <span className="text-red-500">*</span></Label>
+                                <div className="relative">
+                                    <Input 
+                                        type={showConfirmPassword ? "text" : "password"}
+                                        placeholder="Repita la contraseña" 
+                                        value={currentUserForm.confirmPassword}
+                                        onChange={(e) => setCurrentUserForm({...currentUserForm, confirmPassword: e.target.value})}
+                                        className={`pr-10 ${currentUserForm.confirmPassword && currentUserForm.password !== currentUserForm.confirmPassword ? 'border-red-400' : ''}`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                    >
+                                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                                {currentUserForm.confirmPassword && currentUserForm.password !== currentUserForm.confirmPassword && (
+                                    <p className="text-xs text-red-500">Las contraseñas no coinciden</p>
+                                )}
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsNewUserOpen(false)}>Cancelar</Button>
-                        <Button onClick={handleCreateUser}>Crear Usuario</Button>
+                        <Button 
+                            onClick={handleCreateUser} 
+                            disabled={isCreating}
+                            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                            {isCreating ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Creando...
+                                </>
+                            ) : (
+                                <>
+                                    <Plus className="w-4 h-4" />
+                                    Crear Usuario
+                                </>
+                            )}
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             {/* DIALOG: Editar Usuario */}
-             <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
+            <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
                 <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
                         <DialogTitle>Editar Usuario</DialogTitle>
@@ -404,7 +706,7 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                 />
                             </div>
                             <div className="space-y-2">
-                                <Label>Iniciales (Firma)</Label>
+                                <Label>Iniciales</Label>
                                 <Input 
                                     placeholder="JP" 
                                     maxLength={3}
@@ -418,7 +720,7 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                             <Label>Correo Electrónico</Label>
                             <Input 
                                 type="email" 
-                                placeholder="juan@grooflow.com" 
+                                placeholder="juan@empresa.com" 
                                 value={currentUserForm.email}
                                 onChange={(e) => setCurrentUserForm({...currentUserForm, email: e.target.value})}
                             />
@@ -434,11 +736,37 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                 </SelectTrigger>
                                 <SelectContent>
                                     {roles.map(role => (
-                                        <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                                        <SelectItem key={role.id} value={role.id}>
+                                            <div className="flex items-center gap-2">
+                                                <Shield className={`w-3.5 h-3.5 ${role.color}`} />
+                                                {role.name}
+                                            </div>
+                                        </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div className="space-y-2">
+                            <Label>Estado</Label>
+                            <Select 
+                                value={currentUserForm.status || 'active'} 
+                                onValueChange={(v: any) => setCurrentUserForm({...currentUserForm, status: v})}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="active">Activo</SelectItem>
+                                    <SelectItem value="inactive">Inactivo</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        {currentUserForm.lastLogin && (
+                            <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/30 rounded px-3 py-2">
+                                <Clock className="w-3.5 h-3.5" />
+                                Último acceso: {formatLastLogin(currentUserForm.lastLogin)}
+                            </div>
+                        )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsEditUserOpen(false)}>Cancelar</Button>
@@ -447,7 +775,53 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                 </DialogContent>
             </Dialog>
 
-            {/* Role Configuration Dialog (Replaces Old Dialogs) */}
+            {/* DIALOG: Restablecer Contraseña */}
+            <Dialog open={isResetPasswordOpen} onOpenChange={setIsResetPasswordOpen}>
+                <DialogContent className="sm:max-w-[440px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <KeyRound className="w-5 h-5 text-amber-500" />
+                            Restablecer Contraseña
+                        </DialogTitle>
+                        <DialogDescription>
+                            Asigne una nueva contraseña para el usuario: <strong>{uniqueUsers.find(u => u.id === resetPasswordForm.userId)?.name}</strong>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="space-y-2">
+                            <Label>Nueva Contraseña</Label>
+                            <Input
+                                type="password"
+                                placeholder="Mínimo 6 caracteres"
+                                value={resetPasswordForm.newPassword}
+                                onChange={(e) => setResetPasswordForm({...resetPasswordForm, newPassword: e.target.value})}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Confirmar Nueva Contraseña</Label>
+                            <Input
+                                type="password"
+                                placeholder="Repita la contraseña"
+                                value={resetPasswordForm.confirmPassword}
+                                onChange={(e) => setResetPasswordForm({...resetPasswordForm, confirmPassword: e.target.value})}
+                                className={resetPasswordForm.confirmPassword && resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword ? 'border-red-400' : ''}
+                            />
+                            {resetPasswordForm.confirmPassword && resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword && (
+                                <p className="text-xs text-red-500">Las contraseñas no coinciden</p>
+                            )}
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsResetPasswordOpen(false)}>Cancelar</Button>
+                        <Button onClick={handleResetPassword} className="gap-2 bg-amber-600 hover:bg-amber-700 text-white">
+                            <KeyRound className="w-4 h-4" />
+                            Restablecer
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Role Configuration Dialog */}
             <RoleConfigDialog 
                 open={isRolesConfigOpen} 
                 onOpenChange={setIsRolesConfigOpen}

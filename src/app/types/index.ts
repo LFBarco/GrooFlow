@@ -86,6 +86,9 @@ export interface User {
   email?: string;
   location?: string; // Sede asociada
   pettyCashLimit?: number; // Límite específico de caja chica para este usuario
+  lastLogin?: string; // ISO timestamp del último acceso
+  tempPassword?: string; // Contraseña temporal asignada por el super admin
+  status?: 'active' | 'inactive'; // Estado del usuario
 }
 
 export interface PurchaseRequest {

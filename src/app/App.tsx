@@ -404,29 +404,37 @@ export default function App() {
   const handleNextMonth = () => setCurrentDate(prev => addMonths(prev, 1));
 
   const handleLogin = (email: string, name?: string) => {
-      // Use functional update to prevent race conditions and duplicates
+      const now = new Date().toISOString();
+      
       setUsers(prevUsers => {
-          const existingUser = prevUsers.find(u => u.email === email);
+          const existingUser = prevUsers.find(u => u.email?.toLowerCase() === email.toLowerCase());
           
           if (existingUser) {
-              // If user exists, update current user and return strictly the same array
-              if (currentUser.email !== existingUser.email) {
-                  setCurrentUser(existingUser);
+              // Bloquear acceso a usuarios inactivos
+              if (existingUser.status === 'inactive') {
+                  toast.error("Tu cuenta está desactivada. Contacta al Administrador.");
+                  return prevUsers;
               }
+              
+              // Actualizar lastLogin y marcar como activo
+              const updatedUser: User = { ...existingUser, lastLogin: now, status: 'active' };
+              const updatedUsers = prevUsers.map(u => u.id === existingUser.id ? updatedUser : u);
+              setCurrentUser(updatedUser);
               setIsAuthenticated(true);
-              return prevUsers;
+              return updatedUsers;
           }
 
-          // If user doesn't exist, create new one
+          // Si no existe, crear usuario nuevo (caso: nuevo login desde Supabase Auth)
           const newUser: User = {
               id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
               email: email,
               name: name || email.split('@')[0],
-              role: 'manager', // Rol por defecto
-              initials: (name || email).slice(0, 2).toUpperCase()
+              role: 'manager',
+              initials: (name || email).slice(0, 2).toUpperCase(),
+              lastLogin: now,
+              status: 'active'
           };
           
-          // Update current user to the new user
           setCurrentUser(newUser);
           setIsAuthenticated(true);
           
