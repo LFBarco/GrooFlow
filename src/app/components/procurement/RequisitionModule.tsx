@@ -91,9 +91,10 @@ const INITIAL_REQUISITIONS: Requisition[] = [
 interface RequisitionModuleProps {
     currentUser: User;
     users: User[];
+    visibleSedes?: string[];
 }
 
-export function RequisitionModule({ currentUser, users }: RequisitionModuleProps) {
+export function RequisitionModule({ currentUser, users, visibleSedes }: RequisitionModuleProps) {
     // State
     const [activeTab, setActiveTab] = useState('my_requisitions');
     const [requisitions, setRequisitions] = useState<Requisition[]>(INITIAL_REQUISITIONS);
@@ -260,14 +261,24 @@ export function RequisitionModule({ currentUser, users }: RequisitionModuleProps
         toast.success('Mercadería marcada como Recibida');
     };
 
-    // Filter Logic
+    // Filter Logic — also respect visibleSedes access
     const filteredRequisitions = requisitions.filter(req => {
         if (statusFilter !== 'all' && req.status !== statusFilter) return false;
         if (locationFilter !== 'all' && req.location !== locationFilter) return false;
+        // Sede access filter
+        if (visibleSedes && visibleSedes.length > 0 && req.location) {
+            if (!visibleSedes.includes(req.location) && !req.location.includes(visibleSedes.join(''))) return false;
+        }
         return true;
     });
 
-    const myRequisitions = requisitions.filter(r => r.requesterId === currentUser.id || currentUser.role === 'admin'); // Admin sees all in demo
+    const myRequisitions = requisitions.filter(r => {
+        if (currentUser.role === 'admin' || currentUser.role === 'super_admin' || currentUser.allSedes) return true;
+        if (r.requesterId === currentUser.id) return true;
+        // Also show requisitions from user's sedes
+        if (visibleSedes && r.location && visibleSedes.some(s => r.location.includes(s))) return true;
+        return false;
+    });
 
     // Common style classes
     const cardBg = "bg-[#1A1826] border border-white/5 shadow-xl";
@@ -380,7 +391,7 @@ export function RequisitionModule({ currentUser, users }: RequisitionModuleProps
                             </SelectTrigger>
                             <SelectContent className="bg-[#1A1826] border-white/10 text-slate-200">
                                 <SelectItem value="all">Todas las sedes</SelectItem>
-                                {MOCK_LOCATIONS.map(loc => (
+                                {(visibleSedes || MOCK_LOCATIONS).map(loc => (
                                     <SelectItem key={loc} value={loc}>{loc}</SelectItem>
                                 ))}
                             </SelectContent>

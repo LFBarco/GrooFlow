@@ -21,6 +21,7 @@ interface PettyCashModuleProps {
     settings: PettyCashSettings;
     users: User[];
     currentUser: User;
+    visibleSedes?: string[];
 }
 
 const getWeekStr = (date: Date) => format(date, 'w');
@@ -47,7 +48,8 @@ export function PettyCashModule({
     onUpdateTransactions, 
     settings, 
     users, 
-    currentUser 
+    currentUser,
+    visibleSedes
 }: PettyCashModuleProps) {
     const [activeTab, setActiveTab] = useState('manager');
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -63,11 +65,9 @@ export function PettyCashModule({
     const [area, setArea] = useState<string>('');
     const [isExtraExpense, setIsExtraExpense] = useState(false);
     
-    // Sede defaults to user profile but can be displayed (read-only per request "prevalece la sede...")
-    // Assuming currentUser has a location property or we infer it. 
-    // The previous code had a location selector defaulting to 'main'.
-    // We'll keep it as a display field or hidden default.
-    const [location] = useState<string>(currentUser['location'] || 'Principal'); 
+    // Sede: defaults to first visible sede of the user
+    const defaultSede = currentUser.sedes?.[0] || currentUser.location || visibleSedes?.[0] || 'Principal';
+    const [location, setLocation] = useState<string>(defaultSede);
 
     // Calculated fields
     const igv = amountBI ? (parseFloat(amountBI) * 0.18) : 0;
@@ -196,11 +196,24 @@ export function PettyCashModule({
                         {/* Config Section */}
                         <div className="grid grid-cols-2 gap-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700/50">
                             <div className="space-y-2 col-span-2 sm:col-span-1">
-                                <Label className="text-xs font-medium text-slate-400">Sede (Automático)</Label>
-                                <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-800/50 text-slate-300 text-sm">
-                                    <Building2 className="w-4 h-4 mr-2 text-cyan-500" />
-                                    {location}
-                                </div>
+                                <Label className="text-xs font-medium text-slate-400">Sede</Label>
+                                {visibleSedes && visibleSedes.length === 1 ? (
+                                    <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-800/50 text-slate-300 text-sm">
+                                        <Building2 className="w-4 h-4 mr-2 text-cyan-500" />
+                                        {location}
+                                    </div>
+                                ) : (
+                                    <Select value={location} onValueChange={setLocation}>
+                                        <SelectTrigger className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                            <SelectValue placeholder="Seleccionar Sede" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                            {(visibleSedes || ['Principal']).map(s => (
+                                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
                             </div>
                             
                             <div className="space-y-2 col-span-2 sm:col-span-1">

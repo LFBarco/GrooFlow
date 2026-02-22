@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User } from '../../types';
+import { User, SYSTEM_SEDES } from '../../types';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -36,8 +36,11 @@ import {
     UserCheck,
     UserX,
     Copy,
-    CheckCheck
+    CheckCheck,
+    Building2,
+    Globe
 } from 'lucide-react';
+import { Switch } from '../ui/switch';
 
 import { Role } from './types';
 import { RoleConfigDialog } from './RoleConfigDialog';
@@ -79,7 +82,9 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
         email: '',
         password: '',
         confirmPassword: '',
-        status: 'active'
+        status: 'active',
+        allSedes: true,
+        sedes: []
     });
     
     const [resetPasswordForm, setResetPasswordForm] = useState<{ userId: string; newPassword: string; confirmPassword: string }>({
@@ -102,7 +107,9 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
             email: '',
             password: '',
             confirmPassword: '',
-            status: 'active'
+            status: 'active',
+            allSedes: true,
+            sedes: []
         });
         setShowPassword(false);
         setIsNewUserOpen(true);
@@ -166,12 +173,15 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                 initials: initials.toUpperCase(),
                 email: currentUserForm.email!,
                 status: 'active',
+                allSedes: currentUserForm.allSedes ?? true,
+                sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),
             };
 
             onAddUser(user);
             setIsNewUserOpen(false);
+            const sedeInfo = user.allSedes ? 'todas las sedes' : (user.sedes?.join(', ') || 'sin sede');
             toast.success(`Usuario "${user.name}" creado exitosamente`, {
-                description: `Correo: ${user.email} | Contraseña asignada correctamente`
+                description: `Correo: ${user.email} | Acceso: ${sedeInfo}`
             });
         } catch (error: any) {
             console.error('Error creating user:', error);
@@ -184,6 +194,8 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                     initials: initials.toUpperCase(),
                     email: currentUserForm.email!,
                     status: 'active',
+                    allSedes: currentUserForm.allSedes ?? true,
+                    sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),
                 };
                 onAddUser(user);
                 setIsNewUserOpen(false);
@@ -214,6 +226,8 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
             lastLogin: currentUserForm.lastLogin,
             pettyCashLimit: currentUserForm.pettyCashLimit,
             location: currentUserForm.location,
+            allSedes: currentUserForm.allSedes ?? true,
+            sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),
         };
 
         onUpdateUser(user);
@@ -409,6 +423,7 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                 <TableRow>
                                     <TableHead>Usuario</TableHead>
                                     <TableHead>Rol</TableHead>
+                                    <TableHead>Sede(s)</TableHead>
                                     <TableHead>Estado</TableHead>
                                     <TableHead>
                                         <div className="flex items-center gap-1">
@@ -440,6 +455,22 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                             <Badge variant="outline" className="capitalize">
                                                 {roles.find(r => r.id === user.role)?.name || user.role}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            {user.allSedes || !user.sedes?.length ? (
+                                                <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                                                    <Globe className="w-3.5 h-3.5" />
+                                                    Todas
+                                                </div>
+                                            ) : (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {user.sedes.map(s => (
+                                                        <Badge key={s} variant="secondary" className="text-xs py-0 h-5">
+                                                            {s}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             {user.status === 'inactive' ? (
@@ -615,6 +646,56 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                 </p>
                             )}
                         </div>
+                        {/* Sede Access Section */}
+                        <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+                            <div className="flex items-center justify-between">
+                                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                                    <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                                    Acceso a Sedes
+                                </Label>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">
+                                        {currentUserForm.allSedes ? 'Todas las sedes' : 'Sedes específicas'}
+                                    </span>
+                                    <Switch
+                                        checked={!!currentUserForm.allSedes}
+                                        onCheckedChange={(v) => setCurrentUserForm({...currentUserForm, allSedes: v, sedes: v ? [] : currentUserForm.sedes})}
+                                    />
+                                </div>
+                            </div>
+                            {!currentUserForm.allSedes && (
+                                <div className="space-y-2">
+                                    <p className="text-xs text-muted-foreground">Selecciona las sedes habilitadas:</p>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {SYSTEM_SEDES.map(sede => {
+                                            const isSelected = currentUserForm.sedes?.includes(sede);
+                                            return (
+                                                <button
+                                                    key={sede}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const curr = currentUserForm.sedes || [];
+                                                        const updated = isSelected
+                                                            ? curr.filter(s => s !== sede)
+                                                            : [...curr, sede];
+                                                        setCurrentUserForm({...currentUserForm, sedes: updated});
+                                                    }}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-all ${
+                                                        isSelected
+                                                            ? 'bg-blue-600 text-white border-blue-600'
+                                                            : 'border-border text-muted-foreground hover:border-blue-400 hover:text-foreground'
+                                                    }`}
+                                                >
+                                                    <Building2 className="w-3 h-3" />
+                                                    {sede}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="border-t pt-4 space-y-3">
                             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-1">
                                 <KeyRound className="w-4 h-4" />
@@ -760,6 +841,52 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                     <SelectItem value="inactive">Inactivo</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </div>
+                        {/* Sede Access Section */}
+                        <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
+                            <div className="flex items-center justify-between">
+                                <Label className="flex items-center gap-1.5 text-sm font-medium">
+                                    <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+                                    Acceso a Sedes
+                                </Label>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-muted-foreground">
+                                        {currentUserForm.allSedes ? 'Todas' : 'Específicas'}
+                                    </span>
+                                    <Switch
+                                        checked={!!currentUserForm.allSedes}
+                                        onCheckedChange={(v) => setCurrentUserForm({...currentUserForm, allSedes: v, sedes: v ? [] : currentUserForm.sedes})}
+                                    />
+                                </div>
+                            </div>
+                            {!currentUserForm.allSedes && (
+                                <div className="grid grid-cols-2 gap-1.5">
+                                    {SYSTEM_SEDES.map(sede => {
+                                        const isSelected = currentUserForm.sedes?.includes(sede);
+                                        return (
+                                            <button
+                                                key={sede}
+                                                type="button"
+                                                onClick={() => {
+                                                    const curr = currentUserForm.sedes || [];
+                                                    const updated = isSelected
+                                                        ? curr.filter(s => s !== sede)
+                                                        : [...curr, sede];
+                                                    setCurrentUserForm({...currentUserForm, sedes: updated});
+                                                }}
+                                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-all ${
+                                                    isSelected
+                                                        ? 'bg-blue-600 text-white border-blue-600'
+                                                        : 'border-border text-muted-foreground hover:border-blue-400 hover:text-foreground'
+                                                }`}
+                                            >
+                                                <Building2 className="w-3 h-3" />
+                                                {sede}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                         {currentUserForm.lastLogin && (
                             <div className="text-xs text-muted-foreground flex items-center gap-1.5 bg-muted/30 rounded px-3 py-2">

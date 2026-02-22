@@ -24,10 +24,11 @@ interface PurchaseRequestManagerProps {
     providers: Provider[];
     onRequestCreate: (req: PurchaseRequest) => void;
     onRequestStatusChange: (id: string, status: RequestStatus, comment?: string) => void;
-    currentUser?: any; // Añadimos currentUser como prop opcional para consistencia
+    currentUser?: any;
+    visibleSedes?: string[];
 }
 
-export function PurchaseRequestManager({ requests, providers, onRequestCreate, onRequestStatusChange, currentUser }: PurchaseRequestManagerProps) {
+export function PurchaseRequestManager({ requests, providers, onRequestCreate, onRequestStatusChange, currentUser, visibleSedes }: PurchaseRequestManagerProps) {
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('pending');
     const [searchTerm, setSearchTerm] = useState('');
@@ -46,7 +47,8 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
     const [selectedProviderId, setSelectedProviderId] = useState<string>('');
     const [amount, setAmount] = useState<string>('');
     const [description, setDescription] = useState<string>('');
-    const [location, setLocation] = useState<string>('Principal');
+    const defaultLocation = currentUser?.sedes?.[0] || currentUser?.location || visibleSedes?.[0] || 'Principal';
+    const [location, setLocation] = useState<string>(defaultLocation);
     const [priority, setPriority] = useState<Priority>('medium');
     const [paymentCondition, setPaymentCondition] = useState<PaymentCondition>('credit');
     const [attachment, setAttachment] = useState<string | null>(null);
@@ -221,16 +223,22 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Sede / Ubicación</Label>
-                                    <Select value={location} onValueChange={setLocation}>
-                                        <SelectTrigger>
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Principal">Sede Principal</SelectItem>
-                                            <SelectItem value="Norte">Sede Norte</SelectItem>
-                                            <SelectItem value="Sur">Sede Sur</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    {visibleSedes && visibleSedes.length === 1 ? (
+                                        <div className="flex items-center h-10 px-3 rounded-md border bg-muted text-sm font-medium">
+                                            {location}
+                                        </div>
+                                    ) : (
+                                        <Select value={location} onValueChange={setLocation}>
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {(visibleSedes || ['Principal', 'Norte', 'Sur']).map(s => (
+                                                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    )}
                                 </div>
                                 <div className="space-y-2">
                                     <Label>Prioridad</Label>

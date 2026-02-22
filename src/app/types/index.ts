@@ -78,13 +78,29 @@ export type RequestStatus = 'pending' | 'approved' | 'rejected';
 export type Priority = 'low' | 'medium' | 'high';
 export type PaymentCondition = 'cash' | 'credit';
 
+// Lista oficial de sedes del sistema
+export const SYSTEM_SEDES = [
+  'Benavides',
+  'Miraflores',
+  'La Molina',
+  'San Borja',
+  'Magdalena',
+  'Chavez',
+  'Norte',
+  'Principal',
+] as const;
+
+export type SedeType = typeof SYSTEM_SEDES[number] | string;
+
 export interface User {
   id: string;
   name: string;
   initials: string;
   role: string;
   email?: string;
-  location?: string; // Sede asociada
+  location?: string; // Sede principal (legado)
+  sedes?: string[]; // Sedes a las que tiene acceso (vacío o ausente = todas las sedes)
+  allSedes?: boolean; // true = acceso a todas las sedes (admin)
   pettyCashLimit?: number; // Límite específico de caja chica para este usuario
   lastLogin?: string; // ISO timestamp del último acceso
   tempPassword?: string; // Contraseña temporal asignada por el super admin

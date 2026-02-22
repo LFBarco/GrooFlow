@@ -12,7 +12,7 @@ import { CashFlowChart } from "./components/dashboard/CashFlowChart";
 import { CashFlowGrid } from "./components/dashboard/CashFlowGrid";
 import { AnalyticsDashboard } from "./components/dashboard/AnalyticsDashboard";
 import { ConfigPanel } from "./components/configuration/ConfigPanel";
-import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, SystemAlert, AlertThresholds } from "./types";
+import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, SystemAlert, AlertThresholds, SYSTEM_SEDES } from "./types";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
 import { initialStructure, ConfigStructure, initialSystemSettings } from "./data/initialData";
 import { 
@@ -68,16 +68,16 @@ import { AppProvider } from "./context/AppContext";
 
 // Mock data
 const MOCK_USERS: User[] = [
-    { id: 'usr-3', name: 'Admin Principal', role: 'super_admin', initials: 'ADM', email: 'admin@grooflow.com', status: 'active' },
-    { id: '2', name: 'Luis Barco', initials: 'LB', role: 'manager', email: 'luis@grooflow.com', pettyCashLimit: 1500, status: 'active' },
-    { id: '3', name: 'Juandy Gomez', initials: 'JG', role: 'manager', email: 'juandy@grooflow.com', pettyCashLimit: 1800, status: 'active' },
-    { id: '4', name: 'Pierre Diaz', initials: 'PD', role: 'manager', email: 'pierre@grooflow.com', status: 'active' },
-    { id: 'usr-1', name: 'Ana Silva', role: 'manager', initials: 'AS', email: 'ana@grooflow.com', status: 'active' },
-    { id: 'usr-2', name: 'Carlos Ruiz', role: 'manager', initials: 'CR', email: 'carlos@grooflow.com', status: 'active' },
-    { id: '1', name: 'Jeny Quispes', initials: 'JQ', role: 'manager', email: 'jeny@grooflow.com', status: 'active' },
-    { id: 'usr-4', name: 'Dr. Pedro', role: 'groomer', initials: 'PG', email: 'pedro@grooflow.com', status: 'active' },
-    { id: 'usr-5', name: 'Lucia Contadora', role: 'manager', initials: 'LC', email: 'lucia@grooflow.com', status: 'active' },
-    { id: 'usr-6', name: 'Barbara Torres', role: 'manager', initials: 'BT', email: 'barbara@grooflow.com', pettyCashLimit: 1000, status: 'active' }
+    { id: 'usr-3', name: 'Admin Principal', role: 'super_admin', initials: 'ADM', email: 'admin@grooflow.com', status: 'active', allSedes: true },
+    { id: '2', name: 'Luis Barco', initials: 'LB', role: 'manager', email: 'luis@grooflow.com', pettyCashLimit: 1500, status: 'active', sedes: ['Benavides'], allSedes: false },
+    { id: '3', name: 'Juandy Gomez', initials: 'JG', role: 'manager', email: 'juandy@grooflow.com', pettyCashLimit: 1800, status: 'active', allSedes: true },
+    { id: '4', name: 'Pierre Diaz', initials: 'PD', role: 'manager', email: 'pierre@grooflow.com', status: 'active', allSedes: true },
+    { id: 'usr-1', name: 'Ana Silva', role: 'manager', initials: 'AS', email: 'ana@grooflow.com', status: 'active', allSedes: true },
+    { id: 'usr-2', name: 'Carlos Ruiz', role: 'manager', initials: 'CR', email: 'carlos@grooflow.com', status: 'active', allSedes: true },
+    { id: '1', name: 'Jeny Quispes', initials: 'JQ', role: 'manager', email: 'jeny@grooflow.com', status: 'active', allSedes: true },
+    { id: 'usr-4', name: 'Dr. Pedro', role: 'groomer', initials: 'PG', email: 'pedro@grooflow.com', status: 'active', sedes: ['La Molina'], allSedes: false },
+    { id: 'usr-5', name: 'Lucia Contadora', role: 'manager', initials: 'LC', email: 'lucia@grooflow.com', status: 'active', allSedes: true },
+    { id: 'usr-6', name: 'Barbara Torres', role: 'manager', initials: 'BT', email: 'barbara@grooflow.com', pettyCashLimit: 1000, status: 'active', sedes: ['Miraflores'], allSedes: false }
 ];
 
 const initialTransactions: Transaction[] = [
@@ -449,6 +449,7 @@ export default function App() {
       navigate(viewToPath('dashboard'));
   };
 
+
   const handleUpdateTransaction = async (updatedData: any) => {
      if (!editingTransaction) return;
 
@@ -645,6 +646,22 @@ export default function App() {
     if (isSuperAdmin) return true;
     return userRole?.permissions?.[moduleName] === true;
   };
+
+  // --- SEDE FILTERING HELPERS ---
+  const canSeeSede = (sede: string): boolean => {
+      if (isSuperAdmin || currentUser.allSedes) return true;
+      if (!currentUser.sedes || currentUser.sedes.length === 0) return true;
+      return currentUser.sedes.includes(sede);
+  };
+  const visibleSedes: string[] = (isSuperAdmin || currentUser.allSedes || !currentUser.sedes?.length)
+      ? [...SYSTEM_SEDES]
+      : (currentUser.sedes || []);
+  const filteredPettyCashBySede = pettyCashTransactions.filter(tx =>
+      !tx.location || canSeeSede(tx.location)
+  );
+  const filteredRequestsBySede = requests.filter(r =>
+      !r.location || canSeeSede(r.location)
+  );
 
   const NavButton = ({ targetView, icon: Icon, label, iconColorClass, requiredModule }: { targetView: ViewType, icon: typeof LayoutDashboard, label: string, iconColorClass?: string, requiredModule?: string }) => {
     // Hide if user doesn't have permission for this module
@@ -1146,6 +1163,7 @@ export default function App() {
                 <RequisitionModule 
                     currentUser={currentUser}
                     users={users}
+                    visibleSedes={visibleSedes}
                 />
              </div>
           )}
@@ -1153,18 +1171,20 @@ export default function App() {
           {view === 'requests' && (
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <PurchaseRequestManager 
-                    requests={requests} 
+                    requests={filteredRequestsBySede} 
                     providers={providers}
                     onRequestCreate={(req) => {
-                        // Firmamos la solicitud con el usuario actual antes de guardarla
                         const signedRequest = {
                             ...req,
                             requesterName: currentUser.name,
-                            requesterInitials: currentUser.initials
+                            requesterInitials: currentUser.initials,
+                            location: req.location || (visibleSedes[0] || 'Principal')
                         };
                         setRequests([signedRequest, ...requests]);
                     }}
                     onRequestStatusChange={handleRequestStatusChange}
+                    currentUser={currentUser}
+                    visibleSedes={visibleSedes}
                 />
              </div>
           )}
@@ -1214,11 +1234,12 @@ export default function App() {
           {view === 'pettycash' && (
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <PettyCashModule 
-                  transactions={pettyCashTransactions}
+                  transactions={filteredPettyCashBySede}
                   onUpdateTransactions={setPettyCashTransactions}
                   settings={systemSettings.pettyCash}
                   users={users}
                   currentUser={currentUser}
+                  visibleSedes={visibleSedes}
                 />
              </div>
           )}
