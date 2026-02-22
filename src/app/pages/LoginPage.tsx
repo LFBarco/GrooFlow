@@ -21,11 +21,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { Checkbox } from "../components/ui/checkbox";
-import { ImageWithFallback } from "../components/figma/ImageWithFallback";
 import { supabase } from "../../../utils/supabase/client";
-import { api } from "../services/api";
-// Imagen de fondo: coloque warm-bg.png en la carpeta public/ para producción
-const warmFinancialBg = "/warm-bg.png";
 
 /* ═══════════════════════════════════════════════════
    GrooFlow SVG Logo — "G" + EKG Heartbeat
@@ -411,7 +407,7 @@ export function LoginPage({
             zIndex: 1
           }} />
 
-          {/* Background image (warm financial) */}
+          {/* Background — generative gradient (no external image needed) */}
           <motion.div
             initial={{ scale: 1.08, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -420,15 +416,67 @@ export function LoginPage({
           >
             <div className="absolute inset-0 z-10" style={{ background: t.imgOverlay1 }} />
             <div className="absolute inset-0 z-10" style={{ background: t.imgOverlay2 }} />
-            <ImageWithFallback
-              src={warmFinancialBg}
-              alt="GrooFlow Financial"
-              className="w-full h-full object-cover"
-              style={{
-                opacity: t.imgOpacity,
-                mixBlendMode: t.imgBlend,
-              }}
-            />
+            {/* Generative financial chart background */}
+            <div className="absolute inset-0" style={{
+              background: isDark
+                ? 'linear-gradient(135deg, #0d0a1f 0%, #130d2e 30%, #1a0a35 60%, #0a1525 100%)'
+                : 'linear-gradient(135deg, #ede9ff 0%, #ddd6fe 30%, #c4b5fd 60%, #e0f2fe 100%)',
+            }}>
+              {/* Decorative SVG chart lines */}
+              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="chartGrad1" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor={isDark ? '#22d3ee' : '#7c3aed'} stopOpacity="0" />
+                    <stop offset="30%" stopColor={isDark ? '#22d3ee' : '#7c3aed'} stopOpacity={isDark ? 0.6 : 0.4} />
+                    <stop offset="70%" stopColor={isDark ? '#a855f7' : '#4f46e5'} stopOpacity={isDark ? 0.6 : 0.4} />
+                    <stop offset="100%" stopColor={isDark ? '#a855f7' : '#4f46e5'} stopOpacity="0" />
+                  </linearGradient>
+                  <linearGradient id="chartGrad2" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor={isDark ? '#34d399' : '#059669'} stopOpacity="0" />
+                    <stop offset="50%" stopColor={isDark ? '#34d399' : '#059669'} stopOpacity={isDark ? 0.4 : 0.3} />
+                    <stop offset="100%" stopColor={isDark ? '#34d399' : '#059669'} stopOpacity="0" />
+                  </linearGradient>
+                  <linearGradient id="areaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor={isDark ? '#22d3ee' : '#7c3aed'} stopOpacity={isDark ? 0.15 : 0.1} />
+                    <stop offset="100%" stopColor={isDark ? '#22d3ee' : '#7c3aed'} stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                {/* Horizontal grid lines */}
+                {[100, 200, 300, 400, 500].map(y => (
+                  <line key={y} x1="0" y1={y} x2="800" y2={y} stroke={isDark ? 'rgba(255,255,255,0.04)' : 'rgba(109,40,217,0.06)'} strokeWidth="1" />
+                ))}
+                {/* Vertical grid lines */}
+                {[100, 200, 300, 400, 500, 600, 700].map(x => (
+                  <line key={x} x1={x} y1="0" x2={x} y2="600" stroke={isDark ? 'rgba(255,255,255,0.03)' : 'rgba(109,40,217,0.05)'} strokeWidth="1" />
+                ))}
+                {/* Area fill under main chart */}
+                <path d="M 0 450 L 80 420 L 160 390 L 240 360 L 320 330 L 400 280 L 480 240 L 560 200 L 640 180 L 720 160 L 800 140 L 800 600 L 0 600 Z" fill="url(#areaGrad)" />
+                {/* Main uptrend line */}
+                <polyline
+                  points="0,450 80,420 160,390 240,360 320,330 400,280 480,240 560,200 640,180 720,160 800,140"
+                  fill="none" stroke="url(#chartGrad1)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                />
+                {/* Secondary line */}
+                <polyline
+                  points="0,500 100,490 200,470 300,440 400,420 500,380 600,350 700,320 800,300"
+                  fill="none" stroke="url(#chartGrad2)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray="6 4"
+                />
+                {/* EKG pulse line */}
+                <polyline
+                  points="50,300 120,300 150,220 180,380 210,300 280,300 310,260 340,340 370,300 450,300 480,250 510,350 540,300 620,300"
+                  fill="none" stroke={isDark ? 'rgba(34,211,238,0.35)' : 'rgba(109,40,217,0.25)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                />
+                {/* Data point dots */}
+                {[[80,420],[240,360],[400,280],[560,200],[720,160]].map(([x,y],i) => (
+                  <circle key={i} cx={x} cy={y} r="4" fill={isDark ? '#22d3ee' : '#7c3aed'} opacity={isDark ? 0.7 : 0.5} />
+                ))}
+                {/* Currency symbols */}
+                <text x="60" y="80" fontSize="48" fill={isDark ? 'rgba(34,211,238,0.06)' : 'rgba(109,40,217,0.06)'} fontFamily="monospace">S/</text>
+                <text x="600" y="120" fontSize="36" fill={isDark ? 'rgba(168,85,247,0.06)' : 'rgba(79,70,229,0.06)'} fontFamily="monospace">$</text>
+                <text x="350" y="520" fontSize="28" fill={isDark ? 'rgba(52,211,153,0.07)' : 'rgba(5,150,105,0.07)'} fontFamily="monospace">USD</text>
+              </svg>
+            </div>
           </motion.div>
 
           {/* ─── SPLASH CONTENT ─── */}
