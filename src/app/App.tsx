@@ -213,6 +213,20 @@ export default function App() {
   const [providers, setProviders] = useState<Provider[]>(initialProviders);
   const [requests, setRequests] = useState<PurchaseRequest[]>(initialRequests);
   const [pettyCashTransactions, setPettyCashTransactions] = useState<PettyCashTransaction[]>([]);
+  
+  // Fee Receipts state - shared between Honorarios and Treasury
+  const [feeReceipts, setFeeReceipts] = useState<Array<{
+    id: string;
+    professionalName: string;
+    receiptNumber: string;
+    amount: number;
+    description: string;
+    location?: string;
+    dueDate: Date;
+    paymentRequestedAt?: Date;
+    status: 'pending' | 'approved' | 'requested_payment' | 'paid' | 'rejected';
+    paymentDate?: Date;
+  }>>([]);
   const location = useLocation();
   const navigate = useNavigate();
   const view = pathToView(location.pathname);
@@ -967,13 +981,45 @@ export default function App() {
           )}
 
           {view === 'treasury' && (
-             <TreasuryModule />
+             <TreasuryModule 
+               pendingFeeReceipts={feeReceipts.filter(r => r.status === 'requested_payment')}
+               onMarkReceiptPaid={(receiptId, paymentDate) => {
+                 setFeeReceipts(prev => prev.map(r => 
+                   r.id === receiptId ? { ...r, status: 'paid' as const, paymentDate } : r
+                 ));
+               }}
+             />
           )}
 
           {view === 'fees' && (
              <ProfessionalFeesModule 
                 providers={providers}
                 onUpdateProviders={setProviders}
+                onSendToTreasury={(receipts) => {
+                  setFeeReceipts(prev => {
+                    const existingIds = new Set(prev.map(r => r.id));
+                    const newReceipts = receipts
+                      .filter(r => !existingIds.has(r.id))
+                      .map(r => ({
+                        id: r.id,
+                        professionalName: r.professionalName,
+                        receiptNumber: r.receiptNumber,
+                        amount: r.amount,
+                        description: r.description,
+                        location: r.location,
+                        dueDate: r.dueDate,
+                        paymentRequestedAt: r.paymentRequestedAt,
+                        status: 'requested_payment' as const,
+                      }));
+                    const updated = prev.map(r => {
+                      const updated = receipts.find(nr => nr.id === r.id);
+                      if (updated) return { ...r, status: 'requested_payment' as const, paymentRequestedAt: updated.paymentRequestedAt };
+                      return r;
+                    });
+                    return [...updated, ...newReceipts];
+                  });
+                  toast.success("Recibos enviados a Tesorería - Mesa de Pagos", { description: "Ve a Tesorería para aprobar los pagos." });
+                }}
              />
           )}
 
@@ -1110,6 +1156,7 @@ export default function App() {
                  currentDate={currentDate}
                  systemSettings={systemSettings}
                  onUpdateSettings={setSystemSettings}
+                 invoices={invoices}
                />
              </div>
           )}

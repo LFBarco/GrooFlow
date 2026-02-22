@@ -9,8 +9,6 @@ import {
   Download, 
   Search,
   Clock,
-  Landmark,
-  Banknote,
   FileText
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -20,12 +18,14 @@ import { es } from 'date-fns/locale';
 interface PaymentWorkbenchProps {
   invoices: Invoice[];
   onSchedulePayment: (invoiceIds: string[]) => void;
+  onApprovePayment?: (invoiceIds: string[]) => void;
   bankBalance: number;
 }
 
 export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({ 
   invoices, 
-  onSchedulePayment, 
+  onSchedulePayment,
+  onApprovePayment,
   bankBalance 
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -125,11 +125,25 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
           </div>
 
           {/* Actions Section (Right Side) */}
-          <div className="p-4 md:w-[320px] bg-muted/20 border-t md:border-t-0 md:border-l border-border flex flex-col gap-3 justify-center">
+          <div className="p-4 md:w-[340px] bg-muted/20 border-t md:border-t-0 md:border-l border-border flex flex-col gap-3 justify-center">
+            {/* Primary: Approve Payment */}
+            <button
+              disabled={selectedIds.size === 0}
+              onClick={() => onApprovePayment?.(Array.from(selectedIds))}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-md shadow-sm h-10 flex items-center justify-center gap-2 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CheckSquare className="w-4 h-4" />
+              <span>Aprobar Pago ({selectedIds.size})</span>
+            </button>
+            <div className="relative flex items-center">
+              <div className="flex-1 border-t border-border" />
+              <span className="px-2 text-xs text-muted-foreground bg-muted/20">o enviar a banco</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
              <button
               disabled={selectedIds.size === 0}
               onClick={() => handleExportBatch('bcp')}
-              className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-md shadow-sm h-10 flex items-center justify-center gap-2 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-md shadow-sm h-9 flex items-center justify-center gap-2 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>Exportar Telecrédito BCP</span>
               <Download className="w-4 h-4" />
@@ -145,7 +159,7 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
                 <button
                   disabled={selectedIds.size === 0}
                   onClick={() => onSchedulePayment(Array.from(selectedIds))}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-md h-9 text-xs transition-colors disabled:opacity-50 shadow-sm"
+                  className="flex-1 bg-slate-600 hover:bg-slate-700 text-white font-medium rounded-md h-9 text-xs transition-colors disabled:opacity-50 shadow-sm"
                 >
                   Pago Manual
                 </button>

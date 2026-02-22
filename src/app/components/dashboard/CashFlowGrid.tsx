@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from 'react';
-import { Transaction, TransactionType, SystemSettings } from '../../types';
+import { Transaction, TransactionType, SystemSettings, InvoiceDraft } from '../../types';
 import { format, getDaysInMonth, startOfMonth, addDays, isSameDay, getDate, parseISO, isToday, startOfYear, eachMonthOfInterval, endOfYear, isSameMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
@@ -20,11 +20,12 @@ interface CashFlowGridProps {
   systemSettings?: SystemSettings;
   onUpdateSettings?: (settings: SystemSettings) => void;
   onAddProjectedTransactions?: (txs: Transaction[]) => void;
+  invoices?: InvoiceDraft[];
 }
 
 type ViewMode = 'daily' | 'annual';
 
-export function CashFlowGrid({ transactions, currentDate = new Date(), config, systemSettings, onUpdateSettings, onAddProjectedTransactions }: CashFlowGridProps) {
+export function CashFlowGrid({ transactions, currentDate = new Date(), config, systemSettings, onUpdateSettings, onAddProjectedTransactions, invoices = [] }: CashFlowGridProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
@@ -135,10 +136,24 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
     }
   };
 
+  // Projected invoice expenses by due date (unpaid invoices)
+  const getProjectedInvoiceExpense = (date: Date): number => {
+    if (invoices.length === 0) return 0;
+    return invoices
+      .filter(inv => {
+        if (inv.status === 'paid') return false;
+        const dueDate = new Date(inv.dueDate);
+        if (viewMode === 'daily') return isSameDay(dueDate, date);
+        return isSameMonth(dueDate, date);
+      })
+      .reduce((sum, inv) => sum + Number(inv.total), 0);
+  };
+
   const getNetPeriodTotal = (date: Date) => {
       const inc = getPeriodTotal('income', date);
       const exp = getPeriodTotal('expense', date);
-      return inc - exp;
+      const projected = getProjectedInvoiceExpense(date);
+      return inc - exp - projected;
   };
 
   // Balance Calculations
@@ -573,6 +588,40 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
             {/* EGRESOS SECTION */}
             {renderSection(expenseStructure, "EGRESOS", false)}
 
+            {/* FACTURAS PROYECTADAS (pending invoices by due date) */}
+            {invoices.filter(inv => inv.status !== 'paid').length > 0 && (
+              <tbody className="border-t-2" style={{ borderColor: 'rgba(251,191,36,0.2)' }}>
+                <tr style={{ background: 'rgba(251,191,36,0.05)' }}>
+                  <td className="sticky left-0 z-10 p-3 border-r min-w-[300px]"
+                    style={{ background: 'rgba(19,15,36,0.98)', borderColor: 'rgba(251,191,36,0.15)', color: '#fbbf24' }}
+                    colSpan={2}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs uppercase tracking-wider font-bold">FACTURAS POR VENCER (Proyectado)</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }}>
+                        {invoices.filter(inv => inv.status !== 'paid').length} facturas
+                      </span>
+                    </div>
+                  </td>
+                  {columns.map(date => {
+                    const val = getProjectedInvoiceExpense(date);
+                    return (
+                      <td key={`proj-inv-${date.toISOString()}`} className="p-2 text-right border-r font-mono text-xs font-medium"
+                        style={{ borderColor: 'rgba(251,191,36,0.08)', color: val > 0 ? '#fbbf24' : 'transparent' }}
+                      >
+                        {val > 0 ? formatMoney(val, true) : ''}
+                      </td>
+                    );
+                  })}
+                  <td className="sticky right-0 z-10 p-2 border-l text-right font-mono font-bold"
+                    style={{ background: 'rgba(19,15,36,0.98)', borderColor: 'rgba(251,191,36,0.15)', color: '#fbbf24', boxShadow: '-4px 0 16px rgba(0,0,0,0.4)' }}
+                  >
+                    {formatMoney(invoices.filter(inv => inv.status !== 'paid').reduce((sum, inv) => sum + Number(inv.total), 0), true)}
+                  </td>
+                </tr>
+              </tbody>
+            )}
+
             <tbody className="divide-y border-t-4" style={{ borderColor: 'rgba(139,92,246,0.15)' }}>
               {/* Net Flow Row */}
               <tr style={{ background: 'rgba(139,92,246,0.05)' }}>
@@ -580,13 +629,18 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
                    style={{ background: 'rgba(13,11,30,0.98)', borderColor: 'rgba(139,92,246,0.12)', color: 'rgba(255,255,255,0.35)' }}
                    colSpan={2}
                  >
-                   VARIACIÓN NETA (I - E)
+                   VARIACIÓN NETA (I - E - Proyectado)
                  </td>
                  {columns.map(date => {
                     const total = getNetPeriodTotal(date);
+                    const hasProjected = getProjectedInvoiceExpense(date) > 0;
                     return (
                       <td key={`net-${date.toISOString()}`} className="p-2 text-right border-r font-mono text-xs font-bold"
-                        style={{ borderColor: 'rgba(139,92,246,0.08)', color: total < 0 ? '#fb7185' : total > 0 ? '#34d399' : '#6b5fa5' }}
+                        style={{ 
+                          borderColor: 'rgba(139,92,246,0.08)', 
+                          color: total < 0 ? '#fb7185' : total > 0 ? '#34d399' : '#6b5fa5',
+                          background: hasProjected ? 'rgba(251,191,36,0.04)' : 'transparent'
+                        }}
                       >
                         {formatMoney(total, true)}
                       </td>
@@ -598,7 +652,8 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
                    {(() => {
                         const totalIncome = getSectionTotal('income');
                         const totalExpense = getSectionTotal('expense');
-                        const net = totalIncome - totalExpense;
+                        const totalProjected = invoices.filter(inv => inv.status !== 'paid').reduce((sum, inv) => sum + Number(inv.total), 0);
+                        const net = totalIncome - totalExpense - totalProjected;
                         return <span style={{ color: net >= 0 ? '#34d399' : '#fb7185' }}>{formatMoney(net, true)}</span>
                    })()}
                  </td>
@@ -610,14 +665,24 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
                    style={{ background: 'rgba(13,11,30,0.98)', borderColor: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}
                    colSpan={2}
                  >
-                   SALDO FINAL (DISPONIBLE)
+                   SALDO PROYECTADO (DISPONIBLE)
                  </td>
                  {columns.map((date, i) => {
+                    const hasRealPayment = transactions.some(t => {
+                      const tDate = new Date(t.date);
+                      if (viewMode === 'daily') return isSameDay(tDate, date) && t.type === 'expense';
+                      return isSameMonth(tDate, date) && t.type === 'expense';
+                    });
+                    const isInPast = date < new Date();
                     return (
                       <td key={`endbal-${date.toISOString()}`} className="p-2 text-right border-r font-mono font-bold"
                         style={{ borderColor: 'rgba(34,211,238,0.08)', 
-                          color: endBalances[i] < 0 ? '#fb7185' : '#22d3ee',
-                          background: endBalances[i] < 0 ? 'rgba(251,113,133,0.06)' : 'transparent'
+                          color: endBalances[i] < 0 ? '#fb7185' : isInPast ? '#34d399' : '#22d3ee',
+                          background: endBalances[i] < 0 
+                            ? 'rgba(251,113,133,0.06)' 
+                            : isInPast && hasRealPayment 
+                              ? 'rgba(52,211,153,0.04)' 
+                              : 'transparent'
                         }}
                       >
                         {formatMoney(endBalances[i], true)}

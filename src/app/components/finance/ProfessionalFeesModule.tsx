@@ -63,9 +63,11 @@ interface FeeReceipt {
   dueDate: Date;
   amount: number;
   description: string;
-  status: 'pending' | 'approved' | 'paid' | 'rejected';
+  status: 'pending' | 'approved' | 'requested_payment' | 'paid' | 'rejected';
   fileUrl?: string;
   location?: string;
+  paymentDate?: Date;
+  paymentRequestedAt?: Date;
 }
 
 const MOCK_RECEIPTS: FeeReceipt[] = [
@@ -110,11 +112,13 @@ const MOCK_RECEIPTS: FeeReceipt[] = [
 interface ProfessionalFeesModuleProps {
   providers?: Provider[];
   onUpdateProviders?: (providers: Provider[]) => void;
+  onSendToTreasury?: (receipts: FeeReceipt[]) => void;
 }
 
 export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({ 
   providers = [], 
-  onUpdateProviders 
+  onUpdateProviders,
+  onSendToTreasury
 }) => {
   const [activeTab, setActiveTab] = useState<'professionals' | 'detail' | 'analytics'>('detail');
   const [searchTerm, setSearchTerm] = useState('');
@@ -146,6 +150,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
   // Selection and Filtering State
   const [selectedReceipts, setSelectedReceipts] = useState<string[]>([]);
   const [professionalFilter, setProfessionalFilter] = useState<string>('all');
+  const [hidePaid, setHidePaid] = useState(false);
 
   // Single Receipt Form State
   const [singleReceiptForm, setSingleReceiptForm] = useState({
@@ -220,6 +225,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
 
   const filteredReceipts = receipts.filter(r => 
     (professionalFilter === 'all' || r.professionalId === professionalFilter) &&
+    (!hidePaid || r.status !== 'paid') &&
     (r.professionalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.receiptNumber.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -240,16 +246,31 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
     }
   };
 
-  const handleBulkAction = (action: 'approve' | 'reject') => {
+  const handleBulkAction = (action: 'approve' | 'reject' | 'request_payment') => {
     if (selectedReceipts.length === 0) return;
 
-    // Filter only pending for approval/rejection logic if needed, 
-    // but simplified here:
+    if (action === 'request_payment') {
+      const toSend = receipts.filter(r => selectedReceipts.includes(r.id) && (r.status === 'pending' || r.status === 'approved'));
+      if (toSend.length === 0) {
+        toast.error("Seleccione recibos pendientes o aprobados para solicitar pago.");
+        return;
+      }
+      const now = new Date();
+      setReceipts(prev => prev.map(r => {
+        if (selectedReceipts.includes(r.id) && (r.status === 'pending' || r.status === 'approved')) {
+          return { ...r, status: 'requested_payment' as const, paymentRequestedAt: now };
+        }
+        return r;
+      }));
+      onSendToTreasury?.(toSend.map(r => ({ ...r, status: 'requested_payment' as const, paymentRequestedAt: now })));
+      toast.success(`${toSend.length} recibos enviados a Tesorería - Mesa de Pagos`);
+      setSelectedReceipts([]);
+      return;
+    }
+
     setReceipts(prev => prev.map(r => {
       if (selectedReceipts.includes(r.id)) {
-        // Prevent changing status if already paid
-        if (r.status === 'paid') return r;
-        
+        if (r.status === 'paid' || r.status === 'requested_payment') return r;
         return { 
           ...r, 
           status: action === 'approve' ? 'approved' : 'rejected' 
@@ -258,7 +279,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
       return r;
     }));
 
-    const actionText = action === 'approve' ? 'Autorizados para pago' : 'Rechazados';
+    const actionText = action === 'approve' ? 'Aprobados' : 'Rechazados';
     toast.success(`${selectedReceipts.length} recibos ${actionText} exitosamente.`);
     setSelectedReceipts([]);
   };
@@ -358,6 +379,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
     switch (status) {
       case 'pending': return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
       case 'approved': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+      case 'requested_payment': return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
       case 'paid': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
       case 'rejected': return 'bg-red-500/10 text-red-500 border-red-500/20';
       default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
@@ -368,6 +390,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
     switch (status) {
       case 'pending': return 'Pendiente';
       case 'approved': return 'Aprobado';
+      case 'requested_payment': return 'Solicitud Enviada';
       case 'paid': return 'Pagado';
       case 'rejected': return 'Rechazado';
       default: return status;
@@ -1054,19 +1077,38 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                  </select>
               </div>
 
-              <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+              <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
+                 {/* Toggle para ocultar pagados */}
+                 <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                   <input
+                     type="checkbox"
+                     className="w-3.5 h-3.5 rounded accent-violet-500"
+                     checked={hidePaid}
+                     onChange={e => setHidePaid(e.target.checked)}
+                   />
+                   <span className="text-xs text-muted-foreground">Ocultar pagados</span>
+                 </label>
+
                  {selectedReceipts.length > 0 ? (
                     <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-5">
-                       <span className="text-xs font-medium bg-violet-100 text-violet-700 px-2 py-1 rounded-full border border-violet-200">
+                       <span className="text-xs font-medium bg-violet-100 text-violet-700 px-2 py-1 rounded-full border border-violet-200 dark:bg-violet-900/30 dark:text-violet-300 dark:border-violet-800">
                           {selectedReceipts.length} seleccionados
                        </span>
+                       <Button 
+                         size="sm" 
+                         className="h-8 text-xs bg-orange-600 hover:bg-orange-700 text-white"
+                         onClick={() => handleBulkAction('request_payment')}
+                       >
+                         <ArrowRight className="w-3 h-3 mr-1.5" />
+                         Solicitar Pago
+                       </Button>
                        <Button 
                          size="sm" 
                          className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
                          onClick={() => handleBulkAction('approve')}
                        >
                          <CheckCircle2 className="w-3 h-3 mr-1.5" />
-                         Autorizar Pagos
+                         Aprobar
                        </Button>
                        <Button 
                          size="sm" 
@@ -1322,18 +1364,39 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                           {visibleColumns.estadoPago && <TableCell>
                             {receipt.status === 'pending' ? (
                                <div className="flex gap-1">
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-green-500 hover:bg-green-500/10 hover:text-green-600" title="Autorizar Pago">
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-orange-500 hover:bg-orange-500/10 hover:text-orange-600" title="Solicitar Pago" onClick={e => { e.stopPropagation(); handleBulkAction('request_payment'); setSelectedReceipts([receipt.id]); }}>
+                                     <ArrowRight className="w-4 h-4" />
+                                  </Button>
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-green-500 hover:bg-green-500/10 hover:text-green-600" title="Aprobar" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('approve'); }}>
                                      <CheckCircle2 className="w-4 h-4" />
                                   </Button>
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:bg-red-500/10 hover:text-red-600" title="Rechazar">
+                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:bg-red-500/10 hover:text-red-600" title="Rechazar" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('reject'); }}>
                                      <X className="w-4 h-4" />
                                   </Button>
                                </div>
                             ) : receipt.status === 'approved' ? (
+                               <div className="flex gap-1 items-center">
+                                 <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 flex items-center gap-1 w-fit">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Aprobado
+                                 </Badge>
+                                 <Button size="icon" variant="ghost" className="h-6 w-6 text-orange-500 hover:bg-orange-500/10" title="Solicitar Pago" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('request_payment'); }}>
+                                    <ArrowRight className="w-3 h-3" />
+                                 </Button>
+                               </div>
+                            ) : receipt.status === 'requested_payment' ? (
                                <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20 flex items-center gap-1 w-fit">
                                   <Clock className="w-3 h-3" />
                                   En Mesa de Pagos
                                </Badge>
+                            ) : receipt.status === 'paid' ? (
+                               <div className="flex flex-col gap-0.5">
+                                 <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20 flex items-center gap-1 w-fit">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    Pagado
+                                 </Badge>
+                                 {receipt.paymentDate && <span className="text-[9px] text-muted-foreground">{format(receipt.paymentDate, 'dd/MM/yyyy')}</span>}
+                               </div>
                             ) : (
                                <Badge variant="outline" className={`text-[10px] ${getStatusColor(receipt.status)}`}>
                                    {getStatusLabel(receipt.status)}

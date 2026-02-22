@@ -10,16 +10,33 @@ import {
   UploadCloud, 
   CheckCircle2, 
   History, 
-  Wallet,
   Building2,
   Calendar,
   Landmark
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import { toast } from 'sonner';
 
-export const TreasuryModule: React.FC = () => {
+interface TreasuryModuleProps {
+  pendingFeeReceipts?: Array<{
+    id: string;
+    professionalName: string;
+    receiptNumber: string;
+    amount: number;
+    description: string;
+    location?: string;
+    dueDate: Date;
+    paymentRequestedAt?: Date;
+  }>;
+  onMarkReceiptPaid?: (receiptId: string, paymentDate: Date) => void;
+}
+
+export const TreasuryModule: React.FC<TreasuryModuleProps> = ({ pendingFeeReceipts = [], onMarkReceiptPaid }) => {
   const [activeTab, setActiveTab] = useState<'ingest' | 'workbench' | 'conciliation' | 'subscriptions' | 'history'>('workbench');
   const [bankBalance, setBankBalance] = useState<number>(54230.50);
+  const [paidHistory, setPaidHistory] = useState<Invoice[]>([]);
   
   // Mock Data Initialization
   const [invoices, setInvoices] = useState<Invoice[]>([
@@ -108,6 +125,58 @@ export const TreasuryModule: React.FC = () => {
       return inv;
     }));
     setActiveTab('conciliation');
+  };
+
+  const handleApprovePayment = (invoiceIds: string[]) => {
+    const now = new Date();
+    
+    // Separate regular invoices from fee receipt IDs (prefixed with rxh-)
+    const regularIds = invoiceIds.filter(id => !id.startsWith('rxh-'));
+    const feeIds = invoiceIds.filter(id => id.startsWith('rxh-'));
+    
+    const approved = invoices.filter(inv => regularIds.includes(inv.id));
+    
+    // Build fee receipt invoice objects for history from pendingFeeReceipts
+    const approvedFees: Invoice[] = feeIds.map(id => {
+      const receipt = pendingFeeReceipts.find(r => `rxh-${r.id}` === id);
+      if (!receipt) return null;
+      return {
+        id,
+        documentNumber: receipt.receiptNumber,
+        documentType: 'RxH' as const,
+        providerName: receipt.professionalName,
+        providerRuc: '-',
+        amount: receipt.amount,
+        currency: 'PEN' as const,
+        issueDate: receipt.paymentRequestedAt || now,
+        dueDate: receipt.dueDate,
+        tentativePaymentDate: receipt.dueDate,
+        category: 'Honorarios Profesionales',
+        status: 'paid' as const,
+        branchId: receipt.location || 'Principal',
+        description: receipt.description,
+      };
+    }).filter(Boolean) as Invoice[];
+    
+    const allApproved = [...approved, ...approvedFees];
+    const totalPaid = allApproved.reduce((sum, inv) => sum + inv.amount, 0);
+    setBankBalance(prev => prev - totalPaid);
+    
+    const paidInvoices = [...approved.map(inv => ({ ...inv, status: 'paid' as const })), ...approvedFees];
+    setPaidHistory(prev => [...paidInvoices, ...prev]);
+    
+    setInvoices(prev => prev.filter(inv => !regularIds.includes(inv.id)));
+    
+    // Notify fee receipt payments
+    feeIds.forEach(id => {
+      if (onMarkReceiptPaid) {
+        onMarkReceiptPaid(id.replace('rxh-', ''), now);
+      }
+    });
+
+    toast.success(`${allApproved.length} pago(s) aprobado(s) — S/ ${totalPaid.toLocaleString('es-PE', { minimumFractionDigits: 2 })} debitados`, {
+      description: feeIds.length > 0 ? `Incluye ${feeIds.length} recibo(s) de honorarios` : undefined
+    });
   };
 
   const handleConciliation = (movementId: string, invoiceId: string) => {
@@ -202,8 +271,27 @@ export const TreasuryModule: React.FC = () => {
             
             {activeTab === 'workbench' && (
               <PaymentWorkbench 
-                invoices={invoices} 
+                invoices={[
+                  ...invoices,
+                  ...pendingFeeReceipts.map(r => ({
+                    id: `rxh-${r.id}`,
+                    documentNumber: r.receiptNumber,
+                    documentType: 'RxH' as const,
+                    providerName: r.professionalName,
+                    providerRuc: '-',
+                    amount: r.amount,
+                    currency: 'PEN' as const,
+                    issueDate: r.paymentRequestedAt || new Date(),
+                    dueDate: r.dueDate,
+                    tentativePaymentDate: r.dueDate,
+                    category: 'Honorarios Profesionales',
+                    status: 'pending' as const,
+                    branchId: r.location || 'Principal',
+                    description: r.description,
+                  }))
+                ]}
                 onSchedulePayment={handleSchedulePayment}
+                onApprovePayment={handleApprovePayment}
                 bankBalance={bankBalance}
               />
             )}
@@ -223,10 +311,65 @@ export const TreasuryModule: React.FC = () => {
             )}
             
             {activeTab === 'history' && (
-              <div className="flex flex-col items-center justify-center h-[60vh] text-muted-foreground space-y-4 border border-dashed border-border rounded-xl bg-card">
-                <History className="w-16 h-16 opacity-20" />
-                <p className="text-lg font-medium">Historial de pagos conciliados</p>
-                <p className="text-sm">Próximamente disponible</p>
+              <div className="bg-card rounded-xl border border-border overflow-hidden">
+                <div className="p-4 border-b border-border flex items-center justify-between">
+                  <div>
+                    <h2 className="font-semibold text-foreground flex items-center gap-2">
+                      <History className="w-5 h-5 text-indigo-400" />
+                      Historial de Pagos Aprobados
+                    </h2>
+                    <p className="text-xs text-muted-foreground mt-0.5">{paidHistory.length} pagos registrados</p>
+                  </div>
+                </div>
+                {paidHistory.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-[40vh] text-muted-foreground space-y-3">
+                    <History className="w-12 h-12 opacity-20" />
+                    <p className="text-sm">No hay pagos aprobados aún</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="text-xs font-semibold text-muted-foreground bg-muted/30 border-b border-border">
+                        <tr>
+                          <th className="px-4 py-3">FECHA PAGO</th>
+                          <th className="px-4 py-3">PROVEEDOR / PROFESIONAL</th>
+                          <th className="px-4 py-3">DOCUMENTO</th>
+                          <th className="px-4 py-3">CATEGORÍA</th>
+                          <th className="px-4 py-3 text-right">IMPORTE</th>
+                          <th className="px-4 py-3">SEDE</th>
+                          <th className="px-4 py-3">ESTADO</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {paidHistory.map(inv => (
+                          <tr key={inv.id} className="hover:bg-muted/20">
+                            <td className="px-4 py-3 text-xs text-muted-foreground">
+                              {format(inv.issueDate, 'dd/MM/yyyy', { locale: es })}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-sm">{inv.providerName}</div>
+                              <div className="text-xs text-muted-foreground font-mono">{inv.providerRuc !== '-' ? `RUC: ${inv.providerRuc}` : ''}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-xs font-medium">{inv.documentType}</div>
+                              <div className="text-xs text-muted-foreground font-mono">{inv.documentNumber}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border">{inv.category}</span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono font-bold text-emerald-500">
+                              S/ {inv.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground">{inv.branchId}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">Pagado</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
           </motion.div>

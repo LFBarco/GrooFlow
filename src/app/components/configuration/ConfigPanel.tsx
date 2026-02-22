@@ -26,7 +26,8 @@ import { Switch } from "../ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from "../ui/badge";
 
-import { User } from '../../types';
+import { User, SYSTEM_SEDES } from '../../types';
+import { MapPin, Globe, Building2 as Building2Icon } from 'lucide-react';
 
 interface ConfigPanelProps {
   config: ConfigStructure;
@@ -259,6 +260,12 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
           >
             Seguridad
+          </TabsTrigger>
+          <TabsTrigger 
+            value="sedes" 
+            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
+          >
+            Sedes
           </TabsTrigger>
           <TabsTrigger 
             value="debug" 
@@ -878,6 +885,132 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                 Próximamente: Historial de accesos y configuración de doble factor.
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* TAB: SEDES */}
+          <TabsContent value="sedes">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-cyan-500" />
+                    Gestión de Sedes y Accesos
+                  </CardTitle>
+                  <CardDescription>
+                    Asigna sedes a los usuarios del sistema. Los usuarios solo verán datos de sus sedes asignadas.
+                    Usuarios con "Todas las Sedes" tienen acceso global.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="border rounded-md overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead>Usuario</TableHead>
+                          <TableHead>Rol</TableHead>
+                          <TableHead>Acceso</TableHead>
+                          <TableHead>Sedes Asignadas</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {users.map((user) => (
+                          <TableRow key={user.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-violet-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                  {user.initials}
+                                </div>
+                                <div>
+                                  <div className="font-medium text-sm">{user.name}</div>
+                                  <div className="text-xs text-muted-foreground">{user.email || '-'}</div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">{user.role}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={user.allSedes === true || user.role === 'super_admin' || user.role === 'admin'}
+                                  disabled={user.role === 'super_admin' || user.role === 'admin'}
+                                  onCheckedChange={(checked) => {
+                                    onUpdateUsers(users.map(u => u.id === user.id ? { ...u, allSedes: checked, sedes: checked ? [] : (u.sedes || []) } : u));
+                                    toast.success(`Acceso de ${user.name} actualizado`);
+                                  }}
+                                />
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  {(user.allSedes || user.role === 'super_admin' || user.role === 'admin') 
+                                    ? <><Globe className="w-3 h-3 text-cyan-400" /> Todas las sedes</>
+                                    : <><Building2Icon className="w-3 h-3 text-muted-foreground" /> Sedes específicas</>
+                                  }
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {(user.allSedes || user.role === 'super_admin' || user.role === 'admin') ? (
+                                <span className="text-xs text-cyan-400 font-medium">Acceso Global</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1 max-w-[320px]">
+                                  {SYSTEM_SEDES.map(sede => {
+                                    const isAssigned = user.sedes?.includes(sede) ?? false;
+                                    return (
+                                      <button
+                                        key={sede}
+                                        onClick={() => {
+                                          const currentSedes = user.sedes || [];
+                                          const newSedes = isAssigned
+                                            ? currentSedes.filter(s => s !== sede)
+                                            : [...currentSedes, sede];
+                                          onUpdateUsers(users.map(u => u.id === user.id ? { ...u, sedes: newSedes } : u));
+                                        }}
+                                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                                          isAssigned
+                                            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40 font-medium'
+                                            : 'bg-transparent text-muted-foreground border-border hover:border-cyan-500/30 hover:text-cyan-400'
+                                        }`}
+                                      >
+                                        {sede}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    Haz click en las sedes para asignar o quitar acceso. Los cambios se guardan automáticamente.
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* System Sedes List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Building2Icon className="w-4 h-4 text-cyan-500" />
+                    Sedes del Sistema
+                  </CardTitle>
+                  <CardDescription>Lista de sedes configuradas en el sistema.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-2">
+                    {SYSTEM_SEDES.map(sede => (
+                      <div key={sede} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/20 text-sm">
+                        <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>{sede}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">Para agregar o modificar sedes, contacte al administrador del sistema.</p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="debug">
