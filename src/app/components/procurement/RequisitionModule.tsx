@@ -51,53 +51,22 @@ import {
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
-// --- MOCK DATA ---
-const MOCK_LOCATIONS = ['Sede Principal', 'Sede Norte', 'Sede Sur', 'Sede Este', 'Sede Oeste'];
+// --- CONSTANTS ---
+import { SYSTEM_SEDES } from '../../types';
 const MOCK_CATEGORIES = ['Médico', 'Grooming', 'Limpieza', 'Oficina', 'Otros'];
 const MOCK_UNITS = ['und', 'caja', 'paquete', 'litro', 'galón', 'millar'];
-
-const INITIAL_REQUISITIONS: Requisition[] = [
-    {
-        id: 'REQ-001',
-        location: 'Sede Norte',
-        requesterId: 'u1',
-        requesterName: 'Juan Admin',
-        date: new Date(2023, 10, 15),
-        status: 'submitted',
-        priority: 'high',
-        items: [
-            { id: 'i1', name: 'Guantes Nitrilo M', quantity: 10, unit: 'caja', category: 'Médico', status: 'pending' },
-            { id: 'i2', name: 'Alcohol 96°', quantity: 5, unit: 'litro', category: 'Médico', status: 'pending' },
-            { id: 'i3', name: 'Shampoo Hipoalergénico', quantity: 2, unit: 'galón', category: 'Grooming', status: 'pending' }
-        ]
-    },
-    {
-        id: 'REQ-002',
-        location: 'Sede Sur',
-        requesterId: 'u2',
-        requesterName: 'Maria Admin',
-        date: new Date(2023, 10, 16),
-        status: 'approved',
-        priority: 'medium',
-        approvalDate: new Date(2023, 10, 16),
-        approverId: 'admin1',
-        items: [
-            { id: 'i4', name: 'Papel Toalla', quantity: 20, approvedQuantity: 15, unit: 'paquete', category: 'Limpieza', status: 'approved' },
-            { id: 'i5', name: 'Cloro', quantity: 10, approvedQuantity: 10, unit: 'galón', category: 'Limpieza', status: 'approved' }
-        ]
-    }
-];
 
 interface RequisitionModuleProps {
     currentUser: User;
     users: User[];
     visibleSedes?: string[];
+    requisitions: Requisition[];
+    onUpdateRequisitions: (reqs: Requisition[]) => void;
 }
 
-export function RequisitionModule({ currentUser, users, visibleSedes }: RequisitionModuleProps) {
+export function RequisitionModule({ currentUser, users, visibleSedes, requisitions, onUpdateRequisitions }: RequisitionModuleProps) {
     // State
     const [activeTab, setActiveTab] = useState('my_requisitions');
-    const [requisitions, setRequisitions] = useState<Requisition[]>(INITIAL_REQUISITIONS);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
     const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
@@ -167,7 +136,7 @@ export function RequisitionModule({ currentUser, users, visibleSedes }: Requisit
 
         const newReq: Requisition = {
             id: `REQ-${Date.now().toString().slice(-6)}`,
-            location: currentUser.location || 'Sede Principal',
+            location: currentUser.location || (visibleSedes?.[0]) || 'Principal',
             requesterId: currentUser.id,
             requesterName: currentUser.name,
             date: new Date(),
@@ -176,7 +145,7 @@ export function RequisitionModule({ currentUser, users, visibleSedes }: Requisit
             items: currentItems
         };
 
-        setRequisitions([newReq, ...requisitions]);
+        onUpdateRequisitions([newReq, ...requisitions]);
         setIsCreateModalOpen(false);
         setCurrentItems([]);
         toast.success('Requerimiento enviado exitosamente');
@@ -245,7 +214,7 @@ export function RequisitionModule({ currentUser, users, visibleSedes }: Requisit
             approvalDate: new Date()
         };
 
-        setRequisitions(requisitions.map(r => r.id === updatedReq.id ? updatedReq : r));
+        onUpdateRequisitions(requisitions.map(r => r.id === updatedReq.id ? updatedReq : r));
         setIsReviewModalOpen(false);
         toast.success('Requerimiento Aprobado', {
             description: 'Se ha generado la notificación para el área de compras.'
@@ -253,7 +222,7 @@ export function RequisitionModule({ currentUser, users, visibleSedes }: Requisit
     };
 
     const handleReceiveRequisition = (reqId: string) => {
-        setRequisitions(requisitions.map(r => 
+        onUpdateRequisitions(requisitions.map(r => 
             r.id === reqId 
             ? { ...r, status: 'received', receivedDate: new Date(), receivedBy: currentUser.name } 
             : r
@@ -391,7 +360,7 @@ export function RequisitionModule({ currentUser, users, visibleSedes }: Requisit
                             </SelectTrigger>
                             <SelectContent className="bg-[#1A1826] border-white/10 text-slate-200">
                                 <SelectItem value="all">Todas las sedes</SelectItem>
-                                {(visibleSedes || MOCK_LOCATIONS).map(loc => (
+                                {(visibleSedes && visibleSedes.length > 0 ? visibleSedes : SYSTEM_SEDES).map(loc => (
                                     <SelectItem key={loc} value={loc}>{loc}</SelectItem>
                                 ))}
                             </SelectContent>
@@ -468,7 +437,7 @@ export function RequisitionModule({ currentUser, users, visibleSedes }: Requisit
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-slate-300">Sede</Label>
-                                <Input value={currentUser['location'] || 'Sede Principal'} disabled className="bg-slate-800/50 border-white/5 text-slate-400" />
+                                <Input value={currentUser.location || (visibleSedes?.[0]) || 'Principal'} disabled className="bg-slate-800/50 border-white/5 text-slate-400" />
                             </div>
                         </div>
 

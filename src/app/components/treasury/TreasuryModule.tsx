@@ -19,6 +19,79 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 
+const INITIAL_TREASURY_INVOICES: Invoice[] = [
+  {
+    id: 'inv-001',
+    documentNumber: 'F001-4390',
+    documentType: 'Factura',
+    providerName: 'Distribuidora Farmavet S.A.C.',
+    providerRuc: '20556789012',
+    amount: 1250.00,
+    currency: 'PEN',
+    issueDate: new Date(2023, 10, 15),
+    dueDate: new Date(2023, 10, 25),
+    tentativePaymentDate: new Date(2023, 10, 24),
+    category: 'Insumos Médicos',
+    status: 'pending',
+    branchId: 'Sede Central',
+    description: 'Compra mensual antibióticos',
+    fileUrl: '#'
+  },
+  {
+    id: 'inv-002',
+    documentNumber: 'RxH-E001-22',
+    documentType: 'RxH',
+    providerName: 'Dr. Carlos Mendez',
+    providerRuc: '10445566778',
+    amount: 3500.00,
+    currency: 'PEN',
+    issueDate: new Date(2023, 10, 20),
+    dueDate: new Date(2023, 10, 30),
+    tentativePaymentDate: new Date(2023, 10, 28),
+    category: 'Honorarios Médicos',
+    status: 'pending',
+    branchId: 'Sede Norte',
+    description: 'Servicios cardiología',
+    fileUrl: '#'
+  },
+  {
+    id: 'inv-003',
+    documentNumber: 'S003-112',
+    documentType: 'Factura',
+    providerName: 'Luz del Sur S.A.A.',
+    providerRuc: '20100156789',
+    amount: 845.20,
+    currency: 'PEN',
+    issueDate: new Date(2023, 10, 10),
+    dueDate: new Date(2023, 10, 22),
+    tentativePaymentDate: new Date(2023, 10, 21),
+    category: 'Servicios Básicos',
+    status: 'in_transit',
+    branchId: 'Sede Sur',
+    description: 'Consumo eléctrico Octubre',
+    fileUrl: '#'
+  }
+];
+
+const INITIAL_BANK_MOVEMENTS: BankMovement[] = [
+  {
+    id: 'mov-001',
+    operationNumber: '0089221',
+    description: 'Pago de Servicios - Luz del Sur',
+    amount: -845.20,
+    date: new Date(2023, 10, 21),
+    status: 'unmatched',
+  },
+  {
+    id: 'mov-002',
+    operationNumber: '0089225',
+    description: 'Transferencia Interbancaria - C. Mendez',
+    amount: -3500.00,
+    date: new Date(2023, 10, 28),
+    status: 'unmatched',
+  }
+];
+
 interface TreasuryModuleProps {
   pendingFeeReceipts?: Array<{
     id: string;
@@ -31,86 +104,60 @@ interface TreasuryModuleProps {
     paymentRequestedAt?: Date;
   }>;
   onMarkReceiptPaid?: (receiptId: string, paymentDate: Date) => void;
+  // Persistent state props
+  treasuryInvoices?: Invoice[];
+  onUpdateTreasuryInvoices?: (invoices: Invoice[]) => void;
+  bankBalance?: number;
+  onUpdateBankBalance?: (balance: number) => void;
+  paidHistory?: Invoice[];
+  onUpdatePaidHistory?: (history: Invoice[]) => void;
 }
 
-export const TreasuryModule: React.FC<TreasuryModuleProps> = ({ pendingFeeReceipts = [], onMarkReceiptPaid }) => {
+export const TreasuryModule: React.FC<TreasuryModuleProps> = ({ 
+  pendingFeeReceipts = [], 
+  onMarkReceiptPaid,
+  treasuryInvoices: externalInvoices,
+  onUpdateTreasuryInvoices,
+  bankBalance: externalBankBalance,
+  onUpdateBankBalance,
+  paidHistory: externalPaidHistory,
+  onUpdatePaidHistory,
+}) => {
   const [activeTab, setActiveTab] = useState<'ingest' | 'workbench' | 'conciliation' | 'subscriptions' | 'history'>('workbench');
-  const [bankBalance, setBankBalance] = useState<number>(54230.50);
-  const [paidHistory, setPaidHistory] = useState<Invoice[]>([]);
   
-  // Mock Data Initialization
-  const [invoices, setInvoices] = useState<Invoice[]>([
-    {
-      id: 'inv-001',
-      documentNumber: 'F001-4390',
-      documentType: 'Factura',
-      providerName: 'Distribuidora Farmavet S.A.C.',
-      providerRuc: '20556789012',
-      amount: 1250.00,
-      currency: 'PEN',
-      issueDate: new Date(2023, 10, 15),
-      dueDate: new Date(2023, 10, 25),
-      tentativePaymentDate: new Date(2023, 10, 24),
-      category: 'Insumos Médicos',
-      status: 'pending',
-      branchId: 'Sede Central',
-      description: 'Compra mensual antibióticos',
-      fileUrl: '#'
-    },
-    {
-      id: 'inv-002',
-      documentNumber: 'RxH-E001-22',
-      documentType: 'RxH',
-      providerName: 'Dr. Carlos Mendez',
-      providerRuc: '10445566778',
-      amount: 3500.00,
-      currency: 'PEN',
-      issueDate: new Date(2023, 10, 20),
-      dueDate: new Date(2023, 10, 30),
-      tentativePaymentDate: new Date(2023, 10, 28),
-      category: 'Honorarios Médicos',
-      status: 'pending',
-      branchId: 'Sede Norte',
-      description: 'Servicios cardiología',
-      fileUrl: '#'
-    },
-    {
-      id: 'inv-003',
-      documentNumber: 'S003-112',
-      documentType: 'Factura',
-      providerName: 'Luz del Sur S.A.A.',
-      providerRuc: '20100156789',
-      amount: 845.20,
-      currency: 'PEN',
-      issueDate: new Date(2023, 10, 10),
-      dueDate: new Date(2023, 10, 22),
-      tentativePaymentDate: new Date(2023, 10, 21),
-      category: 'Servicios Básicos',
-      status: 'in_transit', // Already sent to bank
-      branchId: 'Sede Sur',
-      description: 'Consumo eléctrico Octubre',
-      fileUrl: '#'
-    }
-  ]);
+  const [bankBalance, setBankBalanceState] = useState<number>(externalBankBalance ?? 54230.50);
+  const setBankBalance = (updater: number | ((prev: number) => number)) => {
+    setBankBalanceState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onUpdateBankBalance?.(next);
+      return next;
+    });
+  };
 
-  const [bankMovements, setBankMovements] = useState<BankMovement[]>([
-    {
-      id: 'mov-001',
-      operationNumber: '0089221',
-      description: 'Pago de Servicios - Luz del Sur',
-      amount: -845.20,
-      date: new Date(2023, 10, 21),
-      status: 'unmatched',
-    },
-    {
-      id: 'mov-002',
-      operationNumber: '0089225',
-      description: 'Transferencia Interbancaria - C. Mendez',
-      amount: -3500.00,
-      date: new Date(2023, 10, 28),
-      status: 'unmatched',
-    }
-  ]);
+  const [paidHistory, setPaidHistoryState] = useState<Invoice[]>(externalPaidHistory ?? []);
+  const setPaidHistory = (updater: Invoice[] | ((prev: Invoice[]) => Invoice[])) => {
+    setPaidHistoryState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onUpdatePaidHistory?.(next);
+      return next;
+    });
+  };
+
+  const [invoices, setInvoicesState] = useState<Invoice[]>(externalInvoices ?? INITIAL_TREASURY_INVOICES);
+  const setInvoices = (updater: Invoice[] | ((prev: Invoice[]) => Invoice[])) => {
+    setInvoicesState(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onUpdateTreasuryInvoices?.(next);
+      return next;
+    });
+  };
+
+  // Sync from external props when they change
+  React.useEffect(() => { if (externalInvoices) setInvoicesState(externalInvoices); }, [externalInvoices]);
+  React.useEffect(() => { if (externalBankBalance !== undefined) setBankBalanceState(externalBankBalance); }, [externalBankBalance]);
+  React.useEffect(() => { if (externalPaidHistory) setPaidHistoryState(externalPaidHistory); }, [externalPaidHistory]);
+
+  const [bankMovements, setBankMovements] = useState<BankMovement[]>(INITIAL_BANK_MOVEMENTS);
 
   const handleIngestComplete = (newInvoices: Invoice[]) => {
     setInvoices(prev => [...prev, ...newInvoices]);

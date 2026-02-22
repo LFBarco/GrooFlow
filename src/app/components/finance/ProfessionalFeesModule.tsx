@@ -113,16 +113,35 @@ interface ProfessionalFeesModuleProps {
   providers?: Provider[];
   onUpdateProviders?: (providers: Provider[]) => void;
   onSendToTreasury?: (receipts: FeeReceipt[]) => void;
+  receipts?: FeeReceipt[];
+  onUpdateReceipts?: (receipts: FeeReceipt[]) => void;
 }
 
 export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({ 
   providers = [], 
   onUpdateProviders,
-  onSendToTreasury
+  onSendToTreasury,
+  receipts: externalReceipts,
+  onUpdateReceipts
 }) => {
   const [activeTab, setActiveTab] = useState<'professionals' | 'detail' | 'analytics'>('detail');
   const [searchTerm, setSearchTerm] = useState('');
-  const [receipts, setReceipts] = useState<FeeReceipt[]>(MOCK_RECEIPTS);
+  const [receipts, setReceiptsInternal] = useState<FeeReceipt[]>(externalReceipts ?? MOCK_RECEIPTS);
+
+  const setReceipts = (updater: FeeReceipt[] | ((prev: FeeReceipt[]) => FeeReceipt[])) => {
+    setReceiptsInternal(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onUpdateReceipts?.(next);
+      return next;
+    });
+  };
+
+  // Sync from parent when external receipts change (e.g. treasury marks paid)
+  React.useEffect(() => {
+    if (externalReceipts) {
+      setReceiptsInternal(externalReceipts);
+    }
+  }, [externalReceipts]);
   
   // Derivamos la lista de profesionales desde los proveedores de tipo 'Médico Externo'
   const professionals = useMemo(() => {

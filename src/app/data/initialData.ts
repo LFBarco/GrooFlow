@@ -18,9 +18,9 @@ export interface CategoryDefinition {
 
 export type ConfigStructure = Record<string, CategoryDefinition>;
 
-// Helper to create simple concepts quickly
+// Helper to create concepts with stable IDs (derived from name, not random)
 const c = (name: string, flex: Flexibility = 'flexible', day?: number): ConceptDefinition => ({
-  id: Math.random().toString(36).substr(2, 9),
+  id: name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 32),
   name,
   flexibility: flex,
   defaultDay: day
@@ -95,7 +95,7 @@ export const initialStructure: ConfigStructure = {
 };
 
 export const initialSystemSettings: SystemSettings = {
-  businessName: 'VetFlow Veterinaria',
+  businessName: 'GrooFlow',
   currency: 'PEN',
   initialBalance: 0,
   initialBalanceDate: '2025-01-01',

@@ -12,7 +12,7 @@ import { CashFlowChart } from "./components/dashboard/CashFlowChart";
 import { CashFlowGrid } from "./components/dashboard/CashFlowGrid";
 import { AnalyticsDashboard } from "./components/dashboard/AnalyticsDashboard";
 import { ConfigPanel } from "./components/configuration/ConfigPanel";
-import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, SystemAlert, AlertThresholds, SYSTEM_SEDES } from "./types";
+import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, SystemAlert, AlertThresholds, SYSTEM_SEDES, Requisition } from "./types";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
 import { initialStructure, ConfigStructure, initialSystemSettings } from "./data/initialData";
 import { 
@@ -215,10 +215,12 @@ export default function App() {
   const [pettyCashTransactions, setPettyCashTransactions] = useState<PettyCashTransaction[]>([]);
   
   // Fee Receipts state - shared between Honorarios and Treasury
-  const [feeReceipts, setFeeReceipts] = useState<Array<{
+  type FeeReceiptGlobal = {
     id: string;
+    professionalId: string;
     professionalName: string;
     receiptNumber: string;
+    issueDate: Date;
     amount: number;
     description: string;
     location?: string;
@@ -226,7 +228,17 @@ export default function App() {
     paymentRequestedAt?: Date;
     status: 'pending' | 'approved' | 'requested_payment' | 'paid' | 'rejected';
     paymentDate?: Date;
-  }>>([]);
+    fileUrl?: string;
+  };
+  const [feeReceipts, setFeeReceipts] = useState<FeeReceiptGlobal[]>([]);
+
+  // Requisitions global state
+  const [requisitions, setRequisitions] = useState<Requisition[]>([]);
+
+  // Treasury global state (persisted)
+  const [treasuryInvoices, setTreasuryInvoices] = useState<any[]>([]);
+  const [treasuryBankBalance, setTreasuryBankBalance] = useState<number | undefined>(undefined);
+  const [treasuryPaidHistory, setTreasuryPaidHistory] = useState<any[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
   const view = pathToView(location.pathname);
@@ -325,6 +337,13 @@ export default function App() {
       }
 
       if (data['data:roles']) setRoles(data['data:roles']);
+      if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
+      if (data['data:requisitions']) setRequisitions(data['data:requisitions']);
+      if (data['data:alertThresholds']) setAlertThresholds(data['data:alertThresholds']);
+      if (data['settings:theme']) setTheme(data['settings:theme']);
+      if (data['data:treasuryInvoices']) setTreasuryInvoices(data['data:treasuryInvoices']);
+      if (data['data:treasuryBankBalance'] !== undefined) setTreasuryBankBalance(data['data:treasuryBankBalance']);
+      if (data['data:treasuryPaidHistory']) setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
       
       setIsDataLoaded(true);
       toast.success("Datos sincronizados con la nube");
@@ -368,6 +387,34 @@ export default function App() {
   useEffect(() => {
     if (isDataLoaded) api.saveKey('data:roles', roles);
   }, [roles, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded) api.saveKey('data:feeReceipts', feeReceipts);
+  }, [feeReceipts, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded) api.saveKey('data:requisitions', requisitions);
+  }, [requisitions, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded) api.saveKey('data:alertThresholds', alertThresholds);
+  }, [alertThresholds, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded) api.saveKey('settings:theme', theme);
+  }, [theme, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded && treasuryInvoices.length > 0) api.saveKey('data:treasuryInvoices', treasuryInvoices);
+  }, [treasuryInvoices, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded && treasuryBankBalance !== undefined) api.saveKey('data:treasuryBankBalance', treasuryBankBalance);
+  }, [treasuryBankBalance, isDataLoaded]);
+
+  useEffect(() => {
+    if (isDataLoaded && treasuryPaidHistory.length > 0) api.saveKey('data:treasuryPaidHistory', treasuryPaidHistory);
+  }, [treasuryPaidHistory, isDataLoaded]);
 
   // --- ALERTS ENGINE ---
   useEffect(() => {
@@ -988,6 +1035,12 @@ export default function App() {
                    r.id === receiptId ? { ...r, status: 'paid' as const, paymentDate } : r
                  ));
                }}
+               treasuryInvoices={treasuryInvoices.length > 0 ? treasuryInvoices : undefined}
+               onUpdateTreasuryInvoices={setTreasuryInvoices}
+               bankBalance={treasuryBankBalance}
+               onUpdateBankBalance={setTreasuryBankBalance}
+               paidHistory={treasuryPaidHistory.length > 0 ? treasuryPaidHistory : undefined}
+               onUpdatePaidHistory={setTreasuryPaidHistory}
              />
           )}
 
@@ -995,25 +1048,30 @@ export default function App() {
              <ProfessionalFeesModule 
                 providers={providers}
                 onUpdateProviders={setProviders}
+                receipts={feeReceipts.length > 0 ? (feeReceipts as any[]) : undefined}
+                onUpdateReceipts={(receipts) => setFeeReceipts(receipts as any[])}
                 onSendToTreasury={(receipts) => {
                   setFeeReceipts(prev => {
                     const existingIds = new Set(prev.map(r => r.id));
-                    const newReceipts = receipts
-                      .filter(r => !existingIds.has(r.id))
-                      .map(r => ({
+                    const newReceipts = (receipts as any[])
+                      .filter((r: any) => !existingIds.has(r.id))
+                      .map((r: any) => ({
                         id: r.id,
+                        professionalId: r.professionalId || '',
                         professionalName: r.professionalName,
                         receiptNumber: r.receiptNumber,
+                        issueDate: r.issueDate || new Date(),
                         amount: r.amount,
                         description: r.description,
                         location: r.location,
                         dueDate: r.dueDate,
                         paymentRequestedAt: r.paymentRequestedAt,
                         status: 'requested_payment' as const,
+                        fileUrl: r.fileUrl,
                       }));
                     const updated = prev.map(r => {
-                      const updated = receipts.find(nr => nr.id === r.id);
-                      if (updated) return { ...r, status: 'requested_payment' as const, paymentRequestedAt: updated.paymentRequestedAt };
+                      const match = (receipts as any[]).find((nr: any) => nr.id === r.id);
+                      if (match) return { ...r, status: 'requested_payment' as const, paymentRequestedAt: match.paymentRequestedAt };
                       return r;
                     });
                     return [...updated, ...newReceipts];
@@ -1211,6 +1269,8 @@ export default function App() {
                     currentUser={currentUser}
                     users={users}
                     visibleSedes={visibleSedes}
+                    requisitions={requisitions}
+                    onUpdateRequisitions={setRequisitions}
                 />
              </div>
           )}
