@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -302,27 +302,6 @@ export function LoginPage({
     defaultValues: { remember: false },
   });
 
-  const registerSchema = z.object({
-    name: z.string().min(2, "El nombre es requerido"),
-    email: z.string().email("Ingrese un correo valido"),
-    password: z.string().min(6, "La contrasena debe tener al menos 6 caracteres"),
-    confirmPassword: z.string()
-  }).refine((data) => data.password === data.confirmPassword, {
-    message: "Las contrasenas no coinciden",
-    path: ["confirmPassword"],
-  });
-
-  type RegisterForm = z.infer<typeof registerSchema>;
-
-  const {
-    register: registerSignUp,
-    handleSubmit: handleSubmitSignUp,
-    setValue: setValueSignUp,
-    formState: { errors: errorsSignUp },
-  } = useForm<RegisterForm>({
-    resolver: zodResolver(registerSchema),
-  });
-
   // Load remembered credentials
   useEffect(() => {
     const rememberedEmail = localStorage.getItem("grooflow_remember_email");
@@ -379,70 +358,13 @@ export function LoginPage({
     }
   };
 
-  const onRegisterSubmit = async (data: RegisterForm) => {
-    setIsLoading(true);
-    try {
-      // 1) Crear el usuario directamente en Supabase Auth
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            name: data.name || data.email.split("@")[0],
-          },
-        },
-      });
-
-      if (signUpError) {
-        throw signUpError;
-      }
-
-      // 2) Iniciar sesión inmediatamente después del registro
-      const { data: authData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
-      });
-
-      if (signInError) {
-        throw signInError;
-      }
-
-      toast.success("CUENTA REGISTRADA. ACCESO CONCEDIDO.", {
-        className: "bg-background border border-primary text-primary font-mono",
-      });
-      onLogin(data.email, authData.user?.user_metadata?.name);
-    } catch (error: any) {
-      console.error("Register Error:", error);
-
-      const message: string = error?.message || "";
-      if (
-        message.includes("already registered") ||
-        message.includes("User already registered") ||
-        message.includes("ya esta registrado")
-      ) {
-        setIsRegistering(false);
-        setValue("email", data.email);
-        toast.info("Cuenta existente. Intente iniciar sesion.");
-      } else {
-        toast.error(message || "Error al completar el registro.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleForgotPassword = () => {
-    const currentEmail = getValues("email");
-    toast.info("MODO DE RECUPERACION ACTIVADO", {
-      description: "Por seguridad, para restablecer su acceso debe validar su identidad registrandose nuevamente con su correo y una nueva contrasena.",
+    toast.info("RECUPERACION DE ACCESO", {
+      description: "Para restablecer tu contraseña, contacta al Administrador del sistema. El podrá asignarte una nueva contraseña.",
       duration: 8000,
       icon: <LockKeyhole className="w-5 h-5" />,
       className: "bg-background border border-blue-500 text-blue-500 font-mono",
     });
-    setIsRegistering(true);
-    if (currentEmail) {
-      setTimeout(() => setValueSignUp("email", currentEmail), 100);
-    }
   };
 
   /* ─── RENDER ─── */
@@ -719,254 +641,138 @@ export function LoginPage({
                     className="text-xs uppercase tracking-[0.15em]"
                     style={{ color: t.badgeTextColor, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700 }}
                   >
-                    {isRegistering ? 'NUEVO AGENTE' : 'ACCESO AL SISTEMA'}
+                    ACCESO AL SISTEMA
                   </span>
                 </div>
                 <h2 className="text-3xl mb-2" style={{ color: t.headingColor, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700 }}>
-                  {isRegistering ? "Crear Cuenta" : "Bienvenido"}
+                  Bienvenido
                 </h2>
                 <p className="text-sm" style={{ color: t.subHeadingColor }}>
-                  {isRegistering
-                    ? "Complete el formulario para solicitar acceso."
-                    : "Ingrese sus credenciales para continuar."}
+                  Ingrese sus credenciales para continuar.
                 </p>
               </div>
 
               {/* ─── LOGIN FORM ─── */}
-              <AnimatePresence mode="wait">
-                {!isRegistering ? (
-                  <motion.div
-                    key="login"
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 20 }}
-                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  >
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                      {/* Email */}
-                      <div className="space-y-1.5 group">
-                        <Label className="text-xs uppercase tracking-[0.14em]" style={{ color: t.labelColor, fontWeight: 700 }}>
-                          Email
-                        </Label>
-                        <Input
-                          {...register("email")}
-                          type="email"
-                          placeholder="usuario@grooflow.com"
-                          className="h-12 pl-4 text-sm rounded-xl splash-input-focus"
-                          style={{ background: t.inputBg, border: t.inputBorder, color: t.inputText }}
-                        />
-                        {errors.email && (
-                          <p className="text-xs mt-1" style={{ color: t.errorColor, fontFamily: "'JetBrains Mono', monospace" }}>
-                            &gt; {errors.email.message}
-                          </p>
-                        )}
-                      </div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                  {/* Email */}
+                  <div className="space-y-1.5 group">
+                    <Label className="text-xs uppercase tracking-[0.14em]" style={{ color: t.labelColor, fontWeight: 700 }}>
+                      Email
+                    </Label>
+                    <Input
+                      {...register("email")}
+                      type="email"
+                      placeholder="usuario@empresa.com"
+                      className="h-12 pl-4 text-sm rounded-xl splash-input-focus"
+                      style={{ background: t.inputBg, border: t.inputBorder, color: t.inputText }}
+                    />
+                    {errors.email && (
+                      <p className="text-xs mt-1" style={{ color: t.errorColor, fontFamily: "'JetBrains Mono', monospace" }}>
+                        &gt; {errors.email.message}
+                      </p>
+                    )}
+                  </div>
 
-                      {/* Password */}
-                      <div className="space-y-1.5 group">
-                        <Label className="text-xs uppercase tracking-[0.14em]" style={{ color: t.labelColor, fontWeight: 700 }}>
-                          Contrasena
-                        </Label>
-                        <div className="relative">
-                          <Input
-                            {...register("password")}
-                            type={showPassword ? "text" : "password"}
-                            placeholder="••••••••"
-                            className="h-12 pl-4 pr-12 text-sm rounded-xl splash-input-focus"
-                            style={{ background: t.inputBg, border: t.inputBorder, color: t.inputText }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
-                            style={{ color: t.eyeColor }}
-                          >
-                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </button>
-                        </div>
-                        {errors.password && (
-                          <p className="text-xs mt-1" style={{ color: t.errorColor, fontFamily: "'JetBrains Mono', monospace" }}>
-                            &gt; {errors.password.message}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            id="remember"
-                            onCheckedChange={(c) => setValue("remember", c === true)}
-                            className={`w-4 h-4 rounded ${t.checkboxBorder} data-[state=checked]:bg-cyan-500 data-[state=checked]:border-cyan-500`}
-                          />
-                          <label htmlFor="remember" className="text-xs" style={{ color: t.subHeadingColor }}>
-                            Recordar acceso
-                          </label>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleForgotPassword}
-                          className="text-xs transition-colors"
-                          style={{ color: t.linkColor, fontWeight: 700 }}
-                          onMouseEnter={e => (e.currentTarget.style.color = t.linkHover)}
-                          onMouseLeave={e => (e.currentTarget.style.color = t.linkColor)}
-                        >
-                          Olvido su clave?
-                        </button>
-                      </div>
-
-                      {/* Login Button */}
+                  {/* Password */}
+                  <div className="space-y-1.5 group">
+                    <Label className="text-xs uppercase tracking-[0.14em]" style={{ color: t.labelColor, fontWeight: 700 }}>
+                      Contrasena
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        {...register("password")}
+                        type={showPassword ? "text" : "password"}
+                        placeholder="••••••••"
+                        className="h-12 pl-4 pr-12 text-sm rounded-xl splash-input-focus"
+                        style={{ background: t.inputBg, border: t.inputBorder, color: t.inputText }}
+                      />
                       <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full h-12 rounded-xl uppercase tracking-wider text-sm mt-2 relative overflow-hidden group/btn"
-                        style={{
-                          background: isLoading ? (isDark ? 'rgba(34,211,238,0.15)' : 'rgba(109,40,217,0.3)') : t.btnPrimaryBg,
-                          border: t.btnPrimaryBorder,
-                          color: t.btnPrimaryText,
-                          boxShadow: isLoading ? 'none' : t.btnPrimaryGlow,
-                          fontWeight: 700,
-                          transition: 'all 300ms ease',
-                        }}
-                        onMouseEnter={e => {
-                          if (!isLoading) e.currentTarget.style.boxShadow = t.btnPrimaryHoverGlow;
-                        }}
-                        onMouseLeave={e => {
-                          if (!isLoading) e.currentTarget.style.boxShadow = t.btnPrimaryGlow;
-                        }}
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
+                        style={{ color: t.eyeColor }}
                       >
-                        <span className="relative z-10 flex items-center justify-center gap-2">
-                          {isLoading ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                              <span>Inicializando...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Iniciar Sesion</span>
-                              <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                            </>
-                          )}
-                        </span>
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
-                    </form>
-                  </motion.div>
-                ) : (
-                  /* ─── REGISTER FORM ─── */
-                  <motion.div
-                    key="register"
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-                  >
-                    <form onSubmit={handleSubmitSignUp(onRegisterSubmit)} className="space-y-4">
-                      {[
-                        { label: 'Nombre', field: 'name' as const, placeholder: 'Dr. Smith', type: 'text', error: errorsSignUp.name },
-                        { label: 'Email', field: 'email' as const, placeholder: 'usuario@grooflow.com', type: 'email', error: errorsSignUp.email },
-                      ].map(({ label, field, placeholder, type, error }) => (
-                        <div key={field} className="space-y-1.5">
-                          <Label className="text-xs uppercase tracking-[0.14em]" style={{ color: t.labelColor, fontWeight: 700 }}>
-                            {label}
-                          </Label>
-                          <Input
-                            {...registerSignUp(field)}
-                            type={type}
-                            placeholder={placeholder}
-                            className="h-12 pl-4 text-sm rounded-xl splash-input-focus"
-                            style={{ background: t.inputBg, border: t.inputBorder, color: t.inputText }}
-                          />
-                          {error && (
-                            <p className="text-xs mt-1" style={{ color: t.errorColor, fontFamily: "'JetBrains Mono', monospace" }}>
-                              &gt; {error.message}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                      {[
-                        { label: 'Contrasena', field: 'password' as const, error: errorsSignUp.password },
-                        { label: 'Confirmar Contrasena', field: 'confirmPassword' as const, error: errorsSignUp.confirmPassword },
-                      ].map(({ label, field, error }) => (
-                        <div key={field} className="space-y-1.5">
-                          <Label className="text-xs uppercase tracking-[0.14em]" style={{ color: t.labelColor, fontWeight: 700 }}>
-                            {label}
-                          </Label>
-                          <div className="relative">
-                            <Input
-                              {...registerSignUp(field)}
-                              type={showPassword ? "text" : "password"}
-                              placeholder="••••••••"
-                              className="h-12 pl-4 pr-12 text-sm rounded-xl splash-input-focus"
-                              style={{ background: t.inputBg, border: t.inputBorder, color: t.inputText }}
-                            />
-                            {field === 'password' && (
-                              <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2"
-                                style={{ color: t.eyeColor }}
-                              >
-                                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                              </button>
-                            )}
-                          </div>
-                          {error && (
-                            <p className="text-xs mt-1" style={{ color: t.errorColor, fontFamily: "'JetBrains Mono', monospace" }}>
-                              &gt; {error.message}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                    </div>
+                    {errors.password && (
+                      <p className="text-xs mt-1" style={{ color: t.errorColor, fontFamily: "'JetBrains Mono', monospace" }}>
+                        &gt; {errors.password.message}
+                      </p>
+                    )}
+                  </div>
 
-                      {/* Register Button */}
-                      <button
-                        type="submit"
-                        disabled={isLoading}
-                        className="w-full h-12 rounded-xl uppercase tracking-wider text-sm mt-2 group/btn"
-                        style={{
-                          background: t.btnSecondaryBg,
-                          border: t.btnSecondaryBorder,
-                          color: t.btnSecondaryText,
-                          boxShadow: t.btnSecondaryGlow,
-                          fontWeight: 700,
-                          transition: 'all 300ms ease',
-                        }}
-                      >
-                        <span className="flex items-center justify-center gap-2">
-                          {isLoading ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                              <span>Registrando...</span>
-                            </>
-                          ) : (
-                            <>
-                              <span>Crear Cuenta</span>
-                              <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                            </>
-                          )}
-                        </span>
-                      </button>
-                    </form>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="remember"
+                        onCheckedChange={(c) => setValue("remember", c === true)}
+                        className={`w-4 h-4 rounded ${t.checkboxBorder} data-[state=checked]:bg-cyan-500 data-[state=checked]:border-cyan-500`}
+                      />
+                      <label htmlFor="remember" className="text-xs" style={{ color: t.subHeadingColor }}>
+                        Recordar acceso
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      className="text-xs transition-colors"
+                      style={{ color: t.linkColor, fontWeight: 700 }}
+                      onMouseEnter={e => (e.currentTarget.style.color = t.linkHover)}
+                      onMouseLeave={e => (e.currentTarget.style.color = t.linkColor)}
+                    >
+                      Olvido su clave?
+                    </button>
+                  </div>
 
-              {/* Toggle login/register */}
-              <div className="text-center mt-6">
-                <p className="text-sm" style={{ color: t.subHeadingColor }}>
-                  {isRegistering ? "Ya tienes cuenta? " : "No tienes cuenta? "}
+                  {/* Login Button */}
                   <button
-                    onClick={() => {
-                      setIsRegistering(!isRegistering);
-                      setValue("email", "");
-                      setValue("password", "");
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full h-12 rounded-xl uppercase tracking-wider text-sm mt-2 relative overflow-hidden group/btn"
+                    style={{
+                      background: isLoading ? (isDark ? 'rgba(34,211,238,0.15)' : 'rgba(109,40,217,0.3)') : t.btnPrimaryBg,
+                      border: t.btnPrimaryBorder,
+                      color: t.btnPrimaryText,
+                      boxShadow: isLoading ? 'none' : t.btnPrimaryGlow,
+                      fontWeight: 700,
+                      transition: 'all 300ms ease',
                     }}
-                    className="transition-colors"
-                    style={{ color: t.linkColor, fontWeight: 700 }}
-                    onMouseEnter={e => (e.currentTarget.style.color = t.linkHover)}
-                    onMouseLeave={e => (e.currentTarget.style.color = t.linkColor)}
+                    onMouseEnter={e => {
+                      if (!isLoading) e.currentTarget.style.boxShadow = t.btnPrimaryHoverGlow;
+                    }}
+                    onMouseLeave={e => {
+                      if (!isLoading) e.currentTarget.style.boxShadow = t.btnPrimaryGlow;
+                    }}
                   >
-                    {isRegistering ? "Iniciar Sesion" : "Registrate"}
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      {isLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                          <span>Inicializando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Iniciar Sesion</span>
+                          <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
+                        </>
+                      )}
+                    </span>
                   </button>
+                </form>
+              </motion.div>
+
+              {/* Access info note */}
+              <div className="mt-6 p-3 rounded-lg text-center" style={{ background: t.badgeBg, border: t.badgeBorder }}>
+                <p className="text-xs" style={{ color: t.subHeadingColor }}>
+                  El acceso es gestionado por el{" "}
+                  <span style={{ color: t.subtitleAccent, fontWeight: 600 }}>Administrador del sistema</span>.
+                  <br />Contactelo si necesita sus credenciales.
                 </p>
               </div>
 

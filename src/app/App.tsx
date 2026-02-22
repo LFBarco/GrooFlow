@@ -68,16 +68,16 @@ import { AppProvider } from "./context/AppContext";
 
 // Mock data
 const MOCK_USERS: User[] = [
-    { id: 'usr-3', name: 'Admin Principal', role: 'admin', initials: 'ADM', email: 'admin@grooflow.com' },
-    { id: '2', name: 'Luis Barco', initials: 'LB', role: 'manager', email: 'luis@grooflow.com', pettyCashLimit: 1500 },
-    { id: '3', name: 'Juandy Gomez', initials: 'JG', role: 'manager', email: 'juandy@grooflow.com', pettyCashLimit: 1800 },
-    { id: '4', name: 'Pierre Diaz', initials: 'PD', role: 'manager', email: 'pierre@grooflow.com' },
-    { id: 'usr-1', name: 'Ana Silva', role: 'manager', initials: 'AS', email: 'ana@grooflow.com' },
-    { id: 'usr-2', name: 'Carlos Ruiz', role: 'assistant', initials: 'CR', email: 'carlos@grooflow.com' },
-    { id: '1', name: 'Jeny Quispes', initials: 'JQ', role: 'assistant', email: 'jeny@grooflow.com' },
-    { id: 'usr-4', name: 'Dr. Pedro', role: 'groomer', initials: 'PG', email: 'pedro@grooflow.com' },
-    { id: 'usr-5', name: 'Lucia Contadora', role: 'accountant', initials: 'LC', email: 'lucia@grooflow.com' },
-    { id: 'usr-6', name: 'Barbara Torres', role: 'manager', initials: 'BT', email: 'barbara@grooflow.com', pettyCashLimit: 1000 }
+    { id: 'usr-3', name: 'Admin Principal', role: 'super_admin', initials: 'ADM', email: 'admin@grooflow.com', status: 'active' },
+    { id: '2', name: 'Luis Barco', initials: 'LB', role: 'manager', email: 'luis@grooflow.com', pettyCashLimit: 1500, status: 'active' },
+    { id: '3', name: 'Juandy Gomez', initials: 'JG', role: 'manager', email: 'juandy@grooflow.com', pettyCashLimit: 1800, status: 'active' },
+    { id: '4', name: 'Pierre Diaz', initials: 'PD', role: 'manager', email: 'pierre@grooflow.com', status: 'active' },
+    { id: 'usr-1', name: 'Ana Silva', role: 'manager', initials: 'AS', email: 'ana@grooflow.com', status: 'active' },
+    { id: 'usr-2', name: 'Carlos Ruiz', role: 'manager', initials: 'CR', email: 'carlos@grooflow.com', status: 'active' },
+    { id: '1', name: 'Jeny Quispes', initials: 'JQ', role: 'manager', email: 'jeny@grooflow.com', status: 'active' },
+    { id: 'usr-4', name: 'Dr. Pedro', role: 'groomer', initials: 'PG', email: 'pedro@grooflow.com', status: 'active' },
+    { id: 'usr-5', name: 'Lucia Contadora', role: 'manager', initials: 'LC', email: 'lucia@grooflow.com', status: 'active' },
+    { id: 'usr-6', name: 'Barbara Torres', role: 'manager', initials: 'BT', email: 'barbara@grooflow.com', pettyCashLimit: 1000, status: 'active' }
 ];
 
 const initialTransactions: Transaction[] = [
@@ -630,7 +630,18 @@ export default function App() {
     );
   }
 
-  const NavButton = ({ targetView, icon: Icon, label, iconColorClass }: { targetView: ViewType, icon: typeof LayoutDashboard, label: string, iconColorClass?: string }) => {
+  // Check if current user has permission for a specific module
+  const userRole = roles.find(r => r.id === currentUser.role);
+  const isSuperAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
+  const hasPermission = (moduleName: string): boolean => {
+    if (isSuperAdmin) return true;
+    return userRole?.permissions?.[moduleName] === true;
+  };
+
+  const NavButton = ({ targetView, icon: Icon, label, iconColorClass, requiredModule }: { targetView: ViewType, icon: typeof LayoutDashboard, label: string, iconColorClass?: string, requiredModule?: string }) => {
+    // Hide if user doesn't have permission for this module
+    if (requiredModule && !hasPermission(requiredModule)) return null;
+    
     const isActive = view === targetView;
     return (
     <div className="relative group/tooltip px-2">
@@ -728,37 +739,39 @@ export default function App() {
               <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Principal</span>
             </div>
           )}
-           <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" />
-           <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" />
-           <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" />
+           <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Dashboard" />
+           <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Dashboard" />
+           <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Analítica" />
            
-           {!isSidebarCollapsed && (
+           {hasPermission('Finanzas') && !isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-2.5">
               <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Finanzas</span>
             </div>
           )}
-           <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" />
-           <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" />
-           <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" />
-           <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400 group-hover/btn:text-pink-300" />
-           <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" />
-           <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400 group-hover/btn:text-teal-300" />
-           <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" />
+           <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Finanzas" />
+           <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Finanzas" />
+           <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Finanzas" />
+           <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400 group-hover/btn:text-pink-300" requiredModule="Finanzas" />
+           <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Reportes" />
+           <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400 group-hover/btn:text-teal-300" requiredModule="Caja Chica" />
+           <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Finanzas" />
            
-           {!isSidebarCollapsed && (
+           {(hasPermission('Proveedores') || hasPermission('Compras') || hasPermission('Auditoría')) && !isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-2.5">
               <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Gestión</span>
             </div>
           )}
-           <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" />
-           <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" />
-           <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" />
-           <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" />
+           <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Proveedores" />
+           <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Compras" />
+           <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
+           <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
            
+           {(hasPermission('Usuarios') || hasPermission('Configuración')) && (
            <div className="mt-2 pt-2 space-y-0.5" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-             <NavButton targetView="users" icon={Users} label="Usuarios y Roles" iconColorClass="text-lime-400 group-hover/btn:text-lime-300" />
-             <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400 group-hover/btn:text-slate-300" />
+             <NavButton targetView="users" icon={Users} label="Usuarios y Roles" iconColorClass="text-lime-400 group-hover/btn:text-lime-300" requiredModule="Usuarios" />
+             <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400 group-hover/btn:text-slate-300" requiredModule="Configuración" />
            </div>
+           )}
         </nav>
         
         {/* Footer */}
@@ -815,23 +828,23 @@ export default function App() {
         <div className="md:hidden fixed inset-0 z-30 backdrop-blur-sm" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setMobileMenuOpen(false)}>
             <div className="fixed inset-y-0 left-0 w-64 shadow-2xl p-4 pt-20 overflow-y-auto" style={{ background: 'linear-gradient(180deg, #0D0B1E 0%, #090718 100%)', borderRight: '1px solid rgba(139,92,246,0.15)' }} onClick={e => e.stopPropagation()}>
                 <nav className="space-y-0.5">
-                    <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400" />
-                    <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400" />
-                    <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400" />
-                    <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400" />
-                    <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400" />
-                    <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400" />
-                    <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400" />
-                    <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400" />
-                    <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" />
-                    <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400" />
-                    <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" />
-                    <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" />
-                    <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400" />
-                    <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" />
+                    <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400" requiredModule="Dashboard" />
+                    <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400" requiredModule="Dashboard" />
+                    <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400" requiredModule="Analítica" />
+                    <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400" requiredModule="Finanzas" />
+                    <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400" requiredModule="Finanzas" />
+                    <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400" requiredModule="Finanzas" />
+                    <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400" requiredModule="Finanzas" />
+                    <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400" requiredModule="Reportes" />
+                    <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
+                    <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400" requiredModule="Caja Chica" />
+                    <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" requiredModule="Finanzas" />
+                    <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" requiredModule="Proveedores" />
+                    <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400" requiredModule="Compras" />
+                    <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" requiredModule="Compras" />
                     <div className="pt-4 border-t border-border mt-4 space-y-2">
-                        <NavButton targetView="users" icon={Users} label="Usuarios y Roles" />
-                        <NavButton targetView="config" icon={Settings} label="Configuración" />
+                        <NavButton targetView="users" icon={Users} label="Usuarios y Roles" requiredModule="Usuarios" />
+                        <NavButton targetView="config" icon={Settings} label="Configuración" requiredModule="Configuración" />
                     </div>
                 </nav>
             </div>
