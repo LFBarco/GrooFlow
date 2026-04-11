@@ -494,6 +494,24 @@ export default function App() {
       }
 
       setUsers(nextUsers);
+      // Marcar hidratación ANTES del resto de setState: si handleLogin corre justo después de setUsers,
+      // debe ver ref=true y no añadir 1 usuario ficticio encima del array ya cargado.
+      cloudDataHydratedRef.current = true;
+
+      // Tras hidratar desde KV, alinear usuario actual con la fila real (evita estado “1 usuario” por carrera con handleLogin).
+      {
+        const {
+          data: { session: sess },
+        } = await supabase.auth.getSession();
+        if (!cancelled && sess?.user?.email) {
+          const em = sess.user.email.toLowerCase();
+          const row = nextUsers.find((u) => (u.email || '').toLowerCase() === em);
+          if (row) {
+            setCurrentUser(row);
+            setIsAuthenticated(true);
+          }
+        }
+      }
 
       if (data['data:roles']) setRoles(data['data:roles']);
       if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
@@ -506,7 +524,6 @@ export default function App() {
       if (data['data:treasuryPaidHistory'])
         setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
 
-      cloudDataHydratedRef.current = true;
       setIsDataLoaded(true);
       toast.success('Datos sincronizados con la nube');
     };
@@ -676,6 +693,23 @@ export default function App() {
               setCurrentUser(updatedUser);
               setIsAuthenticated(true);
               return updatedUsers;
+          }
+
+          // Antes de que loadData termine de leer el KV, prevUsers suele ser []. Añadir aquí 1 fila hace que,
+          // si este setState se aplica DESPUÉS de setUsers(KV), se pisa toda la lista → “desaparecen” usuarios.
+          if (!cloudDataHydratedRef.current) {
+              setIsAuthenticated(true);
+              setCurrentUser({
+                  id: authUserId || 'guest-pending',
+                  email,
+                  name: name || email.split('@')[0],
+                  role: isPrivileged ? 'super_admin' : 'manager',
+                  initials: (name || email).slice(0, 2).toUpperCase(),
+                  lastLogin: now,
+                  status: 'active',
+                  allSedes: isPrivileged ? true : undefined,
+              } as User);
+              return prevUsers;
           }
 
           const newUser: User = {
