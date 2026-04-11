@@ -465,10 +465,12 @@ export default function App() {
 
       if (data['data:pettyCash']) setPettyCashTransactions(data['data:pettyCash']);
 
+      // Importante: `if (data['data:users'])` falla cuando es [] (falsy) y se ignora el KV → autosave pisa la lista.
       let nextUsers: User[] = [];
-      if (data['data:users']) {
+      const usersFromKv = data['data:users'];
+      if (Array.isArray(usersFromKv)) {
         const uniqueUsers = Array.from(
-          new Map(data['data:users'].map((u: User) => [u.id, u])).values()
+          new Map(usersFromKv.map((u: User) => [u.id, u])).values()
         ) as User[];
         nextUsers = uniqueUsers.map((u) => {
           const email = (u.email || '').toLowerCase();
@@ -482,7 +484,7 @@ export default function App() {
         });
       }
 
-      if (backend === 'supabase') {
+      {
         const {
           data: { session },
         } = await supabase.auth.getSession();
