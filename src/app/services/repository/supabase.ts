@@ -337,7 +337,7 @@ class SupabaseKVRepository implements IKVRepository {
     };
   }
 
-  async get<T = unknown>(key: string): Promise<T | null> {
+  async getWithStatus<T = unknown>(key: string): Promise<{ ok: boolean; value: T | null }> {
     try {
       const headers = await this.authHeaders();
       const res = await fetch(`${FUNCTIONS_URL}/kv/${key}`, {
@@ -345,14 +345,20 @@ class SupabaseKVRepository implements IKVRepository {
         headers,
       });
       if (!res.ok) {
-        throw new Error(`KV GET failed (${res.status})`);
+        console.error(`[kv:getWithStatus] ${key} HTTP ${res.status}`);
+        return { ok: false, value: null };
       }
       const payload = (await res.json()) as { data?: T | null };
-      return payload.data ?? null;
+      return { ok: true, value: (payload.data ?? null) as T | null };
     } catch (e) {
-      console.error(`[kv:get] ${key}`, e);
-      return null;
+      console.error(`[kv:getWithStatus] ${key}`, e);
+      return { ok: false, value: null };
     }
+  }
+
+  async get<T = unknown>(key: string): Promise<T | null> {
+    const { value } = await this.getWithStatus<T>(key);
+    return value;
   }
 
   async set(key: string, value: unknown): Promise<void> {

@@ -16,6 +16,7 @@
  */
 
 import { repository, KV_KEYS } from './repository';
+import { getSupabaseClient } from './repository/supabase';
 import { toast } from 'sonner';
 
 // ─── Types (kept for backward compatibility) ─────────────────
@@ -37,6 +38,8 @@ export interface InitialDataKeys {
   'data:treasuryInvoices'?:     unknown;
   'data:treasuryBankBalance'?:  unknown;
   'data:treasuryPaidHistory'?:  unknown;
+  /** Metadato interno: el GET HTTP a `data:users` falló (no confundir con lista vacía). */
+  __usersKvFetchFailed?: boolean;
 }
 
 const ALL_KEYS: Array<keyof InitialDataKeys> = [
@@ -67,10 +70,31 @@ export const api = {
    */
   async fetchInitialData(): Promise<InitialDataKeys> {
     const result: InitialDataKeys = {};
+    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+
+    // Una sola renovación de sesión antes de muchos GET en paralelo (evita carreras de refresh).
+    if (backend === 'supabase') {
+      try {
+        await getSupabaseClient().auth.refreshSession();
+      } catch {
+        /* getWithStatus fallará con ok:false si no hay sesión */
+      }
+    }
+
+    const kv = repository.kv;
 
     await Promise.all(
-      ALL_KEYS.map(async key => {
-        const value = await repository.kv.get(key);
+      ALL_KEYS.map(async (key) => {
+        if (key === 'data:users' && typeof kv.getWithStatus === 'function') {
+          const { ok, value } = await kv.getWithStatus<unknown>(key);
+          if (ok) {
+            (result as Record<string, unknown>)['data:users'] = value ?? [];
+          } else {
+            result.__usersKvFetchFailed = true;
+          }
+          return;
+        }
+        const value = await kv.get(key);
         if (value !== null && value !== undefined) {
           (result as Record<string, unknown>)[key] = value;
         }

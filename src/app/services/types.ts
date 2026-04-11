@@ -72,6 +72,14 @@ export interface IKVRepository {
   /** Read a stored value by key */
   get<T = unknown>(key: string): Promise<T | null>;
 
+  /**
+   * Misma lectura que `get`, pero indica si la petición HTTP al KV fue correcta.
+   * Si `ok === false`, no se debe sobrescribir la clave en la nube (p. ej. sesión no lista).
+   */
+  getWithStatus?<T = unknown>(
+    key: string
+  ): Promise<{ ok: boolean; value: T | null }>;
+
   /** Write a value by key */
   set(key: string, value: unknown): Promise<void>;
 

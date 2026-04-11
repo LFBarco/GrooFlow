@@ -86,6 +86,11 @@ class LocalAuthRepository implements IAuthRepository {
 // ─── KV ───────────────────────────────────────────────────────
 
 class LocalKVRepository implements IKVRepository {
+  async getWithStatus<T = unknown>(key: string): Promise<{ ok: boolean; value: T | null }> {
+    const value = lsGet<T>(key);
+    return { ok: true, value: value ?? null };
+  }
+
   async get<T = unknown>(key: string): Promise<T | null> {
     return lsGet<T>(key);
   }

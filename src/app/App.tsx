@@ -331,6 +331,8 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  /** En Supabase: solo true tras leer `data:users` del KV con HTTP 200 (evita pisar la nube si el GET falló). */
+  const [canSaveUsers, setCanSaveUsers] = useState(true);
   /** Evita doble carga y, en Supabase, permite volver a cargar tras logout/login. */
   const cloudDataHydratedRef = useRef(false);
 
@@ -380,6 +382,7 @@ export default function App() {
       } else {
         setIsAuthenticated(false);
         cloudDataHydratedRef.current = false;
+        setCanSaveUsers(true);
         setIsDataLoaded(false);
       }
     });
@@ -402,14 +405,33 @@ export default function App() {
         if (!session?.access_token) {
           return;
         }
+        setCanSaveUsers(false);
       }
 
       if (cloudDataHydratedRef.current) {
         return;
       }
 
-      const data = await api.fetchInitialData();
+      let data = await api.fetchInitialData();
+      let attempt = 0;
+      while (backend === 'supabase' && data.__usersKvFetchFailed && attempt < 3) {
+        attempt += 1;
+        if (cancelled) return;
+        await new Promise((r) => setTimeout(r, 350 * attempt));
+        await supabase.auth.refreshSession();
+        data = await api.fetchInitialData();
+      }
+
       if (cancelled) return;
+
+      if (backend === 'supabase' && data.__usersKvFetchFailed) {
+        toast.error(
+          'No se pudieron leer los usuarios desde la nube. Los cambios en la lista no se guardarán hasta que recargues o vuelvas a iniciar sesión.'
+        );
+        setCanSaveUsers(false);
+      } else {
+        setCanSaveUsers(true);
+      }
 
       if (data['settings:config']) setConfig(data['settings:config']);
       if (data['settings:system']) setSystemSettings(data['settings:system']);
@@ -523,8 +545,8 @@ export default function App() {
   }, [requests, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:users', users);
-  }, [users, isDataLoaded]);
+    if (isDataLoaded && canSaveUsers) api.saveKey('data:users', users);
+  }, [users, isDataLoaded, canSaveUsers]);
 
   useEffect(() => {
     if (isDataLoaded) api.saveKey('data:roles', roles);
@@ -675,6 +697,7 @@ export default function App() {
   const handleLogout = async () => {
       await supabase.auth.signOut();
       cloudDataHydratedRef.current = false;
+      setCanSaveUsers(true);
       setIsDataLoaded(false);
       setIsAuthenticated(false);
       setIsProfileOpen(false);
