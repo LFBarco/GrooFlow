@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { Provider, SystemSettings } from '../../types';
-import { ConfigStructure } from '../../data/initialData';
+import { ConfigStructure, getConceptsFlat } from '../../data/initialData';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -83,7 +83,7 @@ export function ProviderManager({
                 if (def.type === 'expense') {
                     options.push({
                         category: catName,
-                        concepts: def.concepts.map(c => c.name)
+                        concepts: getConceptsFlat(def).map(c => c.name)
                     });
                 }
             });

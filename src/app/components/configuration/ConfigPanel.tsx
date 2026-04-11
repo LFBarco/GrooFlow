@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ConfigStructure, TransactionType, ConceptDefinition, Flexibility } from '../../data/initialData';
+import { ConfigStructure, TransactionType, ConceptDefinition, SubcategoryDefinition, Flexibility, getSubcategories, subcategoryId } from '../../data/initialData';
 import { SystemSettings } from '../../types';
 import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -26,7 +26,8 @@ import { Switch } from "../ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from "../ui/badge";
 
-import { User, SYSTEM_SEDES } from '../../types';
+import { User } from '../../types';
+import { getSedesCatalogEntries } from '../../utils/sedesCatalog';
 import { MapPin, Globe, Building2 as Building2Icon } from 'lucide-react';
 
 interface ConfigPanelProps {
@@ -38,9 +39,12 @@ interface ConfigPanelProps {
   onResetData?: () => void;
   users: User[];
   onUpdateUsers: (users: User[]) => void;
+  currentUser?: User;
 }
 
-export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSystemSettings, onStressTest, onResetData, users, onUpdateUsers }: ConfigPanelProps) {
+export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSystemSettings, onStressTest, onResetData, users, onUpdateUsers, currentUser }: ConfigPanelProps) {
+  const isSystemAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
+  const catalogEntries = getSedesCatalogEntries(systemSettings);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(Object.keys(config)[0]);
   
   // Category State
@@ -59,6 +63,26 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
   const [editConceptDay, setEditConceptDay] = useState<string>('');
   const [editConceptFlex, setEditConceptFlex] = useState<Flexibility>('flexible');
 
+  // Subcategory state
+  const [newSubcategoryName, setNewSubcategoryName] = useState('');
+  const [editingSubcategoryId, setEditingSubcategoryId] = useState<string | null>(null);
+  const [editSubcategoryName, setEditSubcategoryName] = useState('');
+
+  /** Ensure category has subcategories array (convert from legacy concepts if needed). */
+  const ensureSubcategories = (catName: string): SubcategoryDefinition[] => {
+    const def = config[catName];
+    if (!def) return [];
+    if (def.subcategories?.length) return def.subcategories;
+    return [{ id: 'general', name: catName || 'General', concepts: def.concepts ?? [] }];
+  };
+
+  const writeSubcategories = (catName: string, subcategories: SubcategoryDefinition[]) => {
+    onUpdateConfig({
+      ...config,
+      [catName]: { ...config[catName], subcategories, concepts: undefined }
+    });
+  };
+
   // --- Category Actions ---
   const handleAddCategory = () => {
     if (!newCategoryName.trim()) return;
@@ -68,7 +92,10 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
     }
     const updated = { 
       ...config, 
-      [newCategoryName.trim()]: { type: newCategoryType, concepts: [] } 
+      [newCategoryName.trim()]: { 
+        type: newCategoryType, 
+        subcategories: [{ id: 'general', name: 'General', concepts: [] }] 
+      } 
     };
     onUpdateConfig(updated);
     setSelectedCategory(newCategoryName.trim());
@@ -118,45 +145,81 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
     toast.success("Categoría renombrada");
   };
 
-  // --- Concept Actions ---
-  const handleAddConcept = () => {
-    if (!selectedCategory || !newConceptName.trim()) return;
-    
-    const currentConcepts = config[selectedCategory].concepts;
-    if (currentConcepts.some(c => c.name.toLowerCase() === newConceptName.trim().toLowerCase())) {
-      toast.error("El concepto ya existe");
+  // --- Subcategory Actions ---
+  const handleAddSubcategory = () => {
+    if (!selectedCategory || !newSubcategoryName.trim()) return;
+    const subs = ensureSubcategories(selectedCategory);
+    if (subs.some(s => s.name.toLowerCase() === newSubcategoryName.trim().toLowerCase())) {
+      toast.error("Ya existe una subcategoría con ese nombre");
       return;
     }
+    const newSub: SubcategoryDefinition = {
+      id: subcategoryId(newSubcategoryName.trim()),
+      name: newSubcategoryName.trim(),
+      concepts: []
+    };
+    writeSubcategories(selectedCategory, [...subs, newSub]);
+    setNewSubcategoryName('');
+    toast.success("Subcategoría agregada");
+  };
 
+  const handleDeleteSubcategory = (cat: string, subId: string) => {
+    const subs = ensureSubcategories(cat).filter(s => s.id !== subId);
+    if (subs.length === 0) {
+      toast.error("Debe quedar al menos una subcategoría");
+      return;
+    }
+    writeSubcategories(cat, subs);
+    toast.success("Subcategoría eliminada");
+  };
+
+  const startEditingSubcategory = (sub: SubcategoryDefinition) => {
+    setEditingSubcategoryId(sub.id);
+    setEditSubcategoryName(sub.name);
+  };
+
+  const saveSubcategoryName = () => {
+    if (!selectedCategory || !editingSubcategoryId || !editSubcategoryName.trim()) return;
+    const subs = ensureSubcategories(selectedCategory);
+    const updated = subs.map(s =>
+      s.id === editingSubcategoryId ? { ...s, name: editSubcategoryName.trim() } : s
+    );
+    writeSubcategories(selectedCategory, updated);
+    setEditingSubcategoryId(null);
+    toast.success("Subcategoría actualizada");
+  };
+
+  // --- Concept Actions (per subcategory) ---
+  const handleAddConcept = (subId: string) => {
+    if (!selectedCategory || !newConceptName.trim()) return;
+    const subs = ensureSubcategories(selectedCategory);
+    const sub = subs.find(s => s.id === subId);
+    if (!sub) return;
+    if (sub.concepts.some(c => c.name.toLowerCase() === newConceptName.trim().toLowerCase())) {
+      toast.error("El concepto ya existe en esta subcategoría");
+      return;
+    }
     const newDef: ConceptDefinition = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: newConceptName.trim().toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 32) + '-' + Date.now().toString(36),
       name: newConceptName.trim(),
       flexibility: newConceptFlex,
       defaultDay: newConceptDay ? parseInt(newConceptDay) : undefined
     };
-
-    const updated = {
-      ...config,
-      [selectedCategory]: {
-        ...config[selectedCategory],
-        concepts: [...currentConcepts, newDef]
-      }
-    };
-    onUpdateConfig(updated);
+    const updatedSubs = subs.map(s =>
+      s.id === subId ? { ...s, concepts: [...s.concepts, newDef] } : s
+    );
+    writeSubcategories(selectedCategory, updatedSubs);
     setNewConceptName('');
     setNewConceptDay('');
     toast.success("Concepto agregado");
   };
 
-  const handleDeleteConcept = (cat: string, conceptId: string) => {
-    const updated = {
-      ...config,
-      [cat]: {
-        ...config[cat],
-        concepts: config[cat].concepts.filter(c => c.id !== conceptId)
-      }
-    };
-    onUpdateConfig(updated);
+  const handleDeleteConcept = (cat: string, subId: string, conceptId: string) => {
+    const subs = ensureSubcategories(cat);
+    const updatedSubs = subs.map(s =>
+      s.id === subId ? { ...s, concepts: s.concepts.filter(c => c.id !== conceptId) } : s
+    );
+    writeSubcategories(cat, updatedSubs);
     toast.success("Concepto eliminado");
   };
 
@@ -167,31 +230,21 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
     setEditConceptDay(concept.defaultDay ? concept.defaultDay.toString() : '');
   };
 
-  const saveConcept = (cat: string) => {
+  const saveConcept = (cat: string, subId: string) => {
     if (!editingConceptId || !editConceptName.trim()) return;
-
-    const currentConcepts = config[cat].concepts;
-    const updatedConcepts = currentConcepts.map(c => {
-      if (c.id === editingConceptId) {
-        return {
-          ...c,
-          name: editConceptName.trim(),
-          flexibility: editConceptFlex,
-          defaultDay: editConceptDay ? parseInt(editConceptDay) : undefined
-        };
-      }
-      return c;
+    const subs = ensureSubcategories(cat);
+    const updatedSubs = subs.map(s => {
+      if (s.id !== subId) return s;
+      return {
+        ...s,
+        concepts: s.concepts.map(c =>
+          c.id === editingConceptId
+            ? { ...c, name: editConceptName.trim(), flexibility: editConceptFlex, defaultDay: editConceptDay ? parseInt(editConceptDay) : undefined }
+            : c
+        )
+      };
     });
-    
-    const updated = {
-      ...config,
-      [cat]: {
-        ...config[cat],
-        concepts: updatedConcepts
-      }
-    };
-
-    onUpdateConfig(updated);
+    writeSubcategories(cat, updatedSubs);
     setEditingConceptId(null);
     toast.success("Concepto actualizado");
   };
@@ -229,8 +282,8 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
         <p className="text-muted-foreground">Administra la configuración general de tu negocio</p>
       </div>
 
-      <Tabs defaultValue="operations" className="flex-1 flex flex-col min-h-0">
-        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap space-x-2 sm:space-x-6 scrollbar-none">
+      <Tabs defaultValue="business" className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent overflow-x-auto flex-nowrap space-x-2 sm:space-x-6 shrink-0">
           <TabsTrigger 
             value="business" 
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
@@ -275,9 +328,9 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
           </TabsTrigger>
         </TabsList>
 
-        <div className="flex-1 py-6">
+        <div className="flex-1 min-h-0 overflow-auto py-6">
           {/* TAB: NEGOCIO */}
-          <TabsContent value="business">
+          <TabsContent value="business" className="mt-0 outline-none data-[state=inactive]:hidden">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
@@ -285,7 +338,9 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                     <Store className="w-5 h-5" />
                     Información del Negocio
                   </CardTitle>
-                  <CardDescription>Datos básicos de la empresa. Los cambios se reflejan en todo el sistema.</CardDescription>
+                  <CardDescription>
+                    Datos básicos de la empresa. Solo el administrador del sistema puede modificar esta sección; los cambios se replican para todos los usuarios (sidebar, cabecera, reportes).
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
@@ -294,6 +349,7 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                       value={systemSettings.businessName} 
                       onChange={(e) => onUpdateSystemSettings({...systemSettings, businessName: e.target.value})} 
                       placeholder="Ej: Mi Veterinaria"
+                      disabled={!isSystemAdmin}
                     />
                     <p className="text-xs text-muted-foreground">Este nombre aparece en el sidebar, cabecera y reportes.</p>
                   </div>
@@ -302,8 +358,9 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                     <Select 
                       value={systemSettings.currency} 
                       onValueChange={(val) => onUpdateSystemSettings({...systemSettings, currency: val})}
+                      disabled={!isSystemAdmin}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger disabled={!isSystemAdmin}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -322,7 +379,9 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                     <ImageIcon className="w-5 h-5" />
                     Logo del Negocio
                   </CardTitle>
-                  <CardDescription>Sube el logotipo de tu empresa. Se mostrará en el sidebar y cabecera.</CardDescription>
+                  <CardDescription>
+                    Sube el logotipo de tu empresa. Solo el administrador puede cambiarlo; se muestra en el sidebar y cabecera para todos los usuarios.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Preview */}
@@ -346,11 +405,14 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                           />
                           {/* Remove overlay */}
                           <button
+                            type="button"
                             onClick={() => {
+                              if (!isSystemAdmin) return;
                               onUpdateSystemSettings({...systemSettings, businessLogo: undefined});
                               toast.success("Logo eliminado");
                             }}
-                            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300 cursor-pointer"
+                            disabled={!isSystemAdmin}
+                            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300 cursor-pointer disabled:pointer-events-none"
                           >
                             <Trash2 className="w-5 h-5 text-red-400" />
                           </button>
@@ -383,6 +445,7 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                           type="file"
                           accept="image/png,image/jpeg,image/svg+xml,image/webp"
                           className="hidden"
+                          disabled={!isSystemAdmin}
                           onChange={(e) => {
                             const file = e.target.files?.[0];
                             if (!file) return;
@@ -436,7 +499,7 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
           </TabsContent>
 
           {/* TAB: OPERACIONES (Categorías y Conceptos) */}
-          <TabsContent value="operations" className="h-full">
+          <TabsContent value="operations" className="mt-0 outline-none h-full data-[state=inactive]:hidden">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-full">
               {/* Sidebar: Categories */}
               <Card className="md:col-span-1 flex flex-col h-full border-border bg-card">
@@ -563,138 +626,139 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                   </div>
                 </CardHeader>
                 
-                {selectedCategory && (
+                {selectedCategory && (() => {
+                  const subs = ensureSubcategories(selectedCategory);
+                  return (
                   <CardContent className="flex-1 flex flex-col gap-4 pt-6 overflow-hidden">
-                    {/* New Concept Form */}
+                    {/* Add Subcategory */}
                     <div className="flex gap-2 items-end p-3 bg-muted/20 rounded-md border border-border">
                       <div className="flex-1 space-y-1">
-                        <Label className="text-xs">Nombre del Concepto</Label>
+                        <Label className="text-xs">Nueva subcategoría</Label>
                         <Input 
-                          placeholder={`Ej: Alquiler, Sueldos...`}
-                          value={newConceptName}
-                          onChange={(e) => setNewConceptName(e.target.value)}
+                          placeholder="Ej: Agua, Luz, Alquiler..."
+                          value={newSubcategoryName}
+                          onChange={(e) => setNewSubcategoryName(e.target.value)}
                           className="bg-background"
                         />
                       </div>
-                      <div className="w-[120px] space-y-1">
-                        <Label className="text-xs">Tipo</Label>
-                        <Select value={newConceptFlex} onValueChange={(v: Flexibility) => setNewConceptFlex(v)}>
-                          <SelectTrigger className="bg-background">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="fixed">Fijo</SelectItem>
-                            <SelectItem value="flexible">Flexible</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="w-[80px] space-y-1">
-                        <Label className="text-xs">Día (1-31)</Label>
-                        <Input 
-                          type="number" 
-                          min="1" 
-                          max="31" 
-                          placeholder="--" 
-                          value={newConceptDay}
-                          onChange={e => setNewConceptDay(e.target.value)}
-                          className="bg-background"
-                        />
-                      </div>
-                      <Button onClick={handleAddConcept}>
-                        <Plus className="h-4 w-4" />
+                      <Button onClick={handleAddSubcategory} variant="secondary">
+                        <Plus className="h-4 w-4 mr-1" /> Agregar
                       </Button>
                     </div>
 
+                    {/* Subcategories and their concepts */}
                     <ScrollArea className="flex-1">
-                      <div className="grid grid-cols-1 gap-2">
-                          {config[selectedCategory].concepts.map((concept) => (
-                            <div 
-                              key={concept.id}
-                              className="group flex items-center justify-between p-3 bg-muted/10 border border-border rounded-md hover:border-primary/30 transition-all"
-                            >
-                              {editingConceptId === concept.id ? (
-                                <div className="flex items-center flex-1 gap-2">
+                      <div className="grid grid-cols-1 gap-4">
+                        {subs.map((sub) => (
+                          <div key={sub.id} className="border border-border rounded-lg overflow-hidden bg-muted/5">
+                            {/* Subcategory header */}
+                            <div className="flex items-center justify-between p-3 bg-muted/20 border-b border-border">
+                              {editingSubcategoryId === sub.id ? (
+                                <div className="flex items-center gap-2 flex-1">
                                   <Input 
-                                    value={editConceptName} 
-                                    onChange={e => setEditConceptName(e.target.value)}
-                                    className="flex-1 h-8 text-sm"
+                                    value={editSubcategoryName} 
+                                    onChange={e => setEditSubcategoryName(e.target.value)}
+                                    className="h-8 flex-1"
                                     autoFocus
                                   />
-                                  <Select value={editConceptFlex} onValueChange={(v: Flexibility) => setEditConceptFlex(v)}>
-                                      <SelectTrigger className="w-[100px] h-8 text-xs">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="fixed">Fijo</SelectItem>
-                                        <SelectItem value="flexible">Flexible</SelectItem>
-                                      </SelectContent>
-                                  </Select>
-                                  <Input 
-                                      type="number"
-                                      className="w-[60px] h-8 text-sm"
-                                      value={editConceptDay}
-                                      onChange={e => setEditConceptDay(e.target.value)}
-                                      placeholder="Día"
-                                  />
-                                  <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500" onClick={() => saveConcept(selectedCategory)}>
+                                  <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500" onClick={saveSubcategoryName}>
                                     <Check className="h-4 w-4" />
                                   </Button>
-                                  <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500" onClick={() => setEditingConceptId(null)}>
+                                  <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500" onClick={() => setEditingSubcategoryId(null)}>
                                     <X className="h-4 w-4" />
                                   </Button>
                                 </div>
                               ) : (
                                 <>
-                                  <div className="flex items-center gap-3">
-                                    <div className={`p-1.5 rounded-md ${concept.flexibility === 'fixed' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
-                                        {concept.flexibility === 'fixed' ? <Lock className="w-3 h-3"/> : <Unlock className="w-3 h-3"/>}
-                                    </div>
-                                    <div>
-                                      <p className="text-sm text-foreground font-medium">{concept.name}</p>
-                                      <div className="flex items-center text-xs text-muted-foreground gap-2">
-                                        <span className="capitalize">{concept.flexibility === 'fixed' ? 'Pago Fijo' : 'Pago Flexible'}</span>
-                                        {concept.defaultDay && (
-                                          <span className="flex items-center bg-muted px-1.5 py-0.5 rounded text-foreground">
-                                            <CalendarClock className="w-3 h-3 mr-1" />
-                                            Día {concept.defaultDay}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon"
-                                      className="h-8 w-8 text-muted-foreground hover:text-primary"
-                                      onClick={() => startEditingConcept(concept)}
-                                    >
-                                      <Edit2 className="h-4 w-4" />
+                                  <span className="font-medium text-sm">{sub.name}</span>
+                                  <div className="flex items-center gap-1">
+                                    <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditingSubcategory(sub)}>
+                                      <Edit2 className="h-3.5 w-3.5" />
                                     </Button>
-                                    <Button 
-                                      variant="ghost" 
-                                      size="icon"
-                                      className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                      onClick={() => handleDeleteConcept(selectedCategory, concept.id)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
+                                    {subs.length > 1 && (
+                                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteSubcategory(selectedCategory, sub.id)}>
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    )}
                                   </div>
                                 </>
                               )}
                             </div>
-                          ))}
+                            {/* Add concept form for this subcategory */}
+                            <div className="flex gap-2 items-end p-2 border-b border-border/50 bg-background/50">
+                              <Input 
+                                placeholder="Concepto (ej: Benavides, Miraflores...)"
+                                value={newConceptName}
+                                onChange={(e) => setNewConceptName(e.target.value)}
+                                className="flex-1 h-8 text-sm"
+                              />
+                              <Select value={newConceptFlex} onValueChange={(v: Flexibility) => setNewConceptFlex(v)}>
+                                <SelectTrigger className="w-[90px] h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="fixed">Fijo</SelectItem>
+                                  <SelectItem value="flexible">Flex</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Input type="number" min={1} max={31} placeholder="Día" value={newConceptDay} onChange={e => setNewConceptDay(e.target.value)} className="w-14 h-8 text-sm" />
+                              <Button size="sm" onClick={() => handleAddConcept(sub.id)}>
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            {/* Concept list for this subcategory */}
+                            <div className="p-2 space-y-1">
+                              {sub.concepts.length === 0 ? (
+                                <p className="text-xs text-muted-foreground py-2 px-2">Sin conceptos. Añade uno arriba.</p>
+                              ) : (
+                                sub.concepts.map((concept) => (
+                                  <div key={concept.id} className="group flex items-center justify-between p-2 rounded-md hover:bg-muted/20 transition-all">
+                                    {editingConceptId === concept.id ? (
+                                      <div className="flex items-center flex-1 gap-2">
+                                        <Input value={editConceptName} onChange={e => setEditConceptName(e.target.value)} className="flex-1 h-8 text-sm" autoFocus />
+                                        <Select value={editConceptFlex} onValueChange={(v: Flexibility) => setEditConceptFlex(v)}>
+                                          <SelectTrigger className="w-[90px] h-8 text-xs"><SelectValue /></SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="fixed">Fijo</SelectItem>
+                                            <SelectItem value="flexible">Flex</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                        <Input type="number" className="w-14 h-8 text-sm" value={editConceptDay} onChange={e => setEditConceptDay(e.target.value)} placeholder="Día" />
+                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500" onClick={() => saveConcept(selectedCategory, sub.id)}><Check className="h-4 w-4" /></Button>
+                                        <Button size="icon" variant="ghost" className="h-8 w-8 text-red-500" onClick={() => setEditingConceptId(null)}><X className="h-4 w-4" /></Button>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="flex items-center gap-2">
+                                          <div className={`p-1 rounded ${concept.flexibility === 'fixed' ? 'bg-red-500/10 text-red-500' : 'bg-green-500/10 text-green-500'}`}>
+                                            {concept.flexibility === 'fixed' ? <Lock className="w-3 h-3"/> : <Unlock className="w-3 h-3"/>}
+                                          </div>
+                                          <span className="text-sm font-medium">{concept.name}</span>
+                                          {concept.defaultDay && <span className="text-xs text-muted-foreground">Día {concept.defaultDay}</span>}
+                                        </div>
+                                        <div className="flex items-center opacity-0 group-hover:opacity-100">
+                                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditingConcept(concept)}><Edit2 className="h-3.5 w-3.5" /></Button>
+                                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => handleDeleteConcept(selectedCategory, sub.id, concept.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </ScrollArea>
                   </CardContent>
-                )}
+                  );
+                })()}
               </Card>
             </div>
           </TabsContent>
 
           {/* TAB: CONTABILIDAD (Caja Chica) */}
-          <TabsContent value="accounting">
+          <TabsContent value="accounting" className="mt-0 outline-none data-[state=inactive]:hidden">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
@@ -703,7 +767,7 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                     Caja Chica (Fondo Fijo)
                   </CardTitle>
                   <CardDescription>
-                    Configura los límites y alertas del fondo operativo semanal.
+                    Configura los límites y alertas del fondo operativo semanal. Solo el administrador del sistema puede modificar; se aplica para todos los usuarios.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -712,8 +776,11 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                       <Label>Monto Total del Fondo (S/)</Label>
                       <Input 
                         type="number" 
-                        value={systemSettings.pettyCash.totalFundLimit}
-                        onChange={(e) => updatePettyCash('totalFundLimit', parseFloat(e.target.value))}
+                        min={0}
+                        step={1}
+                        value={systemSettings.pettyCash.totalFundLimit ?? ''}
+                        onChange={(e) => updatePettyCash('totalFundLimit', parseFloat(e.target.value) || 0)}
+                        disabled={!isSystemAdmin}
                       />
                       <p className="text-xs text-muted-foreground">Monto base que se repone semanalmente.</p>
                     </div>
@@ -721,8 +788,11 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                       <Label>Tope por Gasto (S/)</Label>
                       <Input 
                         type="number" 
-                        value={systemSettings.pettyCash.maxTransactionAmount}
-                        onChange={(e) => updatePettyCash('maxTransactionAmount', parseFloat(e.target.value))}
+                        min={0}
+                        step={1}
+                        value={systemSettings.pettyCash.maxTransactionAmount ?? ''}
+                        onChange={(e) => updatePettyCash('maxTransactionAmount', parseFloat(e.target.value) || 0)}
+                        disabled={!isSystemAdmin}
                       />
                       <p className="text-xs text-muted-foreground">Máximo permitido por movimiento único.</p>
                     </div>
@@ -737,9 +807,12 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                       <div className="w-[100px] flex items-center gap-2">
                         <Input 
                           type="number" 
+                          min={0}
+                          max={100}
                           className="text-right"
-                          value={systemSettings.pettyCash.alertThreshold}
-                          onChange={(e) => updatePettyCash('alertThreshold', parseFloat(e.target.value))}
+                          value={systemSettings.pettyCash.alertThreshold ?? ''}
+                          onChange={(e) => updatePettyCash('alertThreshold', parseFloat(e.target.value) || 0)}
+                          disabled={!isSystemAdmin}
                         />
                         <span className="text-sm">%</span>
                       </div>
@@ -754,9 +827,11 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                         <span className="text-sm">S/</span>
                         <Input 
                           type="number" 
+                          min={0}
                           className="text-right"
-                          value={systemSettings.pettyCash.requireReceiptAbove}
-                          onChange={(e) => updatePettyCash('requireReceiptAbove', parseFloat(e.target.value))}
+                          value={systemSettings.pettyCash.requireReceiptAbove ?? ''}
+                          onChange={(e) => updatePettyCash('requireReceiptAbove', parseFloat(e.target.value) || 0)}
+                          disabled={!isSystemAdmin}
                         />
                       </div>
                     </div>
@@ -780,8 +855,9 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                       <Select 
                         value={systemSettings.pettyCash.weeklyClosingDay.toString()} 
                         onValueChange={(val) => updatePettyCash('weeklyClosingDay', parseInt(val))}
+                        disabled={!isSystemAdmin}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger disabled={!isSystemAdmin}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -822,12 +898,12 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {users.filter(u => u.role === 'manager' || u.role === 'admin' || u.role === 'assistant').map((user) => (
+                        {users.filter(u => u.role !== 'super_admin').map((user) => (
                           <TableRow key={user.id}>
                             <TableCell className="font-medium">
                               <div className="flex flex-col">
                                 <span>{user.name}</span>
-                                <span className="text-xs text-muted-foreground">{user.email}</span>
+                                <span className="text-xs text-muted-foreground">{user.email || '-'}</span>
                               </div>
                             </TableCell>
                             <TableCell>
@@ -838,10 +914,13 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                                 <span className="text-sm text-muted-foreground">S/</span>
                                 <Input 
                                   type="number" 
-                                  className="w-[100px] text-right"
-                                  placeholder="0.00"
-                                  value={user.pettyCashLimit || ''}
+                                  min={0}
+                                  step={1}
+                                  className="w-[120px] text-right"
+                                  placeholder="0"
+                                  value={user.pettyCashLimit !== undefined && user.pettyCashLimit !== null ? user.pettyCashLimit : ''}
                                   onChange={(e) => handleUpdateUserLimit(user.id, parseFloat(e.target.value) || 0)}
+                                  disabled={!isSystemAdmin}
                                 />
                               </div>
                             </TableCell>
@@ -856,39 +935,107 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
           </TabsContent>
 
           {/* TAB: SISTEMA */}
-          <TabsContent value="system">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <HardDrive className="w-5 h-5" />
-                  Preferencias del Sistema
-                </CardTitle>
-                <CardDescription>Opciones generales de la plataforma.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-center py-8 text-muted-foreground italic">
-                Próximamente: Configuración de notificaciones, usuarios y respaldos.
-              </CardContent>
-            </Card>
+          <TabsContent value="system" className="mt-0 outline-none data-[state=inactive]:hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <HardDrive className="w-5 h-5" />
+                    Preferencias del Sistema
+                  </CardTitle>
+                  <CardDescription>Opciones generales de la plataforma.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="text-sm text-muted-foreground">
+                    <p>Configuración de notificaciones y preferencias se gestiona desde el Centro de Alertas y desde cada módulo.</p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserCircle className="w-5 h-5" />
+                    Usuarios y Accesos
+                  </CardTitle>
+                  <CardDescription>Gestión de usuarios, roles y sedes.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Para crear usuarios, asignar roles y restablecer contraseñas, usa la sección <strong>Usuarios y Roles</strong> en el menú principal.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    La asignación de sedes por usuario se configura en la pestaña <strong>Sedes</strong> de esta misma pantalla.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Receipt className="w-5 h-5" />
+                    Respaldo de Datos
+                  </CardTitle>
+                  <CardDescription>Exportar y respaldar la información del sistema.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Los datos se sincronizan con la nube (Supabase). Para exportar transacciones o reportes, utiliza las opciones de <strong>Exportar</strong> en Flujo de Caja, Transacciones y Reportes.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* TAB: SEGURIDAD */}
-          <TabsContent value="security">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5" />
-                  Seguridad y Accesos
-                </CardTitle>
-                <CardDescription>Gestión de roles y auditoría.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex justify-center py-8 text-muted-foreground italic">
-                Próximamente: Historial de accesos y configuración de doble factor.
-              </CardContent>
-            </Card>
+          <TabsContent value="security" className="mt-0 outline-none data-[state=inactive]:hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5" />
+                    Seguridad y Accesos
+                  </CardTitle>
+                  <CardDescription>Gestión de roles y contraseñas.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-foreground">Roles y permisos</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Los roles se configuran en <strong>Usuarios y Roles</strong>. Desde ahí puedes editar permisos por módulo (Dashboard, Finanzas, Caja Chica, Compras, etc.).
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-4 border-t border-border">
+                    <h4 className="font-medium text-foreground">Restablecer contraseña</h4>
+                    <p className="text-sm text-muted-foreground">
+                      El Super Administrador puede asignar o restablecer la contraseña de cualquier usuario desde <strong>Usuarios y Roles</strong> → menú del usuario → <strong>Restablecer contraseña</strong>. La nueva contraseña se aplica en Supabase de forma inmediata.
+                    </p>
+                  </div>
+                  <div className="space-y-2 pt-4 border-t border-border">
+                    <h4 className="font-medium text-foreground">Historial de accesos</h4>
+                    <p className="text-sm text-muted-foreground">
+                      El último acceso de cada usuario se muestra en la tabla de Usuarios y Roles. Historial detallado de sesiones estará disponible en futuras versiones.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Lock className="w-5 h-5" />
+                    Tu sesión
+                  </CardTitle>
+                  <CardDescription>Información de la sesión actual.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Para cambiar tu propia contraseña o ver tu perfil, haz clic en tu nombre o avatar en la barra lateral y elige <strong>Mi perfil</strong> o <strong>Cerrar sesión</strong>.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
 
           {/* TAB: SEDES */}
-          <TabsContent value="sedes">
+          <TabsContent value="sedes" className="mt-0 outline-none data-[state=inactive]:hidden">
             <div className="space-y-6">
               <Card>
                 <CardHeader>
@@ -952,11 +1099,24 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                                 <span className="text-xs text-cyan-400 font-medium">Acceso Global</span>
                               ) : (
                                 <div className="flex flex-wrap gap-1 max-w-[320px]">
-                                  {SYSTEM_SEDES.map(sede => {
+                                  {catalogEntries.map(({ name: sede, enabled }) => {
                                     const isAssigned = user.sedes?.includes(sede) ?? false;
+                                    if (!enabled && !isAssigned) return null;
+                                    if (!enabled && isAssigned) {
+                                      return (
+                                        <span
+                                          key={sede}
+                                          className="text-[10px] px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 font-medium"
+                                          title="Sede deshabilitada en catálogo; asignación conservada"
+                                        >
+                                          {sede} (off)
+                                        </span>
+                                      );
+                                    }
                                     return (
                                       <button
                                         key={sede}
+                                        type="button"
                                         onClick={() => {
                                           const currentSedes = user.sedes || [];
                                           const newSedes = isAssigned
@@ -984,7 +1144,7 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                   </div>
                   <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
                     <MapPin className="w-3 h-3" />
-                    Haz click en las sedes para asignar o quitar acceso. Los cambios se guardan automáticamente.
+                    Solo las sedes <strong>habilitadas</strong> se pueden asignar o quitar con un clic. Las deshabilitadas en el catálogo siguen visibles si el usuario ya las tenía.
                   </p>
                 </CardContent>
               </Card>
@@ -1000,20 +1160,32 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    {SYSTEM_SEDES.map(sede => (
-                      <div key={sede} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/20 text-sm">
-                        <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+                    {catalogEntries.map(({ name: sede, enabled }) => (
+                      <div
+                        key={sede}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm ${
+                          enabled
+                            ? 'border-border bg-muted/20'
+                            : 'border-dashed border-muted-foreground/40 bg-muted/10 opacity-80'
+                        }`}
+                      >
+                        <MapPin className={`w-3.5 h-3.5 ${enabled ? 'text-cyan-400' : 'text-muted-foreground'}`} />
                         <span>{sede}</span>
+                        {!enabled && (
+                          <span className="text-[10px] uppercase text-muted-foreground">deshabilitada</span>
+                        )}
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs text-muted-foreground mt-3">Para agregar o modificar sedes, contacte al administrador del sistema.</p>
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Para crear o renombrar sedes use <strong>Usuarios y Roles → Configurar Sedes</strong>. La lista de aquí se actualiza automáticamente.
+                  </p>
                 </CardContent>
               </Card>
             </div>
           </TabsContent>
 
-          <TabsContent value="debug">
+          <TabsContent value="debug" className="mt-0 outline-none data-[state=inactive]:hidden">
             <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-red-600">

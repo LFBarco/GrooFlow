@@ -9,7 +9,12 @@
   "scripts": {
     "build": "node node_modules/vite/bin/vite.js build",
     "dev": "node node_modules/vite/bin/vite.js",
-    "preview": "node node_modules/vite/bin/vite.js preview"
+    "preview": "node node_modules/vite/bin/vite.js preview",
+    "supabase:db:push": "npx supabase db push --yes",
+    "supabase:deploy:server": "npx supabase functions deploy server --project-ref ywizhgnmgnaksqperxai",
+    "supabase:deploy:admin": "npx supabase functions deploy admin-create-user --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-update-password --project-ref ywizhgnmgnaksqperxai",
+    "supabase:deploy:all": "npx supabase functions deploy admin-create-user --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-update-password --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy server --project-ref ywizhgnmgnaksqperxai",
+    "supabase:secrets:allowed-origins": "node scripts/set-allowed-origins.mjs"
   },
   "dependencies": {
     "react": "18.3.1",

@@ -30,22 +30,180 @@ const env = (typeof import.meta !== 'undefined' && import.meta.env)
   ? import.meta.env
   : {} as Record<string, string | undefined>;
 
-const SUPABASE_URL  = env.VITE_SUPABASE_URL
-  ?? `https://${env.VITE_SUPABASE_PROJECT_ID ?? 'sklseqxhhanuzsancbgn'}.supabase.co`;
+/** Valores vacíos en .env cuentan como "no definido" (evita URL "" → Failed to fetch) */
+function envStr(key: string): string | undefined {
+  const v = env[key];
+  if (typeof v !== 'string') return undefined;
+  const t = v.trim();
+  return t.length ? t : undefined;
+}
 
-const SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY
-  ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrbHNlcXhoaGFudXpzYW5jYmduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4Mzg4NzMsImV4cCI6MjA4MzQxNDg3M30.GwTYNF7LXNbFBpM6xFVuMowFLGezvnm393OcjibnVu0';
+/**
+ * Sin proyecto “por defecto” en el código: si no hay .env, no apuntamos a otro Supabase ajeno.
+ * Crea .env en la raíz con VITE_SUPABASE_URL (o PROJECT_ID) + VITE_SUPABASE_ANON_KEY.
+ */
+const projectRef = envStr('VITE_SUPABASE_PROJECT_ID');
+const SUPABASE_URL =
+  envStr('VITE_SUPABASE_URL') ??
+  (projectRef ? `https://${projectRef}.supabase.co` : '');
 
-const FUNCTIONS_URL = env.VITE_SUPABASE_FUNCTIONS_URL
-  ?? `${SUPABASE_URL}/functions/v1/make-server-674cc941`;
+const SUPABASE_ANON_KEY = envStr('VITE_SUPABASE_ANON_KEY') ?? '';
+
+/** Para mostrar en UI (diagnóstico) qué proyecto está usando la app */
+export function getConfiguredSupabaseUrl(): string {
+  if (!SUPABASE_URL || !SUPABASE_URL.includes('.supabase.co')) {
+    return '(no configurado — falta .env; ver docs/CREAR_ARCHIVO_ENV.md)';
+  }
+  return SUPABASE_URL;
+}
+
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error(
+      '[GrooFlow] Falta .env con Supabase. En la raíz del proyecto crea .env con:\n' +
+      '  VITE_SUPABASE_URL=https://TU-REF.supabase.co\n' +
+      '  VITE_SUPABASE_ANON_KEY=eyJ... (Settings → API → anon public)\n' +
+      'Luego: Ctrl+C y npm run dev'
+    );
+  } else if (!SUPABASE_ANON_KEY.startsWith('eyJ')) {
+    console.warn('[GrooFlow] Revisa VITE_SUPABASE_ANON_KEY en .env');
+  }
+}
+
+const FUNCTIONS_URL =
+  envStr('VITE_SUPABASE_FUNCTIONS_URL') ??
+  (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/server/make-server-674cc941` : '');
+
+/** True si el JWT falta o expira en menos de ~2 min (evita 401 en Edge con token viejo en storage). */
+function accessTokenNeedsRefresh(accessToken: string | undefined): boolean {
+  if (!accessToken) return true;
+  try {
+    const parts = accessToken.split('.');
+    if (parts.length < 2) return true;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+    const json = atob(b64 + pad);
+    const payload = JSON.parse(json) as { exp?: number };
+    const exp = typeof payload.exp === 'number' ? payload.exp : 0;
+    const now = Date.now() / 1000;
+    return now >= exp - 120;
+  } catch {
+    return true;
+  }
+}
+
+function parseJwtPayload(accessToken: string): Record<string, unknown> | null {
+  try {
+    const parts = accessToken.split('.');
+    if (parts.length < 2) return null;
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 === 0 ? '' : '='.repeat(4 - (b64.length % 4));
+    const json = atob(b64 + pad);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Evita enviar un JWT de otro proyecto (mezcla de storage / .env distintos). */
+function assertAccessTokenMatchesProject(accessToken: string, supabaseUrl: string): void {
+  if (!supabaseUrl.startsWith('https://') || !supabaseUrl.includes('.supabase.co')) return;
+  const host = new URL(supabaseUrl).hostname;
+  const payload = parseJwtPayload(accessToken);
+  if (!payload) return;
+  const iss = typeof payload.iss === 'string' ? payload.iss : '';
+  if (iss && !iss.includes(host)) {
+    throw new Error(
+      `El token de sesión no pertenece a este proyecto Supabase (${host}). ` +
+        'Cierra sesión, borra datos del sitio para este dominio (opcional) y vuelve a entrar con el mismo proyecto que está en tu .env.'
+    );
+  }
+}
+
+/**
+ * Renueva sesión y devuelve un access_token que el gateway de Edge Functions acepta.
+ * Importante: si refreshSession falla, NO se reutiliza un token viejo (eso provoca Invalid JWT).
+ */
+async function getFreshAccessTokenForEdge(sb: SupabaseClient): Promise<string> {
+  const { data, error } = await sb.auth.refreshSession();
+  if (error) {
+    throw new Error(
+      `No se pudo renovar la sesión: ${error.message}. ` +
+        'Cierra sesión, recarga la página (Ctrl+F5) e inicia sesión de nuevo. ' +
+        'Si el error es invalid_grant, tu refresh token caducó: vuelve a iniciar sesión.'
+    );
+  }
+  const token = data.session?.access_token;
+  if (!token) {
+    throw new Error(
+      'Sesión sin token de acceso. Cierra sesión e inicia sesión de nuevo (no uses acceso demo si VITE_BACKEND=supabase).'
+    );
+  }
+  const { data: userData, error: userErr } = await sb.auth.getUser(token);
+  if (userErr || !userData.user?.id) {
+    throw new Error(
+      `Supabase rechazó el token: ${userErr?.message ?? 'sin usuario'}. Cierra sesión e inicia sesión de nuevo.`
+    );
+  }
+  return token;
+}
+
+async function postEdgeFunctionJson(
+  functionName: string,
+  body: Record<string, unknown>,
+  accessToken: string
+): Promise<{ ok: boolean; status: number; json: unknown; text: string }> {
+  if (!SUPABASE_URL?.startsWith('https://')) {
+    throw new Error(
+      'Falta VITE_SUPABASE_URL en el build. Reconstruye la app con el .env correcto (misma carpeta que package.json).'
+    );
+  }
+  if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.length < 40) {
+    throw new Error(
+      'Falta VITE_SUPABASE_ANON_KEY en el build. Reconstruye la app tras corregir .env.'
+    );
+  }
+  const endpoint = `${SUPABASE_URL}/functions/v1/${functionName}`;
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json: unknown = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+  return { ok: res.ok, status: res.status, json, text };
+}
 
 // ─── Supabase client singleton ───────────────────────────────
 
 let _client: SupabaseClient | null = null;
 
+/** URL/clave mínimas para que createClient no reciba "" (evita pantalla en blanco si .env falla). */
+const FALLBACK_URL = 'https://invalid-env-placeholder.supabase.co';
+const FALLBACK_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBsYWNlaG9sZGVyIiwicm9sZSI6ImFub24ifQ.placeholder';
+
 export function getSupabaseClient(): SupabaseClient {
   if (!_client) {
-    _client = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const urlOk =
+      typeof SUPABASE_URL === 'string' &&
+      SUPABASE_URL.startsWith('https://') &&
+      SUPABASE_URL.includes('.supabase.co');
+    const keyOk =
+      typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length >= 40;
+    _client = createClient(
+      urlOk ? SUPABASE_URL : FALLBACK_URL,
+      keyOk ? SUPABASE_ANON_KEY : FALLBACK_KEY
+    );
   }
   return _client;
 }
@@ -74,24 +232,66 @@ class SupabaseAuthRepository implements IAuthRepository {
   }
 
   async createUser(email: string, password: string, name: string): Promise<AuthUser> {
-    const { data, error } = await this.sb.auth.signUp({
-      email,
-      password,
-      options: { data: { name } },
-    });
-    if (error) throw new Error(error.message);
-    const u = data.user!;
-    return { id: u.id, email: u.email!, name };
+    // NO usar auth.signUp aquí (cambia la sesión al usuario nuevo).
+    // Invocamos la Edge Function con fetch explícito: evita interacción rara del SDK
+    // (fetchWithAuth / getSession puede mandar anon si el token caducó).
+    const accessToken = await getFreshAccessTokenForEdge(this.sb);
+    assertAccessTokenMatchesProject(accessToken, SUPABASE_URL);
+
+    const result = await postEdgeFunctionJson(
+      'admin-create-user',
+      { email, password, name },
+      accessToken
+    );
+
+    const raw = result.json;
+    const payload =
+      raw && typeof raw === 'object'
+        ? (raw as { user?: { id: string; email?: string }; error?: string; message?: string })
+        : null;
+
+    if (result.ok && payload?.user?.id) {
+      return { id: payload.user.id, email: payload.user.email ?? email, name };
+    }
+
+    const apiMsg = typeof payload?.message === 'string' ? payload.message : '';
+    const fnErr = typeof payload?.error === 'string' ? payload.error : '';
+    const detail =
+      fnErr.trim() ||
+      apiMsg.trim() ||
+      (typeof result.text === 'string' ? result.text.trim() : '') ||
+      `HTTP ${result.status}`;
+
+    if (detail.toLowerCase().includes('invalid jwt')) {
+      throw new Error(
+        'Supabase rechazó el JWT en el gateway. Suele pasar si el token caducó y se reutilizó uno viejo, ' +
+          'o si el navegador mezcla sesiones de otro proyecto. Cierra sesión, borra datos del sitio para este dominio, ' +
+          'Ctrl+F5 y entra otra vez. Verifica que el build use el mismo VITE_SUPABASE_URL y anon key del proyecto.'
+      );
+    }
+
+    throw new Error(detail || 'Error al crear el usuario');
   }
 
-  async updateUserPassword(_userId: string, _newPassword: string): Promise<void> {
-    // NOTE: Changing another user's password requires a service_role key
-    // and must be done server-side (Edge Function).
-    // TODO: Call a secure Edge Function: POST /admin/update-password { userId, newPassword }
-    throw new Error(
-      'updateUserPassword must be handled by a server-side Edge Function. ' +
-      'See BACKEND_MIGRATION.md for implementation details.'
-    );
+  async updateUserPassword(userIdOrEmail: string, newPassword: string): Promise<void> {
+    const accessToken = await getFreshAccessTokenForEdge(this.sb);
+    assertAccessTokenMatchesProject(accessToken, SUPABASE_URL);
+    const body = userIdOrEmail.includes('@')
+      ? { email: userIdOrEmail, newPassword }
+      : { userId: userIdOrEmail, newPassword };
+    const result = await postEdgeFunctionJson('admin-update-password', body, accessToken);
+    if (result.ok) return;
+
+    const raw = result.json;
+    const payload =
+      raw && typeof raw === 'object'
+        ? (raw as { error?: string; message?: string })
+        : null;
+    const apiMsg = typeof payload?.message === 'string' ? payload.message : '';
+    const fnErr = typeof payload?.error === 'string' ? payload.error : '';
+    const detail =
+      fnErr.trim() || apiMsg.trim() || (typeof result.text === 'string' ? result.text.trim() : '') || `HTTP ${result.status}`;
+    throw new Error(detail || 'No se pudo actualizar la contraseña');
   }
 
   onAuthStateChange(callback: (user: AuthUser | null) => void): () => void {
@@ -105,69 +305,72 @@ class SupabaseAuthRepository implements IAuthRepository {
 
 // ─── KV Implementation (Edge Function store) ─────────────────
 //
-// Currently persists data through:
-//   1. localStorage (instant, offline-capable)
-//   2. Supabase Edge Function KV (cloud sync)
+// MODO PRODUCCIÓN: SOLO NUBE.
+// No se usan lecturas/escrituras en localStorage para evitar datos fantasma
+// o divergencias entre navegadores/sesiones.
 //
 // FUTURE: Replace with a real `app_kv` Supabase table:
 //   CREATE TABLE app_kv (key text PRIMARY KEY, value jsonb, updated_at timestamptz DEFAULT now());
 //   Then swap the fetch() calls for supabase.from('app_kv').upsert(...)
 
-const STORAGE_PREFIX = 'grooflow_';
-
 class SupabaseKVRepository implements IKVRepository {
-  private readonly headers = {
-    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    'Content-Type': 'application/json',
-  };
+  private async authHeaders(): Promise<Record<string, string>> {
+    const sb = getSupabaseClient();
+    const { data: sess } = await sb.auth.getSession();
+    let token = sess.session?.access_token;
+    if (accessTokenNeedsRefresh(token)) {
+      const { data: ref, error: refErr } = await sb.auth.refreshSession();
+      if (refErr) {
+        throw new Error(
+          `Sesión caducada (${refErr.message}). Cierra sesión e inicia sesión de nuevo para cargar datos.`
+        );
+      }
+      token = ref.session?.access_token ?? token;
+    }
+    if (!token) {
+      throw new Error('No hay sesión de Supabase activa para acceder a datos en la nube.');
+    }
+    return {
+      Authorization: `Bearer ${token}`,
+      apikey: SUPABASE_ANON_KEY,
+      'Content-Type': 'application/json',
+    };
+  }
 
   async get<T = unknown>(key: string): Promise<T | null> {
-    // 1. Read from localStorage first (instant, offline)
     try {
-      const item = localStorage.getItem(STORAGE_PREFIX + key);
-      const local = item ? (JSON.parse(item) as T) : null;
-
-      // 2. Try to get fresher data from cloud
-      try {
-        const res = await fetch(`${FUNCTIONS_URL}/init`, { headers: this.headers });
-        if (res.ok) {
-          const { data } = (await res.json()) as { data?: Record<string, unknown> };
-          if (data?.[key] !== undefined) {
-            // Update local cache with cloud value
-            localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(data[key]));
-            return data[key] as T;
-          }
-        }
-      } catch {
-        // Cloud unavailable — use local
+      const headers = await this.authHeaders();
+      const res = await fetch(`${FUNCTIONS_URL}/kv/${key}`, {
+        method: 'GET',
+        headers,
+      });
+      if (!res.ok) {
+        throw new Error(`KV GET failed (${res.status})`);
       }
-      return local;
-    } catch {
+      const payload = (await res.json()) as { data?: T | null };
+      return payload.data ?? null;
+    } catch (e) {
+      console.error(`[kv:get] ${key}`, e);
       return null;
     }
   }
 
   async set(key: string, value: unknown): Promise<void> {
-    // 1. Always write locally first (optimistic)
-    try {
-      localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-    } catch (e) {
-      console.warn('localStorage write failed:', e);
-    }
-
-    // 2. Sync to cloud (fire-and-forget, non-blocking)
-    fetch(`${FUNCTIONS_URL}/kv/${key}`, {
+    const headers = await this.authHeaders();
+    const res = await fetch(`${FUNCTIONS_URL}/kv/${key}`, {
       method: 'POST',
-      headers: this.headers,
+      headers,
       body: JSON.stringify(value),
-    }).catch(() => {
-      // Cloud unavailable — data is safe in localStorage
     });
+    if (!res.ok) {
+      throw new Error(`KV SET failed (${res.status})`);
+    }
   }
 
   async delete(key: string): Promise<void> {
-    localStorage.removeItem(STORAGE_PREFIX + key);
-    // TODO: DELETE from Edge Function / table when implemented
+    // Mantener compatibilidad: no-op remoto (endpoint DELETE aún no expuesto).
+    // Importante: no borrar local porque ya no usamos almacenamiento local.
+    console.warn(`[kv:delete] no-op for key "${key}" (DELETE endpoint not implemented)`);
   }
 }
 

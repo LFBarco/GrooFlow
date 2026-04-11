@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { User, SYSTEM_SEDES } from '../../types';
+import { useState, useEffect } from 'react';
+import { User } from '../../types';
 import { Card, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -44,20 +44,43 @@ import { Switch } from '../ui/switch';
 
 import { Role } from './types';
 import { RoleConfigDialog } from './RoleConfigDialog';
-import { supabase } from '../../../../utils/supabase/client';
+import { SedeConfigDialog } from './SedeConfigDialog';
+import { repository } from '../../services/api';
+import { describeAuthOrNetworkError } from '../../utils/authErrors';
+import { getConfiguredSupabaseUrl } from '../../services/repository/supabase';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
+
+import type { SedesCatalogSaveResult } from '../../utils/sedesCatalog';
+import type { SedeCatalogEntry } from '../../types';
 
 interface UserManagerProps {
     users: User[];
     roles: Role[];
+    /** Solo sedes habilitadas (nuevas asignaciones). */
+    sedesCatalog: string[];
+    /** Todas las sedes del catálogo (para validar asignaciones al renombrar). */
+    knownSedeNames: string[];
+    sedesCatalogEntries: SedeCatalogEntry[];
+    onSaveSedesCatalog: (result: SedesCatalogSaveResult) => void;
     onUpdateRoles: (roles: Role[]) => void;
     onUpdateUser: (user: User) => void;
     onAddUser: (user: User) => void;
     onDeleteUser: (userId: string) => void;
 }
 
-export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUser, onDeleteUser }: UserManagerProps) {
+export function UserManager({
+    users,
+    roles,
+    sedesCatalog,
+    knownSedeNames,
+    sedesCatalogEntries,
+    onSaveSedesCatalog,
+    onUpdateRoles,
+    onUpdateUser,
+    onAddUser,
+    onDeleteUser,
+}: UserManagerProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -69,6 +92,7 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
     const [isNewUserOpen, setIsNewUserOpen] = useState(false);
     const [isEditUserOpen, setIsEditUserOpen] = useState(false);
     const [isRolesConfigOpen, setIsRolesConfigOpen] = useState(false);
+    const [isSedesConfigOpen, setIsSedesConfigOpen] = useState(false);
     const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -92,6 +116,16 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
         newPassword: '',
         confirmPassword: ''
     });
+
+    // Quitar del formulario solo nombres que ya no existen en el catálogo (p. ej. tras renombrar)
+    const knownSedeNamesKey = knownSedeNames.join('\u001f');
+    useEffect(() => {
+        setCurrentUserForm((f) => ({
+            ...f,
+            sedes: f.sedes?.filter((s) => knownSedeNames.includes(s)) ?? [],
+        }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- comparar por contenido del catálogo
+    }, [knownSedeNamesKey]);
 
     const roleCounts = uniqueUsers.reduce((acc, user) => {
         const roleKey = user.role; 
@@ -152,22 +186,16 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
 
         setIsCreating(true);
         try {
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email: currentUserForm.email!,
-                password: currentUserForm.password!,
-                options: {
-                    data: { name: currentUserForm.name }
-                }
-            });
-
-            if (authError && !authError.message.includes('already registered')) {
-                throw authError;
-            }
+            const authUser = await repository.auth.createUser(
+                currentUserForm.email!,
+                currentUserForm.password!,
+                currentUserForm.name!
+            );
 
             const initials = currentUserForm.initials || autoGenerateInitials(currentUserForm.name!);
 
             const user: User = {
-                id: authData?.user?.id || `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                id: authUser.id,
                 name: currentUserForm.name!,
                 role: currentUserForm.role as User['role'],
                 initials: initials.toUpperCase(),
@@ -183,9 +211,10 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
             toast.success(`Usuario "${user.name}" creado exitosamente`, {
                 description: `Correo: ${user.email} | Acceso: ${sedeInfo}`
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Error creating user:', error);
-            if (error.message?.includes('already registered') || error.message?.includes('already been registered')) {
+            const rawMsg = error instanceof Error ? error.message : '';
+            if (rawMsg.includes('already registered') || rawMsg.includes('already been registered')) {
                 const initials = currentUserForm.initials || autoGenerateInitials(currentUserForm.name!);
                 const user: User = {
                     id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -203,7 +232,7 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                     description: `El correo ya existía en Auth. Usuario añadido al sistema.`
                 });
             } else {
-                toast.error("Error al crear el usuario: " + (error.message || 'Error desconocido'));
+                toast.error('Error al crear el usuario: ' + describeAuthOrNetworkError(error));
             }
         } finally {
             setIsCreating(false);
@@ -248,15 +277,24 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
         const targetUser = uniqueUsers.find(u => u.id === resetPasswordForm.userId);
         if (!targetUser) return;
 
-        toast.success(`Contraseña de "${targetUser.name}" restablecida`, {
-            description: `Nueva contraseña asignada. El usuario deberá usarla en su próximo acceso.`
-        });
-        
-        const updated = uniqueUsers.find(u => u.id === resetPasswordForm.userId);
-        if (updated) {
-            onUpdateUser({ ...updated, tempPassword: resetPasswordForm.newPassword });
+        if (!targetUser.email) {
+            toast.error("Este usuario no tiene correo; no se puede restablecer contraseña en Supabase.");
+            return;
         }
-        
+
+        try {
+            await repository.auth.updateUserPassword(targetUser.email, resetPasswordForm.newPassword);
+            const updated = uniqueUsers.find(u => u.id === resetPasswordForm.userId);
+            if (updated) {
+                onUpdateUser({ ...updated, tempPassword: resetPasswordForm.newPassword });
+            }
+            toast.success(`Contraseña de "${targetUser.name}" restablecida`, {
+                description: "La contraseña se actualizó en Supabase. El usuario debe usarla en su próximo acceso."
+            });
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : "No se pudo actualizar la contraseña");
+            return;
+        }
         setIsResetPasswordOpen(false);
     };
 
@@ -328,6 +366,10 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                     <Button variant="outline" className="gap-2" onClick={() => setIsRolesConfigOpen(true)}>
                         <Settings className="w-4 h-4" />
                         Configurar Roles
+                    </Button>
+                    <Button variant="outline" className="gap-2" onClick={() => setIsSedesConfigOpen(true)}>
+                        <Building2 className="w-4 h-4" />
+                        Configurar Sedes
                     </Button>
                     <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white" onClick={openNewUserDialog}>
                         <Plus className="w-4 h-4" />
@@ -464,11 +506,19 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                                 </div>
                                             ) : (
                                                 <div className="flex flex-wrap gap-1">
-                                                    {user.sedes.map(s => (
-                                                        <Badge key={s} variant="secondary" className="text-xs py-0 h-5">
-                                                            {s}
-                                                        </Badge>
-                                                    ))}
+                                                    {user.sedes.map(s => {
+                                                        const entry = sedesCatalogEntries.find(e => e.name === s);
+                                                        const off = entry && !entry.enabled;
+                                                        return (
+                                                            <Badge
+                                                                key={s}
+                                                                variant="secondary"
+                                                                className={`text-xs py-0 h-5 ${off ? 'opacity-80 border-amber-500/40 text-amber-900 dark:text-amber-200' : ''}`}
+                                                            >
+                                                                {s}{off ? ' · off' : ''}
+                                                            </Badge>
+                                                        );
+                                                    })}
                                                 </div>
                                             )}
                                         </TableCell>
@@ -665,9 +715,9 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                             </div>
                             {!currentUserForm.allSedes && (
                                 <div className="space-y-2">
-                                    <p className="text-xs text-muted-foreground">Selecciona las sedes habilitadas:</p>
+                                    <p className="text-xs text-muted-foreground">Selecciona sedes (solo las habilitadas en el catálogo):</p>
                                     <div className="grid grid-cols-2 gap-1.5">
-                                        {SYSTEM_SEDES.map(sede => {
+                                        {sedesCatalog.map(sede => {
                                             const isSelected = currentUserForm.sedes?.includes(sede);
                                             return (
                                                 <button
@@ -743,6 +793,10 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                 )}
                             </div>
                         </div>
+                        <p className="text-[10px] text-muted-foreground break-all rounded-md bg-muted/30 px-2 py-1.5">
+                            <span className="font-medium">Proyecto en uso:</span> {getConfiguredSupabaseUrl()}
+                            {' '}— Debe coincidir con <strong>Project URL</strong> en Supabase → Settings → API.
+                        </p>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsNewUserOpen(false)}>Cancelar</Button>
@@ -860,31 +914,64 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                                 </div>
                             </div>
                             {!currentUserForm.allSedes && (
-                                <div className="grid grid-cols-2 gap-1.5">
-                                    {SYSTEM_SEDES.map(sede => {
-                                        const isSelected = currentUserForm.sedes?.includes(sede);
-                                        return (
-                                            <button
-                                                key={sede}
-                                                type="button"
-                                                onClick={() => {
-                                                    const curr = currentUserForm.sedes || [];
-                                                    const updated = isSelected
-                                                        ? curr.filter(s => s !== sede)
-                                                        : [...curr, sede];
-                                                    setCurrentUserForm({...currentUserForm, sedes: updated});
-                                                }}
-                                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-all ${
-                                                    isSelected
-                                                        ? 'bg-blue-600 text-white border-blue-600'
-                                                        : 'border-border text-muted-foreground hover:border-blue-400 hover:text-foreground'
-                                                }`}
-                                            >
-                                                <Building2 className="w-3 h-3" />
-                                                {sede}
-                                            </button>
-                                        );
-                                    })}
+                                <div className="space-y-3">
+                                    <p className="text-xs text-muted-foreground">Sedes habilitadas:</p>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {sedesCatalog.map(sede => {
+                                            const isSelected = currentUserForm.sedes?.includes(sede);
+                                            return (
+                                                <button
+                                                    key={sede}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const curr = currentUserForm.sedes || [];
+                                                        const updated = isSelected
+                                                            ? curr.filter(s => s !== sede)
+                                                            : [...curr, sede];
+                                                        setCurrentUserForm({...currentUserForm, sedes: updated});
+                                                    }}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium border transition-all ${
+                                                        isSelected
+                                                            ? 'bg-blue-600 text-white border-blue-600'
+                                                            : 'border-border text-muted-foreground hover:border-blue-400 hover:text-foreground'
+                                                    }`}
+                                                >
+                                                    <Building2 className="w-3 h-3" />
+                                                    {sede}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {sedesCatalogEntries.some(
+                                        e => !e.enabled && (currentUserForm.sedes?.includes(e.name) ?? false)
+                                    ) && (
+                                        <div className="space-y-1.5">
+                                            <p className="text-xs text-amber-600 dark:text-amber-400">
+                                                Sedes deshabilitadas en catálogo (asignación conservada; pulse para quitar):
+                                            </p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {sedesCatalogEntries
+                                                    .filter(e => !e.enabled && (currentUserForm.sedes?.includes(e.name) ?? false))
+                                                    .map(e => (
+                                                        <button
+                                                            key={e.name}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const curr = currentUserForm.sedes || [];
+                                                                setCurrentUserForm({
+                                                                    ...currentUserForm,
+                                                                    sedes: curr.filter(s => s !== e.name),
+                                                                });
+                                                            }}
+                                                            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium border border-amber-500/50 bg-amber-500/15 text-amber-800 dark:text-amber-200 hover:bg-amber-500/25"
+                                                        >
+                                                            {e.name}
+                                                            <Trash2 className="w-3 h-3 opacity-70" />
+                                                        </button>
+                                                    ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -955,6 +1042,13 @@ export function UserManager({ users, roles, onUpdateRoles, onUpdateUser, onAddUs
                 roles={roles}
                 onSaveRoles={onUpdateRoles}
                 userCounts={roleCounts}
+            />
+
+            <SedeConfigDialog
+                open={isSedesConfigOpen}
+                onOpenChange={setIsSedesConfigOpen}
+                entries={sedesCatalogEntries}
+                onSave={onSaveSedesCatalog}
             />
         </div>
     );

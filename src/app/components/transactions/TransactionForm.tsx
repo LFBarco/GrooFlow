@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Textarea } from "../ui/textarea";
-import { ConfigStructure } from "../../data/initialData";
+import { ConfigStructure, getSubcategories } from "../../data/initialData";
 import { Provider } from "../../types";
 
 interface TransactionFormProps {
@@ -27,9 +27,11 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
   const { register, handleSubmit, reset, setValue, watch } = useForm();
   const [selectedType, setSelectedType] = useState<TransactionType>("expense");
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [availableSubcategories, setAvailableSubcategories] = useState<{ id: string; name: string }[]>([]);
   const [availableConcepts, setAvailableConcepts] = useState<string[]>([]);
   
   const selectedCategory = watch('category');
+  const selectedSubcategory = watch('subcategory');
 
   // Load initial data
   useEffect(() => {
@@ -60,7 +62,9 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
       setTimeout(() => {
         if (initialData.category) setValue('category', initialData.category);
         setTimeout(() => {
-           if (initialData.subcategory) setValue('subcategory', initialData.subcategory);
+          if (initialData.subcategory) setValue('subcategory', initialData.subcategory);
+          if (initialData.concept) setValue('concept', initialData.concept);
+          else if (initialData.subcategory && !initialData.concept) setValue('concept', initialData.subcategory);
         }, 50);
       }, 50);
     }
@@ -98,28 +102,55 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
          if (selectedCategory && !filtered.includes(selectedCategory)) {
            setValue('category', '');
            setValue('subcategory', '');
+           setValue('concept', '');
          }
       }
     }
   }, [selectedType, config, setValue, selectedCategory]); 
 
-  // Update concepts when category changes
+  // Subcategories for selected category
   useEffect(() => {
     if (config && selectedCategory && config[selectedCategory]) {
-      setAvailableConcepts(config[selectedCategory].concepts.map(c => c.name));
+      const subs = getSubcategories(config[selectedCategory], selectedCategory);
+      setAvailableSubcategories(subs.map(s => ({ id: s.id, name: s.name })));
+      if (subs.length === 1) setValue('subcategory', subs[0].name);
+      else setValue('subcategory', '');
+      setValue('concept', '');
     } else {
+      setAvailableSubcategories([]);
       setAvailableConcepts([]);
     }
-  }, [selectedCategory, config]);
+  }, [selectedCategory, config, setValue]);
+
+  // Concepts when category (and subcategory if multiple) change
+  useEffect(() => {
+    if (!config || !selectedCategory || !config[selectedCategory]) {
+      setAvailableConcepts([]);
+      return;
+    }
+    const subs = getSubcategories(config[selectedCategory], selectedCategory);
+    if (subs.length === 1) {
+      setAvailableConcepts(subs[0].concepts.map(c => c.name));
+      return;
+    }
+    const sub = subs.find(s => s.name === selectedSubcategory);
+    setAvailableConcepts(sub ? sub.concepts.map(c => c.name) : []);
+  }, [selectedCategory, selectedSubcategory, config]);
 
   const onFormSubmit = (data: any) => {
-    // If user typed a custom concept (subcategory), ensure we use it
-    onSubmit({ ...data, type: selectedType, id: initialData?.id });
+    const payload = { ...data, type: selectedType, id: initialData?.id };
+    if (config && selectedCategory && config[selectedCategory]) {
+      const subs = getSubcategories(config[selectedCategory], selectedCategory);
+      if (subs.length === 1 && !payload.subcategory) payload.subcategory = subs[0].name;
+      if (!payload.concept) payload.concept = payload.subcategory;
+    }
+    onSubmit(payload);
     if (!initialData) {
       reset();
       setSelectedType("expense");
       setValue("category", "");
       setValue("subcategory", "");
+      setValue("concept", "");
     }
   };
 
@@ -206,7 +237,8 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
         <Select 
           onValueChange={(val) => {
             setValue("category", val);
-            setValue("subcategory", ""); // Reset concept
+            setValue("subcategory", "");
+            setValue("concept", "");
           }}
           value={selectedCategory}
         >
@@ -221,35 +253,52 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
             ))}
           </SelectContent>
         </Select>
-        {/* Hidden input for react-hook-form compatibility if needed, or rely on state */}
         <input type="hidden" {...register("category", { required: true })} />
       </div>
 
+      {availableSubcategories.length > 1 && (
+        <div className="space-y-2">
+          <Label>Subcategoría</Label>
+          <Select 
+            onValueChange={(val) => { setValue("subcategory", val); setValue("concept", ""); }} 
+            value={selectedSubcategory || ""}
+          >
+            <SelectTrigger className="w-full bg-background">
+              <SelectValue placeholder="Seleccionar subcategoría" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableSubcategories.map((s) => (
+                <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input type="hidden" {...register("subcategory")} />
+        </div>
+      )}
+
       <div className="space-y-2">
-        <Label htmlFor="subcategory">Concepto (Fila)</Label>
-         {availableConcepts.length > 0 ? (
-           <Select onValueChange={(val) => setValue("subcategory", val)} value={watch('subcategory') || ""}>
+        <Label htmlFor="concept">Concepto (Fila)</Label>
+        {availableConcepts.length > 0 ? (
+          <Select onValueChange={(val) => setValue("concept", val)} value={watch('concept') || ""}>
             <SelectTrigger className="w-full bg-background">
               <SelectValue placeholder="Seleccionar concepto" />
             </SelectTrigger>
             <SelectContent>
               {availableConcepts.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
+                <SelectItem key={c} value={c}>{c}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-         ) : (
-           <Input 
-            id="subcategory" 
+        ) : (
+          <Input 
+            id="concept" 
             placeholder="Escribe un concepto..." 
-            {...register("subcategory")} 
+            {...register("concept")} 
             disabled={!selectedCategory}
             className="bg-background"
-           />
-         )}
-         <input type="hidden" {...register("subcategory", { required: true })} />
+          />
+        )}
+        <input type="hidden" {...register("concept", { required: true })} />
       </div>
 
       <div className="space-y-2">

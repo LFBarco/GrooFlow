@@ -104,6 +104,7 @@ CREATE TABLE transactions (
   type         TEXT NOT NULL CHECK (type IN ('income', 'expense')),
   category     TEXT NOT NULL,
   subcategory  TEXT,
+  concept      TEXT,
   description  TEXT NOT NULL,
   date         TIMESTAMPTZ NOT NULL,
   provider_id  TEXT,
@@ -111,6 +112,10 @@ CREATE TABLE transactions (
   user_id      UUID REFERENCES auth.users(id),
   created_at   TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Si ya creaste la tabla sin `concept`, ejecuta:
+-- ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS concept TEXT;
+-- (Ver también `supabase/migrations/20260210120000_transaction_concept.sql`.)
 
 CREATE TABLE providers (
   id                     TEXT PRIMARY KEY,
@@ -247,39 +252,20 @@ CREATE TABLE app_kv (
   value       JSONB NOT NULL,
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
-
--- Row Level Security (RLS) básico
-ALTER TABLE transactions           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE providers              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE purchase_requests      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE invoices               ENABLE ROW LEVEL SECURITY;
-ALTER TABLE petty_cash_transactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_users              ENABLE ROW LEVEL SECURITY;
-ALTER TABLE roles                  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE requisitions           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE app_kv                 ENABLE ROW LEVEL SECURITY;
-
--- Política básica: usuarios autenticados pueden leer/escribir sus datos
--- Ajustar según los roles del negocio
-CREATE POLICY "authenticated_read" ON transactions     FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON transactions    FOR ALL    TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON providers        FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON providers       FOR ALL    TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON purchase_requests FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON purchase_requests FOR ALL  TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON invoices         FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON invoices        FOR ALL    TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON petty_cash_transactions FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON petty_cash_transactions FOR ALL  TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON app_users        FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON app_users       FOR ALL    TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON roles            FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON roles           FOR ALL    TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON requisitions     FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON requisitions    FOR ALL    TO authenticated USING (true);
-CREATE POLICY "authenticated_read" ON app_kv           FOR SELECT TO authenticated USING (true);
-CREATE POLICY "authenticated_write" ON app_kv          FOR ALL    TO authenticated USING (true);
 ```
+
+### RLS recomendado (producción)
+
+En producción no uses `USING (true)` para todo.  
+Aplica las migraciones de seguridad:
+
+1. `supabase/migrations/20260410000100_security_profiles_and_audit.sql`
+2. `supabase/migrations/20260410000200_rls_hardening_operational_tables.sql`
+
+Estas migraciones agregan:
+- perfiles canónicos por usuario (`app_user_profiles`);
+- helpers de autorización por rol/sede (`current_user_is_admin`, `can_access_sede`);
+- políticas RLS estrictas por tabla operativa.
 
 ### Activar el adaptador de tabla
 
@@ -359,7 +345,7 @@ await repository.auth.updateUserPassword(userId, newPassword);
 ## Checklist de migración
 
 - [ ] Variables de entorno configuradas en Vercel
-- [ ] Tablas creadas en Supabase (SQL de arriba)
+- [ ] Tablas creadas en Supabase (SQL de arriba **o** migración `supabase/migrations/20260412010000_grooflow_normalized_tables_bootstrap.sql` + `20260412010100_reapply_rls_after_normalized_bootstrap.sql`; ver `docs/MIGRACION_KV_A_TABLAS_SQL.md`)
 - [ ] Row Level Security policies ajustadas al negocio
 - [ ] `SupabaseCollectionRepository` descomentada y activada
 - [ ] Edge Function `admin-update-password` deployada

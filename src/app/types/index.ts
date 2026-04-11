@@ -29,7 +29,10 @@ export interface Transaction {
   amount: number;
   type: TransactionType;
   category: Category | string;
+  /** Subcategoría (ej: Agua, Luz). Si no hay subcategorías en la config, puede usarse para el concepto. */
   subcategory?: string;
+  /** Concepto/fila dentro de la subcategoría (ej: Benavides, Miraflores). Si no se usa, el row es subcategory (compatibilidad). */
+  concept?: string;
   description: string;
   date: Date;
   providerId?: string; // Nuevo: Proveedor asociado
@@ -192,6 +195,12 @@ export interface ProviderSettings {
   areas: string[];      // Áreas de la empresa
 }
 
+/** Entrada del catálogo de sedes (no se borran; solo se deshabilitan). */
+export interface SedeCatalogEntry {
+  name: string;
+  enabled: boolean;
+}
+
 export interface SystemSettings {
   pettyCash: PettyCashSettings;
   businessName: string;
@@ -200,6 +209,11 @@ export interface SystemSettings {
   initialBalance?: number;
   initialBalanceDate?: string;
   providers?: ProviderSettings;
+  /**
+   * Catálogo de sedes. Formato nuevo: `{ name, enabled }[]`.
+   * Legacy: `string[]` se normaliza al cargar (todas habilitadas).
+   */
+  sedesCatalog?: SedeCatalogEntry[] | string[];
 }
 
 // --- ALERTS SYSTEM ---

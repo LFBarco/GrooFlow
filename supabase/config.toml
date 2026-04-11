@@ -1,0 +1,24 @@
+# Edge Functions — verify_jwt
+# ---------------------------------------------------------------------------
+# Si GoTrue emite JWT ES256 (cabecera eyJhbGciOiJFUzI1NiJ9...), el API Gateway
+# puede responder 401 "Invalid JWT" ANTES de ejecutar la función cuando verify_jwt=true.
+# La validación sigue ocurriendo en el código con createClient(...).auth.getUser().
+# Ver: https://github.com/supabase/supabase/issues/44530
+# ---------------------------------------------------------------------------
+
+[functions.admin-create-user]
+enabled = true
+verify_jwt = false
+import_map = "./functions/admin-create-user/deno.json"
+entrypoint = "./functions/admin-create-user/index.ts"
+
+[functions.admin-update-password]
+enabled = true
+verify_jwt = false
+import_map = "./functions/admin-update-password/deno.json"
+entrypoint = "./functions/admin-update-password/index.ts"
+
+[functions.server]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/server/index.ts"

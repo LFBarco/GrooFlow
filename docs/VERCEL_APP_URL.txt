@@ -1,0 +1,5 @@
+# GrooFlow — Origenes del navegador para CORS (ALLOWED_ORIGINS en Supabase)
+# Varios origenes en una sola linea, separados por coma, sin espacios.
+# Sin barra final.
+
+http://localhost:5173,https://grooflow.vercel.app

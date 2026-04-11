@@ -17,7 +17,13 @@ app.use(
   "/*",
   cors({
     origin: corsOrigin,
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "apikey",
+      "x-client-info",
+      "x-supabase-api-version",
+    ],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
@@ -25,6 +31,30 @@ app.use(
 );
 
 const BASE_PATH = "/make-server-674cc941";
+
+const ADMIN_ROLES = new Set(["admin", "super_admin"]);
+
+function getRoleFromUser(user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }) {
+  const appRole = user.app_metadata?.role;
+  if (typeof appRole === "string" && appRole.trim()) return appRole.trim().toLowerCase();
+  const userRole = user.user_metadata?.role;
+  if (typeof userRole === "string" && userRole.trim()) return userRole.trim().toLowerCase();
+  return "";
+}
+
+async function callerRoleFromProfile(adminClient: ReturnType<typeof createClient>, userId: string) {
+  const { data } = await adminClient
+    .from("app_user_profiles")
+    .select("role,status")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!data) return { role: "", status: "", source: "none" as const };
+  return {
+    role: typeof data.role === "string" ? data.role.toLowerCase() : "",
+    status: typeof data.status === "string" ? data.status.toLowerCase() : "",
+    source: "profile" as const,
+  };
+}
 
 // Health check endpoint
 app.get(`${BASE_PATH}/health`, (c) => {
@@ -42,6 +72,35 @@ app.post(`${BASE_PATH}/signup`, async (c) => {
     Deno.env.get('SUPABASE_URL') || '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
   );
+
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Debe iniciar sesión para crear usuarios." }, 401);
+  }
+  const userClient = createClient(
+    Deno.env.get('SUPABASE_URL') || '',
+    Deno.env.get('SUPABASE_ANON_KEY') || '',
+    { global: { headers: { Authorization: authHeader } } }
+  );
+  const { data: authData, error: authErr } = await userClient.auth.getUser();
+  if (authErr || !authData?.user?.id || !authData.user.email) {
+    return c.json({ error: "Sesión inválida." }, 401);
+  }
+  const profile = await callerRoleFromProfile(supabase, authData.user.id);
+  const metadataRole = getRoleFromUser(authData.user);
+  const profileAdmin = ADMIN_ROLES.has(profile.role) && profile.status === "active";
+  const metadataAdmin = ADMIN_ROLES.has(metadataRole);
+  const isInactive = profile.source === "profile" && profile.status === "inactive";
+  const callerRole = profileAdmin ? profile.role : metadataRole;
+  const allowList = (Deno.env.get("ADMIN_CREATE_USER_EMAILS") || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  const allowlisted = allowList.includes((authData.user.email || "").toLowerCase());
+  const adminByRole = !isInactive && (profileAdmin || metadataAdmin);
+  if (!adminByRole && !allowlisted) {
+    return c.json({ error: "No autorizado para crear usuarios." }, 403);
+  }
 
   const { data, error } = await supabase.auth.admin.createUser({
     email: email,
@@ -91,8 +150,30 @@ app.post(`${BASE_PATH}/signup`, async (c) => {
     }
 
     console.error("Signup error:", error);
+    await supabase.from("security_audit_logs").insert({
+      actor_user_id: authData.user.id,
+      action: "server_signup_failed",
+      target_user_id: null,
+      metadata: {
+        actorEmail: authData.user.email,
+        actorRole: callerRole || null,
+        reason: error.message,
+        targetEmail: email,
+      },
+    });
     return c.json({ error: error.message }, 400);
   }
+
+  await supabase.from("security_audit_logs").insert({
+    actor_user_id: authData.user.id,
+    action: "server_signup_success",
+    target_user_id: data.user?.id ?? null,
+    metadata: {
+      actorEmail: authData.user.email,
+      actorRole: callerRole || null,
+      targetEmail: email,
+    },
+  });
 
   return c.json({ data });
 });

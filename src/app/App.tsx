@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { pathToView, viewToPath, type ViewType } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
@@ -12,7 +12,14 @@ import { CashFlowChart } from "./components/dashboard/CashFlowChart";
 import { CashFlowGrid } from "./components/dashboard/CashFlowGrid";
 import { AnalyticsDashboard } from "./components/dashboard/AnalyticsDashboard";
 import { ConfigPanel } from "./components/configuration/ConfigPanel";
-import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, SystemAlert, AlertThresholds, SYSTEM_SEDES, Requisition } from "./types";
+import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, SystemAlert, AlertThresholds, Requisition } from "./types";
+import {
+  getAllSedeNames,
+  getEnabledSedeNames,
+  getSedesCatalogEntries,
+  migrateLocationField,
+  type SedesCatalogSaveResult,
+} from "./utils/sedesCatalog";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
 import { initialStructure, ConfigStructure, initialSystemSettings } from "./data/initialData";
 import { 
@@ -61,6 +68,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { api } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
 import { generateStressData } from "./utils/stressTestGenerator";
+import { hydrateTransactions } from "./utils/hydrateTransactions";
 import { generateAlerts } from "./components/alerts/alertEngine";
 import { AlertsCenter } from "./components/alerts/AlertsCenter";
 import { Toaster } from "./components/ui/sonner";
@@ -80,6 +88,71 @@ const MOCK_USERS: User[] = [
     { id: 'usr-6', name: 'Barbara Torres', role: 'manager', initials: 'BT', email: 'barbara@grooflow.com', pettyCashLimit: 1000, status: 'active', sedes: ['Miraflores'], allSedes: false }
 ];
 
+const SUPER_ADMIN_EMAILS = new Set([
+  'admin@grooflow.com',
+  'admin@vetflow.com',
+  'luisfrancisco.barco@gmail.com',
+]);
+
+/**
+ * Tras cargar `data:users` desde KV, alinea la fila del usuario con `auth.users`
+ * (mismo email puede tener id `usr-…` en KV y UUID en Supabase Auth).
+ */
+function mergeAuthUserIntoUsers(
+  list: User[],
+  authUser: { id: string; email?: string | null; user_metadata?: { name?: string } }
+): User[] {
+  const emailRaw = (authUser.email || '').trim();
+  const emailLower = emailRaw.toLowerCase();
+  if (!emailLower) return list;
+
+  const isPrivileged = SUPER_ADMIN_EMAILS.has(emailLower);
+  const byId = list.findIndex((u) => u.id === authUser.id);
+  if (byId >= 0) {
+    return list.map((u, i) =>
+      i === byId
+        ? ({
+            ...u,
+            email: emailRaw || u.email,
+            name: u.name || authUser.user_metadata?.name || u.name,
+            ...(isPrivileged
+              ? { role: 'super_admin' as const, allSedes: true, status: 'active' as const }
+              : {}),
+          } as User)
+        : u
+    );
+  }
+
+  const byEmail = list.findIndex((u) => (u.email || '').toLowerCase() === emailLower);
+  if (byEmail >= 0) {
+    return list.map((u, i) =>
+      i === byEmail
+        ? ({
+            ...u,
+            id: authUser.id,
+            email: emailRaw || u.email,
+            name: u.name || authUser.user_metadata?.name || u.name,
+            ...(isPrivileged
+              ? { role: 'super_admin' as const, allSedes: true, status: 'active' as const }
+              : {}),
+          } as User)
+        : u
+    );
+  }
+
+  const row: User = {
+    id: authUser.id,
+    email: emailRaw,
+    name: authUser.user_metadata?.name || emailRaw.split('@')[0],
+    initials: (authUser.user_metadata?.name || emailRaw).slice(0, 2).toUpperCase(),
+    role: isPrivileged ? 'super_admin' : 'manager',
+    status: 'active',
+    lastLogin: new Date().toISOString(),
+    ...(isPrivileged ? { allSedes: true } : {}),
+  };
+  return [...list, row];
+}
+
 const initialTransactions: Transaction[] = [
   {
     id: "1",
@@ -96,7 +169,8 @@ const initialTransactions: Transaction[] = [
     amount: 5000.00,
     type: "expense",
     category: "Servicios Básicos",
-    subcategory: "(1) Alquiler Chavez",
+    subcategory: "Alquiler",
+    concept: "Chavez",
     description: "Alquiler Marzo Sede Chavez",
     date: new Date("2024-03-05"),
     location: "Norte"
@@ -205,9 +279,16 @@ const initialRequests: PurchaseRequest[] = [
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
+  const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
-  const [currentUser, setCurrentUser] = useState<User>(users[0]);
+  const [currentUser, setCurrentUser] = useState<User>({
+    id: 'guest',
+    name: 'Invitado',
+    initials: 'IN',
+    role: 'manager',
+    status: 'active',
+    allSedes: true,
+  });
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [invoices, setInvoices] = useState<InvoiceDraft[]>(initialInvoices);
   const [providers, setProviders] = useState<Provider[]>(initialProviders);
@@ -250,7 +331,9 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  
+  /** Evita doble carga y, en Supabase, permite volver a cargar tras logout/login. */
+  const cloudDataHydratedRef = useRef(false);
+
   // Alerts System
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [alertThresholds, setAlertThresholds] = useState<AlertThresholds>({
@@ -277,7 +360,11 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        handleLogin(session.user.email || "", session.user.user_metadata?.name);
+        handleLogin(
+          session.user.email || '',
+          session.user.user_metadata?.name,
+          session.user.id
+        );
       }
     });
 
@@ -285,56 +372,104 @@ export default function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
-         // Optionally handle login here too, but handleLogin logic might duplicate users if called multiple times
-         // handleLogin checks existence so it's fine.
-         handleLogin(session.user.email || "", session.user.user_metadata?.name);
+        handleLogin(
+          session.user.email || '',
+          session.user.user_metadata?.name,
+          session.user.id
+        );
       } else {
-         setIsAuthenticated(false);
+        setIsAuthenticated(false);
+        cloudDataHydratedRef.current = false;
+        setIsDataLoaded(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // --- SUPABASE SYNC ---
+  // --- CLOUD / KV SYNC ---
+  // Con Supabase, el KV exige JWT. Si loadData corre antes de la sesión, los GET fallan,
+  // users queda [] y el autosave pisa data:users en la nube → "desaparecen" los usuarios.
   useEffect(() => {
+    let cancelled = false;
+    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+
     const loadData = async () => {
+      if (backend === 'supabase') {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          return;
+        }
+      }
+
+      if (cloudDataHydratedRef.current) {
+        return;
+      }
+
       const data = await api.fetchInitialData();
+      if (cancelled) return;
+
       if (data['settings:config']) setConfig(data['settings:config']);
       if (data['settings:system']) setSystemSettings(data['settings:system']);
-      
+
       if (data['data:transactions']) {
-          const unique = Array.from(new Map(data['data:transactions'].map((t: Transaction) => [t.id, t])).values()) as Transaction[];
-          setTransactions(unique);
+        const hydrated = hydrateTransactions(data['data:transactions']);
+        const unique = Array.from(new Map(hydrated.map((t) => [t.id, t])).values());
+        setTransactions(unique);
       }
-      
+
       if (data['data:invoices']) {
-          const unique = Array.from(new Map(data['data:invoices'].map((i: InvoiceDraft) => [i.id, i])).values()) as InvoiceDraft[];
-          setInvoices(unique);
+        const unique = Array.from(
+          new Map(data['data:invoices'].map((i: InvoiceDraft) => [i.id, i])).values()
+        ) as InvoiceDraft[];
+        setInvoices(unique);
       }
 
       if (data['data:providers']) {
-          const unique = Array.from(new Map(data['data:providers'].map((p: Provider) => [p.id, p])).values()) as Provider[];
-          setProviders(unique);
+        const unique = Array.from(
+          new Map(data['data:providers'].map((p: Provider) => [p.id, p])).values()
+        ) as Provider[];
+        setProviders(unique);
       }
 
       if (data['data:requests']) {
-          const unique = Array.from(new Map(data['data:requests'].map((r: PurchaseRequest) => [r.id, r])).values()) as PurchaseRequest[];
-          setRequests(unique);
+        const unique = Array.from(
+          new Map(data['data:requests'].map((r: PurchaseRequest) => [r.id, r])).values()
+        ) as PurchaseRequest[];
+        setRequests(unique);
       }
 
       if (data['data:pettyCash']) setPettyCashTransactions(data['data:pettyCash']);
-      
-      // Deduplicate users from API to prevent key collisions
+
+      let nextUsers: User[] = [];
       if (data['data:users']) {
-          const uniqueUsers = Array.from(
-              new Map(data['data:users'].map((u: User) => [u.id, u])).values()
-          ) as User[];
-          setUsers(uniqueUsers);
-      } else {
-          // Keep mock users if no data
-          setUsers(MOCK_USERS);
+        const uniqueUsers = Array.from(
+          new Map(data['data:users'].map((u: User) => [u.id, u])).values()
+        ) as User[];
+        nextUsers = uniqueUsers.map((u) => {
+          const email = (u.email || '').toLowerCase();
+          if (!SUPER_ADMIN_EMAILS.has(email)) return u;
+          return {
+            ...u,
+            role: 'super_admin',
+            allSedes: true,
+            status: 'active',
+          } as User;
+        });
       }
+
+      if (backend === 'supabase') {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!cancelled && session?.user) {
+          nextUsers = mergeAuthUserIntoUsers(nextUsers, session.user);
+        }
+      }
+
+      setUsers(nextUsers);
 
       if (data['data:roles']) setRoles(data['data:roles']);
       if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
@@ -342,14 +477,21 @@ export default function App() {
       if (data['data:alertThresholds']) setAlertThresholds(data['data:alertThresholds']);
       if (data['settings:theme']) setTheme(data['settings:theme']);
       if (data['data:treasuryInvoices']) setTreasuryInvoices(data['data:treasuryInvoices']);
-      if (data['data:treasuryBankBalance'] !== undefined) setTreasuryBankBalance(data['data:treasuryBankBalance']);
-      if (data['data:treasuryPaidHistory']) setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
-      
+      if (data['data:treasuryBankBalance'] !== undefined)
+        setTreasuryBankBalance(data['data:treasuryBankBalance']);
+      if (data['data:treasuryPaidHistory'])
+        setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
+
+      cloudDataHydratedRef.current = true;
       setIsDataLoaded(true);
-      toast.success("Datos sincronizados con la nube");
+      toast.success('Datos sincronizados con la nube');
     };
+
     loadData();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   // Auto-save Effects
   useEffect(() => {
@@ -464,52 +606,153 @@ export default function App() {
   const handlePrevMonth = () => setCurrentDate(prev => subMonths(prev, 1));
   const handleNextMonth = () => setCurrentDate(prev => addMonths(prev, 1));
 
-  const handleLogin = (email: string, name?: string) => {
+  /** authUserId = Supabase user.id (UUID). Evita duplicados usr-… vs UUID mismo email. */
+  const handleLogin = (email: string, name?: string, authUserId?: string) => {
       const now = new Date().toISOString();
-      
+      const emailLower = email.toLowerCase();
+      const isPrivileged = SUPER_ADMIN_EMAILS.has(emailLower);
+
       setUsers(prevUsers => {
-          const existingUser = prevUsers.find(u => u.email?.toLowerCase() === email.toLowerCase());
-          
+          const sameEmail = prevUsers.filter(u => u.email?.toLowerCase() === emailLower);
+          let existingUser =
+            authUserId && sameEmail.length
+              ? sameEmail.find(u => u.id === authUserId)
+              : undefined;
+          if (!existingUser && sameEmail.length) {
+              // Preferir fila con id real de Auth (no sintético usr-…)
+              existingUser =
+                sameEmail.find(u => !String(u.id).startsWith('usr-')) ?? sameEmail[0];
+          }
+
           if (existingUser) {
-              // Bloquear acceso a usuarios inactivos
-              if (existingUser.status === 'inactive') {
+              if (existingUser.status === 'inactive' && !isPrivileged) {
                   toast.error("Tu cuenta está desactivada. Contacta al Administrador.");
                   return prevUsers;
               }
-              
-              // Actualizar lastLogin y marcar como activo
-              const updatedUser: User = { ...existingUser, lastLogin: now, status: 'active' };
-              const updatedUsers = prevUsers.map(u => u.id === existingUser.id ? updatedUser : u);
+
+              const updatedUser: User = {
+                  ...existingUser,
+                  ...(authUserId && existingUser.id !== authUserId
+                      ? { id: authUserId, name: name || existingUser.name }
+                      : { name: name || existingUser.name }),
+                  ...(isPrivileged ? { role: 'super_admin', allSedes: true } : {}),
+                  lastLogin: now,
+                  status: 'active',
+              };
+
+              // Quitar duplicados legacy (mismo email, otro id)
+              const withoutDupes = prevUsers.filter(u => {
+                  if (u.email?.toLowerCase() !== emailLower) return true;
+                  return u.id === existingUser!.id;
+              });
+
+              const updatedUsers = withoutDupes.map(u =>
+                  u.id === existingUser!.id ? updatedUser : u
+              );
               setCurrentUser(updatedUser);
               setIsAuthenticated(true);
               return updatedUsers;
           }
 
-          // Si no existe, crear usuario nuevo (caso: nuevo login desde Supabase Auth)
           const newUser: User = {
-              id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              id: authUserId || `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
               email: email,
               name: name || email.split('@')[0],
-              role: 'manager',
+              role: isPrivileged ? 'super_admin' : 'manager',
               initials: (name || email).slice(0, 2).toUpperCase(),
               lastLogin: now,
-              status: 'active'
+              status: 'active',
+              allSedes: isPrivileged ? true : undefined,
           };
-          
+
           setCurrentUser(newUser);
           setIsAuthenticated(true);
-          
+
           return [...prevUsers, newUser];
       });
   };
 
   const handleLogout = async () => {
       await supabase.auth.signOut();
+      cloudDataHydratedRef.current = false;
+      setIsDataLoaded(false);
       setIsAuthenticated(false);
       setIsProfileOpen(false);
       navigate(viewToPath('dashboard'));
   };
 
+  const handleSaveSedesCatalog = (result: SedesCatalogSaveResult) => {
+    const fallback =
+      result.entries.find((e) => e.enabled)?.name ??
+      result.entries[0]?.name ??
+      'Principal';
+    const loc = (x?: string) => migrateLocationField(x, result, fallback);
+
+    setSystemSettings((s) => ({ ...s, sedesCatalog: result.entries }));
+
+    setUsers((prev) =>
+      prev.map((u) => ({
+        ...u,
+        sedes: u.sedes?.map((sede) => result.renames[sede] ?? sede),
+        location: u.location ? loc(u.location) ?? fallback : u.location,
+      }))
+    );
+
+    setTransactions((prev) =>
+      prev.map((t) => ({
+        ...t,
+        location: t.location ? loc(t.location) ?? fallback : t.location,
+      }))
+    );
+
+    setInvoices((prev) =>
+      prev.map((inv) => ({
+        ...inv,
+        location: inv.location ? loc(inv.location) ?? fallback : inv.location,
+      }))
+    );
+
+    setRequests((prev) =>
+      prev.map((r) => ({
+        ...r,
+        location: r.location ? loc(r.location) ?? fallback : r.location,
+      }))
+    );
+
+    setPettyCashTransactions((prev) =>
+      prev.map((tx) => ({
+        ...tx,
+        location: tx.location ? loc(tx.location) ?? fallback : tx.location,
+      }))
+    );
+
+    setFeeReceipts((prev) =>
+      prev.map((fr) => ({
+        ...fr,
+        location: fr.location ? loc(fr.location) ?? fallback : fr.location,
+      }))
+    );
+
+    setRequisitions((prev) =>
+      prev.map((req) => ({
+        ...req,
+        location: req.location ? loc(req.location) ?? fallback : req.location,
+      }))
+    );
+
+    setTreasuryInvoices((prev) =>
+      prev.map((row: { location?: string } & Record<string, unknown>) => ({
+        ...row,
+        location: row.location ? loc(row.location) ?? fallback : row.location,
+      }))
+    );
+
+    setCurrentUser((cu) => ({
+      ...cu,
+      sedes: cu.sedes?.map((sede) => result.renames[sede] ?? sede),
+      location: cu.location ? loc(cu.location) ?? fallback : cu.location,
+    }));
+  };
 
   const handleUpdateTransaction = async (updatedData: any) => {
      if (!editingTransaction) return;
@@ -540,7 +783,8 @@ export default function App() {
       amount: Number(data.amount),
       type: data.type as TransactionType,
       category: data.category as Category,
-      subcategory: data.subcategory, // Asegurar que subcategory se guarde si viene
+      subcategory: data.subcategory,
+      concept: data.concept,
       description: data.description,
       date: new Date(data.date),
       providerId: data.providerId,
@@ -714,8 +958,11 @@ export default function App() {
       if (!currentUser.sedes || currentUser.sedes.length === 0) return true;
       return currentUser.sedes.includes(sede);
   };
+  const catalogSedes = getAllSedeNames(systemSettings);
+  const enabledSedesForForms = getEnabledSedeNames(systemSettings);
+  const sedesEntriesForDialog = getSedesCatalogEntries(systemSettings);
   const visibleSedes: string[] = (isSuperAdmin || currentUser.allSedes || !currentUser.sedes?.length)
-      ? [...SYSTEM_SEDES]
+      ? [...catalogSedes]
       : (currentUser.sedes || []);
   const filteredPettyCashBySede = pettyCashTransactions.filter(tx =>
       !tx.location || canSeeSede(tx.location)
@@ -1301,13 +1548,21 @@ export default function App() {
                 <UserManager 
                     users={users} 
                     roles={roles}
+                    sedesCatalog={enabledSedesForForms}
+                    knownSedeNames={catalogSedes}
+                    sedesCatalogEntries={sedesEntriesForDialog}
+                    onSaveSedesCatalog={handleSaveSedesCatalog}
                     onUpdateRoles={setRoles}
                     onUpdateUser={(updatedUser) => {
                         setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
                         toast.success("Usuario actualizado correctamente");
                     }}
                     onAddUser={(newUser) => {
-                        setUsers(prev => [...prev, newUser]);
+                        setUsers(prev => {
+                            const e = newUser.email?.toLowerCase();
+                            const rest = e ? prev.filter(u => u.email?.toLowerCase() !== e) : prev;
+                            return [...rest, newUser];
+                        });
                     }}
                     onDeleteUser={(userId) => {
                         setUsers(prev => prev.filter(u => u.id !== userId));
@@ -1326,6 +1581,7 @@ export default function App() {
               onResetData={handleResetData}
               users={users}
               onUpdateUsers={setUsers}
+              currentUser={currentUser}
             />
           )}
 

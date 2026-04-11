@@ -123,7 +123,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 interface LoginPageProps {
-  onLogin: (email: string, name?: string) => void;
+  onLogin: (email: string, name?: string, authUserId?: string) => void;
   currentTheme: "dark" | "light";
   onToggleTheme: () => void;
 }
@@ -328,10 +328,15 @@ export function LoginPage({
         toast.success("ACCESO CONCEDIDO", {
           className: "bg-background border border-primary text-primary font-mono",
         });
-        onLogin(data.email, authData.user?.user_metadata?.name);
+        onLogin(
+          data.email,
+          authData.user?.user_metadata?.name,
+          authData.user?.id
+        );
       }
     } catch (error: any) {
-      if ((data.email === "admin@grooflow.com" || data.email === "admin@vetflow.com") && data.password === "123456") {
+      const isSupabaseMode = (import.meta as any)?.env?.VITE_BACKEND === "supabase";
+      if (!isSupabaseMode && (data.email === "admin@grooflow.com" || data.email === "admin@vetflow.com") && data.password === "123456") {
         toast.success("ACCESO DEMO (OFFLINE)", {
           className: "bg-background border border-primary text-primary font-mono",
         });

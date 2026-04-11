@@ -1,5 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
-import { projectId, publicAnonKey } from "./info";
+/**
+ * Cliente único de Supabase para toda la app (misma URL y anon key que el repositorio).
+ * Evita errores "Failed to fetch" por configuración distinta entre pantallas.
+ */
+import { getSupabaseClient } from "../../src/app/services/repository/supabase";
 
-const supabaseUrl = `https://${projectId}.supabase.co`;
-export const supabase = createClient(supabaseUrl, publicAnonKey);
+export const supabase = getSupabaseClient();

@@ -3,7 +3,7 @@ import { Transaction, TransactionType, SystemSettings, InvoiceDraft } from '../.
 import { format, getDaysInMonth, startOfMonth, addDays, isSameDay, getDate, parseISO, isToday, startOfYear, eachMonthOfInterval, endOfYear, isSameMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
-import { ConfigStructure, ConceptDefinition } from '../../data/initialData';
+import { ConfigStructure, ConceptDefinition, getSubcategories } from '../../data/initialData';
 import { AlertTriangle, TrendingUp, TrendingDown, RefreshCw, CalendarCheck, ChevronRight, ChevronDown, Settings as SettingsIcon, Download, Maximize2, Minimize2, CalendarDays, CalendarRange } from 'lucide-react';
 import { Button } from '../ui/button';
 import { toast } from 'sonner';
@@ -88,40 +88,31 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
     }
   }, [startDate, daysInMonth, viewMode, startYear, currentDate]);
 
-  // Data Structure
+  // Data Structure: category -> list of { subcategoryName, concepts } (so we can show subcategory in the grid)
+  type SubcategoryRow = { subcategoryName: string; concepts: ConceptDefinition[] };
   const { incomeStructure, expenseStructure } = useMemo(() => {
-    const incStructure = new Map<string, ConceptDefinition[]>();
-    const expStructure = new Map<string, ConceptDefinition[]>();
-    
+    const incStructure = new Map<string, SubcategoryRow[]>();
+    const expStructure = new Map<string, SubcategoryRow[]>();
     Object.entries(config).forEach(([cat, def]) => {
       const targetMap = def.type === 'income' ? incStructure : expStructure;
-      targetMap.set(cat, def.concepts);
+      const subs = getSubcategories(def, cat);
+      targetMap.set(cat, subs.map(s => ({ subcategoryName: s.name, concepts: s.concepts })));
     });
-
     return { incomeStructure: incStructure, expenseStructure: expStructure };
   }, [config]);
 
-  // Helper Functions
+  // Helper: match row by concept (new) or by subcategory when concept is legacy
   const getAmount = (category: string, conceptName: string, date: Date) => {
-    if (viewMode === 'daily') {
-        // Daily: Match exact date
-        return transactions
-        .filter(t => 
-            t.category === category && 
-            (t.subcategory === conceptName || (!t.subcategory && conceptName === 'General')) &&
-            isSameDay(new Date(t.date), date)
-        )
-        .reduce((sum, t) => sum + Number(t.amount), 0);
-    } else {
-        // Annual: Match month
-        return transactions
-        .filter(t => 
-            t.category === category && 
-            (t.subcategory === conceptName || (!t.subcategory && conceptName === 'General')) &&
-            isSameMonth(new Date(t.date), date)
-        )
-        .reduce((sum, t) => sum + Number(t.amount), 0);
-    }
+    const dateMatch = viewMode === 'daily'
+      ? (t: Transaction) => isSameDay(new Date(t.date), date)
+      : (t: Transaction) => isSameMonth(new Date(t.date), date);
+    return transactions
+      .filter(t =>
+        t.category === category &&
+        (t.concept === conceptName || (!t.concept && t.subcategory === conceptName)) &&
+        dateMatch(t)
+      )
+      .reduce((sum, t) => sum + Number(t.amount), 0);
   };
 
   const getPeriodTotal = (type: 'income' | 'expense', date: Date) => {
@@ -233,21 +224,24 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
     const currentMonth = currentDate.getMonth();
 
     Object.entries(config).forEach(([catName, catDef]) => {
-      catDef.concepts.forEach(concept => {
-        if (concept.defaultDay) {
-          const date = new Date(currentYear, currentMonth, concept.defaultDay);
-          if (date.getMonth() !== currentMonth) return;
-
-          newTxs.push({
-            id: Math.random().toString(36).substr(2, 9),
-            amount: 0,
-            type: catDef.type,
-            category: catName as any,
-            subcategory: concept.name,
-            description: 'Proyección Automática',
-            date: date
-          });
-        }
+      const subs = getSubcategories(catDef, catName);
+      subs.forEach(sub => {
+        sub.concepts.forEach(concept => {
+          if (concept.defaultDay) {
+            const date = new Date(currentYear, currentMonth, concept.defaultDay);
+            if (date.getMonth() !== currentMonth) return;
+            newTxs.push({
+              id: Math.random().toString(36).substr(2, 9),
+              amount: 0,
+              type: catDef.type,
+              category: catName as any,
+              subcategory: subs.length > 1 ? sub.name : undefined,
+              concept: concept.name,
+              description: 'Proyección Automática',
+              date: date
+            });
+          }
+        });
       });
     });
 
@@ -276,15 +270,15 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
       return columns.reduce((sum, date) => sum + getAmount(category, conceptName, date), 0);
   };
 
-  const getCategoryTotal = (category: string, concepts: ConceptDefinition[]) => {
-      return concepts.reduce((acc, c) => acc + getRowTotal(category, c.name), 0);
+  const getCategoryTotal = (category: string, subcategoryRows: SubcategoryRow[]) => {
+      return subcategoryRows.reduce((acc, row) => acc + row.concepts.reduce((a, c) => a + getRowTotal(category, c.name), 0), 0);
   };
 
   const getSectionTotal = (type: 'income' | 'expense') => {
       return columns.reduce((sum, date) => sum + getPeriodTotal(type, date), 0);
   };
 
-  const renderSection = (structure: Map<string, ConceptDefinition[]>, title: string, isIncome: boolean) => {
+  const renderSection = (structure: Map<string, SubcategoryRow[]>, title: string, isIncome: boolean) => {
     const entries = Array.from(structure.entries());
     if (entries.length === 0) return null;
 
@@ -313,11 +307,11 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
             </tr>
         </tbody>
 
-        {entries.map(([category, concepts]) => {
+        {entries.map(([category, subcategoryRows]) => {
           const categoryColor = isIncome ? '#34d399' : '#fb7185';
           const headerBg = isIncome ? 'rgba(34,211,238,0.05)' : 'rgba(251,113,133,0.05)';
           const isExpanded = expandedCategories.has(category);
-          const categoryTotal = getCategoryTotal(category, concepts);
+          const categoryTotal = getCategoryTotal(category, subcategoryRows);
 
           return (
             <tbody key={category} className="divide-y divide-border border-t border-border">
@@ -338,7 +332,7 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
                     </span>
                 </td>
                  {columns.map(date => {
-                     const val = concepts.reduce((acc, c) => acc + getAmount(category, c.name, date), 0);
+                     const val = subcategoryRows.reduce((acc, row) => acc + row.concepts.reduce((a, c) => a + getAmount(category, c.name, date), 0), 0);
                      return (
                       <td key={`total-${category}-${date.toISOString()}`} className="p-2 text-right border-r border-border tabular-nums text-foreground/80">
                          {val !== 0 ? formatMoney(Math.abs(val), true) : ''}
@@ -350,44 +344,48 @@ export function CashFlowGrid({ transactions, currentDate = new Date(), config, s
                  </td>
               </tr>
 
-              {isExpanded && concepts.map((concept, index) => {
-                const rowTotal = getRowTotal(category, concept.name);
-                return (
-                  <tr key={`${category}-${concept.id}`} className="hover:bg-muted/30 transition-colors group animate-in fade-in slide-in-from-top-1 duration-200">
-                    <td className={`sticky left-0 z-10 p-2 border-r border-border w-[40px] ${headerBg} opacity-50`}></td>
-                    
-                    <td className="sticky left-[40px] z-10 bg-card p-2 border-r border-border font-medium text-foreground truncate w-[260px] pl-6 border-l-4 border-l-transparent group-hover:border-l-primary/50 transition-all text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground truncate mr-2" title={concept.name}>{concept.name}</span>
-                        {!isIncome && (
-                           <span className={`text-[9px] px-1 py-0.5 rounded border uppercase tracking-wider shrink-0 ${concept.flexibility === 'fixed' ? 'border-red-500/30 text-red-500' : 'border-blue-500/30 text-blue-500'}`}>
-                             {concept.flexibility === 'fixed' ? 'Fijo' : 'Flex'}
-                           </span>
-                        )}
-                      </div>
-                    </td>
-                    {columns.map(date => {
-                       const val = getAmount(category, concept.name, date);
-                       const isCurrent = viewMode === 'daily' ? isToday(date) : isSameMonth(date, new Date());
-                       return (
-                        <td key={date.toISOString()} className={clsx(
-                            "p-2 text-right border-r border-border/40 tabular-nums text-xs transition-colors",
-                            isCurrent && "bg-blue-50/50 dark:bg-blue-900/10"
-                        )}>
-                          {val !== 0 && (
-                            <span className="text-foreground">
-                              {formatMoney(Math.abs(val))}
+              {isExpanded && subcategoryRows.flatMap((row) =>
+                row.concepts.map((concept) => {
+                  const rowTotal = getRowTotal(category, concept.name);
+                  return (
+                    <tr key={`${category}-${row.subcategoryName}-${concept.id}`} className="hover:bg-muted/30 transition-colors group animate-in fade-in slide-in-from-top-1 duration-200">
+                      <td className={`sticky left-0 z-10 p-2 border-r border-border w-[40px] ${headerBg} opacity-50`}></td>
+                      <td className="sticky left-[40px] z-10 bg-card p-2 border-r border-border font-medium text-foreground truncate w-[260px] pl-6 border-l-4 border-l-transparent group-hover:border-l-primary/50 transition-all text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="truncate mr-2" title={`${row.subcategoryName} — ${concept.name}`}>
+                            <span className="text-muted-foreground">{row.subcategoryName}</span>
+                            <span className="text-foreground ml-1.5">{concept.name}</span>
+                          </span>
+                          {!isIncome && (
+                            <span className={`text-[9px] px-1 py-0.5 rounded border uppercase tracking-wider shrink-0 ${concept.flexibility === 'fixed' ? 'border-red-500/30 text-red-500' : 'border-blue-500/30 text-blue-500'}`}>
+                              {concept.flexibility === 'fixed' ? 'Fijo' : 'Flex'}
                             </span>
                           )}
-                        </td>
-                       );
-                    })}
-                    <td className="sticky right-0 z-10 bg-muted/10 p-2 text-right font-bold border-l border-border text-xs text-foreground/70">
-                        {formatMoney(Math.abs(rowTotal))}
-                    </td>
-                  </tr>
-                );
-              })}
+                        </div>
+                      </td>
+                      {columns.map(date => {
+                         const val = getAmount(category, concept.name, date);
+                         const isCurrent = viewMode === 'daily' ? isToday(date) : isSameMonth(date, new Date());
+                         return (
+                          <td key={date.toISOString()} className={clsx(
+                              "p-2 text-right border-r border-border/40 tabular-nums text-xs transition-colors",
+                              isCurrent && "bg-blue-50/50 dark:bg-blue-900/10"
+                          )}>
+                            {val !== 0 && (
+                              <span className="text-foreground">
+                                {formatMoney(Math.abs(val))}
+                              </span>
+                            )}
+                          </td>
+                         );
+                      })}
+                      <td className="sticky right-0 z-10 bg-muted/10 p-2 text-right font-bold border-l border-border text-xs text-foreground/70">
+                          {formatMoney(Math.abs(rowTotal))}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           );
         })}

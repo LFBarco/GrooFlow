@@ -1,4 +1,4 @@
-import { SystemSettings } from '../types';
+import { SystemSettings, SYSTEM_SEDES, type SedeCatalogEntry } from '../types';
 
 export type TransactionType = 'income' | 'expense';
 export type Flexibility = 'fixed' | 'flexible';
@@ -11,20 +11,50 @@ export interface ConceptDefinition {
   estimatedAmount?: number; // Opcional, para pre-llenar
 }
 
+export interface SubcategoryDefinition {
+  id: string;
+  name: string;
+  concepts: ConceptDefinition[];
+}
+
 export interface CategoryDefinition {
   type: TransactionType;
-  concepts: ConceptDefinition[];
+  /** @deprecated Use subcategories. If present, treated as one subcategory "General". */
+  concepts?: ConceptDefinition[];
+  /** Subcategories (e.g. Agua, Luz). Each has its own concepts. */
+  subcategories?: SubcategoryDefinition[];
 }
 
 export type ConfigStructure = Record<string, CategoryDefinition>;
 
-// Helper to create concepts with stable IDs (derived from name, not random)
-const c = (name: string, flex: Flexibility = 'flexible', day?: number): ConceptDefinition => ({
-  id: name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 32),
+/** Returns subcategories for a category. If only `concepts` exist, returns one virtual subcategory "General". */
+export function getSubcategories(catDef: CategoryDefinition, categoryName?: string): SubcategoryDefinition[] {
+  if (catDef.subcategories?.length) return catDef.subcategories;
+  const concepts = catDef.concepts ?? [];
+  return [{
+    id: 'general',
+    name: categoryName ?? 'General',
+    concepts
+  }];
+}
+
+/** Flatten: all concepts for a category (from all subcategories). */
+export function getConceptsFlat(catDef: CategoryDefinition): ConceptDefinition[] {
+  const subs = getSubcategories(catDef);
+  return subs.flatMap(s => s.concepts);
+}
+
+// Helper to create concepts with stable IDs (derived from name, or custom id for uniqueness across subcategories)
+const c = (name: string, flex: Flexibility = 'flexible', day?: number, customId?: string): ConceptDefinition => ({
+  id: customId ?? name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 32),
   name,
   flexibility: flex,
   defaultDay: day
 });
+
+export function subcategoryId(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 32);
+}
 
 export const initialStructure: ConfigStructure = {
   'Ingresos': {
@@ -39,17 +69,11 @@ export const initialStructure: ConfigStructure = {
   },
   'Servicios Básicos': {
     type: 'expense',
-    concepts: [
-      c('(1) Alquiler Chavez', 'fixed', 5),
-      c('(2) Alquiler San Borja', 'fixed', 5),
-      c('(3) Alquiler Benavides', 'fixed', 5),
-      c('(4) Alquiler Magdalena', 'fixed', 5),
-      c('(5) Alquiler La molina', 'fixed', 5),
-      c('(1) Luz La Molina', 'fixed', 15),
-      c('(2) Luz San Borja', 'fixed', 15),
-      c('TELEFONO - ENTEL', 'fixed', 20),
-      c('INTERNET - WIN', 'fixed', 20),
-      c('VIGILANCIA - PROSEGUR', 'fixed', 30)
+    subcategories: [
+      { id: 'agua', name: 'Agua', concepts: [ c('Benavides', 'fixed', 10, 'agua-benavides'), c('Miraflores', 'fixed', 10, 'agua-miraflores'), c('San Borja', 'fixed', 10, 'agua-san-borja') ] },
+      { id: 'alquiler', name: 'Alquiler', concepts: [ c('Chavez', 'fixed', 5), c('San Borja', 'fixed', 5, 'alquiler-san-borja'), c('Benavides', 'fixed', 5, 'alquiler-benavides'), c('Magdalena', 'fixed', 5), c('La Molina', 'fixed', 5, 'alquiler-la-molina') ] },
+      { id: 'luz', name: 'Luz', concepts: [ c('La Molina', 'fixed', 15, 'luz-la-molina'), c('San Borja', 'fixed', 15, 'luz-san-borja') ] },
+      { id: 'otros', name: 'Otros', concepts: [ c('TELEFONO - ENTEL', 'fixed', 20), c('INTERNET - WIN', 'fixed', 20), c('VIGILANCIA - PROSEGUR', 'fixed', 30) ] }
     ]
   },
   'Planilla': {
@@ -96,6 +120,9 @@ export const initialStructure: ConfigStructure = {
 
 export const initialSystemSettings: SystemSettings = {
   businessName: 'GrooFlow',
+  sedesCatalog: SYSTEM_SEDES.map(
+    (name): SedeCatalogEntry => ({ name, enabled: true })
+  ),
   currency: 'PEN',
   initialBalance: 0,
   initialBalanceDate: '2025-01-01',

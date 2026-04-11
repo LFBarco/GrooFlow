@@ -49,7 +49,7 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
     monthTransactions.forEach(t => {
       const targetMap = t.type === 'income' ? incomeGroups : expenseGroups;
       const category = t.category;
-      const concept = t.subcategory || 'General';
+      const concept = t.concept || t.subcategory || 'General';
 
       if (!targetMap.has(category)) {
         targetMap.set(category, { total: 0, concepts: new Map() });
