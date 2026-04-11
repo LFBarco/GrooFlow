@@ -19,3 +19,6 @@ Thumbs.db
 
 # Optional
 *.local
+supabase/.temp/
+tmp_public_data.sql
+tools/
