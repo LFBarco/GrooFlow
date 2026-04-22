@@ -325,6 +325,9 @@ export function LoginPage({
       });
       if (error) throw error;
       if (authData.session) {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('grooflow_local_session');
+        }
         toast.success("ACCESO CONCEDIDO", {
           className: "bg-background border border-primary text-primary font-mono",
         });
@@ -337,6 +340,9 @@ export function LoginPage({
     } catch (error: any) {
       const isSupabaseMode = (import.meta as any)?.env?.VITE_BACKEND === "supabase";
       if (!isSupabaseMode && (data.email === "admin@grooflow.com" || data.email === "admin@vetflow.com") && data.password === "123456") {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('grooflow_local_session', '1');
+        }
         toast.success("ACCESO DEMO (OFFLINE)", {
           className: "bg-background border border-primary text-primary font-mono",
         });
@@ -353,6 +359,7 @@ export function LoginPage({
       toast.error(errorMessage, {
         className: "bg-background border border-destructive text-destructive font-mono",
       });
+    } finally {
       setIsLoading(false);
     }
   };

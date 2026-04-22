@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { PettyCashTransaction } from "../../types";
+import { useState, useMemo, useEffect } from "react";
+import type { PettyCashTransaction, PettyCashWeekClosure, User } from "../../types";
+import { getOpeningFundForWeek } from "../../utils/pettyCashWeekOpening";
 import { Card, CardHeader, CardTitle, CardContent } from "../ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Badge } from "../ui/badge";
@@ -8,51 +9,172 @@ import { Input } from "../ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowUpCircle, ArrowDownCircle, Wallet, Filter, Building2, Calendar, FileText, User } from "lucide-react";
+import { ArrowUpCircle, ArrowDownCircle, Wallet, Filter, Building2, Calendar, Tag, Layers } from "lucide-react";
+import {
+  getPettyCashRowType,
+  isReplenishmentIncome,
+  isAdminTopUpIncome,
+} from "../../utils/pettyCashAudit";
 
 interface CashMovementsProps {
   transactions: PettyCashTransaction[];
+  /** Sedes que el usuario puede ver (catálogo habilitado ∩ asignadas). */
+  visibleSedes: string[];
+  /** Si false, no se ofrece opción "Consolidado (todas)" en el filtro. */
+  canUseConsolidatedOption?: boolean;
+  commercialCategories?: string[];
+  commercialAreas?: string[];
+  /** Cierres de semana (para sumar fondo de apertura en la tarjeta de asignaciones). */
+  weekClosures?: PettyCashWeekClosure[];
+  /** Usuarios con límite de caja chica por responsable. */
+  custodianUsers?: User[];
+  /** Límite global de fondo si el responsable no tiene límite propio. */
+  defaultFundLimit?: number;
 }
 
-export function CashMovements({ transactions }: CashMovementsProps) {
+function auditStatusLabel(s: PettyCashTransaction["status"]): string {
+  switch (s) {
+    case "approved":
+      return "Aprobado";
+    case "pending_audit":
+      return "Pend. aud.";
+    case "rejected":
+      return "Rechazado";
+    case "voided":
+      return "Anulado";
+    default:
+      return s;
+  }
+}
+
+export function CashMovements({
+  transactions,
+  visibleSedes,
+  canUseConsolidatedOption = true,
+  commercialCategories = [],
+  commercialAreas = [],
+  weekClosures,
+  custodianUsers,
+  defaultFundLimit,
+}: CashMovementsProps) {
   const [dateStart, setDateStart] = useState("");
   const [dateEnd, setDateEnd] = useState("");
-  const [sede, setSede] = useState("consolidated"); // consolidated, Principal, Norte, Sur
+  const [areaFilter, setAreaFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const defaultSede =
+    canUseConsolidatedOption && visibleSedes.length > 1
+      ? "consolidated"
+      : visibleSedes[0] || "Principal";
+  const [sede, setSede] = useState(defaultSede);
+
+  const sedeFilterList = useMemo(() => {
+    const bases = visibleSedes.length > 0 ? visibleSedes : ["Principal"];
+    if (canUseConsolidatedOption && bases.length > 1) {
+      return [{ value: "consolidated", label: "Consolidado (todas)" }, ...bases.map((s) => ({ value: s, label: s }))];
+    }
+    return bases.map((s) => ({ value: s, label: s }));
+  }, [visibleSedes, canUseConsolidatedOption]);
+
+  useEffect(() => {
+    const allowed = new Set(sedeFilterList.map((x) => x.value));
+    if (!allowed.has(sede)) {
+      setSede(sedeFilterList[0]?.value ?? "Principal");
+    }
+  }, [sedeFilterList, sede]);
 
   // Filter Logic
-  const filteredTransactions = transactions.filter(t => {
-    // Exclude voided/rejected from calculation/view
-    if (t.status === 'voided' || t.status === 'rejected') return false;
+  const filteredTransactions = useMemo(() => {
+    return transactions
+      .filter((t) => {
+        if (t.status === "voided" || t.status === "rejected") return false;
 
-    const tDate = new Date(t.date);
-    const start = dateStart ? new Date(dateStart) : null;
-    if(start) start.setHours(0,0,0,0);
-    
-    const end = dateEnd ? new Date(dateEnd) : null;
-    if(end) end.setHours(23,59,59,999);
+        const tDate = new Date(t.date);
+        const start = dateStart ? new Date(dateStart) : null;
+        if (start) start.setHours(0, 0, 0, 0);
 
-    const dateMatch = (!start || tDate >= start) && (!end || tDate <= end);
-    const sedeMatch = sede === "consolidated" || (t.location || 'Principal') === sede; // Default to Principal if no location
+        const end = dateEnd ? new Date(dateEnd) : null;
+        if (end) end.setHours(23, 59, 59, 999);
 
-    return dateMatch && sedeMatch;
-  }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const dateMatch = (!start || tDate >= start) && (!end || tDate <= end);
+        const loc = (t.location || "Principal").trim();
+        const sedeMatch =
+          sede === "consolidated"
+            ? visibleSedes.length === 0 || visibleSedes.includes(loc)
+            : loc === sede;
 
-  // Calculate Totals
-  const totalIncome = filteredTransactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
+        if (areaFilter !== "all" && (t.area || "") !== areaFilter) return false;
+        if (categoryFilter !== "all" && (t.category || "") !== categoryFilter) return false;
+
+        return dateMatch && sedeMatch;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [
+    transactions,
+    dateStart,
+    dateEnd,
+    sede,
+    visibleSedes,
+    areaFilter,
+    categoryFilter,
+  ]);
+
+  const includeOpeningInAssignments =
+    Array.isArray(weekClosures) &&
+    (custodianUsers?.length ?? 0) > 0 &&
+    typeof defaultFundLimit === "number" &&
+    defaultFundLimit > 0 &&
+    areaFilter === "all" &&
+    categoryFilter === "all";
+
+  const openingFundsTotal = useMemo(() => {
+    if (!includeOpeningInAssignments || !custodianUsers?.length) return 0;
+    const uniq = new Map<string, { cid: string; w: string }>();
+    for (const t of filteredTransactions) {
+      if (!t.custodianId) continue;
+      const k = `${t.custodianId}|${String(t.weekNumber)}`;
+      if (!uniq.has(k)) uniq.set(k, { cid: t.custodianId, w: String(t.weekNumber) });
+    }
+    let sum = 0;
+    for (const { cid, w } of uniq.values()) {
+      const u = custodianUsers.find((x) => x.id === cid);
+      const lim =
+        u?.pettyCashLimit && u.pettyCashLimit > 0 ? u.pettyCashLimit : defaultFundLimit!;
+      sum += getOpeningFundForWeek(cid, w, weekClosures, lim);
+    }
+    return sum;
+  }, [
+    includeOpeningInAssignments,
+    filteredTransactions,
+    custodianUsers,
+    weekClosures,
+    defaultFundLimit,
+  ]);
+
+  // Calculate Totals (ingresos = fila normalizada; incluye legado KV)
+  const replenishmentIncome = filteredTransactions
+    .filter((t) => isReplenishmentIncome(t))
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const adminTopupIncome = filteredTransactions
+    .filter((t) => isAdminTopUpIncome(t))
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const explicitIncomeTotal = filteredTransactions
+    .filter((t) => getPettyCashRowType(t) === "income")
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const otherIncomeTotal = Math.max(0, explicitIncomeTotal - replenishmentIncome - adminTopupIncome);
+
+  const totalAssignments = explicitIncomeTotal + openingFundsTotal;
 
   const totalExpense = filteredTransactions
-    .filter(t => t.type === 'expense' || !t.type) // Default to expense if undefined (backward compatibility)
-    .reduce((sum, t) => sum + t.amount, 0);
-    
-  const net = totalIncome - totalExpense;
+    .filter((t) => getPettyCashRowType(t) === "expense")
+    .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  const net = totalAssignments - totalExpense;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
         {/* Header & Filters */}
-        <div className="flex flex-col md:flex-row justify-end gap-4">
-            <div className="flex flex-wrap items-center gap-2 bg-card p-2 rounded-lg border shadow-sm">
+        <div className="flex flex-col md:flex-row md:justify-end gap-4 w-full">
+            <div className="flex flex-wrap items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full md:w-auto">
                 <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-muted-foreground" />
                     <Select value={sede} onValueChange={setSede}>
@@ -60,14 +182,51 @@ export function CashMovements({ transactions }: CashMovementsProps) {
                             <SelectValue placeholder="Seleccionar Sede" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="consolidated">Consolidado (Todas)</SelectItem>
-                            <SelectItem value="Principal">Sede Principal</SelectItem>
-                            <SelectItem value="Norte">Sede Norte</SelectItem>
-                            <SelectItem value="Sur">Sede Sur</SelectItem>
+                            {sedeFilterList.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                 </div>
                 
+                <div className="h-4 w-px bg-border mx-2 hidden md:block"></div>
+
+                <div className="flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-muted-foreground" />
+                    <Select value={areaFilter} onValueChange={setAreaFilter}>
+                        <SelectTrigger className="w-[150px]">
+                            <SelectValue placeholder="Área" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las áreas</SelectItem>
+                            {commercialAreas.map((a) => (
+                                <SelectItem key={a} value={a}>
+                                    {a}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-muted-foreground" />
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                        <SelectTrigger className="w-[160px]">
+                            <SelectValue placeholder="Categoría" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las categorías</SelectItem>
+                            {commercialCategories.map((c) => (
+                                <SelectItem key={c} value={c}>
+                                    {c}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
                 <div className="h-4 w-px bg-border mx-2 hidden md:block"></div>
 
                 <div className="flex items-center gap-2">
@@ -87,14 +246,20 @@ export function CashMovements({ transactions }: CashMovementsProps) {
                     />
                 </div>
 
-                {(dateStart || dateEnd || sede !== 'consolidated') && (
+                {(dateStart ||
+                    dateEnd ||
+                    areaFilter !== "all" ||
+                    categoryFilter !== "all" ||
+                    sede !== defaultSede) && (
                     <Button 
                         variant="ghost" 
                         size="sm"
                         onClick={() => {
                             setDateStart("");
                             setDateEnd("");
-                            setSede("consolidated");
+                            setAreaFilter("all");
+                            setCategoryFilter("all");
+                            setSede(defaultSede);
                         }}
                         className="ml-2 text-muted-foreground hover:text-primary"
                     >
@@ -109,11 +274,54 @@ export function CashMovements({ transactions }: CashMovementsProps) {
             <Card className="border-l-4 border-l-green-500">
                 <CardContent className="pt-6">
                     <div className="flex justify-between items-start">
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">Reposiciones (Ingresos)</p>
-                            <h3 className="text-2xl font-bold text-green-600">S/ {totalIncome.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</h3>
+                        <div className="space-y-1">
+                            <p className="text-sm font-medium text-muted-foreground">
+                                Asignaciones al fondo (total)
+                            </p>
+                            <h3 className="text-2xl font-bold text-green-600">
+                                S/ {totalAssignments.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            </h3>
+                            <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
+                                {openingFundsTotal > 0 ? (
+                                    <p>
+                                        Apertura de fondo (semanas en vista): S/{" "}
+                                        {openingFundsTotal.toLocaleString("es-PE", {
+                                            minimumFractionDigits: 2,
+                                        })}
+                                    </p>
+                                ) : null}
+                                {explicitIncomeTotal > 0 ? (
+                                    <p>
+                                        Ingresos registrados (reposición / refuerzos): S/{" "}
+                                        {explicitIncomeTotal.toLocaleString("es-PE", {
+                                            minimumFractionDigits: 2,
+                                        })}
+                                    </p>
+                                ) : null}
+                                {replenishmentIncome > 0 ? (
+                                    <p>— Reposiciones: S/ {replenishmentIncome.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
+                                ) : null}
+                                {adminTopupIncome > 0 ? (
+                                    <p className="text-amber-700 dark:text-amber-400">
+                                        — Refuerzos admin.: S/ {adminTopupIncome.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                    </p>
+                                ) : null}
+                                {otherIncomeTotal > 0 ? (
+                                    <p>— Otros ingresos: S/ {otherIncomeTotal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}</p>
+                                ) : null}
+                                {totalAssignments === 0 ? (
+                                    <p>Sin asignaciones con los filtros actuales (ni aperturas ni ingresos).</p>
+                                ) : null}
+                                {!includeOpeningInAssignments &&
+                                (areaFilter !== "all" || categoryFilter !== "all") ? (
+                                    <p className="text-[11px] pt-1 italic">
+                                        Con filtro por área o categoría no se suma el fondo de apertura de semana (solo ingresos
+                                        registrados).
+                                    </p>
+                                ) : null}
+                            </div>
                         </div>
-                        <div className="p-2 bg-green-100 rounded-full">
+                        <div className="p-2 bg-green-100 rounded-full shrink-0">
                             <ArrowUpCircle className="w-6 h-6 text-green-600" />
                         </div>
                     </div>
@@ -162,30 +370,42 @@ export function CashMovements({ transactions }: CashMovementsProps) {
                     Registros Detallados {sede !== 'consolidated' ? ` - ${sede}` : ' - Consolidado'}
                 </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
                 <Table>
                     <TableHeader>
                         <TableRow>
                             <TableHead>Fecha</TableHead>
                             <TableHead>Sede</TableHead>
-                            <TableHead>Descripción / Comprobante</TableHead>
                             <TableHead>Categoría</TableHead>
-                            <TableHead>Solicitante</TableHead>
-                            <TableHead>Tipo</TableHead>
+                            <TableHead>Área</TableHead>
+                            <TableHead>Tipo Doc.</TableHead>
+                            <TableHead>Serie</TableHead>
+                            <TableHead>Nro documento</TableHead>
+                            <TableHead>Nombre</TableHead>
+                            <TableHead>Auditoría</TableHead>
                             <TableHead className="text-right">Monto</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {filteredTransactions.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                                     No se encontraron movimientos de caja chica con los filtros seleccionados.
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            filteredTransactions.map((t) => (
+                            filteredTransactions.map((t) => {
+                                const rowType = getPettyCashRowType(t);
+                                const tipoDoc =
+                                    t.receiptType || (rowType === "income" ? "Reposición" : "—");
+                                const serie = t.docSeries?.trim() || '—';
+                                const nroDoc =
+                                    t.voucherNumber?.trim() || t.receiptNumber?.trim() || '—';
+                                const nombre =
+                                    t.providerName?.trim() || t.requester || '—';
+                                return (
                                 <TableRow key={t.id}>
-                                    <TableCell className="font-medium text-xs">
+                                    <TableCell className="font-medium text-xs whitespace-nowrap">
                                         {format(new Date(t.date), "dd/MM/yyyy HH:mm", { locale: es })}
                                     </TableCell>
                                     <TableCell>
@@ -193,39 +413,34 @@ export function CashMovements({ transactions }: CashMovementsProps) {
                                             {t.location || 'Principal'}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>
-                                        <div className="text-sm">{t.description}</div>
-                                        {t.receiptNumber && (
-                                            <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                                                <FileText className="w-3 h-3" />
-                                                Ref: {t.receiptNumber}
+                                    <TableCell className="text-xs max-w-[120px] truncate" title={t.category}>
+                                        {t.category}
+                                    </TableCell>
+                                    <TableCell className="text-xs max-w-[100px] truncate" title={t.area}>
+                                        {t.area || '—'}
+                                    </TableCell>
+                                    <TableCell className="text-xs">{tipoDoc}</TableCell>
+                                    <TableCell className="text-xs font-mono">{serie}</TableCell>
+                                    <TableCell className="text-xs font-mono">{nroDoc}</TableCell>
+                                    <TableCell className="text-sm max-w-[220px]">
+                                        <div className="truncate font-medium" title={nombre}>{nombre}</div>
+                                        {t.description ? (
+                                            <div className="text-[11px] text-muted-foreground truncate" title={t.description}>
+                                                {t.description}
                                             </div>
-                                        )}
+                                        ) : null}
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="secondary" className="font-normal">
-                                            {t.category}
+                                        <Badge variant="outline" className="text-[10px] font-normal">
+                                            {auditStatusLabel(t.status)}
                                         </Badge>
                                     </TableCell>
-                                    <TableCell>
-                                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                                            <User className="w-3 h-3" />
-                                            {t.requester}
-                                        </div>
-                                    </TableCell>
-                                    <TableCell>
-                                        <Badge 
-                                            variant={t.type === 'income' ? 'default' : 'destructive'}
-                                            className={t.type === 'income' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                                        >
-                                            {t.type === 'income' ? 'Reposición' : 'Gasto'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell className={`text-right font-bold ${t.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                        {t.type === 'income' ? '+' : '-'} S/ {t.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                    <TableCell className={`text-right font-bold whitespace-nowrap ${rowType === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                                        {rowType === 'income' ? '+' : '-'} S/ {(Number(t.amount) || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                                     </TableCell>
                                 </TableRow>
-                            ))
+                                );
+                            })
                         )}
                     </TableBody>
                 </Table>

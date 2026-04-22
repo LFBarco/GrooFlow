@@ -91,7 +91,15 @@ export function UserMenu({
                     </DropdownMenuItem>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator className="bg-white/10" />
-                <DropdownMenuItem onClick={onLogout} className="text-red-500 focus:text-red-600 focus:bg-red-500/10 cursor-pointer">
+                <DropdownMenuItem
+                    onSelect={() => {
+                        /** Defer hasta después del cierre del menú (Radix) para que signOut no compita con el desmontaje. */
+                        setTimeout(() => {
+                            void onLogout();
+                        }, 0);
+                    }}
+                    className="text-red-500 focus:text-red-600 focus:bg-red-500/10 cursor-pointer"
+                >
                     <LogOut className="mr-2 h-4 w-4" />
                     <span>Cerrar Sesión</span>
                 </DropdownMenuItem>

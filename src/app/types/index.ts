@@ -72,6 +72,10 @@ export interface Provider {
   bankName?: string;    // Nuevo: Banco
   bankAccount?: string; // Nuevo: N° de Cuenta / CCI
   defaultExpenseCategory?: string; // Nuevo: Para automatizar clasificación en flujo de caja
+  /** Código de cuenta de gasto en tu plan (se valida contra plan de cuentas si está cargado). */
+  accountingAccount?: string;
+  /** Origen del alta para auditoría. */
+  registeredVia?: 'full' | 'petty_cash_simple';
   totalPurchased?: number; // Campo calculado para analítica
   type?: 'Mercaderia' | 'Servicios' | 'Médico Externo'; // Nuevo: Tipo de proveedor
   specialty?: string; // Nuevo: Solo para 'Médico Externo'
@@ -158,28 +162,86 @@ export interface PettyCashTransaction {
     description: string;
     amount: number;
     type: 'income' | 'expense'; // Ingreso (Reposición) o Egreso
+    /** Solo ingresos: reposición normal vs refuerzo de fondo por administración. */
+    incomeSubtype?: 'replenishment' | 'admin_topup';
     location?: string; // Sede
-    category: 'Movilidad' | 'Refrigerio' | 'Insumos Limpieza' | 'Material Oficina' | 'Mantenimiento Menor' | 'Otros' | 'Reposición';
+    /** Motivo/categoría comercial: sincronizado con Configuración → Contabilidad → Catálogo. */
+    category: string;
     requester: string; // Quien solicitó el dinero
     custodianId?: string; // Usuario responsable del fondo (Caja Chica)
     receiptNumber?: string;
     status: 'pending_audit' | 'approved' | 'rejected' | 'voided';
     weekNumber: number | string; 
-    receiptType?: 'Boleta' | 'Factura' | 'RXH' | 'Recibo Simple';
-    
+    receiptType?:
+      | 'Boleta'
+      | 'Factura'
+      | 'RXH'
+      | 'Recibo Simple'
+      | 'Planilla de Movilidad';
+    /** Fecha del comprobante; si no se indica, se usa `date` en export contable. */
+    documentDate?: Date | string;
+
+    /** Serie del comprobante de pago (ej. F001, B002). */
+    docSeries?: string;
+    /** Número / correlativo del comprobante (no confundir con N° de RUC/DNI). */
+    voucherNumber?: string;
+
     // Nuevos campos
     docType?: 'RUC' | 'DNI' | 'CE';
+    /** N° RUC / DNI / CE del proveedor o emisor. */
     docNumber?: string;
     providerName?: string;
     area?: string;
     isExtraExpense?: boolean;
     amountBI?: number;
     igv?: number;
+    /** Motivo u observación de auditoría (ej. al rechazar). */
+    auditComment?: string;
 }
 
 export interface PettyCashFund {
     totalLimit: number;
     currentBalance: number;
+}
+
+/** Pre-cierre: el responsable presenta la semana para revisión; no bloquea nuevos gastos ni congela saldo. */
+export interface PettyCashWeekPreClosure {
+    id: string;
+    custodianId: string;
+    weekNumber: string;
+    preClosedAt: string;
+    preClosedByUserId?: string;
+}
+
+/** Cierre de semana de caja chica por responsable (arrastre de saldo a la semana siguiente). */
+export interface PettyCashWeekClosure {
+    id: string;
+    custodianId: string;
+    /** Mismo criterio que `PettyCashTransaction.weekNumber` (p. ej. `format(date, 'w')`). */
+    weekNumber: string;
+    closedAt: string;
+    /** Fondo con el que se abrió la semana al cerrar (para auditoría). */
+    openingFund: number;
+    /** Total gastado en la semana (egresos válidos). */
+    expensesTotal: number;
+    /** Saldo al cierre = openingFund - expensesTotal (≥ 0). */
+    closingBalance: number;
+    /** Lo que arranca la semana siguiente: igual a closingBalance si > 0; si es 0, la siguiente usa el límite configurado. */
+    carriedForward: number;
+}
+
+/** Formato de impresión de rendición (solo super_admin edita en Configuración). */
+export interface PettyCashRenditionPrintSettings {
+  documentTitle: string;
+  subtitle: string;
+  showSedeColumn: boolean;
+  showRequesterColumn: boolean;
+  showAreaColumn: boolean;
+  showCategoryBreakdown: boolean;
+  showSignaturesBlock: boolean;
+  footerLegal: string;
+  /** Logo en data URL (PNG/JPEG/WebP) para encabezado del PDF/HTML de rendición. Si vacío, se puede usar el logo general del negocio como respaldo. */
+  reportLogoDataUrl?: string;
 }
 
 export interface PettyCashSettings {
@@ -188,6 +250,12 @@ export interface PettyCashSettings {
   alertThreshold: number; // % para alerta de saldo bajo (ej. 20%)
   requireReceiptAbove: number; // Monto mínimo para exigir foto de recibo (ej. 10)
   weeklyClosingDay: number; // Día de la semana para cierre sugerido (5 = Viernes)
+  /** Plantilla de impresión de rendición de caja chica. */
+  renditionPrint?: PettyCashRenditionPrintSettings;
+  /** Cierres de semana por responsable (saldo arrastrado a la semana siguiente). */
+  weekClosures?: PettyCashWeekClosure[];
+  /** Pre-cierres presentados por responsables (no sustituyen al cierre ni bloquean gastos). */
+  weekPreClosures?: PettyCashWeekPreClosure[];
 }
 
 export interface ProviderSettings {
@@ -201,6 +269,50 @@ export interface SedeCatalogEntry {
   enabled: boolean;
 }
 
+/** Una cuenta del plan contable importado (tu plantilla). */
+export interface ChartOfAccountEntry {
+  id: string;
+  /** Código único (ej. 659121, 42121) — se normaliza a dígitos para comparar. */
+  code: string;
+  name: string;
+  level?: number;
+  parentCode?: string;
+  /** Cabeceras Starsoft de la plantilla de plan contable. */
+  tipoAnexo?: string;
+  centroCosto?: string;
+  claseCuenta?: string;
+  destino?: string;
+  partidaPresupuesto?: string;
+  ajusteDifCambio?: string;
+  cuentaMonetaria?: string;
+  conceptoIngGasto?: string;
+  codSitFinancieraEstandar?: string;
+  codSitFinancieraTrib?: string;
+  cuentaCargo?: string;
+  cuentaAbono?: string;
+  porcentaje?: string;
+  plFuncionGroo?: string;
+  plplFuncionGoo?: string;
+  /** Ayuda para filtros y reglas futuras. */
+  kind?: 'expense' | 'tax_igv' | 'cash_bank' | 'other';
+  active: boolean;
+}
+
+/**
+ * Cuentas “puente” para armar asientos: IGV compras, salida caja chica, banco.
+ * Los códigos deben existir en el plan importado (validación en UI).
+ */
+export interface AccountingLinkSettings {
+  /** IGV crédito fiscal (compras) — débito cuando el gasto lleva IGV. */
+  igvPurchaseCreditAccountCode?: string;
+  /** Contrapartida salida de caja chica (haber del total). */
+  pettyCashCreditAccountCode?: string;
+  /** Cuenta de salida de caja chica por sede (prioriza sobre la global). */
+  pettyCashCreditBySede?: Record<string, string>;
+  /** Opcional: pago desde cuenta bancaria (si más adelante exportas tesorería). */
+  bankPaymentAccountCode?: string;
+}
+
 export interface SystemSettings {
   pettyCash: PettyCashSettings;
   businessName: string;
@@ -209,6 +321,8 @@ export interface SystemSettings {
   initialBalance?: number;
   initialBalanceDate?: string;
   providers?: ProviderSettings;
+  /** Enlaces contables globales (IGV, caja, banco). */
+  accounting?: AccountingLinkSettings;
   /**
    * Catálogo de sedes. Formato nuevo: `{ name, enabled }[]`.
    * Legacy: `string[]` se normaliza al cargar (todas habilitadas).

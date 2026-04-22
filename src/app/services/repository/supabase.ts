@@ -70,9 +70,18 @@ if (typeof window !== 'undefined' && import.meta.env.DEV) {
   }
 }
 
+/**
+ * Base de la función Edge `server` + prefijo Hono `make-server-674cc941`.
+ * Override: VITE_SUPABASE_FUNCTIONS_URL=https://REF.supabase.co/functions/v1/server/make-server-674cc941
+ */
 const FUNCTIONS_URL =
   envStr('VITE_SUPABASE_FUNCTIONS_URL') ??
   (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/server/make-server-674cc941` : '');
+
+/** Las claves tipo `data:users` llevan `:`; deben ir codificadas en el path o el gateway devuelve 404. */
+function kvPathSegment(key: string): string {
+  return encodeURIComponent(key);
+}
 
 /** True si el JWT falta o expira en menos de ~2 min (evita 401 en Edge con token viejo en storage). */
 function accessTokenNeedsRefresh(accessToken: string | undefined): boolean {
@@ -120,12 +129,41 @@ function assertAccessTokenMatchesProject(accessToken: string, supabaseUrl: strin
   }
 }
 
+const REFRESH_SESSION_TIMEOUT_MS = 45_000;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label}: tiempo agotado (${ms / 1000}s). Revisa la conexión e inténtalo de nuevo.`)),
+      ms
+    );
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
 /**
- * Renueva sesión y devuelve un access_token que el gateway de Edge Functions acepta.
- * Importante: si refreshSession falla, NO se reutiliza un token viejo (eso provoca Invalid JWT).
+ * Token para Edge Functions (admin-create-user, KV, etc.).
+ * IMPORTANTE: si el JWT aún es válido, se reutiliza sin llamar a refreshSession()
+ * (refreshSession puede tardar mucho o quedar colgado en algunos entornos/redes).
  */
 async function getFreshAccessTokenForEdge(sb: SupabaseClient): Promise<string> {
-  const { data, error } = await sb.auth.refreshSession();
+  const { data: existing } = await sb.auth.getSession();
+  const existingToken = existing.session?.access_token;
+  if (existingToken && !accessTokenNeedsRefresh(existingToken)) {
+    assertAccessTokenMatchesProject(existingToken, SUPABASE_URL);
+    return existingToken;
+  }
+
+  const { data, error } = await withTimeout(
+    sb.auth.refreshSession(),
+    REFRESH_SESSION_TIMEOUT_MS,
+    'Renovar sesión (Supabase)'
+  );
   if (error) {
     throw new Error(
       `No se pudo renovar la sesión: ${error.message}. ` +
@@ -139,14 +177,12 @@ async function getFreshAccessTokenForEdge(sb: SupabaseClient): Promise<string> {
       'Sesión sin token de acceso. Cierra sesión e inicia sesión de nuevo (no uses acceso demo si VITE_BACKEND=supabase).'
     );
   }
-  const { data: userData, error: userErr } = await sb.auth.getUser(token);
-  if (userErr || !userData.user?.id) {
-    throw new Error(
-      `Supabase rechazó el token: ${userErr?.message ?? 'sin usuario'}. Cierra sesión e inicia sesión de nuevo.`
-    );
-  }
+  assertAccessTokenMatchesProject(token, SUPABASE_URL);
   return token;
 }
+
+/** Evita que el botón "Creando…" quede colgado si la Edge Function no responde. */
+const EDGE_FETCH_TIMEOUT_MS = 55_000;
 
 async function postEdgeFunctionJson(
   functionName: string,
@@ -164,15 +200,31 @@ async function postEdgeFunctionJson(
     );
   }
   const endpoint = `${SUPABASE_URL}/functions/v1/${functionName}`;
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      apikey: SUPABASE_ANON_KEY,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), EDGE_FETCH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(endpoint, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: SUPABASE_ANON_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error(
+        `La función "${functionName}" no respondió en ${EDGE_FETCH_TIMEOUT_MS / 1000}s. ` +
+          'Revisa red, que la Edge Function esté desplegada y CORS/ALLOWED_ORIGINS en Supabase.'
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   const text = await res.text();
   let json: unknown = null;
   try {
@@ -228,7 +280,7 @@ class SupabaseAuthRepository implements IAuthRepository {
   }
 
   async signOut(): Promise<void> {
-    await this.sb.auth.signOut();
+    await this.sb.auth.signOut({ scope: 'global' });
   }
 
   async createUser(email: string, password: string, name: string): Promise<AuthUser> {
@@ -316,20 +368,7 @@ class SupabaseAuthRepository implements IAuthRepository {
 class SupabaseKVRepository implements IKVRepository {
   private async authHeaders(): Promise<Record<string, string>> {
     const sb = getSupabaseClient();
-    const { data: sess } = await sb.auth.getSession();
-    let token = sess.session?.access_token;
-    if (accessTokenNeedsRefresh(token)) {
-      const { data: ref, error: refErr } = await sb.auth.refreshSession();
-      if (refErr) {
-        throw new Error(
-          `Sesión caducada (${refErr.message}). Cierra sesión e inicia sesión de nuevo para cargar datos.`
-        );
-      }
-      token = ref.session?.access_token ?? token;
-    }
-    if (!token) {
-      throw new Error('No hay sesión de Supabase activa para acceder a datos en la nube.');
-    }
+    const token = await getFreshAccessTokenForEdge(sb);
     return {
       Authorization: `Bearer ${token}`,
       apikey: SUPABASE_ANON_KEY,
@@ -340,7 +379,7 @@ class SupabaseKVRepository implements IKVRepository {
   async getWithStatus<T = unknown>(key: string): Promise<{ ok: boolean; value: T | null }> {
     try {
       const headers = await this.authHeaders();
-      const res = await fetch(`${FUNCTIONS_URL}/kv/${key}`, {
+      const res = await fetch(`${FUNCTIONS_URL}/kv/${kvPathSegment(key)}`, {
         method: 'GET',
         headers,
       });
@@ -363,7 +402,7 @@ class SupabaseKVRepository implements IKVRepository {
 
   async set(key: string, value: unknown): Promise<void> {
     const headers = await this.authHeaders();
-    const res = await fetch(`${FUNCTIONS_URL}/kv/${key}`, {
+    const res = await fetch(`${FUNCTIONS_URL}/kv/${kvPathSegment(key)}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(value),

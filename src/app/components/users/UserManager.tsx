@@ -179,7 +179,8 @@ export function UserManager({
             toast.error("Las contraseñas no coinciden");
             return;
         }
-        if (uniqueUsers.some(u => u.email === currentUserForm.email)) {
+        const emailNorm = (currentUserForm.email || '').trim().toLowerCase();
+        if (uniqueUsers.some(u => (u.email || '').trim().toLowerCase() === emailNorm)) {
             toast.error("Ya existe un usuario con ese correo electrónico");
             return;
         }
@@ -614,7 +615,13 @@ export function UserManager({
             </Card>
 
             {/* DIALOG: Nuevo Usuario */}
-            <Dialog open={isNewUserOpen} onOpenChange={setIsNewUserOpen}>
+            <Dialog
+                open={isNewUserOpen}
+                onOpenChange={(open) => {
+                    setIsNewUserOpen(open);
+                    if (!open) setIsCreating(false);
+                }}
+            >
                 <DialogContent className="sm:max-w-[520px]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">

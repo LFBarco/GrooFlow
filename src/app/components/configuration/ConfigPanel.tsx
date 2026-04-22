@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { ConfigStructure, TransactionType, ConceptDefinition, SubcategoryDefinition, Flexibility, getSubcategories, subcategoryId } from '../../data/initialData';
-import { SystemSettings } from '../../types';
-import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon } from 'lucide-react';
+import { SystemSettings, type PettyCashRenditionPrintSettings } from '../../types';
+import { mergePettyCashRenditionPrint } from '../../data/initialData';
+import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon, Tags } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -23,12 +24,22 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { Label } from "../ui/label";
 import { Switch } from "../ui/switch";
+import { Textarea } from "../ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from "../ui/badge";
 
 import { User } from '../../types';
 import { getSedesCatalogEntries } from '../../utils/sedesCatalog';
+import { getProviderAreas, getProviderCategories } from '../../utils/providerCatalog';
 import { MapPin, Globe, Building2 as Building2Icon } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../ui/dialog';
 
 interface ConfigPanelProps {
   config: ConfigStructure;
@@ -40,12 +51,39 @@ interface ConfigPanelProps {
   users: User[];
   onUpdateUsers: (users: User[]) => void;
   currentUser?: User;
+  /** Renombrar categoría/área comercial: sincroniza proveedores y caja chica. */
+  onApplyProviderCategoryRename?: (from: string, to: string) => void;
+  onApplyProviderAreaRename?: (from: string, to: string) => void;
+  onApplyProviderCategoryRemoved?: (removed: string, replacement: string) => void;
+  onApplyProviderAreaRemoved?: (removed: string, replacement: string) => void;
 }
 
-export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSystemSettings, onStressTest, onResetData, users, onUpdateUsers, currentUser }: ConfigPanelProps) {
+export function ConfigPanel({
+  config,
+  onUpdateConfig,
+  systemSettings,
+  onUpdateSystemSettings,
+  onStressTest,
+  onResetData,
+  users,
+  onUpdateUsers,
+  currentUser,
+  onApplyProviderCategoryRename,
+  onApplyProviderAreaRename,
+  onApplyProviderCategoryRemoved,
+  onApplyProviderAreaRemoved,
+}: ConfigPanelProps) {
+  const reportRenditionLogoInputRef = useRef<HTMLInputElement>(null);
   const isSystemAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
+  const isSuperAdminOnly = currentUser?.role === 'super_admin';
   const catalogEntries = getSedesCatalogEntries(systemSettings);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(Object.keys(config)[0]);
+
+  const [newCommercialCategory, setNewCommercialCategory] = useState('');
+  const [newCommercialArea, setNewCommercialArea] = useState('');
+  const [catalogRename, setCatalogRename] = useState<
+    null | { kind: 'category' | 'area'; original: string; draft: string }
+  >(null);
   
   // Category State
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -258,6 +296,125 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
         [field]: value
       }
     });
+  };
+
+  const renditionMerged = mergePettyCashRenditionPrint(systemSettings.pettyCash.renditionPrint);
+  const patchRenditionPrint = (patch: Partial<PettyCashRenditionPrintSettings>) => {
+    updatePettyCash('renditionPrint', { ...renditionMerged, ...patch });
+  };
+
+  const handleReportRenditionLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Seleccione un archivo de imagen');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 450 * 1024) {
+      toast.error('La imagen no debe superar 450 KB');
+      e.target.value = '';
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const m = mergePettyCashRenditionPrint(systemSettings.pettyCash.renditionPrint);
+      updatePettyCash('renditionPrint', { ...m, reportLogoDataUrl: dataUrl });
+      toast.success('Logo del reporte de rendición actualizado');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const providerCategoriesList = getProviderCategories(systemSettings);
+  const providerAreasList = getProviderAreas(systemSettings);
+
+  const persistProviderCatalog = (next: { categories?: string[]; areas?: string[] }) => {
+    const prev = systemSettings.providers ?? { categories: providerCategoriesList, areas: providerAreasList };
+    onUpdateSystemSettings({
+      ...systemSettings,
+      providers: {
+        categories: next.categories ?? prev.categories ?? providerCategoriesList,
+        areas: next.areas ?? prev.areas ?? providerAreasList,
+      },
+    });
+  };
+
+  const addCommercialCategory = () => {
+    const v = newCommercialCategory.trim();
+    if (!v) return;
+    if (providerCategoriesList.includes(v)) {
+      toast.error('Esa categoría ya existe');
+      return;
+    }
+    persistProviderCatalog({ categories: [...providerCategoriesList, v] });
+    setNewCommercialCategory('');
+    toast.success('Categoría agregada');
+  };
+
+  const addCommercialArea = () => {
+    const v = newCommercialArea.trim();
+    if (!v) return;
+    if (providerAreasList.includes(v)) {
+      toast.error('Esa área ya existe');
+      return;
+    }
+    persistProviderCatalog({ areas: [...providerAreasList, v] });
+    setNewCommercialArea('');
+    toast.success('Área agregada');
+  };
+
+  const deleteCommercialCategory = (name: string) => {
+    if (!confirm(`¿Eliminar la categoría "${name}"? Los registros que la usen pasarán a otra categoría.`)) return;
+    const next = providerCategoriesList.filter((c) => c !== name);
+    if (next.length === 0) {
+      toast.error('Debe existir al menos una categoría');
+      return;
+    }
+    const replacement = next[0]!;
+    onApplyProviderCategoryRemoved?.(name, replacement);
+    persistProviderCatalog({ categories: next });
+    toast.success('Categoría eliminada');
+  };
+
+  const deleteCommercialArea = (name: string) => {
+    if (!confirm(`¿Eliminar el área "${name}"? Los registros que la usen se reasignarán.`)) return;
+    const next = providerAreasList.filter((a) => a !== name);
+    if (next.length === 0) {
+      toast.error('Debe existir al menos un área');
+      return;
+    }
+    const replacement = next[0]!;
+    onApplyProviderAreaRemoved?.(name, replacement);
+    persistProviderCatalog({ areas: next });
+    toast.success('Área eliminada');
+  };
+
+  const saveCatalogRename = () => {
+    if (!catalogRename) return;
+    const d = catalogRename.draft.trim();
+    const o = catalogRename.original;
+    if (!d) {
+      toast.error('Nombre vacío');
+      return;
+    }
+    const list = catalogRename.kind === 'category' ? providerCategoriesList : providerAreasList;
+    if (d !== o && list.includes(d)) {
+      toast.error('Ya existe un elemento con ese nombre');
+      return;
+    }
+    if (catalogRename.kind === 'category') {
+      const next = providerCategoriesList.map((c) => (c === o ? d : c));
+      onApplyProviderCategoryRename?.(o, d);
+      persistProviderCatalog({ categories: next });
+    } else {
+      const next = providerAreasList.map((c) => (c === o ? d : c));
+      onApplyProviderAreaRename?.(o, d);
+      persistProviderCatalog({ areas: next });
+    }
+    setCatalogRename(null);
+    toast.success('Nombre actualizado');
   };
 
   // --- User Limit Actions ---
@@ -760,6 +917,137 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
           {/* TAB: CONTABILIDAD (Caja Chica) */}
           <TabsContent value="accounting" className="mt-0 outline-none data-[state=inactive]:hidden">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Tags className="w-5 h-5" />
+                    Catálogo comercial — Categorías y áreas
+                  </CardTitle>
+                  <CardDescription>
+                    Listas usadas en <strong>Proveedores</strong>, <strong>Caja chica</strong> (motivo y área solicitante) y formularios relacionados. Agregar, editar nombre o eliminar (con reasignación automática en datos).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-semibold">Categorías</h4>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Nueva categoría"
+                          value={newCommercialCategory}
+                          onChange={(e) => setNewCommercialCategory(e.target.value)}
+                          disabled={!isSystemAdmin}
+                          onKeyDown={(e) => e.key === 'Enter' && addCommercialCategory()}
+                        />
+                        <Button type="button" onClick={addCommercialCategory} disabled={!isSystemAdmin}>
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="border rounded-md overflow-hidden max-h-[280px] overflow-y-auto">
+                        <Table>
+                          <TableHeader className="bg-muted/50 sticky top-0">
+                            <TableRow>
+                              <TableHead>Nombre</TableHead>
+                              <TableHead className="w-[100px] text-right">Acciones</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {providerCategoriesList.map((c) => (
+                              <TableRow key={c}>
+                                <TableCell className="font-medium">{c}</TableCell>
+                                <TableCell className="text-right space-x-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    disabled={!isSystemAdmin}
+                                    onClick={() =>
+                                      setCatalogRename({ kind: 'category', original: c, draft: c })
+                                    }
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive"
+                                    disabled={!isSystemAdmin || providerCategoriesList.length <= 1}
+                                    onClick={() => deleteCommercialCategory(c)}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <h4 className="text-sm font-semibold">Áreas</h4>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Nueva área"
+                          value={newCommercialArea}
+                          onChange={(e) => setNewCommercialArea(e.target.value)}
+                          disabled={!isSystemAdmin}
+                          onKeyDown={(e) => e.key === 'Enter' && addCommercialArea()}
+                        />
+                        <Button type="button" onClick={addCommercialArea} disabled={!isSystemAdmin}>
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <div className="border rounded-md overflow-hidden max-h-[280px] overflow-y-auto">
+                        <Table>
+                          <TableHeader className="bg-muted/50 sticky top-0">
+                            <TableRow>
+                              <TableHead>Nombre</TableHead>
+                              <TableHead className="w-[100px] text-right">Acciones</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {providerAreasList.map((a) => (
+                              <TableRow key={a}>
+                                <TableCell className="font-medium">{a}</TableCell>
+                                <TableCell className="text-right space-x-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8"
+                                    disabled={!isSystemAdmin}
+                                    onClick={() => setCatalogRename({ kind: 'area', original: a, draft: a })}
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-destructive"
+                                    disabled={!isSystemAdmin || providerAreasList.length <= 1}
+                                    onClick={() => deleteCommercialArea(a)}
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  </div>
+                  {!isSystemAdmin && (
+                    <p className="text-xs text-muted-foreground mt-4">
+                      Solo administradores pueden modificar el catálogo.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -872,6 +1160,119 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                       </Select>
                       <p className="text-xs text-muted-foreground">El sistema recordará hacer la rendición este día.</p>
                    </div>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Receipt className="w-5 h-5" />
+                    Formato de impresión — Rendición de caja chica
+                  </CardTitle>
+                  <CardDescription>
+                    Solo el <strong>super administrador</strong> puede editar esta plantilla. Define cómo se verá el PDF/HTML al imprimir la rendición desde Caja Chica.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Título del documento</Label>
+                      <Input
+                        value={renditionMerged.documentTitle}
+                        onChange={(e) => patchRenditionPrint({ documentTitle: e.target.value })}
+                        disabled={!isSuperAdminOnly}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Subtítulo</Label>
+                      <Input
+                        value={renditionMerged.subtitle}
+                        onChange={(e) => patchRenditionPrint({ subtitle: e.target.value })}
+                        disabled={!isSuperAdminOnly}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Pie legal / declaración</Label>
+                    <Textarea
+                      rows={3}
+                      value={renditionMerged.footerLegal}
+                      onChange={(e) => patchRenditionPrint({ footerLegal: e.target.value })}
+                      disabled={!isSuperAdminOnly}
+                      className="resize-y min-h-[72px]"
+                    />
+                  </div>
+                  <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                      <Label>Logo en el reporte (PDF / impresión)</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Imagen PNG o JPEG (máx. 450 KB). Si no configura un logo aquí, se usará el de{' '}
+                      <strong>Identidad del negocio</strong> cuando exista.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {renditionMerged.reportLogoDataUrl ? (
+                        <img
+                          src={renditionMerged.reportLogoDataUrl}
+                          alt="Vista previa logo rendición"
+                          className="h-16 max-w-[200px] rounded border bg-background object-contain p-1"
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Sin logo específico de rendición.</span>
+                      )}
+                      <input
+                        ref={reportRenditionLogoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleReportRenditionLogoFile}
+                      />
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        disabled={!isSuperAdminOnly}
+                        onClick={() => reportRenditionLogoInputRef.current?.click()}
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Subir imagen
+                      </Button>
+                      {renditionMerged.reportLogoDataUrl ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={!isSuperAdminOnly}
+                          onClick={() => patchRenditionPrint({ reportLogoDataUrl: undefined })}
+                        >
+                          Quitar logo
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
+                    {(
+                      [
+                        ['showCategoryBreakdown', 'Desglose por categoría'],
+                        ['showSignaturesBlock', 'Bloque de firmas'],
+                      ] as const
+                    ).map(([key, label]) => (
+                      <div key={key} className="flex items-center justify-between gap-2 rounded-md border p-3">
+                        <Label className="text-sm cursor-pointer">{label}</Label>
+                        <Switch
+                          checked={!!renditionMerged[key]}
+                          onCheckedChange={(v) => patchRenditionPrint({ [key]: v } as Partial<PettyCashRenditionPrintSettings>)}
+                          disabled={!isSuperAdminOnly}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {!isSuperAdminOnly && (
+                    <p className="text-xs text-muted-foreground">
+                      Inicie sesión como super administrador para modificar la plantilla.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1000,7 +1401,7 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
                   <div className="space-y-2">
                     <h4 className="font-medium text-foreground">Roles y permisos</h4>
                     <p className="text-sm text-muted-foreground">
-                      Los roles se configuran en <strong>Usuarios y Roles</strong>. Desde ahí puedes editar permisos por módulo (Dashboard, Finanzas, Caja Chica, Compras, etc.).
+                      Los roles se configuran en <strong>Usuarios y Roles</strong>. Desde ahí puedes editar permisos por módulo (Dashboard, Alertas, Tesorería, Transacciones, Caja Chica, Requerimientos, Compras, etc.).
                     </p>
                   </div>
                   <div className="space-y-2 pt-4 border-t border-border">
@@ -1233,6 +1634,36 @@ export function ConfigPanel({ config, onUpdateConfig, systemSettings, onUpdateSy
           </TabsContent>
         </div>
       </Tabs>
+
+      <Dialog open={!!catalogRename} onOpenChange={(open) => !open && setCatalogRename(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Editar {catalogRename?.kind === 'category' ? 'categoría' : 'área'}
+            </DialogTitle>
+            <DialogDescription>Cambiar el nombre actualizará el catálogo y los datos vinculados.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label>Nuevo nombre</Label>
+            <Input
+              value={catalogRename?.draft ?? ''}
+              onChange={(e) =>
+                setCatalogRename((prev) =>
+                  prev ? { ...prev, draft: e.target.value } : prev
+                )
+              }
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCatalogRename(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={saveCatalogRename} disabled={!isSystemAdmin}>
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

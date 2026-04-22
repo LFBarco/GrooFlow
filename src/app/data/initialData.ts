@@ -1,4 +1,27 @@
-import { SystemSettings, SYSTEM_SEDES, type SedeCatalogEntry } from '../types';
+import { SystemSettings, SYSTEM_SEDES, type SedeCatalogEntry, type PettyCashRenditionPrintSettings } from '../types';
+import {
+  DEFAULT_PROVIDER_AREAS,
+  DEFAULT_PROVIDER_CATEGORIES,
+} from '../utils/providerCatalog';
+
+/** Valores por defecto de la plantilla de rendición (merge con `settings.pettyCash.renditionPrint`). */
+export const defaultPettyCashRenditionPrint: PettyCashRenditionPrintSettings = {
+  documentTitle: 'Rendición de caja chica',
+  subtitle: 'Resumen para solicitud de reembolso y cuadre de caja',
+  showSedeColumn: true,
+  showRequesterColumn: true,
+  showAreaColumn: true,
+  showCategoryBreakdown: true,
+  showSignaturesBlock: true,
+  footerLegal:
+    'Declaro bajo juramento que los gastos consignados corresponden al uso exclusivo de la operación de la empresa.',
+};
+
+export function mergePettyCashRenditionPrint(
+  partial?: PettyCashRenditionPrintSettings | null
+): PettyCashRenditionPrintSettings {
+  return { ...defaultPettyCashRenditionPrint, ...(partial || {}) };
+}
 
 export type TransactionType = 'income' | 'expense';
 export type Flexibility = 'fixed' | 'flexible';
@@ -131,16 +154,58 @@ export const initialSystemSettings: SystemSettings = {
     maxTransactionAmount: 150,
     alertThreshold: 20, // 20%
     requireReceiptAbove: 20, // S/ 20
-    weeklyClosingDay: 5 // Viernes
+    weeklyClosingDay: 5, // Viernes
+    renditionPrint: { ...defaultPettyCashRenditionPrint },
+    weekClosures: [],
+    weekPreClosures: [],
   },
   providers: {
-    categories: [
-      "Farmacia", "Insumos Médicos", "Servicios Básicos", "Mantenimiento", 
-      "Alquileres", "Laboratorio", "Marketing", "Otros"
-    ],
-    areas: [
-      "Dirección General", "Administración", "Logística", "Ventas", 
-      "Recursos Humanos", "Sistemas", "Operaciones", "Mantenimiento"
-    ]
-  }
+    categories: [...DEFAULT_PROVIDER_CATEGORIES],
+    areas: [...DEFAULT_PROVIDER_AREAS],
+  },
+  accounting: {},
 };
+
+/**
+ * Fusiona ajustes leídos del KV con valores por defecto.
+ * Evita `pettyCash` indefinido / incompleto (pantalla en blanco o crash al abrir Caja chica / Config).
+ */
+export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | undefined): SystemSettings {
+  const base = initialSystemSettings;
+  if (!incoming || typeof incoming !== 'object') {
+    return { ...base };
+  }
+  const pc = incoming.pettyCash;
+  return {
+    ...base,
+    ...incoming,
+    pettyCash: {
+      ...base.pettyCash,
+      ...(pc || {}),
+      renditionPrint: mergePettyCashRenditionPrint(
+        pc?.renditionPrint ?? base.pettyCash.renditionPrint
+      ),
+      weekClosures: Array.isArray(pc?.weekClosures)
+        ? pc.weekClosures
+        : (base.pettyCash.weekClosures ?? []),
+      weekPreClosures: Array.isArray(pc?.weekPreClosures)
+        ? pc.weekPreClosures
+        : (base.pettyCash.weekPreClosures ?? []),
+    },
+    providers: {
+      categories:
+        incoming.providers?.categories && incoming.providers.categories.length > 0
+          ? incoming.providers.categories
+          : base.providers.categories,
+      areas:
+        incoming.providers?.areas && incoming.providers.areas.length > 0
+          ? incoming.providers.areas
+          : base.providers.areas,
+    },
+    sedesCatalog: incoming.sedesCatalog ?? base.sedesCatalog,
+    accounting: {
+      ...base.accounting,
+      ...(incoming.accounting || {}),
+    },
+  };
+}

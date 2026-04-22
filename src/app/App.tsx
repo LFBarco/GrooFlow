@@ -1,18 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { pathToView, viewToPath, type ViewType } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
 import { Overview } from "./components/dashboard/Overview";
-import { RecentTransactions } from "./components/dashboard/RecentTransactions";
-import { TransactionForm } from "./components/transactions/TransactionForm";
-import { TransactionImporter } from "./components/transactions/TransactionImporter";
-import { PnLView } from "./components/finance/PnLView";
-import { PettyCashModule } from "./components/finance/PettyCashModule";
 import { CashFlowChart } from "./components/dashboard/CashFlowChart";
-import { CashFlowGrid } from "./components/dashboard/CashFlowGrid";
-import { AnalyticsDashboard } from "./components/dashboard/AnalyticsDashboard";
-import { ConfigPanel } from "./components/configuration/ConfigPanel";
-import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, SystemAlert, AlertThresholds, Requisition } from "./types";
+import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, SystemAlert, AlertThresholds, Requisition, ChartOfAccountEntry } from "./types";
 import {
   getAllSedeNames,
   getEnabledSedeNames,
@@ -21,7 +13,7 @@ import {
   type SedesCatalogSaveResult,
 } from "./utils/sedesCatalog";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
-import { initialStructure, ConfigStructure, initialSystemSettings } from "./data/initialData";
+import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings } from "./data/initialData";
 import { 
   LayoutDashboard, 
   ArrowUpCircle, 
@@ -43,19 +35,32 @@ import {
   Menu,
   Coins,
   TrendingUp,
-  Landmark
+  Landmark,
+  BookOpen
 } from "lucide-react";
 // Logo: coloque logo.png en la carpeta public/ para producción
 const logoUrl = '/logo.png';
-import { AuditPanel } from "./components/audit/AuditPanel";
-import { MonthlySummary } from "./components/reports/MonthlySummary";
-
-import { ProviderManager } from "./components/providers/ProviderManager";
-import { PurchaseRequestManager } from "./components/purchases/PurchaseRequestManager";
-import { UserManager } from "./components/users/UserManager";
-import { TreasuryModule } from "./components/treasury/TreasuryModule";
-import { ProfessionalFeesModule } from "./components/finance/ProfessionalFeesModule";
-import { RequisitionModule } from "./components/procurement/RequisitionModule";
+import {
+  AlertsCenter,
+  AnalyticsDashboard,
+  AuditPanel,
+  ChartOfAccountsModule,
+  ConfigPanel,
+  MonthlySummary,
+  PettyCashModule,
+  ProfessionalFeesModule,
+  ProviderManager,
+  PurchaseRequestManager,
+  CashFlowGrid,
+  PnLView,
+  RecentTransactions,
+  RequisitionModule,
+  RouteLoader,
+  TransactionForm,
+  TransactionImporter,
+  TreasuryModule,
+  UserManager,
+} from "./lazyRouteModules";
 import { UserMenu } from "./components/layout/UserMenu";
 import { UserProfileDialog } from "./components/users/UserProfileDialog";
 import { addMonths, subMonths, format } from "date-fns";
@@ -67,91 +72,20 @@ import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./components/ui/dialog";
 import { api } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
-import { generateStressData } from "./utils/stressTestGenerator";
 import { hydrateTransactions } from "./utils/hydrateTransactions";
 import { generateAlerts } from "./components/alerts/alertEngine";
-import { AlertsCenter } from "./components/alerts/AlertsCenter";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
-
-// Mock data
-const MOCK_USERS: User[] = [
-    { id: 'usr-3', name: 'Admin Principal', role: 'super_admin', initials: 'ADM', email: 'admin@grooflow.com', status: 'active', allSedes: true },
-    { id: '2', name: 'Luis Barco', initials: 'LB', role: 'manager', email: 'luis@grooflow.com', pettyCashLimit: 1500, status: 'active', sedes: ['Benavides'], allSedes: false },
-    { id: '3', name: 'Juandy Gomez', initials: 'JG', role: 'manager', email: 'juandy@grooflow.com', pettyCashLimit: 1800, status: 'active', allSedes: true },
-    { id: '4', name: 'Pierre Diaz', initials: 'PD', role: 'manager', email: 'pierre@grooflow.com', status: 'active', allSedes: true },
-    { id: 'usr-1', name: 'Ana Silva', role: 'manager', initials: 'AS', email: 'ana@grooflow.com', status: 'active', allSedes: true },
-    { id: 'usr-2', name: 'Carlos Ruiz', role: 'manager', initials: 'CR', email: 'carlos@grooflow.com', status: 'active', allSedes: true },
-    { id: '1', name: 'Jeny Quispes', initials: 'JQ', role: 'manager', email: 'jeny@grooflow.com', status: 'active', allSedes: true },
-    { id: 'usr-4', name: 'Dr. Pedro', role: 'groomer', initials: 'PG', email: 'pedro@grooflow.com', status: 'active', sedes: ['La Molina'], allSedes: false },
-    { id: 'usr-5', name: 'Lucia Contadora', role: 'manager', initials: 'LC', email: 'lucia@grooflow.com', status: 'active', allSedes: true },
-    { id: 'usr-6', name: 'Barbara Torres', role: 'manager', initials: 'BT', email: 'barbara@grooflow.com', pettyCashLimit: 1000, status: 'active', sedes: ['Miraflores'], allSedes: false }
-];
-
-const SUPER_ADMIN_EMAILS = new Set([
-  'admin@grooflow.com',
-  'admin@vetflow.com',
-  'luisfrancisco.barco@gmail.com',
-]);
-
-/**
- * Tras cargar `data:users` desde KV, alinea la fila del usuario con `auth.users`
- * (mismo email puede tener id `usr-…` en KV y UUID en Supabase Auth).
- */
-function mergeAuthUserIntoUsers(
-  list: User[],
-  authUser: { id: string; email?: string | null; user_metadata?: { name?: string } }
-): User[] {
-  const emailRaw = (authUser.email || '').trim();
-  const emailLower = emailRaw.toLowerCase();
-  if (!emailLower) return list;
-
-  const isPrivileged = SUPER_ADMIN_EMAILS.has(emailLower);
-  const byId = list.findIndex((u) => u.id === authUser.id);
-  if (byId >= 0) {
-    return list.map((u, i) =>
-      i === byId
-        ? ({
-            ...u,
-            email: emailRaw || u.email,
-            name: u.name || authUser.user_metadata?.name || u.name,
-            ...(isPrivileged
-              ? { role: 'super_admin' as const, allSedes: true, status: 'active' as const }
-              : {}),
-          } as User)
-        : u
-    );
-  }
-
-  const byEmail = list.findIndex((u) => (u.email || '').toLowerCase() === emailLower);
-  if (byEmail >= 0) {
-    return list.map((u, i) =>
-      i === byEmail
-        ? ({
-            ...u,
-            id: authUser.id,
-            email: emailRaw || u.email,
-            name: u.name || authUser.user_metadata?.name || u.name,
-            ...(isPrivileged
-              ? { role: 'super_admin' as const, allSedes: true, status: 'active' as const }
-              : {}),
-          } as User)
-        : u
-    );
-  }
-
-  const row: User = {
-    id: authUser.id,
-    email: emailRaw,
-    name: authUser.user_metadata?.name || emailRaw.split('@')[0],
-    initials: (authUser.user_metadata?.name || emailRaw).slice(0, 2).toUpperCase(),
-    role: isPrivileged ? 'super_admin' : 'manager',
-    status: 'active',
-    lastLogin: new Date().toISOString(),
-    ...(isPrivileged ? { allSedes: true } : {}),
-  };
-  return [...list, row];
-}
+import {
+  dedupeUsersByEmail,
+  applySuperAdminRoleFromConfig,
+  mergeAuthUserIntoUsers,
+  resolveCurrentUserRow,
+} from "./utils/userListMerge";
+import { mergePettyCashFilterCatalog } from "./utils/providerCatalog";
+import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
+import { roleRecordHasModuleAccess } from "./utils/rolePermissions";
+import { getSuperAdminEmails } from "./config/superAdmins";
 
 const initialTransactions: Transaction[] = [
   {
@@ -277,21 +211,25 @@ const initialRequests: PurchaseRequest[] = [
     }
 ];
 
+const GUEST_USER: User = {
+  id: 'guest',
+  name: 'Invitado',
+  initials: 'IN',
+  role: 'manager',
+  status: 'active',
+  allSedes: true,
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
-  const [currentUser, setCurrentUser] = useState<User>({
-    id: 'guest',
-    name: 'Invitado',
-    initials: 'IN',
-    role: 'manager',
-    status: 'active',
-    allSedes: true,
-  });
+  const [currentUser, setCurrentUser] = useState<User>(GUEST_USER);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [invoices, setInvoices] = useState<InvoiceDraft[]>(initialInvoices);
   const [providers, setProviders] = useState<Provider[]>(initialProviders);
+  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccountEntry[]>([]);
+  const [openQuickProviderModal, setOpenQuickProviderModal] = useState(false);
   const [requests, setRequests] = useState<PurchaseRequest[]>(initialRequests);
   const [pettyCashTransactions, setPettyCashTransactions] = useState<PettyCashTransaction[]>([]);
   
@@ -335,6 +273,9 @@ export default function App() {
   const [canSaveUsers, setCanSaveUsers] = useState(true);
   /** Evita doble carga y, en Supabase, permite volver a cargar tras logout/login. */
   const cloudDataHydratedRef = useRef(false);
+  /** Una sola función para recargar KV + usuarios (login, refresh, SIGNED_IN). */
+  const hydrateFromKvRef = useRef<(() => Promise<void>) | null>(null);
+  const hydrateRunningRef = useRef(false);
 
   // Alerts System
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
@@ -345,6 +286,9 @@ export default function App() {
     pettyCashLowBalance: 20,
     staleRequestDays: 3
   });
+
+  /** Evita que un hydrate en curso vuelva a marcar sesión iniciada tras cerrar sesión. */
+  const signingOutRef = useRef(false);
 
   // Transaction Filters State
   const [txFilterDateStart, setTxFilterDateStart] = useState("");
@@ -358,28 +302,234 @@ export default function App() {
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // --- SUPABASE AUTH CHECK ---
+  // --- KV + usuarios: un solo flujo (login manual, F5 y SIGNED_IN). Sin setUsers en handleLogin. ---
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        handleLogin(
-          session.user.email || '',
-          session.user.user_metadata?.name,
-          session.user.id
-        );
+    let cancelled = false;
+
+    async function hydrateFromKv() {
+      if (hydrateRunningRef.current) return;
+      hydrateRunningRef.current = true;
+      const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (backend === 'supabase') {
+          if (!session?.access_token) {
+            setIsAuthenticated(false);
+            return;
+          }
+          setCanSaveUsers(false);
+        } else {
+          setCanSaveUsers(true);
+        }
+
+        let data = await api.fetchInitialData();
+        let attempt = 0;
+        while (backend === 'supabase' && data.__usersKvFetchFailed && attempt < 3) {
+          attempt += 1;
+          if (cancelled) return;
+          await new Promise((r) => setTimeout(r, 350 * attempt));
+          await supabase.auth.refreshSession();
+          data = await api.fetchInitialData();
+        }
+
+        if (cancelled || signingOutRef.current) return;
+
+        /** Sesión al momento de aplicar auth (evita carrera si el usuario cerró sesión durante el fetch). */
+        const {
+          data: { session: sessionEffective },
+        } = await supabase.auth.getSession();
+
+        if (backend === 'supabase' && !sessionEffective?.access_token) {
+            setIsAuthenticated(false);
+            return;
+        }
+
+        if (backend === 'supabase' && data.__usersKvFetchFailed) {
+          toast.error(
+            'No se pudieron leer los usuarios desde la nube. Los cambios en la lista no se guardarán hasta que recargues o vuelvas a iniciar sesión.'
+          );
+          setCanSaveUsers(false);
+        } else {
+          setCanSaveUsers(true);
+        }
+
+        if (data['settings:config']) setConfig(data['settings:config']);
+        if (data['settings:system']) {
+          setSystemSettings(mergeSystemSettings(data['settings:system'] as Partial<SystemSettings>));
+        }
+
+        if (data['data:transactions']) {
+          const hydrated = hydrateTransactions(data['data:transactions']);
+          const unique = Array.from(new Map(hydrated.map((t) => [t.id, t])).values());
+          setTransactions(unique);
+        }
+
+        if (data['data:invoices']) {
+          const unique = Array.from(
+            new Map(data['data:invoices'].map((i: InvoiceDraft) => [i.id, i])).values()
+          ) as InvoiceDraft[];
+          setInvoices(unique);
+        }
+
+        if (data['data:providers']) {
+          const unique = Array.from(
+            new Map(data['data:providers'].map((p: Provider) => [p.id, p])).values()
+          ) as Provider[];
+          setProviders(unique);
+        }
+
+        if (data['data:chartOfAccounts']) {
+          const raw = data['data:chartOfAccounts'] as ChartOfAccountEntry[];
+          setChartOfAccounts(Array.isArray(raw) ? raw : []);
+        }
+
+        if (data['data:requests']) {
+          const unique = Array.from(
+            new Map(data['data:requests'].map((r: PurchaseRequest) => [r.id, r])).values()
+          ) as PurchaseRequest[];
+          setRequests(
+            unique.map((r) => {
+              const rd = r.requestDate;
+              const asDate =
+                rd instanceof Date && !isNaN(rd.getTime())
+                  ? rd
+                  : new Date(
+                      typeof rd === 'string' || typeof rd === 'number' ? rd : String(rd ?? '')
+                    );
+              return {
+                ...r,
+                requestDate: isNaN(asDate.getTime()) ? new Date() : asDate,
+              };
+            })
+          );
+        }
+
+        if (data['data:pettyCash']) {
+          const ptx = data['data:pettyCash'] as PettyCashTransaction[];
+          setPettyCashTransactions(
+            Array.isArray(ptx)
+              ? ptx.map((t) => ({
+                  ...t,
+                  date: t.date instanceof Date ? t.date : new Date(t.date as string),
+                  documentDate:
+                    t.documentDate != null
+                      ? t.documentDate instanceof Date
+                        ? t.documentDate
+                        : new Date(t.documentDate as string)
+                      : undefined,
+                }))
+              : []
+          );
+        }
+
+        let nextUsers: User[] = [];
+        const usersFromKv = data['data:users'];
+        if (Array.isArray(usersFromKv)) {
+          const byId = Array.from(
+            new Map(usersFromKv.map((u: User) => [u.id, u])).values()
+          ) as User[];
+          nextUsers = dedupeUsersByEmail(byId);
+        }
+        nextUsers = applySuperAdminRoleFromConfig(nextUsers);
+
+        if (!cancelled && sessionEffective?.user) {
+          nextUsers = mergeAuthUserIntoUsers(nextUsers, sessionEffective.user);
+          nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
+        }
+
+        cloudDataHydratedRef.current = true;
+        setUsers(nextUsers);
+
+        const hasLocalDemoSession =
+          typeof window !== 'undefined' &&
+          window.sessionStorage.getItem('grooflow_local_session') === '1';
+
+        if (!cancelled && sessionEffective?.user?.email) {
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.removeItem('grooflow_local_session');
+          }
+          const em = sessionEffective.user.email.trim().toLowerCase();
+          let row = resolveCurrentUserRow(nextUsers, sessionEffective.user.email);
+          if (!row) {
+            const priv = getSuperAdminEmails().has(em);
+            row = {
+              id: sessionEffective.user.id,
+              email: sessionEffective.user.email,
+              name:
+                sessionEffective.user.user_metadata?.name ||
+                sessionEffective.user.email.split('@')[0],
+              initials: (sessionEffective.user.user_metadata?.name || sessionEffective.user.email)
+                .slice(0, 2)
+                .toUpperCase(),
+              role: priv ? 'super_admin' : 'manager',
+              status: 'active',
+              allSedes: priv ? true : undefined,
+            } as User;
+            const merged = dedupeUsersByEmail(applySuperAdminRoleFromConfig([...nextUsers, row]));
+            setUsers(merged);
+            row = resolveCurrentUserRow(merged, sessionEffective.user.email) ?? row;
+          }
+          if (row.status === 'inactive' && !getSuperAdminEmails().has(em)) {
+            await supabase.auth.signOut();
+            toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
+            setIsAuthenticated(false);
+            return;
+          }
+          if (signingOutRef.current) return;
+          const {
+            data: { session: sessionLast },
+          } = await supabase.auth.getSession();
+          if (backend === 'supabase' && !sessionLast?.access_token) {
+            setIsAuthenticated(false);
+            return;
+          }
+          setCurrentUser(row);
+          setIsAuthenticated(true);
+        } else if (backend === 'local' && hasLocalDemoSession && nextUsers.length > 0) {
+          if (!signingOutRef.current) {
+            setCurrentUser(nextUsers[0]);
+            setIsAuthenticated(true);
+          }
+        } else {
+          setIsAuthenticated(false);
+        }
+
+        if (data['data:roles']) setRoles(mergeRolesWithDefaults(data['data:roles'] as Role[]));
+        if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
+        if (data['data:requisitions']) setRequisitions(data['data:requisitions']);
+        if (data['data:alertThresholds']) setAlertThresholds(data['data:alertThresholds']);
+        if (data['settings:theme']) setTheme(data['settings:theme']);
+        if (data['data:treasuryInvoices']) setTreasuryInvoices(data['data:treasuryInvoices']);
+        if (data['data:treasuryBankBalance'] !== undefined)
+          setTreasuryBankBalance(data['data:treasuryBankBalance']);
+        if (data['data:treasuryPaidHistory'])
+          setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
+
+        setIsDataLoaded(true);
+        toast.success('Datos sincronizados con la nube');
+      } finally {
+        hydrateRunningRef.current = false;
       }
-    });
+    }
+
+    hydrateFromKvRef.current = hydrateFromKv;
+    void hydrateFromKv();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (cancelled) return;
       if (session?.user) {
-        handleLogin(
-          session.user.email || '',
-          session.user.user_metadata?.name,
-          session.user.id
-        );
+        await hydrateFromKv();
       } else {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('grooflow_local_session');
+        }
+        setCurrentUser(GUEST_USER);
         setIsAuthenticated(false);
         cloudDataHydratedRef.current = false;
         setCanSaveUsers(true);
@@ -387,152 +537,12 @@ export default function App() {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // --- CLOUD / KV SYNC ---
-  // Con Supabase, el KV exige JWT. Si loadData corre antes de la sesión, los GET fallan,
-  // users queda [] y el autosave pisa data:users en la nube → "desaparecen" los usuarios.
-  useEffect(() => {
-    let cancelled = false;
-    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-
-    const loadData = async () => {
-      if (backend === 'supabase') {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!session?.access_token) {
-          return;
-        }
-        setCanSaveUsers(false);
-      }
-
-      if (cloudDataHydratedRef.current) {
-        return;
-      }
-
-      let data = await api.fetchInitialData();
-      let attempt = 0;
-      while (backend === 'supabase' && data.__usersKvFetchFailed && attempt < 3) {
-        attempt += 1;
-        if (cancelled) return;
-        await new Promise((r) => setTimeout(r, 350 * attempt));
-        await supabase.auth.refreshSession();
-        data = await api.fetchInitialData();
-      }
-
-      if (cancelled) return;
-
-      if (backend === 'supabase' && data.__usersKvFetchFailed) {
-        toast.error(
-          'No se pudieron leer los usuarios desde la nube. Los cambios en la lista no se guardarán hasta que recargues o vuelvas a iniciar sesión.'
-        );
-        setCanSaveUsers(false);
-      } else {
-        setCanSaveUsers(true);
-      }
-
-      if (data['settings:config']) setConfig(data['settings:config']);
-      if (data['settings:system']) setSystemSettings(data['settings:system']);
-
-      if (data['data:transactions']) {
-        const hydrated = hydrateTransactions(data['data:transactions']);
-        const unique = Array.from(new Map(hydrated.map((t) => [t.id, t])).values());
-        setTransactions(unique);
-      }
-
-      if (data['data:invoices']) {
-        const unique = Array.from(
-          new Map(data['data:invoices'].map((i: InvoiceDraft) => [i.id, i])).values()
-        ) as InvoiceDraft[];
-        setInvoices(unique);
-      }
-
-      if (data['data:providers']) {
-        const unique = Array.from(
-          new Map(data['data:providers'].map((p: Provider) => [p.id, p])).values()
-        ) as Provider[];
-        setProviders(unique);
-      }
-
-      if (data['data:requests']) {
-        const unique = Array.from(
-          new Map(data['data:requests'].map((r: PurchaseRequest) => [r.id, r])).values()
-        ) as PurchaseRequest[];
-        setRequests(unique);
-      }
-
-      if (data['data:pettyCash']) setPettyCashTransactions(data['data:pettyCash']);
-
-      // Importante: `if (data['data:users'])` falla cuando es [] (falsy) y se ignora el KV → autosave pisa la lista.
-      let nextUsers: User[] = [];
-      const usersFromKv = data['data:users'];
-      if (Array.isArray(usersFromKv)) {
-        const uniqueUsers = Array.from(
-          new Map(usersFromKv.map((u: User) => [u.id, u])).values()
-        ) as User[];
-        nextUsers = uniqueUsers.map((u) => {
-          const email = (u.email || '').toLowerCase();
-          if (!SUPER_ADMIN_EMAILS.has(email)) return u;
-          return {
-            ...u,
-            role: 'super_admin',
-            allSedes: true,
-            status: 'active',
-          } as User;
-        });
-      }
-
-      {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        if (!cancelled && session?.user) {
-          nextUsers = mergeAuthUserIntoUsers(nextUsers, session.user);
-        }
-      }
-
-      setUsers(nextUsers);
-      // Marcar hidratación ANTES del resto de setState: si handleLogin corre justo después de setUsers,
-      // debe ver ref=true y no añadir 1 usuario ficticio encima del array ya cargado.
-      cloudDataHydratedRef.current = true;
-
-      // Tras hidratar desde KV, alinear usuario actual con la fila real (evita estado “1 usuario” por carrera con handleLogin).
-      {
-        const {
-          data: { session: sess },
-        } = await supabase.auth.getSession();
-        if (!cancelled && sess?.user?.email) {
-          const em = sess.user.email.toLowerCase();
-          const row = nextUsers.find((u) => (u.email || '').toLowerCase() === em);
-          if (row) {
-            setCurrentUser(row);
-            setIsAuthenticated(true);
-          }
-        }
-      }
-
-      if (data['data:roles']) setRoles(data['data:roles']);
-      if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
-      if (data['data:requisitions']) setRequisitions(data['data:requisitions']);
-      if (data['data:alertThresholds']) setAlertThresholds(data['data:alertThresholds']);
-      if (data['settings:theme']) setTheme(data['settings:theme']);
-      if (data['data:treasuryInvoices']) setTreasuryInvoices(data['data:treasuryInvoices']);
-      if (data['data:treasuryBankBalance'] !== undefined)
-        setTreasuryBankBalance(data['data:treasuryBankBalance']);
-      if (data['data:treasuryPaidHistory'])
-        setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
-
-      setIsDataLoaded(true);
-      toast.success('Datos sincronizados con la nube');
-    };
-
-    loadData();
     return () => {
       cancelled = true;
+      subscription.unsubscribe();
+      hydrateFromKvRef.current = null;
     };
-  }, [isAuthenticated]);
+  }, []);
 
   // Auto-save Effects
   useEffect(() => {
@@ -560,8 +570,27 @@ export default function App() {
   }, [providers, isDataLoaded]);
 
   useEffect(() => {
+    if (isDataLoaded) api.saveKey('data:chartOfAccounts', chartOfAccounts);
+  }, [chartOfAccounts, isDataLoaded]);
+
+  useEffect(() => {
     if (isDataLoaded) api.saveKey('data:requests', requests);
   }, [requests, isDataLoaded]);
+
+  /** Tras alta/edición/baja: guardar ya (no depender solo del efecto ni de canSaveUsers si el GET inicial falló). */
+  const persistUsersToCloud = useCallback(
+    async (list: User[]) => {
+      if (!isDataLoaded) return false;
+      const ok = await api.saveKey('data:users', list);
+      if (ok) {
+        setCanSaveUsers(true);
+        return true;
+      }
+      toast.error('No se pudo guardar la lista de usuarios en la nube. Revisa conexión y vuelve a intentar.');
+      return false;
+    },
+    [isDataLoaded]
+  );
 
   useEffect(() => {
     if (isDataLoaded && canSaveUsers) api.saveKey('data:users', users);
@@ -599,30 +628,49 @@ export default function App() {
     if (isDataLoaded && treasuryPaidHistory.length > 0) api.saveKey('data:treasuryPaidHistory', treasuryPaidHistory);
   }, [treasuryPaidHistory, isDataLoaded]);
 
-  // --- ALERTS ENGINE ---
+  // --- ALERTS ENGINE (diferido al idle: no bloquea el hilo al hidratar datos) ---
   useEffect(() => {
     if (!isDataLoaded) return;
-
-    // Generar nuevas alertas basadas en los datos actuales
-    const newAlerts = generateAlerts({
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      const newAlerts = generateAlerts({
         transactions,
         invoices,
         requests,
         pettyCash: pettyCashTransactions,
         users,
-        thresholds: alertThresholds
-    });
-
-    // Merge con el estado actual para preservar 'read' status
-    setAlerts(prevAlerts => {
-        const readMap = new Map(prevAlerts.map(a => [a.id, a.read]));
-        
-        return newAlerts.map(alert => ({
-            ...alert,
-            read: readMap.get(alert.id) || false
+        thresholds: alertThresholds,
+      });
+      setAlerts((prevAlerts) => {
+        const readMap = new Map(prevAlerts.map((a) => [a.id, a.read]));
+        return newAlerts.map((alert) => ({
+          ...alert,
+          read: readMap.get(alert.id) || false,
         }));
-    });
-  }, [transactions, invoices, requests, pettyCashTransactions, alertThresholds, isDataLoaded]);
+      });
+    };
+    let ricId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if (typeof requestIdleCallback !== "undefined") {
+      ricId = requestIdleCallback(run, { timeout: 1500 });
+    } else {
+      timeoutId = setTimeout(run, 1);
+    }
+    return () => {
+      cancelled = true;
+      if (ricId !== undefined) cancelIdleCallback(ricId);
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    };
+  }, [
+    transactions,
+    invoices,
+    requests,
+    pettyCashTransactions,
+    users,
+    alertThresholds,
+    isDataLoaded,
+  ]);
 
   const handleMarkAlertAsRead = (id: string) => {
       setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a));
@@ -647,97 +695,46 @@ export default function App() {
   const handlePrevMonth = () => setCurrentDate(prev => subMonths(prev, 1));
   const handleNextMonth = () => setCurrentDate(prev => addMonths(prev, 1));
 
-  /** authUserId = Supabase user.id (UUID). Evita duplicados usr-… vs UUID mismo email. */
-  const handleLogin = (email: string, name?: string, authUserId?: string) => {
-      const now = new Date().toISOString();
-      const emailLower = email.toLowerCase();
-      const isPrivileged = SUPER_ADMIN_EMAILS.has(emailLower);
-
-      setUsers(prevUsers => {
-          const sameEmail = prevUsers.filter(u => u.email?.toLowerCase() === emailLower);
-          let existingUser =
-            authUserId && sameEmail.length
-              ? sameEmail.find(u => u.id === authUserId)
-              : undefined;
-          if (!existingUser && sameEmail.length) {
-              // Preferir fila con id real de Auth (no sintético usr-…)
-              existingUser =
-                sameEmail.find(u => !String(u.id).startsWith('usr-')) ?? sameEmail[0];
-          }
-
-          if (existingUser) {
-              if (existingUser.status === 'inactive' && !isPrivileged) {
-                  toast.error("Tu cuenta está desactivada. Contacta al Administrador.");
-                  return prevUsers;
-              }
-
-              const updatedUser: User = {
-                  ...existingUser,
-                  ...(authUserId && existingUser.id !== authUserId
-                      ? { id: authUserId, name: name || existingUser.name }
-                      : { name: name || existingUser.name }),
-                  ...(isPrivileged ? { role: 'super_admin', allSedes: true } : {}),
-                  lastLogin: now,
-                  status: 'active',
-              };
-
-              // Quitar duplicados legacy (mismo email, otro id)
-              const withoutDupes = prevUsers.filter(u => {
-                  if (u.email?.toLowerCase() !== emailLower) return true;
-                  return u.id === existingUser!.id;
-              });
-
-              const updatedUsers = withoutDupes.map(u =>
-                  u.id === existingUser!.id ? updatedUser : u
-              );
-              setCurrentUser(updatedUser);
-              setIsAuthenticated(true);
-              return updatedUsers;
-          }
-
-          // Antes de que loadData termine de leer el KV, prevUsers suele ser []. Añadir aquí 1 fila hace que,
-          // si este setState se aplica DESPUÉS de setUsers(KV), se pisa toda la lista → “desaparecen” usuarios.
-          if (!cloudDataHydratedRef.current) {
-              setIsAuthenticated(true);
-              setCurrentUser({
-                  id: authUserId || 'guest-pending',
-                  email,
-                  name: name || email.split('@')[0],
-                  role: isPrivileged ? 'super_admin' : 'manager',
-                  initials: (name || email).slice(0, 2).toUpperCase(),
-                  lastLogin: now,
-                  status: 'active',
-                  allSedes: isPrivileged ? true : undefined,
-              } as User);
-              return prevUsers;
-          }
-
-          const newUser: User = {
-              id: authUserId || `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-              email: email,
-              name: name || email.split('@')[0],
-              role: isPrivileged ? 'super_admin' : 'manager',
-              initials: (name || email).slice(0, 2).toUpperCase(),
-              lastLogin: now,
-              status: 'active',
-              allSedes: isPrivileged ? true : undefined,
-          };
-
-          setCurrentUser(newUser);
-          setIsAuthenticated(true);
-
-          return [...prevUsers, newUser];
-      });
+  /**
+   * Tras signIn en LoginPage: recargar KV + usuarios (la lista solo se muta aquí y en UserManager).
+   * Los argumentos se ignoran; la sesión real viene de Supabase.
+   */
+  const handleLogin = () => {
+    void hydrateFromKvRef.current?.();
   };
 
   const handleLogout = async () => {
-      await supabase.auth.signOut();
+      signingOutRef.current = true;
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem('grooflow_local_session');
+      }
+      try {
+        const { error } = await supabase.auth.signOut({ scope: 'global' });
+        if (error) console.error('[GrooFlow] signOut:', error);
+      } catch (e) {
+        console.error('[GrooFlow] signOut', e);
+      }
+      try {
+        const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+        if (backend === 'supabase') {
+          const {
+            data: { session: still },
+          } = await supabase.auth.getSession();
+          if (still?.access_token) {
+            await supabase.auth.signOut({ scope: 'global' });
+          }
+        }
+      } catch {
+        /* ignore */
+      }
       cloudDataHydratedRef.current = false;
       setCanSaveUsers(true);
       setIsDataLoaded(false);
+      setCurrentUser(GUEST_USER);
       setIsAuthenticated(false);
       setIsProfileOpen(false);
-      navigate(viewToPath('dashboard'));
+      signingOutRef.current = false;
+      navigate(viewToPath('dashboard'), { replace: true });
   };
 
   const handleSaveSedesCatalog = (result: SedesCatalogSaveResult) => {
@@ -949,14 +946,15 @@ export default function App() {
         }
     };
 
-    const handleStressTest = () => {
+    const handleStressTest = async () => {
+        const { generateStressData } = await import("./utils/stressTestGenerator");
         const { transactions: newTx, invoices: newInv, users: newUsrs } = generateStressData();
-        setTransactions(prev => [...newTx, ...prev]);
-        setInvoices(prev => [...newInv, ...prev]);
-        setUsers(prev => [...prev, ...newUsrs]);
-        
+        setTransactions((prev) => [...newTx, ...prev]);
+        setInvoices((prev) => [...newInv, ...prev]);
+        setUsers((prev) => [...prev, ...newUsrs]);
+
         toast.success("STRESS TEST COMPLETADO", {
-            description: `Se han generado ${newTx.length} transacciones, ${newInv.length} facturas y ${newUsrs.length} usuarios.`
+            description: `Se han generado ${newTx.length} transacciones, ${newInv.length} facturas y ${newUsrs.length} usuarios.`,
         });
     };
 
@@ -968,32 +966,189 @@ export default function App() {
       toast.success("Base de datos reiniciada correctamente.");
     };
 
-    // Filter Logic
-    const filteredTransactions = transactions.filter(t => {
-      const tDate = new Date(t.date);
-      // Ajustar fechas para comparación correcta (inicio del día y fin del día)
-      const start = txFilterDateStart ? new Date(txFilterDateStart) : null;
-      if(start) start.setHours(0,0,0,0);
-      
-      const end = txFilterDateEnd ? new Date(txFilterDateEnd) : null;
-      if(end) end.setHours(23,59,59,999);
+  const { totalIncome, totalExpense, netCashFlow } = useMemo(() => {
+    const income = transactions
+      .filter((t) => t.type === "income")
+      .reduce((acc, curr) => acc + curr.amount, 0);
+    const expense = transactions
+      .filter((t) => t.type === "expense")
+      .reduce((acc, curr) => acc + curr.amount, 0);
+    return { totalIncome: income, totalExpense: expense, netCashFlow: income - expense };
+  }, [transactions]);
 
-      const dateMatch = (!start || tDate >= start) && (!end || tDate <= end);
-      const categoryMatch = txFilterCategory === "all" || t.category === txFilterCategory;
-      const providerMatch = txFilterProvider === "all" || t.providerId === txFilterProvider;
+  // Filter Logic (evita re-filtrar en cada re-render)
+  const filteredTransactions = useMemo(() => {
+    return transactions
+      .filter((t) => {
+        const tDate = new Date(t.date);
+        const start = txFilterDateStart ? new Date(txFilterDateStart) : null;
+        if (start) start.setHours(0, 0, 0, 0);
 
-      return dateMatch && categoryMatch && providerMatch;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const end = txFilterDateEnd ? new Date(txFilterDateEnd) : null;
+        if (end) end.setHours(23, 59, 59, 999);
 
-  const totalIncome = transactions
-    .filter((t) => t.type === "income")
-    .reduce((acc, curr) => acc + curr.amount, 0);
+        const dateMatch = (!start || tDate >= start) && (!end || tDate <= end);
+        const categoryMatch = txFilterCategory === "all" || t.category === txFilterCategory;
+        const providerMatch = txFilterProvider === "all" || t.providerId === txFilterProvider;
 
-  const totalExpense = transactions
-    .filter((t) => t.type === "expense")
-    .reduce((acc, curr) => acc + curr.amount, 0);
+        return dateMatch && categoryMatch && providerMatch;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [
+    transactions,
+    txFilterDateStart,
+    txFilterDateEnd,
+    txFilterCategory,
+    txFilterProvider,
+  ]);
 
-  const netCashFlow = totalIncome - totalExpense;
+  // Check if current user has permission for a specific module
+  const userRole = roles.find(r => r.id === currentUser.role);
+  const isSuperAdmin =
+    currentUser.role === 'super_admin' ||
+    currentUser.role === 'admin' ||
+    !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
+  const hasPermission = (moduleName: string): boolean => {
+    if (isSuperAdmin) return true;
+    return roleRecordHasModuleAccess(userRole, moduleName);
+  };
+
+  const FINANCE_NAV_MODULES = [
+    "Finanzas",
+    "Tesorería",
+    "Transacciones",
+    "Flujo de Caja",
+    "Estado de Resultados",
+    "Honorarios",
+    "Cuentas por Pagar",
+    "Caja Chica",
+  ] as const;
+  const canSeeFinanzasNavGroup = FINANCE_NAV_MODULES.some((m) => hasPermission(m));
+
+  const canSeeGestionNavGroup =
+    hasPermission("Proveedores") ||
+    hasPermission("Contabilidad") ||
+    hasPermission("Compras") ||
+    hasPermission("Requerimientos") ||
+    hasPermission("Auditoría");
+
+  // --- SEDE FILTERING HELPERS (memoizado: menos re-renders en vistas que filtran por sede) ---
+  const catalogSedes = useMemo(() => getAllSedeNames(systemSettings), [systemSettings]);
+  const enabledSedesForForms = useMemo(() => getEnabledSedeNames(systemSettings), [systemSettings]);
+  const sedesEntriesForDialog = useMemo(
+    () => getSedesCatalogEntries(systemSettings),
+    [systemSettings]
+  );
+  const enabledCatalog = useMemo(
+    () => (enabledSedesForForms.length > 0 ? enabledSedesForForms : catalogSedes),
+    [enabledSedesForForms, catalogSedes]
+  );
+  const seesAllSedesInCatalog = useMemo(
+    () => currentUser.role === "super_admin" || currentUser.allSedes === true,
+    [currentUser.role, currentUser.allSedes]
+  );
+  const visibleSedes = useMemo((): string[] => {
+    if (seesAllSedesInCatalog) {
+      return [...enabledCatalog];
+    }
+    return (currentUser.sedes || []).filter((s) => enabledCatalog.includes(s));
+  }, [seesAllSedesInCatalog, enabledCatalog, currentUser.sedes]);
+
+  const canSeeSede = useCallback(
+    (sede: string): boolean => {
+      const loc = (sede || "Principal").trim();
+      if (seesAllSedesInCatalog) {
+        return catalogSedes.length === 0 || catalogSedes.includes(loc);
+      }
+      return visibleSedes.includes(loc);
+    },
+    [seesAllSedesInCatalog, catalogSedes, visibleSedes]
+  );
+  /** Vista consolidado caja chica: auditoría, admins, gerente y quien ve todas las sedes. */
+  const canAccessPettyCashConsolidated =
+    currentUser.role === 'super_admin' ||
+    currentUser.role === 'admin' ||
+    currentUser.role === 'auditoria' ||
+    currentUser.role === 'manager' ||
+    currentUser.allSedes === true ||
+    !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
+
+  const { categories: commercialCategories, areas: commercialAreas } = useMemo(
+    () => mergePettyCashFilterCatalog(systemSettings, pettyCashTransactions),
+    [systemSettings, pettyCashTransactions]
+  );
+
+  const handleClosePettyCashWeek = useCallback((closure: PettyCashWeekClosure) => {
+    setSystemSettings((prev) => ({
+      ...prev,
+      pettyCash: {
+        ...initialSystemSettings.pettyCash,
+        ...prev.pettyCash,
+        weekClosures: [...(prev.pettyCash?.weekClosures ?? []), closure],
+      },
+    }));
+  }, []);
+
+  const handlePreClosePettyCashWeek = useCallback((pre: PettyCashWeekPreClosure) => {
+    setSystemSettings((prev) => {
+      const existing = prev.pettyCash?.weekPreClosures ?? [];
+      const dup = existing.some(
+        (p) => p.custodianId === pre.custodianId && String(p.weekNumber) === String(pre.weekNumber)
+      );
+      if (dup) return prev;
+      return {
+        ...prev,
+        pettyCash: {
+          ...initialSystemSettings.pettyCash,
+          ...prev.pettyCash,
+          weekPreClosures: [...existing, pre],
+        },
+      };
+    });
+  }, []);
+
+  const applyProviderCategoryRename = (from: string, to: string) => {
+    const t = to.trim();
+    if (!t || from === t) return;
+    setProviders((prev) => prev.map((p) => (p.category === from ? { ...p, category: t } : p)));
+    setPettyCashTransactions((prev) =>
+      prev.map((x) => (x.category === from ? { ...x, category: t } : x))
+    );
+  };
+  const applyProviderAreaRename = (from: string, to: string) => {
+    const t = to.trim();
+    if (!t || from === t) return;
+    setProviders((prev) => prev.map((p) => (p.area === from ? { ...p, area: t } : p)));
+    setPettyCashTransactions((prev) =>
+      prev.map((x) => (x.area === from ? { ...x, area: t } : x))
+    );
+  };
+  const applyProviderCategoryRemoved = (removed: string, replacement: string) => {
+    const rep = replacement.trim() || commercialCategories[0] || "Otros";
+    setProviders((prev) =>
+      prev.map((p) => (p.category === removed ? { ...p, category: rep } : p))
+    );
+    setPettyCashTransactions((prev) =>
+      prev.map((x) => (x.category === removed ? { ...x, category: rep } : x))
+    );
+  };
+  const applyProviderAreaRemoved = (removed: string, replacement: string) => {
+    const rep = replacement.trim() || commercialAreas[0] || "";
+    setProviders((prev) =>
+      prev.map((p) => (p.area === removed ? { ...p, area: rep || undefined } : p))
+    );
+    setPettyCashTransactions((prev) =>
+      prev.map((x) => (x.area === removed ? { ...x, area: rep || undefined } : x))
+    );
+  };
+  const filteredPettyCashBySede = useMemo(
+    () => pettyCashTransactions.filter((tx) => !tx.location || canSeeSede(tx.location)),
+    [pettyCashTransactions, canSeeSede]
+  );
+  const filteredRequestsBySede = useMemo(
+    () => requests.filter((r) => !r.location || canSeeSede(r.location)),
+    [requests, canSeeSede]
+  );
 
   if (!isAuthenticated) {
     return (
@@ -1002,33 +1157,6 @@ export default function App() {
       </div>
     );
   }
-
-  // Check if current user has permission for a specific module
-  const userRole = roles.find(r => r.id === currentUser.role);
-  const isSuperAdmin = currentUser.role === 'super_admin' || currentUser.role === 'admin';
-  const hasPermission = (moduleName: string): boolean => {
-    if (isSuperAdmin) return true;
-    return userRole?.permissions?.[moduleName] === true;
-  };
-
-  // --- SEDE FILTERING HELPERS ---
-  const canSeeSede = (sede: string): boolean => {
-      if (isSuperAdmin || currentUser.allSedes) return true;
-      if (!currentUser.sedes || currentUser.sedes.length === 0) return true;
-      return currentUser.sedes.includes(sede);
-  };
-  const catalogSedes = getAllSedeNames(systemSettings);
-  const enabledSedesForForms = getEnabledSedeNames(systemSettings);
-  const sedesEntriesForDialog = getSedesCatalogEntries(systemSettings);
-  const visibleSedes: string[] = (isSuperAdmin || currentUser.allSedes || !currentUser.sedes?.length)
-      ? [...catalogSedes]
-      : (currentUser.sedes || []);
-  const filteredPettyCashBySede = pettyCashTransactions.filter(tx =>
-      !tx.location || canSeeSede(tx.location)
-  );
-  const filteredRequestsBySede = requests.filter(r =>
-      !r.location || canSeeSede(r.location)
-  );
 
   const NavButton = ({ targetView, icon: Icon, label, iconColorClass, requiredModule }: { targetView: ViewType, icon: typeof LayoutDashboard, label: string, iconColorClass?: string, requiredModule?: string }) => {
     // Hide if user doesn't have permission for this module
@@ -1132,29 +1260,30 @@ export default function App() {
             </div>
           )}
            <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Dashboard" />
-           <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Dashboard" />
+           <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Alertas" />
            <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Analítica" />
            
-           {hasPermission('Finanzas') && !isSidebarCollapsed && (
+           {canSeeFinanzasNavGroup && !isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-2.5">
               <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Finanzas</span>
             </div>
           )}
-           <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Finanzas" />
-           <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Finanzas" />
-           <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Finanzas" />
-           <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400 group-hover/btn:text-pink-300" requiredModule="Finanzas" />
+           <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Tesorería" />
+           <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Transacciones" />
+           <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Flujo de Caja" />
+           <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400 group-hover/btn:text-pink-300" requiredModule="Estado de Resultados" />
            <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Reportes" />
            <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400 group-hover/btn:text-teal-300" requiredModule="Caja Chica" />
-           <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Finanzas" />
+           <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Honorarios" />
            
-           {(hasPermission('Proveedores') || hasPermission('Compras') || hasPermission('Auditoría')) && !isSidebarCollapsed && (
+           {canSeeGestionNavGroup && !isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-2.5">
               <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Gestión</span>
             </div>
           )}
            <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Proveedores" />
-           <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Compras" />
+           <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Contabilidad" />
+           <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Requerimientos" />
            <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
            
@@ -1221,18 +1350,19 @@ export default function App() {
             <div className="fixed inset-y-0 left-0 w-64 shadow-2xl p-4 pt-20 overflow-y-auto" style={{ background: 'linear-gradient(180deg, #0D0B1E 0%, #090718 100%)', borderRight: '1px solid rgba(139,92,246,0.15)' }} onClick={e => e.stopPropagation()}>
                 <nav className="space-y-0.5">
                     <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400" requiredModule="Dashboard" />
-                    <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400" requiredModule="Dashboard" />
+                    <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400" requiredModule="Alertas" />
                     <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400" requiredModule="Analítica" />
-                    <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400" requiredModule="Finanzas" />
-                    <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400" requiredModule="Finanzas" />
-                    <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400" requiredModule="Finanzas" />
-                    <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400" requiredModule="Finanzas" />
+                    <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400" requiredModule="Tesorería" />
+                    <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400" requiredModule="Transacciones" />
+                    <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400" requiredModule="Flujo de Caja" />
+                    <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400" requiredModule="Estado de Resultados" />
                     <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400" requiredModule="Reportes" />
                     <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
                     <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400" requiredModule="Caja Chica" />
-                    <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" requiredModule="Finanzas" />
+                    <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" requiredModule="Honorarios" />
                     <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" requiredModule="Proveedores" />
-                    <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400" requiredModule="Compras" />
+                    <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400" requiredModule="Contabilidad" />
+                    <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400" requiredModule="Requerimientos" />
                     <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" requiredModule="Compras" />
                     <div className="pt-4 border-t border-border mt-4 space-y-2">
                         <NavButton targetView="users" icon={Users} label="Usuarios y Roles" requiredModule="Usuarios" />
@@ -1248,7 +1378,7 @@ export default function App() {
         style={{ transition: 'padding-left 500ms cubic-bezier(0.2, 0, 0, 1)' }}
       >
         <div className={`w-full ${view !== 'treasury' ? 'px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 lg:py-8' : ''}`}>
-          
+        <Suspense fallback={<RouteLoader />}>
           {/* Header Section for Views using Generic Wrapper */}
           {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'requisitions'].includes(view) && (
           <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5" style={{ borderBottom: '1px solid rgba(139,92,246,0.15)' }}>
@@ -1415,7 +1545,11 @@ export default function App() {
           )}
 
           {view === 'analytics' && (
-            <AnalyticsDashboard transactions={transactions} />
+            <AnalyticsDashboard
+              transactions={transactions}
+              visibleSedes={visibleSedes}
+              seesAllSedesCatalog={seesAllSedesInCatalog}
+            />
           )}
 
             {view === 'transactions' && (
@@ -1565,8 +1699,24 @@ export default function App() {
                     systemSettings={systemSettings}
                     onUpdateSystemSettings={setSystemSettings}
                     userRole={currentUser.role}
+                    openSimplePettyOnMount={openQuickProviderModal}
+                    onSimplePettyOpenHandled={() => setOpenQuickProviderModal(false)}
+                    chartOfAccounts={chartOfAccounts}
                 />
              </div>
+          )}
+
+          {view === 'accounting' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <ChartOfAccountsModule
+                chartOfAccounts={chartOfAccounts}
+                onUpdateChart={setChartOfAccounts}
+                systemSettings={systemSettings}
+                onUpdateSystemSettings={(next) => setSystemSettings(mergeSystemSettings(next))}
+                pettyCashTransactions={pettyCashTransactions}
+                providers={providers}
+              />
+            </div>
           )}
 
           {view === 'requisitions' && (
@@ -1613,18 +1763,28 @@ export default function App() {
                     onSaveSedesCatalog={handleSaveSedesCatalog}
                     onUpdateRoles={setRoles}
                     onUpdateUser={(updatedUser) => {
-                        setUsers(prev => prev.map(u => u.id === updatedUser.id ? updatedUser : u));
+                        setUsers(prev => {
+                          const next = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
+                          void persistUsersToCloud(next);
+                          return next;
+                        });
                         toast.success("Usuario actualizado correctamente");
                     }}
                     onAddUser={(newUser) => {
                         setUsers(prev => {
                             const e = newUser.email?.toLowerCase();
                             const rest = e ? prev.filter(u => u.email?.toLowerCase() !== e) : prev;
-                            return [...rest, newUser];
+                            const next = [...rest, newUser];
+                            void persistUsersToCloud(next);
+                            return next;
                         });
                     }}
                     onDeleteUser={(userId) => {
-                        setUsers(prev => prev.filter(u => u.id !== userId));
+                        setUsers(prev => {
+                          const next = prev.filter(u => u.id !== userId);
+                          void persistUsersToCloud(next);
+                          return next;
+                        });
                     }}
                 />
              </div>
@@ -1641,6 +1801,10 @@ export default function App() {
               users={users}
               onUpdateUsers={setUsers}
               currentUser={currentUser}
+              onApplyProviderCategoryRename={applyProviderCategoryRename}
+              onApplyProviderAreaRename={applyProviderAreaRename}
+              onApplyProviderCategoryRemoved={applyProviderCategoryRemoved}
+              onApplyProviderAreaRemoved={applyProviderAreaRemoved}
             />
           )}
 
@@ -1658,10 +1822,23 @@ export default function App() {
                 <PettyCashModule 
                   transactions={filteredPettyCashBySede}
                   onUpdateTransactions={setPettyCashTransactions}
-                  settings={systemSettings.pettyCash}
+                  settings={systemSettings.pettyCash ?? initialSystemSettings.pettyCash}
                   users={users}
                   currentUser={currentUser}
+                  roles={roles}
                   visibleSedes={visibleSedes}
+                  canAccessConsolidated={canAccessPettyCashConsolidated}
+                  businessName={systemSettings.businessName}
+                  businessLogo={systemSettings.businessLogo}
+                  commercialCategories={commercialCategories}
+                  commercialAreas={commercialAreas}
+                  providers={providers}
+                  onRequestProviderRegistration={() => {
+                    setOpenQuickProviderModal(true);
+                    navigate(viewToPath('providers'));
+                  }}
+                  onClosePettyCashWeek={handleClosePettyCashWeek}
+                  onPreClosePettyCashWeek={handlePreClosePettyCashWeek}
                 />
              </div>
           )}
@@ -1695,6 +1872,7 @@ export default function App() {
               )}
             </DialogContent>
           </Dialog>
+        </Suspense>
         </div>
       </main>
       <Toaster />

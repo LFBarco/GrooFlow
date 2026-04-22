@@ -179,31 +179,51 @@ app.post(`${BASE_PATH}/signup`, async (c) => {
 });
 
 // --- GENERIC KV ENDPOINTS ---
-
-// Get data by key
-app.get(`${BASE_PATH}/kv/:key`, async (c) => {
-  const key = c.req.param("key");
+// Usar `*` en lugar de `:key`: claves como `data:users` llevan `:` y rompen el enrutado / proxy si no van codificadas.
+function kvKeyFromUrl(c: { req: { url: string } }): string | null {
+  const pathname = new URL(c.req.url).pathname;
+  const m = pathname.match(/\/kv\/(.+)$/);
+  if (!m) return null;
   try {
-    const value = await kv.get(key);
-    return c.json({ data: value });
-  } catch (error) {
-    console.error(`Error fetching key ${key}:`, error);
-    return c.json({ error: "Failed to fetch data" }, 500);
+    return decodeURIComponent(m[1]);
+  } catch {
+    return m[1];
   }
-});
+}
 
-// Set data by key
-app.post(`${BASE_PATH}/kv/:key`, async (c) => {
-  const key = c.req.param("key");
-  try {
-    const body = await c.req.json();
-    await kv.set(key, body);
-    return c.json({ success: true });
-  } catch (error) {
-    console.error(`Error setting key ${key}:`, error);
-    return c.json({ error: "Failed to save data" }, 500);
-  }
-});
+/** Supabase puede exponer el path como `/make-server-…/kv/…` o `/server/make-server-…/kv/…` según el gateway. */
+const KV_PATH_BASES = [BASE_PATH, `/server${BASE_PATH}`];
+
+for (const base of KV_PATH_BASES) {
+  app.get(`${base}/kv/*`, async (c) => {
+    const key = kvKeyFromUrl(c);
+    if (key == null || key === "") {
+      return c.json({ error: "Missing key" }, 400);
+    }
+    try {
+      const value = await kv.get(key);
+      return c.json({ data: value });
+    } catch (error) {
+      console.error(`Error fetching key ${key}:`, error);
+      return c.json({ error: "Failed to fetch data" }, 500);
+    }
+  });
+
+  app.post(`${base}/kv/*`, async (c) => {
+    const key = kvKeyFromUrl(c);
+    if (key == null || key === "") {
+      return c.json({ error: "Missing key" }, 400);
+    }
+    try {
+      const body = await c.req.json();
+      await kv.set(key, body);
+      return c.json({ success: true });
+    } catch (error) {
+      console.error(`Error setting key ${key}:`, error);
+      return c.json({ error: "Failed to save data" }, 500);
+    }
+  });
+}
 
 // --- INITIALIZATION ENDPOINT ---
 // Helps to batch load everything on startup

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
     PieChart, Pie, Cell, LineChart, Line 
@@ -13,6 +13,8 @@ import { ArrowUpRight, ArrowDownRight, TrendingUp, DollarSign, PieChart as PieIc
 
 interface PettyCashAnalyticsProps {
     transactions: PettyCashTransaction[];
+    /** Sedes permitidas para el filtro (vacío = sin restricción explícita en UI). */
+    visibleSedes?: string[];
 }
 
 const COLORS = ['#22d3ee', '#34d399', '#fbbf24', '#fb7185', '#c084fc', '#f472b6', '#818cf8'];
@@ -24,9 +26,26 @@ const TOOLTIP_STYLE = {
 };
 const TOOLTIP_ITEM = { color: '#E4E0FF', fontSize: '12px' };
 
-export function PettyCashAnalytics({ transactions }: PettyCashAnalyticsProps) {
+export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnalyticsProps) {
     const [timeRange, setTimeRange] = useState<'3m' | '6m' | '12m' | 'year'>('6m');
     const [selectedLocation, setSelectedLocation] = useState<string>('all');
+
+    const locationOptions = useMemo(() => {
+        if (visibleSedes === undefined) return ['Principal', 'Norte', 'Sur'];
+        if (visibleSedes.length === 0) return [];
+        return visibleSedes;
+    }, [visibleSedes]);
+
+    useEffect(() => {
+        if (locationOptions.length === 0) {
+            setSelectedLocation('all');
+            return;
+        }
+        if (selectedLocation === 'all') return;
+        if (!locationOptions.includes(selectedLocation)) {
+            setSelectedLocation(locationOptions.length <= 1 ? locationOptions[0]! : 'all');
+        }
+    }, [locationOptions, selectedLocation]);
 
     // Filter Logic
     const filteredData = useMemo(() => {
@@ -42,11 +61,19 @@ export function PettyCashAnalytics({ transactions }: PettyCashAnalyticsProps) {
             const tDate = new Date(t.date);
             
             const dateMatch = tDate >= startDate && tDate <= now;
-            const locationMatch = selectedLocation === 'all' || (t.location || 'Principal') === selectedLocation;
+            const loc = (t.location || 'Principal').trim();
+            const locationMatch =
+                selectedLocation === 'all'
+                    ? visibleSedes === undefined
+                        ? true
+                        : visibleSedes.length === 0
+                          ? false
+                          : visibleSedes.includes(loc)
+                    : loc === selectedLocation;
 
             return dateMatch && locationMatch;
         });
-    }, [transactions, timeRange, selectedLocation]);
+    }, [transactions, timeRange, selectedLocation, visibleSedes]);
 
     // KPI Calculations
     const totalExpense = useMemo(() => 
@@ -121,6 +148,115 @@ export function PettyCashAnalytics({ transactions }: PettyCashAnalyticsProps) {
             .sort((a, b) => b.value - a.value);
     }, [filteredData]);
 
+    // 4. Expenses by Area
+    const expensesByArea = useMemo(() => {
+        const grouped: Record<string, number> = {};
+        filteredData
+            .filter(t => t.type === 'expense' || !t.type)
+            .forEach(t => {
+                const areaName = (t.area || 'Sin área').trim();
+                grouped[areaName] = (grouped[areaName] || 0) + t.amount;
+            });
+
+        return Object.entries(grouped)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value);
+    }, [filteredData]);
+
+    // 5. Top Providers
+    const topProviders = useMemo(() => {
+        const grouped: Record<string, { amount: number; count: number }> = {};
+        filteredData
+            .filter(t => t.type === 'expense' || !t.type)
+            .forEach(t => {
+                const key = (t.providerName || 'Proveedor no identificado').trim();
+                if (!grouped[key]) grouped[key] = { amount: 0, count: 0 };
+                grouped[key].amount += t.amount;
+                grouped[key].count += 1;
+            });
+
+        return Object.entries(grouped)
+            .map(([name, agg]) => ({ name, amount: agg.amount, count: agg.count }))
+            .sort((a, b) => b.amount - a.amount)
+            .slice(0, 5);
+    }, [filteredData]);
+
+    // 6. Smart recommendations and alerts for admins
+    const optimizationAlerts = useMemo(() => {
+        const expenseData = filteredData.filter(t => t.type === 'expense' || !t.type);
+        if (expenseData.length === 0) {
+            return [{
+                level: 'info' as const,
+                title: 'Sin datos suficientes',
+                message: 'Aún no hay movimientos para generar alertas de optimización de fondo.'
+            }];
+        }
+
+        const alerts: Array<{ level: 'warning' | 'info' | 'success'; title: string; message: string }> = [];
+        const recurringThreshold = Math.max(2, Math.ceil(expenseData.length * 0.2));
+        const recurringByDescription = expenseData.reduce((acc, tx) => {
+            const key = (tx.description || '').trim().toLowerCase();
+            if (!key) return acc;
+            acc[key] = (acc[key] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+
+        const recurringItems = Object.entries(recurringByDescription)
+            .filter(([, count]) => count >= recurringThreshold)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 2);
+
+        if (recurringItems.length > 0) {
+            alerts.push({
+                level: 'warning',
+                title: 'Gastos recurrentes detectados',
+                message: `Conceptos repetidos: ${recurringItems.map(([desc]) => `"${desc.slice(0, 26)}"`).join(', ')}. Evalúe compra programada o convenio mensual.`
+            });
+        }
+
+        const topArea = expensesByArea[0];
+        if (topArea && totalExpense > 0) {
+            const concentration = (topArea.value / totalExpense) * 100;
+            if (concentration >= 45) {
+                alerts.push({
+                    level: 'warning',
+                    title: 'Concentración por área',
+                    message: `${topArea.name} concentra ${concentration.toFixed(0)}% del gasto. Defina tope semanal y autorización adicional para esa área.`
+                });
+            }
+        }
+
+        const topProvider = topProviders[0];
+        if (topProvider && totalExpense > 0) {
+            const providerShare = (topProvider.amount / totalExpense) * 100;
+            if (providerShare >= 35) {
+                alerts.push({
+                    level: 'info',
+                    title: 'Dependencia de proveedor',
+                    message: `${topProvider.name} representa ${providerShare.toFixed(0)}% del gasto total. Compare precios con al menos 2 alternativas.`
+                });
+            }
+        }
+
+        if (alerts.length === 0) {
+            alerts.push({
+                level: 'success',
+                title: 'Uso equilibrado del fondo',
+                message: 'No se observan concentraciones críticas. Mantenga control semanal y conciliación con comprobantes.'
+            });
+        }
+
+        return alerts;
+    }, [filteredData, expensesByArea, topProviders, totalExpense]);
+
+    if (locationOptions.length === 0) {
+        return (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-950/20 p-6 text-sm text-amber-100">
+                No tiene sedes asignadas; la analítica de caja chica no muestra datos hasta que un administrador configure sus sedes.
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Header & Controls */}
@@ -131,10 +267,12 @@ export function PettyCashAnalytics({ transactions }: PettyCashAnalyticsProps) {
                             <SelectValue placeholder="Todas las Sedes" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">Todas las Sedes</SelectItem>
-                            <SelectItem value="Principal">Principal</SelectItem>
-                            <SelectItem value="Norte">Norte</SelectItem>
-                            <SelectItem value="Sur">Sur</SelectItem>
+                            {locationOptions.length > 1 && (
+                                <SelectItem value="all">Todas (mis sedes)</SelectItem>
+                            )}
+                            {locationOptions.map((loc) => (
+                                <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                            ))}
                         </SelectContent>
                     </Select>
                     <div className="h-6 w-px" style={{ background: 'rgba(139,92,246,0.2)' }} />
@@ -245,40 +383,84 @@ export function PettyCashAnalytics({ transactions }: PettyCashAnalyticsProps) {
                     </div>
                 </div>
 
-                {/* Top Movements Table */}
+                {/* Expenses by Area */}
+                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                    <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <p className="font-bold text-sm" style={{ color: '#F0EEFF' }}>Gastos por Área</p>
+                      <p className="text-xs" style={{ color: AXIS_COLOR }}>Distribución del fondo según área solicitante</p>
+                    </div>
+                    <div style={{ height: '260px' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={expensesByArea.slice(0, 8)} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={GRID_COLOR} />
+                                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} tickFormatter={(v) => `S/${v}`} />
+                                <YAxis dataKey="name" type="category" width={110} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [`S/ ${value.toFixed(2)}`, 'Área']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
+                                <Bar dataKey="value" fill="#34d399" radius={[0, 4, 4, 0]} barSize={24} opacity={0.85} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+
+            {/* Charts Row 3 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Top Providers */}
                 <Card className="col-span-1">
                     <CardHeader>
-                        <CardTitle>Mayores Gastos</CardTitle>
-                        <CardDescription>Top 5 movimientos más costosos del periodo</CardDescription>
+                        <CardTitle>Top 5 Proveedores</CardTitle>
+                        <CardDescription>Ranking por monto acumulado en el periodo</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            {filteredData
-                                .filter(t => t.type === 'expense' || !t.type)
-                                .sort((a, b) => b.amount - a.amount)
-                                .slice(0, 5)
-                                .map((t, i) => (
-                                    <div key={t.id} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
+                            {topProviders.map((provider, i) => (
+                                    <div key={`${provider.name}-${i}`} className="flex items-center justify-between border-b pb-2 last:border-0 last:pb-0">
                                         <div className="flex items-center gap-3">
                                             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-600 font-bold text-xs">
                                                 {i + 1}
                                             </div>
                                             <div>
-                                                <p className="text-sm font-medium leading-none">{t.description}</p>
+                                                <p className="text-sm font-medium leading-none">{provider.name}</p>
                                                 <p className="text-xs text-muted-foreground mt-1">
-                                                    {format(new Date(t.date), "dd/MM/yy")} • {t.category} • {t.location}
+                                                    {provider.count} gasto(s) registrado(s)
                                                 </p>
                                             </div>
                                         </div>
                                         <div className="font-bold text-sm">
-                                            S/ {t.amount.toFixed(2)}
+                                            S/ {provider.amount.toFixed(2)}
                                         </div>
                                     </div>
                                 ))
                             }
-                            {filteredData.length === 0 && (
+                            {topProviders.length === 0 && (
                                 <p className="text-center text-muted-foreground text-sm py-8">No hay datos en este periodo</p>
                             )}
+                        </div>
+                    </CardContent>
+                </Card>
+
+                {/* Recommendations / Alerts */}
+                <Card className="col-span-1">
+                    <CardHeader>
+                        <CardTitle>Alertas y Recomendaciones</CardTitle>
+                        <CardDescription>Acciones para optimizar el uso del fondo de sede</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-3">
+                            {optimizationAlerts.map((alert, idx) => {
+                                const tone =
+                                    alert.level === 'warning'
+                                        ? 'border-amber-500/30 bg-amber-950/20 text-amber-100'
+                                        : alert.level === 'success'
+                                          ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-100'
+                                          : 'border-cyan-500/30 bg-cyan-950/20 text-cyan-100';
+                                return (
+                                    <div key={`${alert.title}-${idx}`} className={`rounded-lg border p-3 ${tone}`}>
+                                        <p className="text-sm font-semibold">{alert.title}</p>
+                                        <p className="text-xs mt-1 opacity-90">{alert.message}</p>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </CardContent>
                 </Card>

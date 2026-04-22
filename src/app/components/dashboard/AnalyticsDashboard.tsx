@@ -31,6 +31,10 @@ const TOOLTIP_ITEM = { color: '#E4E0FF', fontSize: '12px' };
 
 interface AnalyticsDashboardProps {
   transactions: Transaction[];
+  /** Sedes habilitadas visibles para el usuario; si `seesAllSedesCatalog`, se ignoran. */
+  visibleSedes?: string[];
+  /** true = super_admin / todas las sedes: sin filtrar por sede. */
+  seesAllSedesCatalog?: boolean;
 }
 
 const NeonCard = ({ children, className = '' }: { children: React.ReactNode, className?: string }) => (
@@ -58,33 +62,46 @@ const CardHeader = ({ icon: Icon, iconColor, title, subtitle }: { icon: any, ico
   </div>
 );
 
-export function AnalyticsDashboard({ transactions }: AnalyticsDashboardProps) {
+export function AnalyticsDashboard({
+  transactions,
+  visibleSedes = [],
+  seesAllSedesCatalog = true,
+}: AnalyticsDashboardProps) {
   const [isMounted, setIsMounted] = useState(false);
   useEffect(() => { setIsMounted(true); }, []);
 
+  const scopedTransactions = useMemo(() => {
+    if (seesAllSedesCatalog) return transactions;
+    if (!visibleSedes.length) return [];
+    return transactions.filter((t) => {
+      const loc = (t.location || 'Principal').trim();
+      return visibleSedes.includes(loc);
+    });
+  }, [transactions, visibleSedes, seesAllSedesCatalog]);
+
   const categoryData = useMemo(() => {
-    const expenses = transactions.filter(t => t.type === 'expense');
+    const expenses = scopedTransactions.filter(t => t.type === 'expense');
     const grouped = expenses.reduce((acc, curr) => {
       acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
       return acc;
     }, {} as Record<string, number>);
     return Object.entries(grouped).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [transactions]);
+  }, [scopedTransactions]);
 
   const monthlyTrend = useMemo(() => {
     return Array.from({ length: 6 }, (_, i) => {
       const date = subMonths(new Date(), 5 - i);
-      const monthTxs = transactions.filter(t => isSameMonth(new Date(t.date), date));
+      const monthTxs = scopedTransactions.filter(t => isSameMonth(new Date(t.date), date));
       const income = monthTxs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
       const expense = monthTxs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
       return { name: format(date, 'MMM', { locale: es }), ingresos: income, egresos: expense, neto: income - expense };
     });
-  }, [transactions]);
+  }, [scopedTransactions]);
 
   const currentMonth = new Date();
   const prevMonth = subMonths(currentMonth, 1);
-  const currentMonthTxs = transactions.filter(t => isSameMonth(new Date(t.date), currentMonth));
-  const prevMonthTxs = transactions.filter(t => isSameMonth(new Date(t.date), prevMonth));
+  const currentMonthTxs = scopedTransactions.filter(t => isSameMonth(new Date(t.date), currentMonth));
+  const prevMonthTxs = scopedTransactions.filter(t => isSameMonth(new Date(t.date), prevMonth));
   const calcTotal = (txs: Transaction[], type: 'income' | 'expense') =>
     txs.filter(t => t.type === type).reduce((s, t) => s + t.amount, 0);
 
@@ -140,7 +157,14 @@ export function AnalyticsDashboard({ transactions }: AnalyticsDashboardProps) {
           </div>
           <div>
             <h2 className="text-2xl font-bold" style={{ color: '#F0EEFF' }}>Inteligencia Financiera</h2>
-            <p className="text-sm" style={{ color: AXIS_COLOR }}>Análisis profundo y KPIs impulsados por datos históricos</p>
+            <p className="text-sm" style={{ color: AXIS_COLOR }}>
+              Análisis profundo y KPIs impulsados por datos históricos
+              {!seesAllSedesCatalog && visibleSedes.length > 0 ? (
+                <span className="block mt-1 text-xs text-cyan-400/90">
+                  Alcance: sedes asignadas ({visibleSedes.join(', ')}).
+                </span>
+              ) : null}
+            </p>
           </div>
         </div>
       </div>

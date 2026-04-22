@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { PurchaseRequest, Provider, Priority, RequestStatus, PaymentCondition } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
@@ -18,6 +18,13 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+
+function toRequestDate(d: Date | string | undefined | null): Date {
+  if (d instanceof Date && !isNaN(d.getTime())) return d;
+  if (d == null || d === '') return new Date();
+  const t = new Date(d);
+  return isNaN(t.getTime()) ? new Date() : t;
+}
 
 interface PurchaseRequestManagerProps {
     requests: PurchaseRequest[];
@@ -54,6 +61,35 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
     const [attachment, setAttachment] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    /**
+     * `visibleSedes || [fallback]` NO sirve: `[]` es truthy y deja 0 <SelectItem />
+     * → Radix Select se puede colgar. Siempre asegurar al menos un listado y que `value` exista en la lista.
+     */
+    const baseSedes = useMemo(() => {
+        if (visibleSedes && visibleSedes.length > 0) return visibleSedes;
+        return ['Principal', 'Norte', 'Sur'];
+    }, [visibleSedes]);
+
+    const sedeSelectOptions = useMemo(() => {
+        const set = new Set<string>(baseSedes);
+        const out = [...baseSedes];
+        for (const s of [defaultLocation, location]) {
+            if (s && !set.has(s)) {
+                set.add(s);
+                out.unshift(s);
+            }
+        }
+        return out;
+    }, [baseSedes, defaultLocation, location]);
+
+    useEffect(() => {
+        if (!isCreateOpen) return;
+        if (sedeSelectOptions.length === 0) return;
+        if (!sedeSelectOptions.includes(location)) {
+            setLocation(sedeSelectOptions[0]!);
+        }
+    }, [isCreateOpen, sedeSelectOptions, location]);
+
     // --- Statistics ---
     const stats = useMemo(() => {
         const pending = requests.filter(r => r.status === 'pending');
@@ -85,15 +121,18 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
             if (searchTerm) {
                 const searchLower = searchTerm.toLowerCase();
                 return (
-                    req.providerName.toLowerCase().includes(searchLower) ||
-                    req.description.toLowerCase().includes(searchLower) ||
-                    req.requesterName.toLowerCase().includes(searchLower) ||
-                    req.location.toLowerCase().includes(searchLower)
+                    (req.providerName || '').toLowerCase().includes(searchLower) ||
+                    (req.description || '').toLowerCase().includes(searchLower) ||
+                    (req.requesterName || '').toLowerCase().includes(searchLower) ||
+                    (req.location || '').toLowerCase().includes(searchLower)
                 );
             }
 
             return true;
-        }).sort((a, b) => new Date(b.requestDate).getTime() - new Date(a.requestDate).getTime());
+        }).sort(
+            (a, b) =>
+                toRequestDate(b.requestDate).getTime() - toRequestDate(a.requestDate).getTime()
+        );
     }, [requests, activeTab, searchTerm]);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -223,7 +262,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label>Sede / Ubicación</Label>
-                                    {visibleSedes && visibleSedes.length === 1 ? (
+                                    {baseSedes.length === 1 ? (
                                         <div className="flex items-center h-10 px-3 rounded-md border bg-muted text-sm font-medium">
                                             {location}
                                         </div>
@@ -233,8 +272,10 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                {(visibleSedes || ['Principal', 'Norte', 'Sur']).map(s => (
-                                                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                                                {sedeSelectOptions.map((s) => (
+                                                    <SelectItem key={s} value={s}>
+                                                        {s}
+                                                    </SelectItem>
                                                 ))}
                                             </SelectContent>
                                         </Select>
@@ -476,7 +517,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                         <TableBody>
                             {filteredRequests.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <div className="bg-muted p-4 rounded-full">
                                                 <Search className="w-8 h-8 opacity-20" />
@@ -490,7 +531,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                                 filteredRequests.map(req => (
                                     <TableRow key={req.id} className="group hover:bg-muted/50 transition-colors">
                                         <TableCell className="text-xs font-mono">
-                                            {format(req.requestDate, 'dd/MM/yy', { locale: es })}
+                                            {format(toRequestDate(req.requestDate), 'dd/MM/yy', { locale: es })}
                                             <div className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-1">
                                                 <MapPin className="w-3 h-3"/> {req.location}
                                             </div>

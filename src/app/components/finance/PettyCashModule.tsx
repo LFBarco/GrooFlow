@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PettyCashManager } from './PettyCashManager';
 import { CashMovements } from './CashMovements';
 import { PettyCashAnalytics } from './PettyCashAnalytics';
-import { PettyCashTransaction, PettyCashSettings, User } from '../../types';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
-import { Wallet, TrendingUp, BarChart2, Plus, Info, Receipt, User as UserIcon, Building2 } from 'lucide-react';
+import { PettyCashTransaction, PettyCashSettings, User, PettyCashWeekClosure, PettyCashWeekPreClosure } from '../../types';
+import type { Role } from '../users/types';
+import { Tabs, TabsList, TabsTrigger } from '../ui/tabs';
+import { Wallet, TrendingUp, BarChart2, Plus, Info, Building2, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { canApprovePettyCashMovements } from '../../utils/pettyCashAudit';
+import { PettyCashAuditConsole } from './PettyCashAuditConsole';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { Input } from '../ui/input';
@@ -14,6 +17,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Switch } from '../ui/switch';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
+import { findPettyCashDuplicate } from '../../utils/pettyCashDocDuplicate';
+import {
+    getPettyCashWeekBalance,
+    isPettyCashWeekClosedForCustodian,
+} from '../../utils/pettyCashBalance';
+import { receiptTypeUsesIgv } from '../../utils/pettyCashReceiptType';
 
 interface PettyCashModuleProps {
     transactions: PettyCashTransaction[];
@@ -21,27 +31,28 @@ interface PettyCashModuleProps {
     settings: PettyCashSettings;
     users: User[];
     currentUser: User;
+    /** Roles del sistema (permisos Auditoría + Caja Chica para consola de auditoría). */
+    roles?: Role[];
     visibleSedes?: string[];
+    /** Consolidado multi-sede: solo usuarios con todas las sedes. */
+    canAccessConsolidated?: boolean;
+    businessName?: string;
+    /** Catálogo desde Configuración → Contabilidad (proveedores / caja chica). */
+    commercialCategories: string[];
+    commercialAreas: string[];
+    /** Catálogo de proveedores para validación/autocompletado por RUC. */
+    providers?: { id: string; ruc: string; name: string }[];
+    /** Navega al módulo de proveedores para alta rápida si el RUC no existe. */
+    onRequestProviderRegistration?: () => void;
+    /** Logo del negocio (respaldo si no hay logo específico en plantilla de rendición). */
+    businessLogo?: string;
+    /** Persiste cierre de semana (arrastre de saldo en `settings.weekClosures`). */
+    onClosePettyCashWeek?: (closure: PettyCashWeekClosure) => void;
+    /** Pre-cierre presentado por el responsable (no bloquea gastos). */
+    onPreClosePettyCashWeek?: (pre: PettyCashWeekPreClosure) => void;
 }
 
 const getWeekStr = (date: Date) => format(date, 'w');
-
-const AREAS = [
-    'Administración',
-    'Logística',
-    'Ventas',
-    'Marketing',
-    'Recursos Humanos',
-    'Operaciones',
-    'Tecnología',
-    'Dirección Médica'
-];
-
-const MOCK_PROVIDERS: Record<string, string> = {
-    '20601234567': 'VETERINARIA CENTRAL SAC',
-    '10456789012': 'JUAN PEREZ (SERVICIOS GENERALES)',
-    '20559988776': 'DISTRIBUIDORA DEL NORTE EIRL'
-};
 
 export function PettyCashModule({ 
     transactions, 
@@ -49,121 +60,322 @@ export function PettyCashModule({
     settings, 
     users, 
     currentUser,
-    visibleSedes
+    roles = [],
+    visibleSedes = [],
+    canAccessConsolidated = false,
+    businessName = 'GrooFlow',
+    commercialCategories,
+    commercialAreas,
+    providers = [],
+    onRequestProviderRegistration,
+    businessLogo,
+    onClosePettyCashWeek,
+    onPreClosePettyCashWeek,
 }: PettyCashModuleProps) {
     const [activeTab, setActiveTab] = useState('manager');
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
 
-    // Form States
     const [amountBI, setAmountBI] = useState('');
     const [description, setDescription] = useState('');
-    const [category, setCategory] = useState<string>('Otros');
-    const [classification, setClassification] = useState<string>('Boleta'); // Classification
+    const [category, setCategory] = useState<string>(() => commercialCategories[0] || 'Otros');
+    const [classification, setClassification] = useState<string>('Boleta');
     const [docType, setDocType] = useState<string>('RUC');
     const [docNumber, setDocNumber] = useState('');
+    const [docSeries, setDocSeries] = useState('');
+    const [voucherNumber, setVoucherNumber] = useState('');
     const [providerName, setProviderName] = useState('');
+    const [providerMatchedByRuc, setProviderMatchedByRuc] = useState(false);
     const [area, setArea] = useState<string>('');
     const [isExtraExpense, setIsExtraExpense] = useState(false);
     
-    // Sede: defaults to first visible sede of the user
-    const defaultSede = currentUser.sedes?.[0] || currentUser.location || visibleSedes?.[0] || 'Principal';
+    const sedeOptions = useMemo(
+        () => (visibleSedes.length > 0 ? [...visibleSedes] : []),
+        [visibleSedes.join('|')]
+    );
+    const defaultSede = sedeOptions[0] || currentUser.location || 'Principal';
     const [location, setLocation] = useState<string>(defaultSede);
+    const [documentDate, setDocumentDate] = useState<string>(() =>
+        format(new Date(), 'yyyy-MM-dd')
+    );
 
-    // Calculated fields
-    const igv = amountBI ? (parseFloat(amountBI) * 0.18) : 0;
-    const total = amountBI ? (parseFloat(amountBI) + igv) : 0;
-
-    // Auto-fill provider name
     useEffect(() => {
-        if (docNumber && MOCK_PROVIDERS[docNumber]) {
-            setProviderName(MOCK_PROVIDERS[docNumber]);
-        } else if (docNumber.length >= 8) {
-            // Reset if not found but let user type?
-            // For now, if mock not found, keep empty or user typed
+        const first = sedeOptions[0];
+        if (first && !sedeOptions.includes(location)) {
+            setLocation(first);
         }
-    }, [docNumber]);
+    }, [sedeOptions, location]);
+
+    const showAuditTab = canApprovePettyCashMovements(currentUser, roles);
+    const normalizedRuc = docNumber.replace(/\D/g, '');
+    const matchedProviderByRuc = useMemo(() => {
+        if (docType !== 'RUC') return null;
+        if (normalizedRuc.length !== 11) return null;
+        return providers.find((p) => (p.ruc || '').replace(/\D/g, '') === normalizedRuc) || null;
+    }, [providers, normalizedRuc, docType]);
+
+    useEffect(() => {
+        if (docType !== 'RUC') {
+            setProviderMatchedByRuc(false);
+            return;
+        }
+        if (!matchedProviderByRuc) {
+            setProviderMatchedByRuc(false);
+            return;
+        }
+        setProviderMatchedByRuc(true);
+        if (providerName.trim() !== matchedProviderByRuc.name) {
+            setProviderName(matchedProviderByRuc.name);
+            toast.info('Proveedor encontrado en catálogo', {
+                description: matchedProviderByRuc.name,
+            });
+        }
+    }, [docType, matchedProviderByRuc, providerName]);
+
+    useEffect(() => {
+        if (!canAccessConsolidated && activeTab === 'consolidated') {
+            setActiveTab('manager');
+        }
+    }, [canAccessConsolidated, activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'audit' && !showAuditTab) {
+            setActiveTab('manager');
+        }
+    }, [activeTab, showAuditTab]);
+
+    useEffect(() => {
+        if (commercialCategories.length > 0 && !commercialCategories.includes(category)) {
+            setCategory(commercialCategories[0]!);
+        }
+    }, [commercialCategories, category]);
+
+    useEffect(() => {
+        if (commercialAreas.length === 0) return;
+        if (!area || !commercialAreas.includes(area)) {
+            setArea(commercialAreas[0]!);
+        }
+    }, [commercialAreas, area]);
+
+    const usesIgv = receiptTypeUsesIgv(classification);
+    const parsedBi = amountBI ? parseFloat(amountBI) : NaN;
+    const igv =
+        usesIgv && !Number.isNaN(parsedBi) ? Math.round(parsedBi * 0.18 * 100) / 100 : 0;
+    const total = amountBI
+        ? usesIgv
+            ? !Number.isNaN(parsedBi)
+                ? Math.round((parsedBi + igv) * 100) / 100
+                : 0
+            : !Number.isNaN(parsedBi)
+              ? Math.round(parsedBi * 100) / 100
+              : 0
+        : 0;
+
+    const availablePettyBalance = useMemo(() => {
+        const limit =
+            currentUser.pettyCashLimit && currentUser.pettyCashLimit > 0
+                ? currentUser.pettyCashLimit
+                : settings.totalFundLimit;
+        const w = getWeekStr(new Date());
+        if (isPettyCashWeekClosedForCustodian(currentUser.id, w, settings.weekClosures)) {
+            return { closed: true as const, balance: 0 };
+        }
+        const balance = getPettyCashWeekBalance(
+            transactions,
+            currentUser.id,
+            w,
+            settings.weekClosures,
+            limit
+        );
+        return { closed: false as const, balance };
+    }, [transactions, settings.weekClosures, settings.totalFundLimit, currentUser.id, currentUser.pettyCashLimit]);
 
     const handleRegisterExpense = () => {
+        if (sedeOptions.length === 0) {
+            toast.error('No tiene sedes asignadas para registrar gastos. Contacte al administrador.');
+            return;
+        }
+        if (commercialAreas.length === 0 || commercialCategories.length === 0) {
+            toast.error('Falta configurar categorías o áreas en Configuración → Contabilidad.');
+            return;
+        }
         if (!amountBI || !description || !area || !docNumber || !providerName) {
             toast.error("Por favor complete los campos obligatorios");
             return; 
         }
-
-        const numAmountBI = parseFloat(amountBI);
-        
-        if (isNaN(numAmountBI) || numAmountBI <= 0) {
-            toast.error("Ingrese un monto válido");
+        if (docType === 'RUC') {
+            if (normalizedRuc.length !== 11) {
+                toast.error('El RUC debe tener 11 dígitos.');
+                return;
+            }
+            if (!matchedProviderByRuc) {
+                toast.error('Proveedor no registrado', {
+                    description: 'Primero registre el proveedor en el módulo Proveedores y luego vuelva a intentar.',
+                });
+                return;
+            }
+        }
+        if (!docSeries.trim() || !voucherNumber.trim()) {
+            toast.error('Indique la Serie y el Nro. de documento del comprobante');
             return;
         }
 
-        if (total > settings.maxTransactionAmount && !isExtraExpense) {
-             // Maybe warn?
+        const numAmountBI = parseFloat(amountBI);
+
+        if (isNaN(numAmountBI) || numAmountBI <= 0) {
+            toast.error('Ingrese un monto válido');
+            return;
         }
-        
-        if (total > 300) {
+
+        const usesIgvRow = receiptTypeUsesIgv(classification);
+        const igvVal = usesIgvRow ? Math.round(numAmountBI * 0.18 * 100) / 100 : 0;
+        const totalVal = usesIgvRow
+            ? Math.round((numAmountBI + igvVal) * 100) / 100
+            : Math.round(numAmountBI * 100) / 100;
+
+        if (totalVal > 300) {
              toast.warning("Gasto mayor a S/ 300 requiere aprobación.", {
                  description: "El gasto se registrará pero quedará pendiente de validación extra."
              });
         }
 
+        const dup = findPettyCashDuplicate(
+            transactions,
+            docNumber.trim(),
+            docSeries.trim(),
+            voucherNumber.trim()
+        );
+        if (dup) {
+            toast.error('Ya existe un gasto activo con el mismo RUC/DNI, serie y número de documento.', {
+                description: `Registro existente: ${dup.description?.slice(0, 60) || dup.id}…`,
+            });
+            return;
+        }
+
+        const weekStr = getWeekStr(new Date());
+        const custodianId = currentUser.id;
+        const fundLimit =
+            currentUser.pettyCashLimit && currentUser.pettyCashLimit > 0
+                ? currentUser.pettyCashLimit
+                : settings.totalFundLimit;
+
+        if (isPettyCashWeekClosedForCustodian(custodianId, weekStr, settings.weekClosures)) {
+            toast.error('Esta semana ya está cerrada para su caja; no puede registrar más gastos en ella.');
+            return;
+        }
+
+        const balanceBefore = getPettyCashWeekBalance(
+            transactions,
+            custodianId,
+            weekStr,
+            settings.weekClosures,
+            fundLimit
+        );
+        if (balanceBefore - totalVal < -0.009) {
+            toast.error('Saldo insuficiente en caja chica.', {
+                description: `Disponible: S/ ${balanceBefore.toFixed(2)} · Gasto: S/ ${totalVal.toFixed(2)}. Reduzca el monto o registre una reposición.`,
+            });
+            return;
+        }
+
+        if (settings.maxTransactionAmount > 0 && totalVal > settings.maxTransactionAmount + 0.009) {
+            toast.error('El monto supera el tope por comprobante configurado.', {
+                description: `Tope actual: S/ ${settings.maxTransactionAmount.toFixed(2)} (Configuración → Contabilidad).`,
+            });
+            return;
+        }
+
+        let docDateParsed: Date;
+        try {
+            docDateParsed = documentDate
+                ? new Date(documentDate + 'T12:00:00')
+                : new Date();
+        } catch {
+            docDateParsed = new Date();
+        }
+        if (Number.isNaN(docDateParsed.getTime())) docDateParsed = new Date();
+
         const newExpense: PettyCashTransaction = {
             id: `pc-${Date.now()}`,
             date: new Date(),
-            amount: total, // Total amount deducted
-            amountBI: numAmountBI,
-            igv: igv,
+            documentDate: docDateParsed,
+            amount: totalVal,
+            amountBI: usesIgvRow ? numAmountBI : totalVal,
+            igv: usesIgvRow ? igvVal : 0,
             description,
-            category: category as any, // "Motivo" maps to Category
-            requester: currentUser.name, // Automatic
-            receiptNumber: docNumber, // Using Doc Number as Receipt Number
-            receiptType: classification as any,
-            docType: docType as any,
-            docNumber: docNumber,
+            category: commercialCategories.includes(category) ? category : commercialCategories[0]!,
+            requester: currentUser.name,
+            receiptNumber: voucherNumber.trim(),
+            receiptType: classification as PettyCashTransaction['receiptType'],
+            docType: docType as PettyCashTransaction['docType'],
+            docNumber: docNumber.trim(),
+            docSeries: docSeries.trim(),
+            voucherNumber: voucherNumber.trim(),
             providerName: providerName,
             area: area,
             isExtraExpense: isExtraExpense,
-            status: total > 300 ? 'pending_audit' : 'pending_audit', // Logic for approval
+            status: 'pending_audit',
             weekNumber: getWeekStr(new Date()),
             custodianId: currentUser.id,
             type: 'expense',
-            location: location
+            location: sedeOptions.includes(location) ? location : sedeOptions[0]
         };
 
         onUpdateTransactions([newExpense, ...transactions]);
         
-        // Reset Form
         setAmountBI('');
         setDescription('');
         setDocNumber('');
+        setDocSeries('');
+        setVoucherNumber('');
         setProviderName('');
-        // setArea(''); // Keep area for convenience? No, reset.
+        setProviderMatchedByRuc(false);
         setArea('');
         setIsExtraExpense(false);
         setClassification('Boleta');
         setDocType('RUC');
-        
+        setDocumentDate(format(new Date(), 'yyyy-MM-dd'));
+
         setIsExpenseModalOpen(false);
         toast.success("Gasto registrado correctamente", {
-            description: `Total: S/ ${total.toFixed(2)} (${classification})`
+            description: `Total: S/ ${totalVal.toFixed(2)} (${classification})`
         });
     };
 
     return (
         <div className="space-y-6">
+            {sedeOptions.length === 0 && (
+                <Alert variant="destructive" className="border-amber-600/50 bg-amber-950/20">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Sin sedes asignadas</AlertTitle>
+                    <AlertDescription>
+                        Su usuario no tiene sedes habilitadas en el catálogo. Un administrador debe asignarle sedes en <strong>Usuarios</strong> y verificar el catálogo en <strong>Configuración</strong>.
+                    </AlertDescription>
+                </Alert>
+            )}
+
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
-                    <TabsList className="grid w-full grid-cols-3 sm:w-[400px]">
-                        <TabsTrigger value="manager" className="flex items-center gap-2">
+                    <TabsList className="flex h-auto min-h-10 w-full max-w-3xl flex-wrap justify-start gap-1 p-1">
+                        <TabsTrigger value="manager" className="flex items-center gap-2 shrink-0">
                             <Wallet className="w-4 h-4" />
                             <span className="hidden sm:inline">Mi Caja / Sede</span>
                             <span className="sm:hidden">Caja</span>
                         </TabsTrigger>
-                        <TabsTrigger value="consolidated" className="flex items-center gap-2">
-                            <TrendingUp className="w-4 h-4" />
-                            <span className="hidden sm:inline">Consolidado</span>
-                            <span className="sm:hidden">Global</span>
-                        </TabsTrigger>
-                        <TabsTrigger value="analytics" className="flex items-center gap-2">
+                        {canAccessConsolidated && (
+                            <TabsTrigger value="consolidated" className="flex items-center gap-2 shrink-0">
+                                <TrendingUp className="w-4 h-4" />
+                                <span className="hidden sm:inline">Consolidado</span>
+                                <span className="sm:hidden">Global</span>
+                            </TabsTrigger>
+                        )}
+                        {showAuditTab && (
+                            <TabsTrigger value="audit" className="flex items-center gap-2 shrink-0">
+                                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                                <span className="hidden sm:inline">Auditoría</span>
+                                <span className="sm:hidden">Aud.</span>
+                            </TabsTrigger>
+                        )}
+                        <TabsTrigger value="analytics" className="flex items-center gap-2 shrink-0">
                             <BarChart2 className="w-4 h-4" />
                             <span className="hidden sm:inline">Analítica</span>
                             <span className="sm:hidden">Data</span>
@@ -174,6 +386,7 @@ export function PettyCashModule({
                 <Button 
                     onClick={() => setIsExpenseModalOpen(true)}
                     className="bg-cyan-500 hover:bg-cyan-600 text-black font-medium"
+                    disabled={sedeOptions.length === 0}
                 >
                     <Plus className="mr-2 h-4 w-4" />
                     Registrar Gasto
@@ -191,16 +404,45 @@ export function PettyCashModule({
                             Salida de dinero de la caja de <span className="text-white font-medium">{currentUser.name}</span>.
                         </DialogDescription>
                     </DialogHeader>
+
+                    {availablePettyBalance.closed ? (
+                        <Alert className="border-amber-600/50 bg-amber-950/30 text-amber-100">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle className="text-sm">Semana cerrada</AlertTitle>
+                            <AlertDescription className="text-xs text-amber-200/90">
+                                No puede registrar gastos en esta semana contable hasta que se abra la siguiente o un
+                                administrador revierta el cierre.
+                            </AlertDescription>
+                        </Alert>
+                    ) : (
+                        <div className="rounded-lg border border-cyan-900/40 bg-cyan-950/25 px-3 py-2 text-sm">
+                            <span className="text-slate-400">Saldo disponible (esta semana): </span>
+                            <span className="font-mono font-semibold text-cyan-300">
+                                S/ {availablePettyBalance.balance.toFixed(2)}
+                            </span>
+                            {amountBI && !Number.isNaN(total) && total > 0 ? (
+                                <span
+                                    className={`ml-2 text-xs ${
+                                        availablePettyBalance.balance - total < -0.009
+                                            ? 'text-red-400'
+                                            : 'text-slate-400'
+                                    }`}
+                                >
+                                    → Tras este gasto: S/{' '}
+                                    {(availablePettyBalance.balance - total).toFixed(2)}
+                                </span>
+                            ) : null}
+                        </div>
+                    )}
                     
                     <div className="grid gap-4 py-4">
-                        {/* Config Section */}
                         <div className="grid grid-cols-2 gap-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700/50">
                             <div className="space-y-2 col-span-2 sm:col-span-1">
                                 <Label className="text-xs font-medium text-slate-400">Sede</Label>
-                                {visibleSedes && visibleSedes.length === 1 ? (
+                                {sedeOptions.length <= 1 ? (
                                     <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-800/50 text-slate-300 text-sm">
                                         <Building2 className="w-4 h-4 mr-2 text-cyan-500" />
-                                        {location}
+                                        {sedeOptions[0] || '—'}
                                     </div>
                                 ) : (
                                     <Select value={location} onValueChange={setLocation}>
@@ -208,7 +450,7 @@ export function PettyCashModule({
                                             <SelectValue placeholder="Seleccionar Sede" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
-                                            {(visibleSedes || ['Principal']).map(s => (
+                                            {sedeOptions.map(s => (
                                                 <SelectItem key={s} value={s}>{s}</SelectItem>
                                             ))}
                                         </SelectContent>
@@ -223,7 +465,7 @@ export function PettyCashModule({
                                         <SelectValue placeholder="Seleccionar Área" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
-                                        {AREAS.map(a => (
+                                        {commercialAreas.map((a) => (
                                             <SelectItem key={a} value={a}>{a}</SelectItem>
                                         ))}
                                     </SelectContent>
@@ -237,12 +479,9 @@ export function PettyCashModule({
                                         <SelectValue placeholder="Seleccionar Motivo" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
-                                        <SelectItem value="Movilidad">Movilidad / Taxi</SelectItem>
-                                        <SelectItem value="Refrigerio">Alimentación</SelectItem>
-                                        <SelectItem value="Insumos Limpieza">Insumos Limpieza</SelectItem>
-                                        <SelectItem value="Material Oficina">Útiles de Oficina</SelectItem>
-                                        <SelectItem value="Mantenimiento Menor">Mantenimiento</SelectItem>
-                                        <SelectItem value="Otros">Otros</SelectItem>
+                                        {commercialCategories.map((c) => (
+                                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -260,13 +499,12 @@ export function PettyCashModule({
                             </div>
                         </div>
 
-                        {/* Document Details Section */}
                         <div className="space-y-3 pt-2">
                             <Label className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Detalles del Documento</Label>
                             
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-medium text-slate-400">Clasificación</Label>
+                                    <Label className="text-xs font-medium text-slate-400">Tipo de documento</Label>
                                     <Select value={classification} onValueChange={setClassification}>
                                         <SelectTrigger className="bg-[#22203A] border-[#3D3B5C] text-white">
                                             <SelectValue />
@@ -276,12 +514,22 @@ export function PettyCashModule({
                                             <SelectItem value="Factura">Factura</SelectItem>
                                             <SelectItem value="RXH">Recibo por Honorarios</SelectItem>
                                             <SelectItem value="Recibo Simple">Recibo Simple</SelectItem>
+                                            <SelectItem value="Planilla de Movilidad">Planilla de Movilidad</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    {usesIgv ? (
+                                        <p className="text-[10px] text-cyan-300/80">
+                                            Factura: se calcula IGV 18% (base + IGV = total a pagar).
+                                        </p>
+                                    ) : (
+                                        <p className="text-[10px] text-slate-500">
+                                            Este tipo de documento no desglosa IGV; el importe va completo al gasto.
+                                        </p>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2">
-                                    <Label className="text-xs font-medium text-slate-400">Tipo Documento</Label>
+                                    <Label className="text-xs font-medium text-slate-400">Tipo identidad</Label>
                                     <Select value={docType} onValueChange={setDocType}>
                                         <SelectTrigger className="bg-[#22203A] border-[#3D3B5C] text-white">
                                             <SelectValue />
@@ -295,74 +543,177 @@ export function PettyCashModule({
                                 </div>
                             </div>
 
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="docSeries" className="text-xs font-medium text-slate-400">
+                                        Serie <span className="text-red-400">*</span>
+                                    </Label>
+                                    <Input
+                                        id="docSeries"
+                                        value={docSeries}
+                                        onChange={(e) => setDocSeries(e.target.value)}
+                                        placeholder="Ej. F001, B002"
+                                        className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600 font-mono"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="voucherNumber" className="text-xs font-medium text-slate-400">
+                                        Nro. documento <span className="text-red-400">*</span>
+                                    </Label>
+                                    <Input
+                                        id="voucherNumber"
+                                        value={voucherNumber}
+                                        onChange={(e) => setVoucherNumber(e.target.value)}
+                                        placeholder="Correlativo del comprobante"
+                                        className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600 font-mono"
+                                    />
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-12 gap-4">
                                 <div className="col-span-4 space-y-2">
-                                    <Label htmlFor="docNumber" className="text-xs font-medium text-slate-400">N° Documento</Label>
+                                    <Label htmlFor="docNumber" className="text-xs font-medium text-slate-400">
+                                        N° RUC / DNI / CE <span className="text-red-400">*</span>
+                                    </Label>
                                     <Input 
                                         id="docNumber" 
                                         value={docNumber}
-                                        onChange={(e) => setDocNumber(e.target.value)}
-                                        placeholder="Ej. 2060..." 
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setDocNumber(docType === 'RUC' ? val.replace(/\D/g, '').slice(0, 11) : val);
+                                        }}
+                                        placeholder="Ej. 20601234567" 
                                         className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600" 
                                     />
+                                    {docType === 'RUC' && normalizedRuc.length > 0 && (
+                                        <p className={`text-[11px] ${matchedProviderByRuc ? 'text-emerald-400' : 'text-amber-400'}`}>
+                                            {matchedProviderByRuc
+                                                ? `RUC validado: proveedor encontrado en catálogo.`
+                                                : normalizedRuc.length < 11
+                                                  ? `Complete los 11 dígitos del RUC (${normalizedRuc.length}/11).`
+                                                  : 'RUC no encontrado en catálogo.'}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="col-span-8 space-y-2">
-                                    <Label htmlFor="providerName" className="text-xs font-medium text-slate-400">Nombre / Razón Social</Label>
+                                    <Label htmlFor="providerName" className="text-xs font-medium text-slate-400">
+                                        Nombre / Razón Social <span className="text-red-400">*</span>
+                                    </Label>
                                     <Input 
                                         id="providerName" 
                                         value={providerName}
-                                        onChange={(e) => setProviderName(e.target.value)}
+                                        onChange={(e) => {
+                                            setProviderName(e.target.value);
+                                            if (providerMatchedByRuc) setProviderMatchedByRuc(false);
+                                        }}
                                         placeholder="Ingrese nombre..." 
-                                        className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600" 
+                                        className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600"
+                                        readOnly={docType === 'RUC' && !!matchedProviderByRuc}
                                     />
+                                    {docType === 'RUC' && !matchedProviderByRuc && normalizedRuc.length === 11 && (
+                                        <div className="flex items-center justify-between gap-2 text-[11px] text-amber-300 bg-amber-950/25 border border-amber-700/40 rounded px-2 py-1.5">
+                                            <span>Proveedor no existe en catálogo. Debe registrarlo primero.</span>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                className="h-6 text-[11px] border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                                                onClick={onRequestProviderRegistration}
+                                            >
+                                                Ir a Proveedores
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="voucherDate" className="text-xs font-medium text-slate-400">
+                                    Fecha del documento
+                                </Label>
+                                <Input
+                                    id="voucherDate"
+                                    type="date"
+                                    value={documentDate}
+                                    onChange={(e) => setDocumentDate(e.target.value)}
+                                    className="bg-[#22203A] border-[#3D3B5C] text-white"
+                                />
                             </div>
                         </div>
 
-                        {/* Financials Section */}
                         <div className="space-y-3 pt-2">
                             <Label className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Detalles Económicos</Label>
                             
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="amountBI" className="text-xs font-medium text-slate-400">Monto BI (Base)</Label>
-                                    <div className="relative">
-                                        <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
-                                        <Input 
-                                            id="amountBI" 
-                                            type="number"
-                                            value={amountBI}
-                                            onChange={(e) => setAmountBI(e.target.value)}
-                                            placeholder="0.00" 
-                                            className="pl-7 bg-[#22203A] border-[#3D3B5C] text-white font-mono" 
-                                        />
+                            {usesIgv ? (
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="amountBI" className="text-xs font-medium text-slate-400">
+                                            Base imponible
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
+                                            <Input
+                                                id="amountBI"
+                                                type="number"
+                                                value={amountBI}
+                                                onChange={(e) => setAmountBI(e.target.value)}
+                                                placeholder="0.00"
+                                                className="pl-7 bg-[#22203A] border-[#3D3B5C] text-white font-mono"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="igv" className="text-xs font-medium text-slate-400">
+                                            IGV (18%)
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
+                                            <Input
+                                                id="igv"
+                                                value={igv.toFixed(2)}
+                                                readOnly
+                                                className="pl-7 bg-slate-800/50 border-slate-700 text-slate-400 font-mono cursor-not-allowed"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="total" className="text-xs font-medium text-cyan-400">
+                                            Total a pagar
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-2.5 text-cyan-500 text-xs font-bold">S/</span>
+                                            <Input
+                                                id="total"
+                                                value={total > 0 ? total.toFixed(2) : ''}
+                                                readOnly
+                                                className="pl-7 bg-cyan-950/30 border-cyan-900/50 text-cyan-400 font-bold font-mono"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="igv" className="text-xs font-medium text-slate-400">IGV (18%)</Label>
-                                    <div className="relative">
-                                        <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
-                                        <Input 
-                                            id="igv" 
-                                            value={igv.toFixed(2)}
-                                            readOnly
-                                            className="pl-7 bg-slate-800/50 border-slate-700 text-slate-400 font-mono cursor-not-allowed" 
-                                        />
+                            ) : (
+                                <div className="grid grid-cols-1 gap-4 sm:max-w-xs">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="amountBI" className="text-xs font-medium text-slate-400">
+                                            Importe gasto
+                                        </Label>
+                                        <div className="relative">
+                                            <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
+                                            <Input
+                                                id="amountBI"
+                                                type="number"
+                                                value={amountBI}
+                                                onChange={(e) => setAmountBI(e.target.value)}
+                                                placeholder="0.00"
+                                                className="pl-7 bg-[#22203A] border-[#3D3B5C] text-white font-mono"
+                                            />
+                                        </div>
+                                        <p className="text-[10px] text-slate-500">
+                                            Sin IGV: el monto completo afecta el gasto y la salida de caja.
+                                        </p>
                                     </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="total" className="text-xs font-medium text-cyan-400">Total a Pagar</Label>
-                                    <div className="relative">
-                                        <span className="absolute left-2.5 top-2.5 text-cyan-500 text-xs font-bold">S/</span>
-                                        <Input 
-                                            id="total" 
-                                            value={total.toFixed(2)}
-                                            readOnly
-                                            className="pl-7 bg-cyan-950/30 border-cyan-900/50 text-cyan-400 font-bold font-mono" 
-                                        />
-                                    </div>
-                                </div>
-                            </div>
+                            )}
 
                             <div className="space-y-2">
                                 <Label htmlFor="description" className="text-xs font-medium text-slate-400">Descripción del Gasto</Label>
@@ -379,6 +730,27 @@ export function PettyCashModule({
                         <Button 
                             className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold mt-4"
                             onClick={handleRegisterExpense}
+                            disabled={
+                                availablePettyBalance.closed ||
+                                (docType === 'RUC' && normalizedRuc.length === 11 && !matchedProviderByRuc) ||
+                                (!availablePettyBalance.closed &&
+                                    amountBI &&
+                                    !Number.isNaN(total) &&
+                                    total > 0 &&
+                                    availablePettyBalance.balance - total < -0.009)
+                            }
+                            title={
+                                availablePettyBalance.closed
+                                    ? 'Semana cerrada: no se registran gastos'
+                                    : docType === 'RUC' && normalizedRuc.length === 11 && !matchedProviderByRuc
+                                      ? 'El RUC no está registrado en Proveedores'
+                                    : amountBI &&
+                                        !Number.isNaN(total) &&
+                                        total > 0 &&
+                                        availablePettyBalance.balance - total < -0.009
+                                      ? 'El total supera el saldo disponible'
+                                      : undefined
+                            }
                         >
                             Registrar Salida
                         </Button>
@@ -406,15 +778,45 @@ export function PettyCashModule({
                         settings={settings}
                         users={users}
                         currentUser={currentUser}
+                        roles={roles}
+                        businessName={businessName}
+                        categoryCatalog={commercialCategories}
+                        areaCatalog={commercialAreas}
+                        sedeOptions={sedeOptions}
+                        reportLogoFallback={businessLogo}
+                        onClosePettyCashWeek={onClosePettyCashWeek}
+                        onPreClosePettyCashWeek={onPreClosePettyCashWeek}
                     />
                 )}
 
-                {activeTab === 'consolidated' && (
-                    <CashMovements transactions={transactions} />
+                {canAccessConsolidated && activeTab === 'consolidated' && (
+                    <CashMovements 
+                        transactions={transactions} 
+                        visibleSedes={sedeOptions}
+                        canUseConsolidatedOption
+                        commercialCategories={commercialCategories}
+                        commercialAreas={commercialAreas}
+                        weekClosures={settings.weekClosures}
+                        custodianUsers={users}
+                        defaultFundLimit={settings.totalFundLimit}
+                    />
+                )}
+
+                {showAuditTab && activeTab === 'audit' && (
+                    <PettyCashAuditConsole
+                        transactions={transactions}
+                        users={users}
+                        currentUser={currentUser}
+                        roles={roles}
+                        visibleSedes={sedeOptions}
+                        onUpdateTransactions={onUpdateTransactions}
+                        commercialCategories={commercialCategories}
+                        commercialAreas={commercialAreas}
+                    />
                 )}
 
                 {activeTab === 'analytics' && (
-                    <PettyCashAnalytics transactions={transactions} />
+                    <PettyCashAnalytics transactions={transactions} visibleSedes={sedeOptions} />
                 )}
             </div>
         </div>

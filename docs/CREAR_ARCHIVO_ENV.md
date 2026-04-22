@@ -65,6 +65,9 @@ VITE_BACKEND=supabase
 VITE_SUPABASE_URL=https://ywizhgnmgnaksqperxai.supabase.co
 VITE_SUPABASE_PROJECT_ID=ywizhgnmgnaksqperxai
 VITE_SUPABASE_ANON_KEY=PEGA_AQUI_LA_CLAVE_ANON_PUBLICA_COMPLETA
+
+# Opcional: correos con rol super_admin (separados por coma). Si no pones nada, se usan los del código.
+# VITE_SUPER_ADMIN_EMAILS=admin@tuempresa.com,otro@correo.com
 ```
 
 ### 3. Dónde copiar la clave

@@ -2,7 +2,7 @@
 
 ## Situación actual
 
-- La app guarda blobs JSON bajo claves `data:*` y `settings:*` usando la **Edge Function `server`**, que persiste en la tabla Postgres **`kv_store_674cc941`** (ver `supabase/functions/server/kv_store.tsx`).
+- La app guarda blobs JSON bajo claves `data:*` y `settings:*` usando la **Edge Function `server`**, que persiste en la tabla Postgres **`public.app_kv`** (ver `supabase/functions/server/kv_store.tsx`; antes se refería a `kv_store_674cc941`, que no existía en proyectos sin esa tabla legacy).
 - Eso **ya es SQL en tu proyecto**, pero **no normalizado** (un JSON por clave).
 
 ## Objetivo

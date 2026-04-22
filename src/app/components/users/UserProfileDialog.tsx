@@ -227,7 +227,15 @@ export function UserProfileDialog({
                      <Button variant="ghost" onClick={() => onOpenChange(false)}>
                         Cancelar
                      </Button>
-                     <Button variant="destructive" onClick={onLogout} className="gap-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20">
+                     <Button
+                        variant="destructive"
+                        onClick={() => {
+                            setTimeout(() => {
+                                void onLogout();
+                            }, 0);
+                        }}
+                        className="gap-2 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/20"
+                     >
                         <LogOut className="w-4 h-4" />
                         Cerrar Sesión
                      </Button>

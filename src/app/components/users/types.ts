@@ -10,18 +10,30 @@ export interface Role {
     permissions: Record<string, boolean>;
 }
 
+/**
+ * Catálogo de módulos (vistas / menú). Mantener alineado con `App.tsx` NavButton `requiredModule`.
+ * Incluye `Finanzas` como permiso genérico legado (amplía Tesorería, Transacciones, etc. vía `rolePermissions`).
+ */
 export const SYSTEM_MODULES = [
     'Dashboard',
+    'Alertas',
     'Analítica',
     'Finanzas',
+    'Tesorería',
+    'Transacciones',
+    'Flujo de Caja',
+    'Estado de Resultados',
+    'Honorarios',
     'Cuentas por Pagar',
     'Caja Chica',
     'Compras',
+    'Requerimientos',
     'Proveedores',
+    'Contabilidad',
     'Reportes',
     'Auditoría',
     'Usuarios',
-    'Configuración'
+    'Configuración',
 ] as const;
 
 export type ModuleName = typeof SYSTEM_MODULES[number];
@@ -37,17 +49,25 @@ export const DEFAULT_ROLES: Role[] = [
         isSystem: true,
         permissions: {
             'Dashboard': true,
+            'Alertas': true,
             'Analítica': true,
             'Finanzas': true,
+            'Tesorería': true,
+            'Transacciones': true,
+            'Flujo de Caja': true,
+            'Estado de Resultados': true,
+            'Honorarios': true,
             'Cuentas por Pagar': true,
             'Caja Chica': true,
             'Compras': true,
+            'Requerimientos': true,
             'Proveedores': true,
+            'Contabilidad': true,
             'Reportes': true,
             'Auditoría': true,
             'Usuarios': true,
-            'Configuración': true
-        }
+            'Configuración': true,
+        },
     },
     {
         id: 'manager',
@@ -59,17 +79,55 @@ export const DEFAULT_ROLES: Role[] = [
         isSystem: false,
         permissions: {
             'Dashboard': true,
+            'Alertas': true,
             'Analítica': true,
             'Finanzas': true,
+            'Tesorería': true,
+            'Transacciones': true,
+            'Flujo de Caja': true,
+            'Estado de Resultados': true,
+            'Honorarios': true,
             'Cuentas por Pagar': true,
             'Caja Chica': true,
             'Compras': true,
+            'Requerimientos': true,
             'Proveedores': true,
+            'Contabilidad': true,
             'Reportes': true,
             'Auditoría': false,
             'Usuarios': false,
-            'Configuración': false
-        }
+            'Configuración': false,
+        },
+    },
+    {
+        id: 'auditoria',
+        name: 'Auditoría',
+        description: 'Revisa y aprueba movimientos de caja chica; acceso a módulo de auditoría',
+        color: 'text-amber-700 dark:text-amber-400',
+        bgColor: 'bg-amber-50 dark:bg-amber-900/20',
+        borderColor: 'border-amber-200 dark:border-amber-800',
+        isSystem: true,
+        permissions: {
+            'Dashboard': true,
+            'Alertas': true,
+            'Analítica': false,
+            'Finanzas': true,
+            'Tesorería': true,
+            'Transacciones': false,
+            'Flujo de Caja': false,
+            'Estado de Resultados': false,
+            'Honorarios': false,
+            'Cuentas por Pagar': false,
+            'Caja Chica': true,
+            'Compras': false,
+            'Requerimientos': false,
+            'Proveedores': false,
+            'Contabilidad': false,
+            'Reportes': true,
+            'Auditoría': true,
+            'Usuarios': false,
+            'Configuración': false,
+        },
     },
     {
         id: 'groomer',
@@ -81,18 +139,26 @@ export const DEFAULT_ROLES: Role[] = [
         isSystem: false,
         permissions: {
             'Dashboard': true,
+            'Alertas': false,
             'Analítica': false,
             'Finanzas': false,
+            'Tesorería': false,
+            'Transacciones': false,
+            'Flujo de Caja': false,
+            'Estado de Resultados': false,
+            'Honorarios': false,
             'Cuentas por Pagar': false,
             'Caja Chica': false,
             'Compras': false,
+            'Requerimientos': false,
             'Proveedores': false,
+            'Contabilidad': false,
             'Reportes': false,
             'Auditoría': false,
             'Usuarios': false,
-            'Configuración': false
-        }
-    }
+            'Configuración': false,
+        },
+    },
 ];
 
 export const COLOR_OPTIONS = [

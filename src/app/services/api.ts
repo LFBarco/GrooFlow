@@ -38,6 +38,8 @@ export interface InitialDataKeys {
   'data:treasuryInvoices'?:     unknown;
   'data:treasuryBankBalance'?:  unknown;
   'data:treasuryPaidHistory'?:  unknown;
+  /** Plan de cuentas contables importado (Excel). */
+  'data:chartOfAccounts'?: unknown;
   /** Metadato interno: el GET HTTP a `data:users` falló (no confundir con lista vacía). */
   __usersKvFetchFailed?: boolean;
 }
@@ -59,6 +61,7 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'data:treasuryInvoices',
   'data:treasuryBankBalance',
   'data:treasuryPaidHistory',
+  'data:chartOfAccounts',
 ];
 
 // ─── api object ───────────────────────────────────────────────

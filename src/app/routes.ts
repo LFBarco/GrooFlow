@@ -12,6 +12,7 @@ export type ViewType =
   | 'analytics'
   | 'audit'
   | 'providers'
+  | 'accounting'
   | 'requests'
   | 'users'
   | 'pettycash'
@@ -36,6 +37,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   pettycash: '/caja-chica',
   fees: '/honorarios',
   providers: '/proveedores',
+  accounting: '/contabilidad',
   requisitions: '/requerimientos',
   requests: '/solicitudes',
   audit: '/auditoria',

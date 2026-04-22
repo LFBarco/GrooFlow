@@ -1,6 +1,6 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { Provider, SystemSettings } from '../../types';
+import { ChartOfAccountEntry, Provider, SystemSettings } from '../../types';
 import { ConfigStructure, getConceptsFlat } from '../../data/initialData';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -16,6 +16,11 @@ import {
     Landmark, Settings, List, Wallet, Users 
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getProviderAreas, getProviderCategories } from '../../utils/providerCatalog';
+import {
+  CHART_OPERATIVE_LEVEL,
+  chartSelectOptionsWithOrphan,
+} from '../../utils/chartOfAccountsHelpers';
 
 interface ProviderManagerProps {
     providers: Provider[];
@@ -24,13 +29,13 @@ interface ProviderManagerProps {
     config?: ConfigStructure; // Configuración global inyectada (Flujo de Caja)
     systemSettings?: SystemSettings; // Configuración persistente del sistema
     onUpdateSystemSettings?: (settings: SystemSettings) => void;
+    /** Abre automáticamente el formulario corto "Caja chica (rápido)". */
+    openSimplePettyOnMount?: boolean;
+    /** Callback para limpiar el trigger de apertura automática. */
+    onSimplePettyOpenHandled?: () => void;
+    /** Plan de cuentas importado (opcional): selector de cuenta de gasto. */
+    chartOfAccounts?: ChartOfAccountEntry[];
 }
-
-// Datos iniciales por defecto (si no se han configurado o migrado)
-const DEFAULT_PROVIDER_CATEGORIES = [
-    "Farmacia", "Insumos Médicos", "Servicios Básicos", "Mantenimiento", 
-    "Alquileres", "Laboratorio", "Marketing", "Otros"
-];
 
 // Fallback por si no llega config externa de egresos
 const DEFAULT_EXPENSE_CATEGORIES_FALLBACK = [
@@ -40,23 +45,21 @@ const DEFAULT_EXPENSE_CATEGORIES_FALLBACK = [
     "Activos Fijos", "Otros"
 ];
 
-const DEFAULT_AREAS = [
-    "Dirección General", "Administración", "Logística", "Ventas", 
-    "Recursos Humanos", "Sistemas", "Operaciones", "Mantenimiento"
-];
-
 export function ProviderManager({ 
     providers, 
     onUpdateProviders, 
     userRole = 'admin', 
     config,
     systemSettings,
-    onUpdateSystemSettings
+    onUpdateSystemSettings,
+    openSimplePettyOnMount = false,
+    onSimplePettyOpenHandled,
+    chartOfAccounts = [],
 }: ProviderManagerProps) {
     
     // --- Resolución de Listas (Prioridad: SystemSettings > Defaults) ---
-    const providerCategories = systemSettings?.providers?.categories || DEFAULT_PROVIDER_CATEGORIES;
-    const areas = systemSettings?.providers?.areas || DEFAULT_AREAS;
+    const providerCategories = getProviderCategories(systemSettings);
+    const areas = getProviderAreas(systemSettings);
 
     // Solo usamos este estado local si NO se provee `config` (fallback para egresos)
     const [localExpenseCategories, setLocalExpenseCategories] = useState<string[]>(DEFAULT_EXPENSE_CATEGORIES_FALLBACK);
@@ -67,6 +70,16 @@ export function ProviderManager({
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [currentProvider, setCurrentProvider] = useState<Partial<Provider>>({});
     const [isImportOpen, setIsImportOpen] = useState(false);
+    /** Alta mínima para uso en caja chica (mismo modelo Provider). */
+    const [isSimplePettyOpen, setIsSimplePettyOpen] = useState(false);
+    const [simplePetty, setSimplePetty] = useState({
+        ruc: '',
+        name: '',
+        type: 'Mercaderia' as NonNullable<Provider['type']>,
+        category: 'Otros',
+        area: '',
+        accountingAccount: '',
+    });
     
     // --- Estados para el Modal de Configuración ---
     const [configTab, setConfigTab] = useState<'commercial' | 'financial' | 'areas'>('commercial');
@@ -168,13 +181,15 @@ export function ProviderManager({
     // --- Lógica Principal (Importación, Guardado, etc) ---
 
     const handleDownloadTemplate = () => {
+        const sampleCat = providerCategories[0] ?? 'Otros';
+        const sampleArea = areas[0] ?? 'Administración';
         const templateData = [
             {
                 "Razón Social": "Distribuidora Ejemplo S.A.C.",
                 "RUC": "20123456789",
-                "Categoría": "Farmacia",
-                "Área": "Logística",
-                "Clasif. Financiera": "Farmacia",
+                "Categoría": sampleCat,
+                "Área": sampleArea,
+                "Clasif. Financiera": sampleCat,
                 "Días Crédito": 30,
                 "Email": "ventas@ejemplo.com",
                 "Teléfono": "987654321",
@@ -216,6 +231,7 @@ export function ProviderManager({
                 const newProviders: Provider[] = [];
                 let duplicates = 0;
                 let errors = 0;
+                let invalidCatalog = 0;
 
                 jsonData.forEach((row: any) => {
                     const name = row['Nombre'] || row['Razón Social'] || row['Proveedor'];
@@ -231,12 +247,24 @@ export function ProviderManager({
                         return;
                     }
 
+                    const catRaw = row['Categoría'] != null ? String(row['Categoría']).trim() : '';
+                    const areaRaw = row['Área'] != null ? String(row['Área']).trim() : '';
+                    if (
+                        !catRaw ||
+                        !areaRaw ||
+                        !providerCategories.includes(catRaw) ||
+                        !areas.includes(areaRaw)
+                    ) {
+                        invalidCatalog++;
+                        return;
+                    }
+
                     const provider: Provider = {
                         id: `prov-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                         name: String(name),
                         ruc: String(ruc),
-                        category: row['Categoría'] || 'Otros',
-                        area: row['Área'] || '',
+                        category: catRaw,
+                        area: areaRaw,
                         defaultExpenseCategory: row['Clasif. Financiera'] || 'Otros',
                         defaultCreditDays: Number(row['Días Crédito']) || 0,
                         email: row['Email'] || row['Correo'] || '',
@@ -257,6 +285,11 @@ export function ProviderManager({
                 
                 if (duplicates > 0) toast.warning(`${duplicates} proveedores ya existían (por RUC) y se omitieron`);
                 if (errors > 0) toast.error(`${errors} filas no tenían Nombre o RUC válido`);
+                if (invalidCatalog > 0) {
+                    toast.error(
+                        `${invalidCatalog} filas omitidas: categoría y área son obligatorias y deben coincidir exactamente con el catálogo (Configuración → Contabilidad).`
+                    );
+                }
 
             } catch (error) {
                 toast.error("Error al procesar el archivo Excel");
@@ -270,6 +303,33 @@ export function ProviderManager({
         return /^\d{11}$/.test(ruc);
     };
 
+    /** Categoría y área comercial obligatorias y deben existir en el catálogo actual. */
+    const validateCommercialCatalogFields = (category: string | undefined, area: string | undefined): boolean => {
+        if (providerCategories.length === 0 || areas.length === 0) {
+            toast.error('Configure al menos una categoría y un área en Configuración → Contabilidad.');
+            return false;
+        }
+        const cat = (category ?? '').trim();
+        const ar = (area ?? '').trim();
+        if (!cat) {
+            toast.error('La categoría comercial es obligatoria');
+            return false;
+        }
+        if (!ar) {
+            toast.error('El área es obligatoria');
+            return false;
+        }
+        if (!providerCategories.includes(cat)) {
+            toast.error('Seleccione una categoría comercial válida del catálogo');
+            return false;
+        }
+        if (!areas.includes(ar)) {
+            toast.error('Seleccione un área válida del catálogo');
+            return false;
+        }
+        return true;
+    };
+
     const handleSave = () => {
         if (!currentProvider.name || !currentProvider.ruc) {
             toast.error("El nombre y RUC son obligatorios");
@@ -281,9 +341,22 @@ export function ProviderManager({
             return;
         }
 
+        if (!validateCommercialCatalogFields(currentProvider.category, currentProvider.area)) {
+            return;
+        }
+
         if (currentProvider.id) {
             // Edit
-            const updated = providers.map(p => p.id === currentProvider.id ? { ...p, ...currentProvider } as Provider : p);
+            const updated = providers.map((p) =>
+                p.id === currentProvider.id
+                    ? ({
+                          ...p,
+                          ...currentProvider,
+                          category: currentProvider.category!.trim(),
+                          area: currentProvider.area!.trim(),
+                      } as Provider)
+                    : p
+            );
             onUpdateProviders(updated);
             toast.success("Proveedor actualizado");
         } else {
@@ -299,8 +372,8 @@ export function ProviderManager({
                 ruc: currentProvider.ruc!,
                 type: currentProvider.type || 'Mercaderia',
                 specialty: currentProvider.specialty || '',
-                category: currentProvider.category || 'Otros',
-                area: currentProvider.area || '',
+                category: currentProvider.category!.trim(),
+                area: currentProvider.area!.trim(),
                 defaultExpenseCategory: currentProvider.defaultExpenseCategory || 'Otros',
                 defaultCreditDays: Number(currentProvider.defaultCreditDays) || 0,
                 email: currentProvider.email || '',
@@ -308,7 +381,8 @@ export function ProviderManager({
                 contactName: currentProvider.contactName || '',
                 bankName: currentProvider.bankName || '',
                 bankAccount: currentProvider.bankAccount || '',
-                totalPurchased: 0
+                totalPurchased: 0,
+                accountingAccount: currentProvider.accountingAccount?.trim() || undefined,
             };
             onUpdateProviders([...providers, newProvider]);
             toast.success("Proveedor registrado");
@@ -324,11 +398,86 @@ export function ProviderManager({
         }
     };
 
+    const openSimplePettyDialog = () => {
+        setSimplePetty({
+            ruc: '',
+            name: '',
+            type: 'Mercaderia',
+            category: providerCategories[0] || 'Otros',
+            area: areas[0] || '',
+            accountingAccount: '',
+        });
+        setIsSimplePettyOpen(true);
+    };
+
+    useEffect(() => {
+        if (!openSimplePettyOnMount) return;
+        openSimplePettyDialog();
+        onSimplePettyOpenHandled?.();
+    }, [openSimplePettyOnMount]);
+
+    const handleSaveSimplePetty = () => {
+        if (!simplePetty.name.trim()) {
+            toast.error('Ingrese la razón social');
+            return;
+        }
+        if (!validateRUC(simplePetty.ruc)) {
+            toast.error('El RUC debe tener 11 dígitos numéricos');
+            return;
+        }
+        if (!validateCommercialCatalogFields(simplePetty.category, simplePetty.area)) {
+            return;
+        }
+        if (providers.some((p) => p.ruc === simplePetty.ruc)) {
+            toast.error('Ya existe un proveedor con este RUC');
+            return;
+        }
+        const acct = simplePetty.accountingAccount.trim();
+        const newProvider: Provider = {
+            id: `prov-${Date.now()}`,
+            name: simplePetty.name.trim(),
+            ruc: simplePetty.ruc,
+            type: simplePetty.type,
+            category: simplePetty.category.trim(),
+            area: simplePetty.area.trim(),
+            defaultExpenseCategory: acct || simplePetty.category,
+            accountingAccount: acct || undefined,
+            registeredVia: 'petty_cash_simple',
+            defaultCreditDays: 0,
+            specialty: '',
+            email: '',
+            phone: '',
+            contactName: '',
+            bankName: '',
+            bankAccount: '',
+            totalPurchased: 0,
+        };
+        onUpdateProviders([...providers, newProvider]);
+        setIsSimplePettyOpen(false);
+        toast.success('Proveedor registrado (caja chica)', {
+            description: 'Aparece en el directorio con los mismos datos base; puede completar la ficha completa con Editar.',
+        });
+    };
+
     const startEdit = (provider?: Provider) => {
         if (provider) {
-            setCurrentProvider({ ...provider });
+            const cat =
+                provider.category && providerCategories.includes(provider.category)
+                    ? provider.category
+                    : (providerCategories[0] ?? '');
+            const ar =
+                provider.area && areas.includes(provider.area)
+                    ? provider.area
+                    : (areas[0] ?? '');
+            setCurrentProvider({ ...provider, category: cat, area: ar });
         } else {
-            setCurrentProvider({ category: 'Otros', defaultCreditDays: 0, defaultExpenseCategory: 'Otros' });
+            setCurrentProvider({
+                category: providerCategories[0] ?? '',
+                area: areas[0] ?? '',
+                defaultCreditDays: 0,
+                defaultExpenseCategory: 'Otros',
+                type: 'Mercaderia',
+            });
         }
         setIsEditing(true);
     };
@@ -337,6 +486,22 @@ export function ProviderManager({
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
         p.ruc.includes(searchTerm) ||
         p.category?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const simplePettyAccountOptions = useMemo(
+      () =>
+        chartSelectOptionsWithOrphan(chartOfAccounts, simplePetty.accountingAccount, {
+          useLevel: CHART_OPERATIVE_LEVEL,
+        }),
+      [chartOfAccounts, simplePetty.accountingAccount]
+    );
+
+    const editProviderAccountOptions = useMemo(
+      () =>
+        chartSelectOptionsWithOrphan(chartOfAccounts, currentProvider.accountingAccount, {
+          useLevel: CHART_OPERATIVE_LEVEL,
+        }),
+      [chartOfAccounts, currentProvider.accountingAccount]
     );
 
     return (
@@ -365,6 +530,9 @@ export function ProviderManager({
                     <Button variant="outline" onClick={() => setIsImportOpen(true)}>
                         <Upload className="w-4 h-4 mr-2" /> Importar Excel
                     </Button>
+                    <Button variant="secondary" onClick={openSimplePettyDialog} title="Registro corto para gastos de caja chica">
+                        <Wallet className="w-4 h-4 mr-2" /> Caja chica (rápido)
+                    </Button>
                     <Button onClick={() => startEdit()} className="bg-primary text-primary-foreground shadow-sm hover:shadow-md transition-all">
                         <Plus className="w-4 h-4 mr-2" /> Nuevo Proveedor
                     </Button>
@@ -380,7 +548,7 @@ export function ProviderManager({
                             Configuración de Listas
                         </DialogTitle>
                         <DialogDescription>
-                            Administra las opciones disponibles en los formularios.
+                            Administra las opciones disponibles en los formularios. El catálogo maestro de categorías y áreas se configura en <strong>Configuración → Contabilidad</strong>.
                         </DialogDescription>
                     </DialogHeader>
 
@@ -468,13 +636,155 @@ export function ProviderManager({
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={isSimplePettyOpen} onOpenChange={setIsSimplePettyOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Wallet className="w-5 h-5 text-primary" />
+                            Proveedor para caja chica
+                        </DialogTitle>
+                        <DialogDescription>
+                            Formulario corto. El proveedor queda en el mismo directorio; puede ampliar datos con <strong>Editar</strong> cuando lo necesite.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-2">
+                        <div className="space-y-2">
+                            <Label>RUC <span className="text-red-500">*</span></Label>
+                            <Input
+                                className="font-mono"
+                                placeholder="11 dígitos"
+                                value={simplePetty.ruc}
+                                onChange={(e) =>
+                                    setSimplePetty((s) => ({
+                                        ...s,
+                                        ruc: e.target.value.replace(/\D/g, '').slice(0, 11),
+                                    }))
+                                }
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Razón social <span className="text-red-500">*</span></Label>
+                            <Input
+                                value={simplePetty.name}
+                                onChange={(e) => setSimplePetty((s) => ({ ...s, name: e.target.value }))}
+                                placeholder="Razón social"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Tipo de proveedor</Label>
+                            <Select
+                                value={simplePetty.type}
+                                onValueChange={(val: NonNullable<Provider['type']>) =>
+                                    setSimplePetty((s) => ({ ...s, type: val }))
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Mercaderia">Mercadería</SelectItem>
+                                    <SelectItem value="Servicios">Servicios</SelectItem>
+                                    <SelectItem value="Médico Externo">Médico Externo</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>
+                                Categoría (comercial) <span className="text-red-500">*</span>
+                            </Label>
+                            <Select
+                                value={simplePetty.category}
+                                onValueChange={(val) => setSimplePetty((s) => ({ ...s, category: val }))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {providerCategories.map((c) => (
+                                        <SelectItem key={c} value={c}>
+                                            {c}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>
+                                Área <span className="text-red-500">*</span>
+                            </Label>
+                            <Select
+                                value={simplePetty.area}
+                                onValueChange={(val) => setSimplePetty((s) => ({ ...s, area: val }))}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Área" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {areas.map((a) => (
+                                        <SelectItem key={a} value={a}>
+                                            {a}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Cuenta contable (gasto)</Label>
+                            {chartOfAccounts.length > 0 ? (
+                                <Select
+                                    value={simplePetty.accountingAccount || '__none__'}
+                                    onValueChange={(v) =>
+                                        setSimplePetty((s) => ({
+                                            ...s,
+                                            accountingAccount: v === '__none__' ? '' : v,
+                                        }))
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Elegir del plan (NIVEL 5)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__none__">— Manual / después —</SelectItem>
+                                        {simplePettyAccountOptions.map((o) => (
+                                            <SelectItem key={o.value} value={o.value}>
+                                                {o.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            ) : (
+                                <Input
+                                    value={simplePetty.accountingAccount}
+                                    onChange={(e) =>
+                                        setSimplePetty((s) => ({ ...s, accountingAccount: e.target.value }))
+                                    }
+                                    placeholder="Código de cuenta (importa plan en Contabilidad)"
+                                />
+                            )}
+                            <p className="text-[10px] text-muted-foreground">
+                                Solo <strong>NIVEL {CHART_OPERATIVE_LEVEL}</strong> del plan (CUENTA). Se usa en
+                                asientos y flujo.
+                            </p>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsSimplePettyOpen(false)}>
+                            Cancelar
+                        </Button>
+                        <Button onClick={handleSaveSimplePetty}>Guardar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Import Dialog (Existing) */}
             <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>Importación Masiva de Proveedores</DialogTitle>
                         <DialogDescription>
-                            Sube un archivo Excel (.xlsx) con la lista de proveedores.
+                            Sube un archivo Excel (.xlsx) con la lista de proveedores. Las columnas{' '}
+                            <strong>Categoría</strong> y <strong>Área</strong> son obligatorias y deben coincidir{' '}
+                            <em>exactamente</em> con el catálogo de Configuración → Contabilidad.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-6 py-4">
@@ -572,7 +882,9 @@ export function ProviderManager({
                             )}
 
                             <div className="space-y-2">
-                                <Label>Categoría (Comercial)</Label>
+                                <Label>
+                                    Categoría (Comercial) <span className="text-red-500">*</span>
+                                </Label>
                                 <Select 
                                     value={currentProvider.category} 
                                     onValueChange={(val) => setCurrentProvider({...currentProvider, category: val})}
@@ -589,7 +901,9 @@ export function ProviderManager({
                             </div>
 
                             <div className="space-y-2">
-                                <Label>Área</Label>
+                                <Label>
+                                    Área <span className="text-red-500">*</span>
+                                </Label>
                                 <Select 
                                     value={currentProvider.area} 
                                     onValueChange={(val) => setCurrentProvider({...currentProvider, area: val})}
@@ -603,6 +917,49 @@ export function ProviderManager({
                                         ))}
                                     </SelectContent>
                                 </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label>Cuenta contable (gasto)</Label>
+                                {chartOfAccounts.length > 0 ? (
+                                    <Select
+                                        value={currentProvider.accountingAccount || '__none__'}
+                                        onValueChange={(v) =>
+                                            setCurrentProvider({
+                                                ...currentProvider,
+                                                accountingAccount: v === '__none__' ? undefined : v,
+                                            })
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Del plan (NIVEL 5)" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="__none__">— Sin asignar —</SelectItem>
+                                            {editProviderAccountOptions.map((o) => (
+                                                <SelectItem key={o.value} value={o.value}>
+                                                    {o.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <Input
+                                        value={currentProvider.accountingAccount || ''}
+                                        onChange={(e) =>
+                                            setCurrentProvider({
+                                                ...currentProvider,
+                                                accountingAccount: e.target.value.trim() || undefined,
+                                            })
+                                        }
+                                        placeholder="Código (importa plan en Contabilidad)"
+                                        className="font-mono"
+                                    />
+                                )}
+                                <p className="text-[10px] text-muted-foreground">
+                                    Solo <strong>NIVEL {CHART_OPERATIVE_LEVEL}</strong> (CUENTA). Asientos y
+                                    caja chica. Plan en <strong>Contabilidad</strong>.
+                                </p>
                             </div>
 
                             <div className="p-3 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded-md mt-2">

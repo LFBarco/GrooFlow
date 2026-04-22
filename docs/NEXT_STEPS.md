@@ -37,6 +37,7 @@
 ## Referencia técnica
 - `BACKEND_MIGRATION.md` — Repositorio, SQL, activar tablas.
 - `supabase/migrations/` — Ej. columna `concept` en `transactions`.
+- **Categorías y áreas comerciales** — Se administran en **Configuración → Contabilidad** (CRUD). Los selects/filtros de proveedores y caja chica usan el mismo catálogo (`systemSettings.providers`).
 
 ---
 
