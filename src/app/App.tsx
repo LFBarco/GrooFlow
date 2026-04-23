@@ -1789,6 +1789,7 @@ export default function App() {
                 onUpdateSystemSettings={(next) => setSystemSettings(mergeSystemSettings(next))}
                 pettyCashTransactions={pettyCashTransactions}
                 providers={providers}
+                users={users}
               />
             </div>
           )}

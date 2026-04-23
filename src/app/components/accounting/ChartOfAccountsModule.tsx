@@ -6,6 +6,7 @@ import type {
   PettyCashTransaction,
   Provider,
   SystemSettings,
+  User,
 } from '../../types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -21,6 +22,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
+import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import {
   BookOpen,
   FileDown,
@@ -72,8 +74,11 @@ interface ChartOfAccountsModuleProps {
   onUpdateChart: (rows: ChartOfAccountEntry[]) => void;
   systemSettings: SystemSettings;
   onUpdateSystemSettings: (s: SystemSettings) => void;
+  /** Todos los movimientos de caja chica (todos los responsables / sedes). */
   pettyCashTransactions: PettyCashTransaction[];
   providers: Provider[];
+  /** Para mostrar responsable de caja en la vista previa (todos los usuarios). */
+  users?: User[];
 }
 
 function parseKind(raw: string | undefined): ChartOfAccountEntry['kind'] {
@@ -91,6 +96,7 @@ export function ChartOfAccountsModule({
   onUpdateSystemSettings,
   pettyCashTransactions,
   providers,
+  users = [],
 }: ChartOfAccountsModuleProps) {
   type ImportMode = 'merge' | 'replace';
   type PendingImport = {
@@ -421,18 +427,37 @@ export function ChartOfAccountsModule({
     toast.info('Plan de cuentas vaciado');
   };
 
-  const previewBundles = useMemo(() => {
-    const from = new Date(previewFrom);
-    const to = new Date(previewTo);
-    to.setHours(23, 59, 59, 999);
-    from.setHours(0, 0, 0, 0);
+  const custodianNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const u of users) {
+      if (u?.id) m.set(u.id, (u.name || u.email || u.id).trim());
+    }
+    return m;
+  }, [users]);
 
-    const txs = pettyCashTransactions.filter((t) => pettyCashExpenseInPreviewDateRange(t, from, to));
+  const previewBundles = useMemo(() => {
+    const txs = pettyCashTransactions.filter((t) =>
+      pettyCashExpenseInPreviewDateRange(t, previewFrom, previewTo)
+    );
 
     return txs.map((t) =>
       buildPettyCashExpenseJournal(t, providers, chartOfAccounts, accounting)
     );
   }, [pettyCashTransactions, previewFrom, previewTo, providers, chartOfAccounts, accounting]);
+
+  const previewStats = useMemo(() => {
+    const n = previewBundles.length;
+    const withLines = previewBundles.filter((b) => b.lines.length > 0).length;
+    return { total: n, withLines };
+  }, [previewBundles]);
+
+  const expenseCountInStore = useMemo(
+    () =>
+      pettyCashTransactions.filter(
+        (t) => t.type === 'expense' && t.status !== 'voided' && t.status !== 'rejected'
+      ).length,
+    [pettyCashTransactions]
+  );
 
   const exportPreviewExcel = () => {
     const rows = flattenJournalsToExportRows(previewBundles.filter((b) => b.lines.length > 0));
@@ -997,11 +1022,10 @@ export function ChartOfAccountsModule({
         <CardHeader>
           <CardTitle className="text-lg">Vista previa — asientos caja chica</CardTitle>
           <CardDescription>
-            Rango sobre egresos no anulados: incluye si la <strong>fecha de registro</strong> o la{' '}
-            <strong>fecha del documento</strong> cae en el intervalo (útil para gastos ya
-            registrados). Cuenta de gasto: comprobante, proveedor, o cuenta genérica en enlaces.
-            Solo <strong>Factura</strong> desglosa IGV. Export: columnas acordadas (cuenta, periodo,
-            fechas, sede, debe/haber).
+            Incluye egresos de <strong>todos los responsables</strong> de caja chica (no solo el
+            usuario actual). El rango usa <strong>fecha de registro</strong> o{' '}
+            <strong>fecha del documento</strong> en hora local. Cuenta de gasto: comprobante,
+            proveedor o cuenta genérica en enlaces. Solo <strong>Factura</strong> desglosa IGV.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1024,6 +1048,34 @@ export function ChartOfAccountsModule({
             </Button>
           </div>
 
+          <p className="text-xs text-muted-foreground">
+            En el sistema hay <strong>{expenseCountInStore}</strong> egreso(s) válido(s). En este
+            rango: <strong>{previewStats.total}</strong> movimiento(s), con asiento completo:{' '}
+            <strong>{previewStats.withLines}</strong>.
+          </p>
+
+          {expenseCountInStore > 0 && previewStats.total === 0 ? (
+            <Alert className="border-amber-600/50 bg-amber-950/20">
+              <AlertTitle className="text-sm">Ningún egreso cae en las fechas elegidas</AlertTitle>
+              <AlertDescription className="text-xs">
+                Amplíe <strong>Desde</strong> / <strong>Hasta</strong> (el filtro usa fecha de
+                registro o de documento en hora local). El rango por defecto es amplio; si aún no
+                ve nada, compruebe que los gastos existan en Caja chica.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
+          {previewStats.total > 0 && previewStats.withLines === 0 ? (
+            <Alert className="border-amber-600/50 bg-amber-950/20">
+              <AlertTitle className="text-sm">Hay movimientos pero sin líneas de asiento</AlertTitle>
+              <AlertDescription className="text-xs">
+                Revise enlaces (cuenta caja, IGV, <strong>gasto sin cuenta mapeada</strong>) y que el
+                plan de cuentas tenga esas cuentas a nivel operativo. Las filas en amarillo detallan
+                el motivo por comprobante.
+              </AlertDescription>
+            </Alert>
+          ) : null}
+
           <div className="rounded-md border max-h-[400px] overflow-auto text-sm">
             <Table>
               <TableHeader>
@@ -1036,55 +1088,75 @@ export function ChartOfAccountsModule({
                   <TableHead>Tipo doc.</TableHead>
                   <TableHead>Serie – Nro.</TableHead>
                   <TableHead>Descripción</TableHead>
+                  <TableHead>Responsable caja</TableHead>
                   <TableHead>Sede</TableHead>
                   <TableHead className="text-right">Debe</TableHead>
                   <TableHead className="text-right">Haber</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {previewBundles.flatMap((b) =>
-                  b.lines.length === 0 ? (
-                    <TableRow key={b.transactionId + '-empty'}>
-                      <TableCell
-                        colSpan={11}
-                        className="text-amber-700 bg-amber-50/50 dark:bg-amber-950/20"
-                      >
-                        {b.transactionId}: {b.warnings.join(' ')}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    b.lines.map((ln, idx) => (
-                      <TableRow key={`${b.transactionId}-${idx}`}>
-                        <TableCell className="font-mono text-xs">{ln.accountCode}</TableCell>
-                        <TableCell className="text-xs max-w-[140px] truncate" title={ln.accountName}>
-                          {ln.accountName || '—'}
-                        </TableCell>
-                        <TableCell className="text-xs">{b.yearMonth}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">
-                          {format(b.documentDate, 'dd/MM/yyyy')}
-                        </TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">
-                          {format(b.date, 'dd/MM/yyyy')}
-                        </TableCell>
-                        <TableCell className="text-xs whitespace-nowrap max-w-[120px] truncate" title={b.receiptType}>
-                          {b.receiptType}
-                        </TableCell>
-                        <TableCell className="text-xs font-mono max-w-[140px] truncate" title={b.serieNumero}>
-                          {b.serieNumero}
-                        </TableCell>
-                        <TableCell className="text-xs max-w-[200px] truncate" title={b.description}>
-                          {b.description}
-                        </TableCell>
-                        <TableCell className="text-xs">{b.sede}</TableCell>
-                        <TableCell className="text-right">
-                          {ln.debit > 0 ? ln.debit.toFixed(2) : '—'}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {ln.credit > 0 ? ln.credit.toFixed(2) : '—'}
+                {previewBundles.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
+                      No hay egresos en el rango seleccionado.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  previewBundles.flatMap((b) => {
+                    const custodianLabel = b.custodianId
+                      ? custodianNameById.get(b.custodianId) || b.custodianId
+                      : '—';
+                    return b.lines.length === 0 ? (
+                      <TableRow key={b.transactionId + '-empty'}>
+                        <TableCell
+                          colSpan={12}
+                          className="text-amber-700 bg-amber-50/50 dark:bg-amber-950/20"
+                        >
+                          <span className="font-medium text-foreground/90">{custodianLabel}</span>
+                          {' · '}
+                          {b.transactionId}: {b.warnings.join(' ')}
                         </TableCell>
                       </TableRow>
-                    ))
-                  )
+                    ) : (
+                      b.lines.map((ln, idx) => (
+                        <TableRow key={`${b.transactionId}-${idx}`}>
+                          <TableCell className="font-mono text-xs">{ln.accountCode}</TableCell>
+                          <TableCell className="text-xs max-w-[140px] truncate" title={ln.accountName}>
+                            {ln.accountName || '—'}
+                          </TableCell>
+                          <TableCell className="text-xs">{b.yearMonth}</TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            {format(b.documentDate, 'dd/MM/yyyy')}
+                          </TableCell>
+                          <TableCell className="text-xs whitespace-nowrap">
+                            {format(b.date, 'dd/MM/yyyy')}
+                          </TableCell>
+                          <TableCell
+                            className="text-xs whitespace-nowrap max-w-[120px] truncate"
+                            title={b.receiptType}
+                          >
+                            {b.receiptType}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono max-w-[140px] truncate" title={b.serieNumero}>
+                            {b.serieNumero}
+                          </TableCell>
+                          <TableCell className="text-xs max-w-[200px] truncate" title={b.description}>
+                            {b.description}
+                          </TableCell>
+                          <TableCell className="text-xs max-w-[120px] truncate" title={custodianLabel}>
+                            {custodianLabel}
+                          </TableCell>
+                          <TableCell className="text-xs">{b.sede}</TableCell>
+                          <TableCell className="text-right">
+                            {ln.debit > 0 ? ln.debit.toFixed(2) : '—'}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {ln.credit > 0 ? ln.credit.toFixed(2) : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

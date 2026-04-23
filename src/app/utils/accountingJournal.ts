@@ -29,24 +29,44 @@ function receiptTypeLabel(tx: PettyCashTransaction): string {
   return (tx.receiptType || '').trim() || '—';
 }
 
-/** Incluye egreso si la fecha de registro o la del documento cae en el rango (histórico vs comprobante). */
+/** Interpreta `yyyy-MM-dd` del input type=date en medianoche / fin del día **local** (evita desfases UTC). */
+function parseLocalYmd(ymd: string, endOfDay: boolean): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((ymd || '').trim());
+  if (!m) return new Date(NaN);
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  const d = Number(m[3]);
+  return endOfDay ? new Date(y, mo, d, 23, 59, 59, 999) : new Date(y, mo, d, 0, 0, 0, 0);
+}
+
+/**
+ * Incluye egreso si la fecha de registro o la del documento cae en el rango (histórico vs comprobante).
+ * `previewFromIso` / `previewToIso` en formato `yyyy-MM-dd` (inputs de fecha del navegador).
+ */
 export function pettyCashExpenseInPreviewDateRange(
   t: PettyCashTransaction,
-  from: Date,
-  to: Date
+  previewFromIso: string,
+  previewToIso: string
 ): boolean {
   if (t.type !== 'expense' || t.status === 'voided' || t.status === 'rejected') return false;
-  const reg = new Date(t.date);
-  if (!Number.isNaN(reg.getTime()) && reg >= from && reg <= to) return true;
+  const from = parseLocalYmd(previewFromIso, false);
+  const to = parseLocalYmd(previewToIso, true);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return false;
+
+  const inRange = (d: Date) => !Number.isNaN(d.getTime()) && d >= from && d <= to;
+
+  if (inRange(new Date(t.date))) return true;
   if (t.documentDate != null) {
     const doc = new Date(t.documentDate as Date | string);
-    if (!Number.isNaN(doc.getTime()) && doc >= from && doc <= to) return true;
+    if (inRange(doc)) return true;
   }
   return false;
 }
 
 export interface PettyCashJournalBundle {
   transactionId: string;
+  /** Responsable del fondo (caja chica) en el sistema. */
+  custodianId?: string;
   /** Fecha de registro en sistema */
   date: Date;
   /** Fecha del documento (comprobante) */
@@ -109,6 +129,7 @@ export function buildPettyCashExpenseJournal(
     warnings.push('Movimiento no es un egreso válido para asiento.');
     return {
       transactionId: tx.id,
+      custodianId: tx.custodianId,
       date: registrationDate,
       documentDate,
       yearMonth,
@@ -223,6 +244,7 @@ export function buildPettyCashExpenseJournal(
 
   return {
     transactionId: tx.id,
+    custodianId: tx.custodianId,
     date: registrationDate,
     documentDate,
     yearMonth,
