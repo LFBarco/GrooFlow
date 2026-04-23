@@ -29,6 +29,22 @@ function receiptTypeLabel(tx: PettyCashTransaction): string {
   return (tx.receiptType || '').trim() || '—';
 }
 
+/** Incluye egreso si la fecha de registro o la del documento cae en el rango (histórico vs comprobante). */
+export function pettyCashExpenseInPreviewDateRange(
+  t: PettyCashTransaction,
+  from: Date,
+  to: Date
+): boolean {
+  if (t.type !== 'expense' || t.status === 'voided' || t.status === 'rejected') return false;
+  const reg = new Date(t.date);
+  if (!Number.isNaN(reg.getTime()) && reg >= from && reg <= to) return true;
+  if (t.documentDate != null) {
+    const doc = new Date(t.documentDate as Date | string);
+    if (!Number.isNaN(doc.getTime()) && doc >= from && doc <= to) return true;
+  }
+  return false;
+}
+
 export interface PettyCashJournalBundle {
   transactionId: string;
   /** Fecha de registro en sistema */
@@ -117,11 +133,25 @@ export function buildPettyCashExpenseJournal(
     provider?.pettyExpenseLines?.find(
       (l) => (l.commercialCategory || '').trim() === cat && (l.defaultAccountingAccount || '').trim()
     )?.defaultAccountingAccount;
-  const fromPetty = (fromPettyLine || '').trim();
-  const expenseCode = fromTx || fromProvider || fromPetty;
-  if (!expenseCode) {
+  let fromPetty = (fromPettyLine || '').trim();
+  /** Un solo motivo con cuenta en el proveedor: útil para histórico sin `accountingAccount` en el movimiento. */
+  if (!fromPetty && provider?.pettyExpenseLines?.length) {
+    const linesWithAcc = provider.pettyExpenseLines.filter(
+      (l) => (l.defaultAccountingAccount || '').trim().length > 0
+    );
+    if (linesWithAcc.length === 1) {
+      fromPetty = (linesWithAcc[0].defaultAccountingAccount || '').trim();
+    }
+  }
+  const unknownFallback = (links?.pettyCashUnknownExpenseAccountCode || '').trim();
+  const expenseCode = fromTx || fromProvider || fromPetty || unknownFallback;
+  if (!fromTx && !fromProvider && !fromPetty && unknownFallback) {
     warnings.push(
-      'Sin cuenta de gasto: use motivo/cuenta en caja chica, línea de motivo en Proveedores, o campo cuenta en proveedor.'
+      'Usada cuenta de gasto genérica (enlaces contables). Revise proveedor/motivo caja chica para asignar cuenta específica.'
+    );
+  } else if (!expenseCode) {
+    warnings.push(
+      'Sin cuenta de gasto: configure «Gasto caja chica sin cuenta» en enlaces, o motivo/cuenta en proveedor/comprobante.'
     );
   }
 

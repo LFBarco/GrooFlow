@@ -40,6 +40,7 @@ import {
 import {
   buildPettyCashExpenseJournal,
   flattenJournalsToExportRows,
+  pettyCashExpenseInPreviewDateRange,
 } from '../../utils/accountingJournal';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -100,7 +101,7 @@ export function ChartOfAccountsModule({
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
   const [previewFrom, setPreviewFrom] = useState(() =>
-    format(new Date(Date.now() - 30 * 86400000), 'yyyy-MM-dd')
+    format(new Date(Date.now() - 730 * 86400000), 'yyyy-MM-dd')
   );
   const [previewTo, setPreviewTo] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [editing, setEditing] = useState<ChartOfAccountEntry | null>(null);
@@ -215,6 +216,16 @@ export function ChartOfAccountsModule({
         useLevel: CHART_OPERATIVE_LEVEL,
       }),
     [chartOfAccounts, accounting.bankPaymentAccountCode]
+  );
+
+  const unknownExpenseLinkOptions = useMemo(
+    () =>
+      chartSelectOptionsWithOrphan(
+        chartOfAccounts,
+        accounting.pettyCashUnknownExpenseAccountCode,
+        { useLevel: CHART_OPERATIVE_LEVEL }
+      ),
+    [chartOfAccounts, accounting.pettyCashUnknownExpenseAccountCode]
   );
 
   const sedeAccountOptions = (sede: string) =>
@@ -416,11 +427,7 @@ export function ChartOfAccountsModule({
     to.setHours(23, 59, 59, 999);
     from.setHours(0, 0, 0, 0);
 
-    const txs = pettyCashTransactions.filter((t) => {
-      if (t.type !== 'expense' || t.status === 'voided' || t.status === 'rejected') return false;
-      const d = new Date(t.date);
-      return d >= from && d <= to;
-    });
+    const txs = pettyCashTransactions.filter((t) => pettyCashExpenseInPreviewDateRange(t, from, to));
 
     return txs.map((t) =>
       buildPettyCashExpenseJournal(t, providers, chartOfAccounts, accounting)
@@ -662,6 +669,45 @@ export function ChartOfAccountsModule({
                   Configurar por sede
                 </Button>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Gasto caja chica sin cuenta mapeada (histórico / opcional)</Label>
+              {chartOfAccounts.length > 0 ? (
+                <Select
+                  value={accounting.pettyCashUnknownExpenseAccountCode || '__none__'}
+                  onValueChange={(v) =>
+                    setAccounting({
+                      pettyCashUnknownExpenseAccountCode: v === '__none__' ? undefined : v,
+                    })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Ej. 659 — gastos varios" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">— Sin cuenta genérica —</SelectItem>
+                    {unknownExpenseLinkOptions.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder="Código cuenta gasto (nivel 5)"
+                  value={accounting.pettyCashUnknownExpenseAccountCode || ''}
+                  onChange={(e) =>
+                    setAccounting({
+                      pettyCashUnknownExpenseAccountCode: e.target.value.trim() || undefined,
+                    })
+                  }
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Se usa cuando un egreso ya registrado no tiene cuenta en el comprobante ni en el proveedor.
+                Así igual aparece en vista previa y export; contabilidad puede reclasificar en Starsoft.
+              </p>
             </div>
             <div className="space-y-2">
               <Label>Pago desde banco (opcional, futuro)</Label>
@@ -951,9 +997,11 @@ export function ChartOfAccountsModule({
         <CardHeader>
           <CardTitle className="text-lg">Vista previa — asientos caja chica</CardTitle>
           <CardDescription>
-            Rango de fechas sobre egresos no anulados. Cuenta de gasto desde el proveedor (RUC en el
-            comprobante). Solo <strong>Factura</strong> desglosa IGV en el asiento. Export: columnas
-            acordadas (cuenta, periodo, fechas, sede, debe/haber).
+            Rango sobre egresos no anulados: incluye si la <strong>fecha de registro</strong> o la{' '}
+            <strong>fecha del documento</strong> cae en el intervalo (útil para gastos ya
+            registrados). Cuenta de gasto: comprobante, proveedor, o cuenta genérica en enlaces.
+            Solo <strong>Factura</strong> desglosa IGV. Export: columnas acordadas (cuenta, periodo,
+            fechas, sede, debe/haber).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

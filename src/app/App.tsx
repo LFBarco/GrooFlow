@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { pathToView, viewToPath, type ViewType } from "./routes";
+import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
 import { Overview } from "./components/dashboard/Overview";
 import { CashFlowChart } from "./components/dashboard/CashFlowChart";
@@ -84,7 +84,7 @@ import {
 } from "./utils/userListMerge";
 import { mergePettyCashFilterCatalog } from "./utils/providerCatalog";
 import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
-import { roleRecordHasModuleAccess } from "./utils/rolePermissions";
+import { getFirstAllowedViewPath, roleRecordHasModuleAccess } from "./utils/rolePermissions";
 import { getSuperAdminEmails } from "./config/superAdmins";
 
 const initialTransactions: Transaction[] = [
@@ -1039,16 +1039,42 @@ export default function App() {
     txFilterProvider,
   ]);
 
-  // Check if current user has permission for a specific module
-  const userRole = roles.find(r => r.id === currentUser.role);
+  // Rol resuelto contra la tabla de roles (tolerante a mayúsculas; fallback a defaults si el id es de sistema)
+  const userRole = useMemo((): Role | undefined => {
+    const id = (currentUser.role || '').trim();
+    if (!id) return undefined;
+    const exact = roles.find((r) => r.id === id);
+    if (exact) return exact;
+    const low = id.toLowerCase();
+    const ci = roles.find((r) => r.id.toLowerCase() === low);
+    if (ci) return ci;
+    return DEFAULT_ROLES.find((r) => r.id === id || r.id.toLowerCase() === low);
+  }, [roles, currentUser.role]);
+
   const isSuperAdmin =
     currentUser.role === 'super_admin' ||
     currentUser.role === 'admin' ||
     !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
+
   const hasPermission = (moduleName: string): boolean => {
     if (isSuperAdmin) return true;
     return roleRecordHasModuleAccess(userRole, moduleName);
   };
+
+  // Enlace / URL: no se puede abrir un módulo sin permiso (antes solo se ocultaba el botón)
+  useEffect(() => {
+    if (!isAuthenticated || !isDataLoaded) return;
+    if (isSuperAdmin) return;
+    const mod = VIEW_REQUIRED_MODULE[view];
+    if (!mod) return;
+    if (roleRecordHasModuleAccess(userRole, mod)) return;
+    const targetPath = getFirstAllowedViewPath(userRole, isSuperAdmin);
+    if (targetPath === viewToPath(view)) {
+      return;
+    }
+    navigate(targetPath, { replace: true });
+    toast.error('No tienes permiso para acceder a esta sección. Se redirigió a un módulo permitido.');
+  }, [isAuthenticated, isDataLoaded, isSuperAdmin, view, userRole, navigate]);
 
   const FINANCE_NAV_MODULES = [
     "Finanzas",
@@ -1101,14 +1127,15 @@ export default function App() {
     },
     [seesAllSedesInCatalog, catalogSedes, visibleSedes]
   );
-  /** Vista consolidado caja chica: auditoría, admins, gerente y quien ve todas las sedes. */
+  /** Vista consolidada caja chica: requiere permiso del módulo + criterio de sede/rol. */
   const canAccessPettyCashConsolidated =
-    currentUser.role === 'super_admin' ||
-    currentUser.role === 'admin' ||
-    currentUser.role === 'auditoria' ||
-    currentUser.role === 'manager' ||
-    currentUser.allSedes === true ||
-    !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
+    hasPermission('Caja Chica') &&
+    (currentUser.allSedes === true ||
+      currentUser.role === 'super_admin' ||
+      currentUser.role === 'admin' ||
+      currentUser.role === 'auditoria' ||
+      currentUser.role === 'manager' ||
+      !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase())));
 
   const { categories: commercialCategories, areas: commercialAreas } = useMemo(
     () => mergePettyCashFilterCatalog(systemSettings, pettyCashTransactions),

@@ -330,6 +330,11 @@ export interface ChartOfAccountEntry {
 export interface AccountingLinkSettings {
   /** IGV crédito fiscal (compras) — débito cuando el gasto lleva IGV. */
   igvPurchaseCreditAccountCode?: string;
+  /**
+   * Débito de gasto cuando el egreso no trae cuenta (histórico / proveedor sin mapeo).
+   * Ej. 659 — para que aparezcan en vista previa y export; contabilidad puede corregir en Starsoft.
+   */
+  pettyCashUnknownExpenseAccountCode?: string;
   /** Contrapartida salida de caja chica (haber del total). */
   pettyCashCreditAccountCode?: string;
   /** Cuenta de salida de caja chica por sede (prioriza sobre la global). */

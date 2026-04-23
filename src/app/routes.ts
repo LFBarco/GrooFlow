@@ -58,3 +58,50 @@ export function pathToView(pathname: string): ViewType {
 export function viewToPath(view: ViewType): string {
   return VIEW_TO_PATH[view];
 }
+
+/**
+ * Módulo RBAC requerido por vista (alineado con `NavButton` en App).
+ * Evita abrir módulos por URL sin el permiso correspondiente.
+ */
+export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
+  dashboard: 'Dashboard',
+  alerts: 'Alertas',
+  analytics: 'Analítica',
+  treasury: 'Tesorería',
+  transactions: 'Transacciones',
+  cashflow: 'Flujo de Caja',
+  pnl: 'Estado de Resultados',
+  reports: 'Reportes',
+  pettycash: 'Caja Chica',
+  fees: 'Honorarios',
+  providers: 'Proveedores',
+  accounting: 'Contabilidad',
+  requisitions: 'Requerimientos',
+  requests: 'Compras',
+  audit: 'Auditoría',
+  users: 'Usuarios',
+  config: 'Configuración',
+};
+
+/**
+ * Orden de búsqueda al redirigir: vistas más "seguras" o centrales primero.
+ */
+export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
+  'dashboard',
+  'alerts',
+  'pettycash',
+  'treasury',
+  'transactions',
+  'cashflow',
+  'pnl',
+  'reports',
+  'fees',
+  'providers',
+  'accounting',
+  'requisitions',
+  'requests',
+  'audit',
+  'analytics',
+  'users',
+  'config',
+];
