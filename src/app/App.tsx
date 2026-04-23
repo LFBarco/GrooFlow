@@ -1702,6 +1702,7 @@ export default function App() {
                     openSimplePettyOnMount={openQuickProviderModal}
                     onSimplePettyOpenHandled={() => setOpenQuickProviderModal(false)}
                     chartOfAccounts={chartOfAccounts}
+                    pettyCashCommercialCategories={commercialCategories}
                 />
              </div>
           )}

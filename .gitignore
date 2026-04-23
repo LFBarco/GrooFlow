@@ -22,3 +22,4 @@ Thumbs.db
 supabase/.temp/
 tmp_public_data.sql
 tools/
+.vercel

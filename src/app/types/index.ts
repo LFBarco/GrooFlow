@@ -59,6 +59,15 @@ export interface RecurringExpense {
   lastGeneratedDate?: Date; // Para evitar duplicados el mismo día
 }
 
+/** Línea de “motivo de gasto” permitido en caja chica + cuenta contable sugerida (por proveedor). */
+export interface ProviderPettyExpenseLine {
+  id: string;
+  /** Categoría / motivo (mismo catálogo que caja chica, Config. → Contabilidad). */
+  commercialCategory: string;
+  /** Cuenta 63/64/65 sugerida para este motivo. */
+  defaultAccountingAccount?: string;
+}
+
 export interface Provider {
   id: string;
   ruc: string;
@@ -74,6 +83,11 @@ export interface Provider {
   defaultExpenseCategory?: string; // Nuevo: Para automatizar clasificación en flujo de caja
   /** Código de cuenta de gasto en tu plan (se valida contra plan de cuentas si está cargado). */
   accountingAccount?: string;
+  /**
+   * Motivos de gasto permitidos en caja chica con cuenta sugerida (varias filas).
+   * Si está vacío o ausente, caja chica pide a contabilidad completar en Proveedores.
+   */
+  pettyExpenseLines?: ProviderPettyExpenseLine[];
   /** Origen del alta para auditoría. */
   registeredVia?: 'full' | 'petty_cash_simple';
   totalPurchased?: number; // Campo calculado para analítica
@@ -195,6 +209,17 @@ export interface PettyCashTransaction {
     isExtraExpense?: boolean;
     amountBI?: number;
     igv?: number;
+    /**
+     * Solo Factura: tasa de IGV aplicada sobre la base imponible (10% o 18%).
+     * Si no existe, se asume 18% en cálculos y visualización.
+     */
+    igvRate?: 0.1 | 0.18;
+    /**
+     * Solo Factura: importe inafecto / no grava IGV; suma al total a pagar (caja / proveedor).
+     */
+    amountExempt?: number;
+    /** Cuenta de gasto (63/64/65) sugerida vía config. proveedor + motivo. */
+    accountingAccount?: string;
     /** Motivo u observación de auditoría (ej. al rechazar). */
     auditComment?: string;
 }

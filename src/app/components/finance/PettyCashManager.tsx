@@ -23,6 +23,11 @@ import {
 } from 'lucide-react';
 import { format, startOfWeek, subWeeks } from 'date-fns';
 import { receiptTypeUsesIgv } from '../../utils/pettyCashReceiptType';
+import {
+    getDocIdentityDigitLimit,
+    isCompleteDocIdentity,
+    normalizeDocIdentityDigits,
+} from '../../utils/pettyCashDocIdentity';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { PettyCashTransaction, PettyCashSettings, User, PettyCashWeekClosure, PettyCashWeekPreClosure } from '../../types';
@@ -50,6 +55,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Switch } from '../ui/switch';
+import { Checkbox } from '../ui/checkbox';
 
 // --- Helper to get week number safely ---
 const getWeekStr = (date: Date) => format(date, 'w');
@@ -101,6 +107,10 @@ interface PettyCashManagerProps {
     sedeOptions?: string[];
     /** Logo general del negocio si no hay logo específico de rendición. */
     reportLogoFallback?: string;
+    /** Catálogo de proveedores (validación documento / razón social en edición). */
+    providers?: { id: string; ruc: string; name: string }[];
+    /** Abre Proveedores para alta rápida si el documento no está en catálogo. */
+    onRequestProviderRegistration?: () => void;
     onClosePettyCashWeek?: (closure: PettyCashWeekClosure) => void;
     onPreClosePettyCashWeek?: (pre: PettyCashWeekPreClosure) => void;
 }
@@ -140,6 +150,8 @@ export function PettyCashManager({
     areaCatalog = [],
     sedeOptions = [],
     reportLogoFallback,
+    providers = [],
+    onRequestProviderRegistration,
     onClosePettyCashWeek,
     onPreClosePettyCashWeek,
 }: PettyCashManagerProps) {
@@ -161,6 +173,8 @@ export function PettyCashManager({
     const [editIsExtra, setEditIsExtra] = useState(false);
     const [editLocation, setEditLocation] = useState('');
     const [editDocumentDate, setEditDocumentDate] = useState('');
+    const [editInvoiceIgv10, setEditInvoiceIgv10] = useState(false);
+    const [editAmountExempt, setEditAmountExempt] = useState('');
 
     const [topupOpen, setTopupOpen] = useState(false);
     const [topupAmount, setTopupAmount] = useState('');
@@ -171,6 +185,31 @@ export function PettyCashManager({
         () => buildCategoryStyleMap(categoryCatalog),
         [categoryCatalog.join('|')]
     );
+
+    const editNormDoc = useMemo(
+        () => normalizeDocIdentityDigits(editDocNumber, editDocType),
+        [editDocNumber, editDocType]
+    );
+    const editDocIdentityLimit = getDocIdentityDigitLimit(editDocType);
+    const editDocIdentityComplete = isCompleteDocIdentity(editDocType, editNormDoc);
+    const editCatalogMatch = useMemo(() => {
+        if (!editDocIdentityComplete) return null;
+        return (
+            providers.find((p) => (p.ruc || '').replace(/\D/g, '') === editNormDoc) || null
+        );
+    }, [providers, editNormDoc, editDocIdentityComplete]);
+
+    useEffect(() => {
+        if (!editOpen) return;
+        setEditDocNumber((d) => normalizeDocIdentityDigits(d, editDocType));
+    }, [editDocType, editOpen]);
+
+    useEffect(() => {
+        if (!editOpen || !editCatalogMatch) return;
+        setEditProviderName((prev) =>
+            prev.trim() === editCatalogMatch.name ? prev : editCatalogMatch.name
+        );
+    }, [editOpen, editCatalogMatch]);
 
     const viewerSeesAllSedes = useMemo(
         () =>
@@ -346,18 +385,32 @@ export function PettyCashManager({
         return weekRangeFromCalendarWeek(String(selectedWeek));
     }, [custodianTransactions, selectedWeek]);
 
-    const editParsedBI = useMemo(() => {
-        const n = parseFloat(editAmountBI);
-        return Number.isFinite(n) ? n : NaN;
-    }, [editAmountBI]);
     const editUsesIgv = receiptTypeUsesIgv(editClassification);
-    const editIgvPreview =
-        editUsesIgv && Number.isFinite(editParsedBI) ? Math.round(editParsedBI * 0.18 * 100) / 100 : 0;
-    const editTotalPreview = Number.isFinite(editParsedBI)
-        ? editUsesIgv
-            ? Math.round((editParsedBI + editIgvPreview) * 100) / 100
-            : Math.round(editParsedBI * 100) / 100
-        : 0;
+    const numBiEmptyE = editAmountBI.trim() === '';
+    const numExEmptyE = editAmountExempt.trim() === '';
+    const numBiE = numBiEmptyE ? 0 : parseFloat(editAmountBI);
+    const numExE = numExEmptyE ? 0 : parseFloat(editAmountExempt);
+    const badBiE = !numBiEmptyE && (Number.isNaN(numBiE) || numBiE < 0);
+    const badExE = !numExEmptyE && (Number.isNaN(numExE) || numExE < 0);
+    const editIgvRate = editUsesIgv ? (editInvoiceIgv10 ? 0.1 : 0.18) : 0;
+    const editIgvPreview = editUsesIgv && !badBiE ? Math.round(numBiE * editIgvRate * 100) / 100 : 0;
+    const editTotalPreview = editUsesIgv
+        ? badBiE || badExE
+            ? NaN
+            : Math.round((numBiE + editIgvPreview + (Number.isNaN(numExE) ? 0 : numExE)) * 100) / 100
+        : numBiEmptyE
+          ? 0
+          : Number.isNaN(numBiE) || numBiE < 0
+            ? NaN
+            : Math.round(numBiE * 100) / 100;
+
+    useEffect(() => {
+        if (!editOpen) return;
+        if (!receiptTypeUsesIgv(editClassification)) {
+            setEditInvoiceIgv10(false);
+            setEditAmountExempt('');
+        }
+    }, [editOpen, editClassification]);
 
     const openEditExpense = (e: PettyCashTransaction) => {
         if (weekAlreadyClosed) {
@@ -372,16 +425,32 @@ export function PettyCashManager({
         const isFact = receiptTypeUsesIgv(e.receiptType);
         let amountField = '';
         if (isFact) {
-            const bi =
-                e.amountBI != null && !Number.isNaN(Number(e.amountBI))
-                    ? Number(e.amountBI)
-                    : e.amount != null
-                      ? Math.round((Number(e.amount) / 1.18) * 100) / 100
-                      : 0;
-            amountField = bi > 0 ? String(bi) : '';
+            if (e.amountBI != null && !Number.isNaN(Number(e.amountBI))) {
+                const v = Number(e.amountBI);
+                amountField = v > 0 || (e.amountExempt ?? 0) > 0 ? String(v) : '';
+            } else {
+                const tot = e.amount != null ? Number(e.amount) : 0;
+                const igvL = e.igv != null ? Number(e.igv) : 0;
+                const ex = e.amountExempt ?? 0;
+                const bi = Math.max(0, Math.round((tot - igvL - ex) * 100) / 100);
+                amountField = bi > 0 || (e.amountExempt && e.amountExempt > 0) ? String(bi) : '';
+            }
+            let use10 = e.igvRate === 0.1;
+            if (e.igvRate == null && e.amountBI != null && e.igv != null && Number(e.amountBI) > 0) {
+                const r = Number(e.igv) / Number(e.amountBI);
+                use10 = Math.abs(r - 0.1) < Math.abs(r - 0.18);
+            }
+            setEditInvoiceIgv10(use10);
+            setEditAmountExempt(
+                e.amountExempt != null && e.amountExempt > 0
+                    ? String(Math.round(e.amountExempt * 100) / 100)
+                    : ''
+            );
         } else {
             const full = e.amount != null && !Number.isNaN(Number(e.amount)) ? Number(e.amount) : 0;
             amountField = full > 0 ? String(Math.round(full * 100) / 100) : '';
+            setEditInvoiceIgv10(false);
+            setEditAmountExempt('');
         }
         setEditAmountBI(amountField);
         setEditDocumentDate(
@@ -394,8 +463,9 @@ export function PettyCashManager({
             categoryCatalog.includes(e.category) ? e.category : categoryCatalog[0] || e.category || ''
         );
         setEditClassification(e.receiptType || 'Boleta');
-        setEditDocType(e.docType || 'RUC');
-        setEditDocNumber(e.docNumber || '');
+        const dt = e.docType || 'RUC';
+        setEditDocType(dt);
+        setEditDocNumber(normalizeDocIdentityDigits(e.docNumber || '', dt));
         setEditDocSeries(e.docSeries || '');
         setEditVoucherNumber((e.voucherNumber || e.receiptNumber || '').trim());
         setEditProviderName(e.providerName || '');
@@ -428,13 +498,7 @@ export function PettyCashManager({
             toast.error('Falta catálogo de áreas.');
             return;
         }
-        if (
-            !editAmountBI ||
-            !editDescription.trim() ||
-            !editArea ||
-            !editDocNumber.trim() ||
-            !editProviderName.trim()
-        ) {
+        if (!editDescription.trim() || !editArea || !editNormDoc || !editProviderName.trim()) {
             toast.error('Complete los campos obligatorios.');
             return;
         }
@@ -442,20 +506,50 @@ export function PettyCashManager({
             toast.error('Indique serie y número de documento del comprobante.');
             return;
         }
-        const numField = parseFloat(editAmountBI);
-        if (Number.isNaN(numField) || numField <= 0) {
-            toast.error('Monto inválido.');
+        const needDigits = getDocIdentityDigitLimit(editDocType);
+        if (editNormDoc.length !== needDigits) {
+            toast.error(`El ${editDocType} debe tener ${needDigits} dígitos.`);
+            return;
+        }
+        if (!editCatalogMatch) {
+            toast.error('Proveedor no registrado en catálogo', {
+                description:
+                    'Use «Caja chica (rápido)» en Proveedores para dar de alta y vuelva a intentar.',
+            });
             return;
         }
         const usesIgv = receiptTypeUsesIgv(editClassification);
-        const igvVal = usesIgv ? Math.round(numField * 0.18 * 100) / 100 : 0;
+        const nBiE = editAmountBI.trim() === '' ? 0 : parseFloat(editAmountBI);
+        const nExE = editAmountExempt.trim() === '' ? 0 : parseFloat(editAmountExempt);
+        const nBiEEmpty = editAmountBI.trim() === '';
+        const nExEEmpty = editAmountExempt.trim() === '';
+        const bBiE2 = !nBiEEmpty && (Number.isNaN(nBiE) || nBiE < 0);
+        const bExE2 = !nExEEmpty && (Number.isNaN(nExE) || nExE < 0);
+        if (usesIgv) {
+            if (bBiE2 || bExE2) {
+                toast.error('Importes inválidos: revise base imponible e inafecto.');
+                return;
+            }
+        } else {
+            if (nBiEEmpty || Number.isNaN(nBiE) || nBiE <= 0) {
+                toast.error('Monto inválido.');
+                return;
+            }
+        }
+        const rateE = usesIgv ? (editInvoiceIgv10 ? 0.1 : 0.18) : 0;
+        const igvVal = usesIgv ? Math.round(nBiE * rateE * 100) / 100 : 0;
+        const exVal = usesIgv ? Math.round((Number.isNaN(nExE) ? 0 : nExE) * 100) / 100 : 0;
         const totalVal = usesIgv
-            ? Math.round((numField + igvVal) * 100) / 100
-            : Math.round(numField * 100) / 100;
-        const amountBIVal = usesIgv ? numField : totalVal;
+            ? Math.round((nBiE + igvVal + exVal) * 100) / 100
+            : Math.round(nBiE * 100) / 100;
+        if (usesIgv && (totalVal <= 0 || Number.isNaN(totalVal))) {
+            toast.error('El total a pagar debe ser mayor a 0.');
+            return;
+        }
+        const amountBIVal = usesIgv ? nBiE : totalVal;
         const dup = findPettyCashDuplicate(
             transactions,
-            editDocNumber.trim(),
+            editNormDoc,
             editDocSeries.trim(),
             editVoucherNumber.trim(),
             editingId
@@ -480,6 +574,8 @@ export function PettyCashManager({
                           amount: totalVal,
                           amountBI: amountBIVal,
                           igv: usesIgv ? igvVal : 0,
+                          igvRate: usesIgv ? (rateE as 0.1 | 0.18) : undefined,
+                          amountExempt: usesIgv ? exVal : undefined,
                           type: 'expense' as const,
                       }
                     : x
@@ -530,12 +626,14 @@ export function PettyCashManager({
                     amount: totalVal,
                     amountBI: amountBIVal,
                     igv: usesIgv ? igvVal : 0,
+                    igvRate: usesIgv ? (rateE as 0.1 | 0.18) : undefined,
+                    amountExempt: usesIgv ? exVal : undefined,
                     documentDate: docD,
                     description: editDescription.trim(),
                     category: categoryCatalog.includes(editCategory) ? editCategory : categoryCatalog[0]!,
                     receiptType: editClassification as PettyCashTransaction['receiptType'],
                     docType: editDocType as PettyCashTransaction['docType'],
-                    docNumber: editDocNumber.trim(),
+                    docNumber: editNormDoc,
                     docSeries: editDocSeries.trim(),
                     voucherNumber: editVoucherNumber.trim(),
                     receiptNumber: editVoucherNumber.trim(),
@@ -775,7 +873,7 @@ export function PettyCashManager({
           <td>${escHtml(serieVal(e))}</td>
           <td>${escHtml(nroComprobante(e))}</td>
           <td>${escHtml(nombreVal(e))}</td>
-          <td class="num">S/ ${Number(e.amount).toFixed(2)}</td>
+          <td class="num">${Number(e.amount).toFixed(2)}</td>
           <td>${escHtml(pettyCashStatusLabel(e.status))}</td>
         </tr>`;
             })
@@ -1325,8 +1423,14 @@ ${signatures}
                                                             </div>
                                                         )}
                                                     </TableCell>
-                                                    <TableCell className="text-right font-bold whitespace-nowrap">
-                                                        S/ {expense.amount.toFixed(2)}
+                                                    <TableCell
+                                                        className={`text-right font-bold whitespace-nowrap tabular-nums ${
+                                                            isIncome ? 'text-emerald-600' : 'text-red-600'
+                                                        }`}
+                                                    >
+                                                        {isIncome
+                                                            ? `S/ ${expense.amount.toFixed(2)}`
+                                                            : `-S/ ${expense.amount.toFixed(2)}`}
                                                     </TableCell>
                                                     <TableCell className="text-right p-1 align-middle">
                                                         {expense.status === 'voided' ||
@@ -1631,6 +1735,15 @@ ${signatures}
                             </div>
                         </div>
 
+                        <div className="space-y-1">
+                            <Label className="text-xs">Fecha del documento</Label>
+                            <Input
+                                type="date"
+                                value={editDocumentDate}
+                                onChange={(e) => setEditDocumentDate(e.target.value)}
+                            />
+                        </div>
+
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
                                 <Label className="text-xs">Tipo de documento</Label>
@@ -1648,7 +1761,7 @@ ${signatures}
                                 </Select>
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-xs">Doc. identidad</Label>
+                                <Label className="text-xs">Tipo de identidad</Label>
                                 <Select value={editDocType} onValueChange={setEditDocType}>
                                     <SelectTrigger>
                                         <SelectValue />
@@ -1663,59 +1776,134 @@ ${signatures}
                         </div>
 
                         <div className="space-y-1">
-                            <Label className="text-xs">Fecha del documento</Label>
+                            <Label className="text-xs">N° RUC / DNI / CE</Label>
                             <Input
-                                type="date"
-                                value={editDocumentDate}
-                                onChange={(e) => setEditDocumentDate(e.target.value)}
+                                className="font-mono"
+                                inputMode="numeric"
+                                autoComplete="off"
+                                value={editDocNumber}
+                                onChange={(e) =>
+                                    setEditDocNumber(
+                                        normalizeDocIdentityDigits(e.target.value, editDocType)
+                                    )
+                                }
+                                placeholder={
+                                    editDocType === 'RUC'
+                                        ? '11 dígitos'
+                                        : editDocType === 'DNI'
+                                          ? '8 dígitos'
+                                          : '9 dígitos'
+                                }
                             />
+                            {editNormDoc.length > 0 && (
+                                <p
+                                    className={`text-[11px] ${editCatalogMatch ? 'text-emerald-600' : 'text-amber-600'}`}
+                                >
+                                    {editCatalogMatch
+                                        ? `${editDocType} validado en catálogo.`
+                                        : editNormDoc.length < editDocIdentityLimit
+                                          ? `Complete ${editDocIdentityLimit} dígitos (${editNormDoc.length}/${editDocIdentityLimit}).`
+                                          : `${editDocType} no encontrado en catálogo.`}
+                                </p>
+                            )}
                         </div>
 
                         <div className="space-y-1">
-                            <Label className="text-xs">RUC / DNI / CE</Label>
-                            <Input value={editDocNumber} onChange={(e) => setEditDocNumber(e.target.value)} />
+                            <Label className="text-xs">Razón social / Nombre</Label>
+                            <Input
+                                value={editProviderName}
+                                onChange={(e) => setEditProviderName(e.target.value)}
+                                readOnly={!!editCatalogMatch}
+                            />
+                            {editDocIdentityComplete && !editCatalogMatch && (
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-600/30 rounded px-2 py-1.5">
+                                    <span>
+                                        Proveedor no existe en catálogo. Regístrelo con «Caja chica (rápido)» en
+                                        Proveedores.
+                                    </span>
+                                    {onRequestProviderRegistration ? (
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            className="h-7 shrink-0 text-[11px]"
+                                            onClick={onRequestProviderRegistration}
+                                        >
+                                            Ir a Proveedores
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            )}
                         </div>
+
                         <div className="grid grid-cols-2 gap-2">
                             <div className="space-y-1">
                                 <Label className="text-xs">Serie</Label>
                                 <Input value={editDocSeries} onChange={(e) => setEditDocSeries(e.target.value)} />
                             </div>
                             <div className="space-y-1">
-                                <Label className="text-xs">Nro. documento</Label>
+                                <Label className="text-xs">Nro. de documento</Label>
                                 <Input value={editVoucherNumber} onChange={(e) => setEditVoucherNumber(e.target.value)} />
                             </div>
-                        </div>
-                        <div className="space-y-1">
-                            <Label className="text-xs">Nombre proveedor / emisor</Label>
-                            <Input value={editProviderName} onChange={(e) => setEditProviderName(e.target.value)} />
                         </div>
 
                         <div className="text-[10px] text-muted-foreground -mt-1">
                             {editUsesIgv
-                                ? 'Factura: base + IGV. Otros: sin IGV en detalle (importe directo al gasto).'
+                                ? 'Factura: base imponible + IGV (10% o 18%) + inafecto opcional = total a pagar.'
                                 : 'Sin IGV: el monto completo es el gasto y la salida de caja.'}
                         </div>
 
                         {editUsesIgv ? (
-                            <div className="grid grid-cols-3 gap-2">
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Base imponible</Label>
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        id="edit-igv10"
+                                        checked={editInvoiceIgv10}
+                                        onCheckedChange={(c) => setEditInvoiceIgv10(c === true)}
+                                    />
+                                    <Label htmlFor="edit-igv10" className="text-xs cursor-pointer font-normal">
+                                        IGV 10% (si no: 18%)
+                                    </Label>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="space-y-1 min-w-0">
+                                        <Label className="text-xs">Base imponible</Label>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            value={editAmountBI}
+                                            onChange={(e) => setEditAmountBI(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-1 min-w-0">
+                                        <Label className="text-xs">IGV ({editInvoiceIgv10 ? 10 : 18}%)</Label>
+                                        <Input
+                                            readOnly
+                                            value={badBiE ? '—' : editIgvPreview.toFixed(2)}
+                                            className="bg-muted"
+                                        />
+                                    </div>
+                                    <div className="space-y-1 min-w-0">
+                                        <Label className="text-xs">Total</Label>
+                                        <Input
+                                            readOnly
+                                            value={
+                                                Number.isFinite(editTotalPreview) && editTotalPreview > 0
+                                                    ? editTotalPreview.toFixed(2)
+                                                    : ''
+                                            }
+                                            className="bg-muted font-semibold"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-1 max-w-xs">
+                                    <Label className="text-xs">Inafecto (opcional)</Label>
                                     <Input
                                         type="number"
-                                        value={editAmountBI}
-                                        onChange={(e) => setEditAmountBI(e.target.value)}
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">IGV (18%)</Label>
-                                    <Input readOnly value={editIgvPreview.toFixed(2)} className="bg-muted" />
-                                </div>
-                                <div className="space-y-1">
-                                    <Label className="text-xs">Total</Label>
-                                    <Input
-                                        readOnly
-                                        value={editTotalPreview > 0 ? editTotalPreview.toFixed(2) : ''}
-                                        className="bg-muted font-semibold"
+                                        min={0}
+                                        value={editAmountExempt}
+                                        onChange={(e) => setEditAmountExempt(e.target.value)}
+                                        placeholder="0.00"
                                     />
                                 </div>
                             </div>
@@ -1746,7 +1934,16 @@ ${signatures}
                             <Button type="button" variant="outline" onClick={closeEditExpense}>
                                 Cancelar
                             </Button>
-                            <Button type="button" onClick={saveEditExpense}>
+                            <Button
+                                type="button"
+                                onClick={saveEditExpense}
+                                disabled={editDocIdentityComplete && !editCatalogMatch}
+                                title={
+                                    editDocIdentityComplete && !editCatalogMatch
+                                        ? 'El documento de identidad no está en el catálogo de proveedores'
+                                        : undefined
+                                }
+                            >
                                 Guardar cambios
                             </Button>
                         </div>

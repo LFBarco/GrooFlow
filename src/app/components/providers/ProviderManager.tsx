@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { ChartOfAccountEntry, Provider, SystemSettings } from '../../types';
+import { ChartOfAccountEntry, Provider, ProviderPettyExpenseLine, SystemSettings } from '../../types';
 import { ConfigStructure, getConceptsFlat } from '../../data/initialData';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
@@ -13,14 +13,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGr
 import { 
     Plus, Search, Edit2, Trash2, Building2, Phone, Mail, Clock, Save, 
     X, CreditCard, User, Upload, FileDown, CheckCircle2, XCircle, 
-    Landmark, Settings, List, Wallet, Users 
+    Landmark, Settings, List, Wallet, Users, Info
 } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import { toast } from 'sonner';
 import { getProviderAreas, getProviderCategories } from '../../utils/providerCatalog';
 import {
   CHART_OPERATIVE_LEVEL,
-  chartSelectOptionsWithOrphan,
+  chartSelectOptionsWithOrphanExpenseClasses,
 } from '../../utils/chartOfAccountsHelpers';
+import {
+    getDocIdentityDigitLimit,
+    normalizeDocIdentityDigits,
+} from '../../utils/pettyCashDocIdentity';
 
 interface ProviderManagerProps {
     providers: Provider[];
@@ -35,6 +40,8 @@ interface ProviderManagerProps {
     onSimplePettyOpenHandled?: () => void;
     /** Plan de cuentas importado (opcional): selector de cuenta de gasto. */
     chartOfAccounts?: ChartOfAccountEntry[];
+    /** Categorías “motivo” de caja chica (mismo listado que en registro de gasto). */
+    pettyCashCommercialCategories: string[];
 }
 
 // Fallback por si no llega config externa de egresos
@@ -55,6 +62,7 @@ export function ProviderManager({
     openSimplePettyOnMount = false,
     onSimplePettyOpenHandled,
     chartOfAccounts = [],
+    pettyCashCommercialCategories,
 }: ProviderManagerProps) {
     
     // --- Resolución de Listas (Prioridad: SystemSettings > Defaults) ---
@@ -73,6 +81,7 @@ export function ProviderManager({
     /** Alta mínima para uso en caja chica (mismo modelo Provider). */
     const [isSimplePettyOpen, setIsSimplePettyOpen] = useState(false);
     const [simplePetty, setSimplePetty] = useState({
+        docType: 'RUC' as 'RUC' | 'DNI' | 'CE',
         ruc: '',
         name: '',
         type: 'Mercaderia' as NonNullable<Provider['type']>,
@@ -330,6 +339,31 @@ export function ProviderManager({
         return true;
     };
 
+    const addPettyExpenseLine = () => {
+        const first = pettyCashCommercialCategories[0] || '';
+        setCurrentProvider((p) => ({
+            ...p,
+            pettyExpenseLines: [
+                ...(p.pettyExpenseLines || []),
+                { id: `pel-${Date.now()}`, commercialCategory: first, defaultAccountingAccount: undefined },
+            ],
+        }));
+    };
+
+    const updatePettyLine = (id: string, patch: Partial<ProviderPettyExpenseLine>) => {
+        setCurrentProvider((p) => ({
+            ...p,
+            pettyExpenseLines: (p.pettyExpenseLines || []).map((l) => (l.id === id ? { ...l, ...patch } : l)),
+        }));
+    };
+
+    const removePettyLine = (id: string) => {
+        setCurrentProvider((p) => ({
+            ...p,
+            pettyExpenseLines: (p.pettyExpenseLines || []).filter((l) => l.id !== id),
+        }));
+    };
+
     const handleSave = () => {
         if (!currentProvider.name || !currentProvider.ruc) {
             toast.error("El nombre y RUC son obligatorios");
@@ -345,6 +379,19 @@ export function ProviderManager({
             return;
         }
 
+        const pl = (currentProvider.pettyExpenseLines || []).filter((l) => l.commercialCategory?.trim());
+        const plCats = pl.map((l) => l.commercialCategory.trim());
+        if (plCats.length !== new Set(plCats).size) {
+            toast.error('Cada "motivo (caja chica)" debe ser único en la lista');
+            return;
+        }
+        for (const l of pl) {
+            if (!pettyCashCommercialCategories.includes(l.commercialCategory)) {
+                toast.error(`Motivo "${l.commercialCategory}" no figura en el catálogo de caja chica.`);
+                return;
+            }
+        }
+
         if (currentProvider.id) {
             // Edit
             const updated = providers.map((p) =>
@@ -354,6 +401,7 @@ export function ProviderManager({
                           ...currentProvider,
                           category: currentProvider.category!.trim(),
                           area: currentProvider.area!.trim(),
+                          pettyExpenseLines: pl,
                       } as Provider)
                     : p
             );
@@ -383,6 +431,7 @@ export function ProviderManager({
                 bankAccount: currentProvider.bankAccount || '',
                 totalPurchased: 0,
                 accountingAccount: currentProvider.accountingAccount?.trim() || undefined,
+                pettyExpenseLines: pl,
             };
             onUpdateProviders([...providers, newProvider]);
             toast.success("Proveedor registrado");
@@ -400,6 +449,7 @@ export function ProviderManager({
 
     const openSimplePettyDialog = () => {
         setSimplePetty({
+            docType: 'RUC',
             ruc: '',
             name: '',
             type: 'Mercaderia',
@@ -421,15 +471,16 @@ export function ProviderManager({
             toast.error('Ingrese la razón social');
             return;
         }
-        if (!validateRUC(simplePetty.ruc)) {
-            toast.error('El RUC debe tener 11 dígitos numéricos');
+        const docLimit = getDocIdentityDigitLimit(simplePetty.docType);
+        if (simplePetty.ruc.length !== docLimit) {
+            toast.error(`El ${simplePetty.docType} debe tener ${docLimit} dígitos numéricos`);
             return;
         }
         if (!validateCommercialCatalogFields(simplePetty.category, simplePetty.area)) {
             return;
         }
         if (providers.some((p) => p.ruc === simplePetty.ruc)) {
-            toast.error('Ya existe un proveedor con este RUC');
+            toast.error(`Ya existe un proveedor con este ${simplePetty.docType}`);
             return;
         }
         const acct = simplePetty.accountingAccount.trim();
@@ -451,11 +502,12 @@ export function ProviderManager({
             bankName: '',
             bankAccount: '',
             totalPurchased: 0,
+            pettyExpenseLines: [],
         };
         onUpdateProviders([...providers, newProvider]);
         setIsSimplePettyOpen(false);
         toast.success('Proveedor registrado (caja chica)', {
-            description: 'Aparece en el directorio con los mismos datos base; puede completar la ficha completa con Editar.',
+            description: 'Contabilidad debe completar "Motivos caja chica" en Editar; hasta entonces no se podrán registrar egresos.',
         });
     };
 
@@ -469,7 +521,14 @@ export function ProviderManager({
                 provider.area && areas.includes(provider.area)
                     ? provider.area
                     : (areas[0] ?? '');
-            setCurrentProvider({ ...provider, category: cat, area: ar });
+            setCurrentProvider({
+                ...provider,
+                category: cat,
+                area: ar,
+                pettyExpenseLines: provider.pettyExpenseLines?.length
+                    ? provider.pettyExpenseLines.map((l) => ({ ...l }))
+                    : [],
+            });
         } else {
             setCurrentProvider({
                 category: providerCategories[0] ?? '',
@@ -477,6 +536,7 @@ export function ProviderManager({
                 defaultCreditDays: 0,
                 defaultExpenseCategory: 'Otros',
                 type: 'Mercaderia',
+                pettyExpenseLines: [],
             });
         }
         setIsEditing(true);
@@ -490,7 +550,7 @@ export function ProviderManager({
 
     const simplePettyAccountOptions = useMemo(
       () =>
-        chartSelectOptionsWithOrphan(chartOfAccounts, simplePetty.accountingAccount, {
+        chartSelectOptionsWithOrphanExpenseClasses(chartOfAccounts, simplePetty.accountingAccount, {
           useLevel: CHART_OPERATIVE_LEVEL,
         }),
       [chartOfAccounts, simplePetty.accountingAccount]
@@ -498,7 +558,7 @@ export function ProviderManager({
 
     const editProviderAccountOptions = useMemo(
       () =>
-        chartSelectOptionsWithOrphan(chartOfAccounts, currentProvider.accountingAccount, {
+        chartSelectOptionsWithOrphanExpenseClasses(chartOfAccounts, currentProvider.accountingAccount, {
           useLevel: CHART_OPERATIVE_LEVEL,
         }),
       [chartOfAccounts, currentProvider.accountingAccount]
@@ -647,20 +707,54 @@ export function ProviderManager({
                             Formulario corto. El proveedor queda en el mismo directorio; puede ampliar datos con <strong>Editar</strong> cuando lo necesite.
                         </DialogDescription>
                     </DialogHeader>
+                    <Alert className="border-amber-600/50 bg-amber-950/20">
+                        <Info className="h-4 w-4" />
+                        <AlertTitle className="text-sm">Caja chica y motivos de gasto</AlertTitle>
+                        <AlertDescription className="text-xs">
+                            Para que el equipo pueda <strong>registrar egresos</strong> contra este proveedor, <strong>Contabilidad</strong> debe abrir
+                            <strong> Editar proveedor</strong> y definir al menos un <strong>motivo (caja chica)</strong> y la cuenta
+                            63/64/65 asociada.
+                        </AlertDescription>
+                    </Alert>
                     <div className="grid gap-4 py-2">
                         <div className="space-y-2">
-                            <Label>RUC <span className="text-red-500">*</span></Label>
+                            <Label>Tipo de identidad</Label>
+                            <Select
+                                value={simplePetty.docType}
+                                onValueChange={(val: 'RUC' | 'DNI' | 'CE') =>
+                                    setSimplePetty((s) => ({
+                                        ...s,
+                                        docType: val,
+                                        ruc: normalizeDocIdentityDigits(s.ruc, val),
+                                    }))
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="RUC">RUC</SelectItem>
+                                    <SelectItem value="DNI">DNI</SelectItem>
+                                    <SelectItem value="CE">CE</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label>{simplePetty.docType} <span className="text-red-500">*</span></Label>
                             <Input
                                 className="font-mono"
-                                placeholder="11 dígitos"
+                                placeholder={`${getDocIdentityDigitLimit(simplePetty.docType)} dígitos`}
                                 value={simplePetty.ruc}
                                 onChange={(e) =>
                                     setSimplePetty((s) => ({
                                         ...s,
-                                        ruc: e.target.value.replace(/\D/g, '').slice(0, 11),
+                                        ruc: normalizeDocIdentityDigits(e.target.value, s.docType),
                                     }))
                                 }
                             />
+                            <p className="text-[10px] text-muted-foreground text-right">
+                                {simplePetty.ruc.length}/{getDocIdentityDigitLimit(simplePetty.docType)} dígitos
+                            </p>
                         </div>
                         <div className="space-y-2">
                             <Label>Razón social <span className="text-red-500">*</span></Label>
@@ -762,8 +856,8 @@ export function ProviderManager({
                                 />
                             )}
                             <p className="text-[10px] text-muted-foreground">
-                                Solo <strong>NIVEL {CHART_OPERATIVE_LEVEL}</strong> del plan (CUENTA). Se usa en
-                                asientos y flujo.
+                                Solo cuentas <strong>63 / 64 / 65</strong>, <strong>NIVEL {CHART_OPERATIVE_LEVEL}</strong>{' '}
+                                (gastos). Asientos y flujo.
                             </p>
                         </div>
                     </div>
@@ -956,10 +1050,127 @@ export function ProviderManager({
                                         className="font-mono"
                                     />
                                 )}
-                                <p className="text-[10px] text-muted-foreground">
-                                    Solo <strong>NIVEL {CHART_OPERATIVE_LEVEL}</strong> (CUENTA). Asientos y
+                                    <p className="text-[10px] text-muted-foreground">
+                                    Solo <strong>63 / 64 / 65</strong>, nivel {CHART_OPERATIVE_LEVEL}. Asientos y
                                     caja chica. Plan en <strong>Contabilidad</strong>.
                                 </p>
+                            </div>
+
+                            <div className="space-y-2 rounded-md border border-dashed border-primary/30 bg-muted/30 p-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                                    <div>
+                                        <Label className="text-sm">Caja chica: motivos permitidos</Label>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                                            Al registrar un gasto, solo aparecerán estos motivos. Una fila = un motivo + cuenta sugerida
+                                            (63/64/65).
+                                        </p>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="secondary"
+                                        onClick={addPettyExpenseLine}
+                                        disabled={pettyCashCommercialCategories.length === 0}
+                                    >
+                                        <Plus className="h-3.5 w-3.5 mr-1" />
+                                        Añadir motivo
+                                    </Button>
+                                </div>
+                                {pettyCashCommercialCategories.length === 0 ? (
+                                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                                        No hay catálogo de “motivo caja chica” en el sistema. Revise Configuración → Contabilidad.
+                                    </p>
+                                ) : null}
+                                <div className="space-y-2">
+                                    {(currentProvider.pettyExpenseLines || []).map((line) => {
+                                        const accOpts = chartSelectOptionsWithOrphanExpenseClasses(
+                                            chartOfAccounts,
+                                            line.defaultAccountingAccount,
+                                            { useLevel: CHART_OPERATIVE_LEVEL }
+                                        );
+                                        return (
+                                            <div
+                                                key={line.id}
+                                                className="flex flex-col sm:flex-row gap-2 sm:items-end border rounded-md p-2 bg-background"
+                                            >
+                                                <div className="flex-1 space-y-1 min-w-0">
+                                                    <Label className="text-xs">Motivo (categoría caja chica)</Label>
+                                                    <Select
+                                                        value={line.commercialCategory}
+                                                        onValueChange={(v) =>
+                                                            updatePettyLine(line.id, { commercialCategory: v })
+                                                        }
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Elegir…" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {pettyCashCommercialCategories.map((c) => (
+                                                                <SelectItem key={c} value={c}>
+                                                                    {c}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="flex-1 space-y-1 min-w-0">
+                                                    <Label className="text-xs">Cuenta sugerida (opcional)</Label>
+                                                    {chartOfAccounts.length > 0 ? (
+                                                        <Select
+                                                            value={line.defaultAccountingAccount || '__none__'}
+                                                            onValueChange={(v) =>
+                                                                updatePettyLine(line.id, {
+                                                                    defaultAccountingAccount:
+                                                                        v === '__none__' ? undefined : v,
+                                                                })
+                                                            }
+                                                        >
+                                                            <SelectTrigger>
+                                                                <SelectValue placeholder="Cuenta" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="__none__">— Sin definir —</SelectItem>
+                                                                {accOpts.map((o) => (
+                                                                    <SelectItem key={o.value} value={o.value}>
+                                                                        {o.label}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    ) : (
+                                                        <Input
+                                                            className="font-mono"
+                                                            value={line.defaultAccountingAccount || ''}
+                                                            onChange={(e) =>
+                                                                updatePettyLine(line.id, {
+                                                                    defaultAccountingAccount:
+                                                                        e.target.value.trim() || undefined,
+                                                                })
+                                                            }
+                                                            placeholder="Código 63/64/65"
+                                                        />
+                                                    )}
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="shrink-0"
+                                                    onClick={() => removePettyLine(line.id)}
+                                                    title="Quitar"
+                                                >
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {(currentProvider.pettyExpenseLines || []).length === 0 ? (
+                                    <p className="text-[10px] text-muted-foreground italic">
+                                        Sin filas: no se podrá elegir motivo al registrar caja chica para este RUC. Use “Añadir
+                                        motivo” o pida a Contabilidad completar.
+                                    </p>
+                                ) : null}
                             </div>
 
                             <div className="p-3 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900 rounded-md mt-2">
