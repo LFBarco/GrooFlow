@@ -289,6 +289,8 @@ export default function App() {
 
   /** Evita que un hydrate en curso vuelva a marcar sesión iniciada tras cerrar sesión. */
   const signingOutRef = useRef(false);
+  /** Evita tratar SIGNED_OUT espurio (race al refrescar / pestaña) y cortar auto-guardado. */
+  const authNullDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Transaction Filters State
   const [txFilterDateStart, setTxFilterDateStart] = useState("");
@@ -521,11 +523,22 @@ export default function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (cancelled) return;
+      if (authNullDebounceRef.current) {
+        clearTimeout(authNullDebounceRef.current);
+        authNullDebounceRef.current = null;
+      }
       if (session?.user) {
         await hydrateFromKv();
-      } else {
+        return;
+      }
+      // Sesión nula: puede ser cierre real o carrera (F5, pestaña, red).
+      if (event === 'TOKEN_REFRESHED') {
+        return;
+      }
+      const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+      if (backend !== 'supabase') {
         if (typeof window !== 'undefined') {
           window.sessionStorage.removeItem('grooflow_local_session');
         }
@@ -534,11 +547,35 @@ export default function App() {
         cloudDataHydratedRef.current = false;
         setCanSaveUsers(true);
         setIsDataLoaded(false);
+        return;
       }
+      authNullDebounceRef.current = setTimeout(async () => {
+        authNullDebounceRef.current = null;
+        if (cancelled || signingOutRef.current) return;
+        const {
+          data: { session: s2 },
+        } = await supabase.auth.getSession();
+        if (s2?.user) {
+          await hydrateFromKv();
+          return;
+        }
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('grooflow_local_session');
+        }
+        setCurrentUser(GUEST_USER);
+        setIsAuthenticated(false);
+        cloudDataHydratedRef.current = false;
+        setCanSaveUsers(true);
+        setIsDataLoaded(false);
+      }, 250);
     });
 
     return () => {
       cancelled = true;
+      if (authNullDebounceRef.current) {
+        clearTimeout(authNullDebounceRef.current);
+        authNullDebounceRef.current = null;
+      }
       subscription.unsubscribe();
       hydrateFromKvRef.current = null;
     };
@@ -1078,16 +1115,25 @@ export default function App() {
     [systemSettings, pettyCashTransactions]
   );
 
-  const handleClosePettyCashWeek = useCallback((closure: PettyCashWeekClosure) => {
-    setSystemSettings((prev) => ({
-      ...prev,
-      pettyCash: {
-        ...initialSystemSettings.pettyCash,
-        ...prev.pettyCash,
-        weekClosures: [...(prev.pettyCash?.weekClosures ?? []), closure],
-      },
-    }));
-  }, []);
+  const handleClosePettyCashWeek = useCallback(
+    (closure: PettyCashWeekClosure) => {
+      setSystemSettings((prev) => {
+        const next: SystemSettings = {
+          ...prev,
+          pettyCash: {
+            ...initialSystemSettings.pettyCash,
+            ...prev.pettyCash,
+            weekClosures: [...(prev.pettyCash?.weekClosures ?? []), closure],
+          },
+        };
+        if (isDataLoaded) {
+          void api.saveKey('settings:system', next);
+        }
+        return next;
+      });
+    },
+    [isDataLoaded]
+  );
 
   const handlePreClosePettyCashWeek = useCallback((pre: PettyCashWeekPreClosure) => {
     setSystemSettings((prev) => {

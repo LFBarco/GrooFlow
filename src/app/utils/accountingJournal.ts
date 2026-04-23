@@ -110,9 +110,19 @@ export function buildPettyCashExpenseJournal(
     (typeof tx.igv === 'number' && !Number.isNaN(tx.igv) && tx.igv > 0.009);
 
   const provider = findProviderByDocNumber(providers, tx.docNumber);
-  const expenseCode = (provider?.accountingAccount || '').trim();
+  const fromTx = (tx.accountingAccount || '').trim();
+  const fromProvider = (provider?.accountingAccount || '').trim();
+  const cat = (tx.category || '').trim();
+  const fromPettyLine =
+    provider?.pettyExpenseLines?.find(
+      (l) => (l.commercialCategory || '').trim() === cat && (l.defaultAccountingAccount || '').trim()
+    )?.defaultAccountingAccount;
+  const fromPetty = (fromPettyLine || '').trim();
+  const expenseCode = fromTx || fromProvider || fromPetty;
   if (!expenseCode) {
-    warnings.push('Proveedor sin cuenta de gasto (campo cuenta contable en Proveedores).');
+    warnings.push(
+      'Sin cuenta de gasto: use motivo/cuenta en caja chica, línea de motivo en Proveedores, o campo cuenta en proveedor.'
+    );
   }
 
   const total = tx.amount;
