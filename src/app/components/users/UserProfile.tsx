@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Switch } from '../ui/switch';
 import { toast } from 'sonner';
 import { User as UserIcon, Mail, Shield, Moon, Sun, LogOut, Camera } from 'lucide-react';
+import { DEFAULT_ROLES } from './types';
 
 interface UserProfileProps {
     user: User;
@@ -19,6 +20,7 @@ interface UserProfileProps {
 }
 
 export function UserProfile({ user, onUpdateUser, currentTheme, onToggleTheme, onLogout }: UserProfileProps) {
+    const roleLabel = DEFAULT_ROLES.find((r) => r.id === user.role)?.name || user.role.replace(/_/g, ' ');
     const [name, setName] = useState(user.name);
     const [email, setEmail] = useState(user.email);
     const [isLoading, setIsLoading] = useState(false);
@@ -68,7 +70,7 @@ export function UserProfile({ user, onUpdateUser, currentTheme, onToggleTheme, o
                             
                             <div className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium uppercase tracking-wider mb-6">
                                 <Shield className="w-3 h-3 mr-1" />
-                                {user.role}
+                                {roleLabel}
                             </div>
 
                             <Button variant="destructive" className="w-full" onClick={onLogout}>

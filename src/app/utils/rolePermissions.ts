@@ -27,7 +27,7 @@ export function isFinanceChildModule(moduleName: string): boolean {
  * Acceso a un módulo del menú / vista.
  * - Permiso explícito del módulo, o
  * - "Finanzas" para hijos financieros (compatibilidad), o
- * - "Compras" para "Requerimientos" (antes iban juntos).
+ * - "Compras" / "Requerimientos" para "Productos" (compatibilidad con roles antiguos).
  */
 export function roleHasModuleAccess(
   permissions: Record<string, boolean> | undefined,
@@ -35,10 +35,21 @@ export function roleHasModuleAccess(
 ): boolean {
   if (!permissions) return false;
   if (permissions[moduleName] === true) return true;
+  /**
+   * Si el módulo existe con `false` explícito, ese valor manda.
+   * Evita que compatibilidades legadas ("Finanzas" -> hijos) re-habiliten
+   * módulos que el usuario desmarcó intencionalmente.
+   */
+  if (permissions[moduleName] === false) return false;
   /** Antes “Alertas” dependía de Dashboard. */
   if (moduleName === 'Alertas' && permissions['Dashboard'] === true) return true;
   if (permissions['Finanzas'] === true && isFinanceChildModule(moduleName)) return true;
-  if (moduleName === 'Requerimientos' && permissions['Compras'] === true) return true;
+  if (
+    moduleName === 'Productos' &&
+    (permissions['Compras'] === true || permissions['Requerimientos'] === true)
+  ) {
+    return true;
+  }
   return false;
 }
 

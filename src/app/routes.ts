@@ -19,7 +19,8 @@ export type ViewType =
   | 'treasury'
   | 'fees'
   | 'alerts'
-  | 'requisitions';
+  | 'products'
+  | 'fleet';
 
 /** Path por defecto (raíz) */
 export const DEFAULT_VIEW: ViewType = 'dashboard';
@@ -38,11 +39,12 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   fees: '/honorarios',
   providers: '/proveedores',
   accounting: '/contabilidad',
-  requisitions: '/requerimientos',
+  products: '/productos',
   requests: '/solicitudes',
   audit: '/auditoria',
   users: '/usuarios',
   config: '/configuracion',
+  fleet: '/flota-clinica',
 };
 
 /** Path → vista (para leer la URL) */
@@ -76,11 +78,12 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   fees: 'Honorarios',
   providers: 'Proveedores',
   accounting: 'Contabilidad',
-  requisitions: 'Requerimientos',
+  products: 'Productos',
   requests: 'Compras',
   audit: 'Auditoría',
   users: 'Usuarios',
   config: 'Configuración',
+  fleet: 'Gestión Vehicular',
 };
 
 /**
@@ -98,10 +101,11 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'fees',
   'providers',
   'accounting',
-  'requisitions',
+  'products',
   'requests',
   'audit',
   'analytics',
   'users',
   'config',
+  'fleet',
 ];

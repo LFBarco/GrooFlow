@@ -32,6 +32,7 @@ import { User } from '../../types';
 import { getSedesCatalogEntries } from '../../utils/sedesCatalog';
 import { getProviderAreas, getProviderCategories } from '../../utils/providerCatalog';
 import { MapPin, Globe, Building2 as Building2Icon } from 'lucide-react';
+import { DEFAULT_ROLES, type Role } from '../users/types';
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,7 @@ interface ConfigPanelProps {
   onStressTest?: () => void;
   onResetData?: () => void;
   users: User[];
+  roles?: Role[];
   onUpdateUsers: (users: User[]) => void;
   currentUser?: User;
   /** Renombrar categoría/área comercial: sincroniza proveedores y caja chica. */
@@ -56,6 +58,8 @@ interface ConfigPanelProps {
   onApplyProviderAreaRename?: (from: string, to: string) => void;
   onApplyProviderCategoryRemoved?: (removed: string, replacement: string) => void;
   onApplyProviderAreaRemoved?: (removed: string, replacement: string) => void;
+  /** Borra movimientos, cierres y dotaciones de un responsable (reinicio de caja chica). */
+  onResetCustodianPettyCash?: (custodianId: string) => Promise<boolean>;
 }
 
 export function ConfigPanel({
@@ -66,17 +70,24 @@ export function ConfigPanel({
   onStressTest,
   onResetData,
   users,
+  roles = DEFAULT_ROLES,
   onUpdateUsers,
   currentUser,
   onApplyProviderCategoryRename,
   onApplyProviderAreaRename,
   onApplyProviderCategoryRemoved,
   onApplyProviderAreaRemoved,
+  onResetCustodianPettyCash,
 }: ConfigPanelProps) {
   const reportRenditionLogoInputRef = useRef<HTMLInputElement>(null);
   const isSystemAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
   const isSuperAdminOnly = currentUser?.role === 'super_admin';
   const catalogEntries = getSedesCatalogEntries(systemSettings);
+  const roleNameById = new Map<string, string>(
+    [...DEFAULT_ROLES, ...roles].map((r) => [r.id, r.name]),
+  );
+  const getRoleLabel = (roleId: string) =>
+    roleNameById.get(roleId) || roleId.replace(/_/g, ' ');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(Object.keys(config)[0]);
 
   const [newCommercialCategory, setNewCommercialCategory] = useState('');
@@ -429,6 +440,37 @@ export function ConfigPanel({
     toast.success("Límite de caja chica actualizado");
   };
 
+  const handleToggleUserPettyCashFund = (userId: string, enabled: boolean) => {
+    const updatedUsers = users.map((user) => {
+      if (user.id !== userId) return user;
+      return { ...user, pettyCashFundEnabled: enabled };
+    });
+    onUpdateUsers(updatedUsers);
+    toast.success(enabled ? 'Usuario habilitado para fondo fijo' : 'Usuario excluido de fondo fijo');
+  };
+
+  const handleUpdateUserOpeningCarry = (userId: string, amount: number) => {
+    const updatedUsers = users.map((user) => {
+      if (user.id !== userId) return user;
+      return { ...user, pettyCashOpeningCarrySuggested: Math.max(0, amount) };
+    });
+    onUpdateUsers(updatedUsers);
+  };
+
+  const handleResetCustodian = async (user: User) => {
+    if (!onResetCustodianPettyCash) return;
+    const ok = window.confirm(
+      `¿Reiniciar TODA la caja chica de ${user.name}?\n\n` +
+        'Se eliminarán gastos, cierres, dotaciones y pre-cierres. ' +
+        'El arrastre de apertura en config se mantiene; quedará pendiente de confirmar de nuevo.'
+    );
+    if (!ok) return;
+    const saved = await onResetCustodianPettyCash(user.id);
+    if (saved) {
+      toast.success(`Caja chica de ${user.name} reiniciada.`);
+    }
+  };
+
   return (
     <div className="space-y-6 h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-500">
       <div className="flex flex-col gap-2 border-b pb-4">
@@ -509,6 +551,32 @@ export function ConfigPanel({
                       disabled={!isSystemAdmin}
                     />
                     <p className="text-xs text-muted-foreground">Este nombre aparece en el sidebar, cabecera y reportes.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Razón Social</Label>
+                    <Input
+                      value={systemSettings.businessLegalName || ''}
+                      onChange={(e) => onUpdateSystemSettings({ ...systemSettings, businessLegalName: e.target.value })}
+                      placeholder="Ej: Veterinaria ABC S.A.C."
+                      disabled={!isSystemAdmin}
+                    />
+                    <p className="text-xs text-muted-foreground">Se usa en formatos de control y documentos internos.</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>RUC</Label>
+                    <Input
+                      value={systemSettings.businessRuc || ''}
+                      onChange={(e) =>
+                        onUpdateSystemSettings({
+                          ...systemSettings,
+                          businessRuc: e.target.value.replace(/[^\d]/g, '').slice(0, 11),
+                        })
+                      }
+                      placeholder="11 dígitos"
+                      disabled={!isSystemAdmin}
+                      inputMode="numeric"
+                    />
+                    <p className="text-xs text-muted-foreground">Número de RUC de la empresa para impresión de formatos.</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Moneda Principal</Label>
@@ -1284,8 +1352,8 @@ export function ConfigPanel({
                     Asignación de Fondos por Usuario
                   </CardTitle>
                   <CardDescription>
-                    Define el monto máximo que puede manejar cada usuario en su caja chica personal.
-                    Si se deja en 0, se usará el límite global del sistema.
+                    Define el fondo fijo semanal por usuario. El arrastre de apertura (ej. saldo 2025) es aparte:
+                    lo confirma auditoría en la primera semana del periodo.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1295,7 +1363,12 @@ export function ConfigPanel({
                         <TableRow>
                           <TableHead>Usuario</TableHead>
                           <TableHead>Rol</TableHead>
-                          <TableHead className="text-right">Fondo Asignado (S/)</TableHead>
+                          <TableHead className="text-center">Aplica Fondo Fijo</TableHead>
+                          <TableHead className="text-right">Fondo fijo (S/)</TableHead>
+                          <TableHead className="text-right">Arrastre apertura (S/)</TableHead>
+                          {isSystemAdmin && onResetCustodianPettyCash ? (
+                            <TableHead className="text-center w-[100px]">Reinicio</TableHead>
+                          ) : null}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -1308,7 +1381,20 @@ export function ConfigPanel({
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">{user.role}</Badge>
+                              <Badge variant="outline">{getRoleLabel(user.role)}</Badge>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={
+                                    typeof user.pettyCashFundEnabled === 'boolean'
+                                      ? user.pettyCashFundEnabled
+                                      : (user.pettyCashLimit ?? 0) > 0
+                                  }
+                                  onCheckedChange={(checked) => handleToggleUserPettyCashFund(user.id, checked)}
+                                  disabled={!isSystemAdmin}
+                                />
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end items-center gap-2">
@@ -1321,10 +1407,57 @@ export function ConfigPanel({
                                   placeholder="0"
                                   value={user.pettyCashLimit !== undefined && user.pettyCashLimit !== null ? user.pettyCashLimit : ''}
                                   onChange={(e) => handleUpdateUserLimit(user.id, parseFloat(e.target.value) || 0)}
-                                  disabled={!isSystemAdmin}
+                                  disabled={!isSystemAdmin || user.pettyCashFundEnabled !== true}
                                 />
                               </div>
                             </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex flex-col items-end gap-1">
+                                <div className="flex justify-end items-center gap-2">
+                                  <span className="text-sm text-muted-foreground">S/</span>
+                                  <Input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    className="w-[120px] text-right"
+                                    placeholder="0"
+                                    value={
+                                      user.pettyCashOpeningCarrySuggested != null
+                                        ? user.pettyCashOpeningCarrySuggested
+                                        : ''
+                                    }
+                                    onChange={(e) =>
+                                      handleUpdateUserOpeningCarry(
+                                        user.id,
+                                        parseFloat(e.target.value) || 0
+                                      )
+                                    }
+                                    disabled={
+                                      !isSystemAdmin ||
+                                      user.pettyCashFundEnabled !== true ||
+                                      Boolean(user.pettyCashOpeningCarryConsumedAt)
+                                    }
+                                  />
+                                </div>
+                                {user.pettyCashOpeningCarryConsumedAt ? (
+                                  <span className="text-[10px] text-emerald-600">Consumido</span>
+                                ) : null}
+                              </div>
+                            </TableCell>
+                            {isSystemAdmin && onResetCustodianPettyCash ? (
+                              <TableCell className="text-center">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                                  disabled={user.pettyCashFundEnabled !== true}
+                                  onClick={() => void handleResetCustodian(user)}
+                                >
+                                  Reiniciar
+                                </Button>
+                              </TableCell>
+                            ) : null}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -1401,7 +1534,7 @@ export function ConfigPanel({
                   <div className="space-y-2">
                     <h4 className="font-medium text-foreground">Roles y permisos</h4>
                     <p className="text-sm text-muted-foreground">
-                      Los roles se configuran en <strong>Usuarios y Roles</strong>. Desde ahí puedes editar permisos por módulo (Dashboard, Alertas, Tesorería, Transacciones, Caja Chica, Requerimientos, Compras, etc.).
+                      Los roles se configuran en <strong>Usuarios y Roles</strong>. Desde ahí puedes editar permisos por módulo (Dashboard, Alertas, Tesorería, Transacciones, Caja Chica, Productos, Compras, etc.).
                     </p>
                   </div>
                   <div className="space-y-2 pt-4 border-t border-border">
@@ -1475,7 +1608,7 @@ export function ConfigPanel({
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="text-xs">{user.role}</Badge>
+                              <Badge variant="outline" className="text-xs">{getRoleLabel(user.role)}</Badge>
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">

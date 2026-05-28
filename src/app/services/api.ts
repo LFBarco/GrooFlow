@@ -16,8 +16,44 @@
  */
 
 import { repository, KV_KEYS } from './repository';
-import { getSupabaseClient } from './repository/supabase';
+import { getSupabaseClient, isSupabaseKvFatalAuthError } from './repository/supabase';
 import { toast } from 'sonner';
+
+/** Evitar spam por cada autosave si la sesión murió */
+let kvSessionFatalToastAt = 0;
+
+/**
+ * Opcional: cuando el KV detecta JWT irrecuperable, la app puede forzar logout
+ * para que el estado coincide con Supabase (evita “medio logueado” con autosave en bucle).
+ */
+let kvSessionFatalHandler: (() => void) | null = null;
+let kvSessionFatalHandlerLastAt = 0;
+
+export function setKvSessionFatalHandler(fn: (() => void) | null) {
+  kvSessionFatalHandler = fn;
+}
+
+function invokeKvSessionFatalHandler() {
+  const now = Date.now();
+  if (now - kvSessionFatalHandlerLastAt < 5000) return;
+  kvSessionFatalHandlerLastAt = now;
+  try {
+    kvSessionFatalHandler?.();
+  } catch (e) {
+    console.warn('[api] KvSessionFatalHandler', e);
+  }
+}
+
+function toastKvSessionFatalOnce() {
+  const now = Date.now();
+  if (now - kvSessionFatalToastAt < 55_000) return;
+  kvSessionFatalToastAt = now;
+  toast.error('Sesión caducada o cerrada', {
+    duration: 12_000,
+    description:
+      'No se pueden guardar datos en la nube sin una sesión válida. Cierra sesión, recarga (Ctrl+F5) e inicia sesión de nuevo.',
+  });
+}
 
 // ─── Types (kept for backward compatibility) ─────────────────
 
@@ -26,42 +62,61 @@ export interface InitialDataKeys {
   'settings:system'?:           unknown;
   'settings:theme'?:            unknown;
   'settings:alertThresholds'?:  unknown;
+  'maintenance:transactionsClearedAt'?: unknown;
   'data:transactions'?:         unknown;
   'data:invoices'?:             unknown;
   'data:providers'?:            unknown;
+  'data:products'?:             unknown;
   'data:requests'?:             unknown;
   'data:pettyCash'?:            unknown;
   'data:users'?:                unknown;
   'data:roles'?:                unknown;
   'data:feeReceipts'?:          unknown;
-  'data:requisitions'?:         unknown;
   'data:treasuryInvoices'?:     unknown;
   'data:treasuryBankBalance'?:  unknown;
   'data:treasuryPaidHistory'?:  unknown;
   /** Plan de cuentas contables importado (Excel). */
   'data:chartOfAccounts'?: unknown;
+  /** Flota clínica veterinaria (vehículos, mantenimiento, combustible). */
+  'data:fleet'?: unknown;
   /** Metadato interno: el GET HTTP a `data:users` falló (no confundir con lista vacía). */
   __usersKvFetchFailed?: boolean;
+  /** Metadato interno: el GET HTTP de transacciones/marca falló; no autosobrescribir con estado local. */
+  __transactionsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de proveedores falló. */
+  __providersKvFetchFailed?: boolean;
+  /** Metadato interno: GET de caja chica falló. */
+  __pettyCashKvFetchFailed?: boolean;
 }
+
+const KV_GET_WITH_STATUS_KEYS = new Set([
+  'data:users',
+  'data:transactions',
+  'maintenance:transactionsClearedAt',
+  'data:providers',
+  'data:pettyCash',
+]);
 
 const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'settings:config',
   'settings:system',
   'settings:theme',
   'settings:alertThresholds',
+  'maintenance:transactionsClearedAt',
   'data:transactions',
   'data:invoices',
   'data:providers',
+  'data:products',
   'data:requests',
   'data:pettyCash',
   'data:users',
   'data:roles',
   'data:feeReceipts',
-  'data:requisitions',
   'data:treasuryInvoices',
   'data:treasuryBankBalance',
   'data:treasuryPaidHistory',
   'data:chartOfAccounts',
+  'data:fleet',
 ];
 
 // ─── api object ───────────────────────────────────────────────
@@ -75,12 +130,18 @@ export const api = {
     const result: InitialDataKeys = {};
     const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
 
-    // Una sola renovación de sesión antes de muchos GET en paralelo (evita carreras de refresh).
+    // Refrescar si hay usuario persistido — no basarse en session.refresh_token (el SDK puede no exponerlo).
     if (backend === 'supabase') {
       try {
-        await getSupabaseClient().auth.refreshSession();
+        const { data } = await getSupabaseClient().auth.getSession();
+        if (data.session?.user) {
+          await Promise.race([
+            getSupabaseClient().auth.refreshSession(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+          ]);
+        }
       } catch {
-        /* getWithStatus fallará con ok:false si no hay sesión */
+        /* KV decidirá con getSession interno */
       }
     }
 
@@ -88,12 +149,20 @@ export const api = {
 
     await Promise.all(
       ALL_KEYS.map(async (key) => {
-        if (key === 'data:users' && typeof kv.getWithStatus === 'function') {
+        if (KV_GET_WITH_STATUS_KEYS.has(key) && typeof kv.getWithStatus === 'function') {
           const { ok, value } = await kv.getWithStatus<unknown>(key);
           if (ok) {
-            (result as Record<string, unknown>)['data:users'] = value ?? [];
+            const fallback =
+              key === 'data:users' || key === 'data:providers' || key === 'data:pettyCash'
+                ? []
+                : null;
+            (result as Record<string, unknown>)[key] = value ?? fallback;
           } else {
-            result.__usersKvFetchFailed = true;
+            if (key === 'data:users') result.__usersKvFetchFailed = true;
+            else if (key === 'data:transactions' || key === 'maintenance:transactionsClearedAt')
+              result.__transactionsKvFetchFailed = true;
+            else if (key === 'data:providers') result.__providersKvFetchFailed = true;
+            else if (key === 'data:pettyCash') result.__pettyCashKvFetchFailed = true;
           }
           return;
         }
@@ -112,13 +181,58 @@ export const api = {
    * Replaces the old direct fetch() call.
    */
   async saveKey(key: string, data: unknown): Promise<boolean> {
-    try {
-      await repository.kv.set(key, data);
-      return true;
-    } catch (error) {
-      console.warn(`[api] saveKey failed for "${key}":`, error);
-      return false;
+    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+    /** Directorio grande / importaciones masivas: más reintentos por timeouts intermitentes. */
+    const maxAttempts =
+      key === 'data:providers' ||
+      key === 'data:transactions' ||
+      key === 'data:pettyCash' ||
+      key === 'settings:system'
+        ? (backend === 'supabase' ? 6 : 3)
+        : backend === 'supabase' ? 3 : 2;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await repository.kv.set(key, data);
+        return true;
+      } catch (error) {
+        if (backend === 'supabase' && isSupabaseKvFatalAuthError(error)) {
+          toastKvSessionFatalOnce();
+          try {
+            const { data: d } = await getSupabaseClient().auth.getSession();
+            /** No desloguear si el SDK sigue exponiendo usuario; evita falsos positivos en red/particionado */
+            if (!d.session?.user) {
+              invokeKvSessionFatalHandler();
+            }
+          } catch {
+            invokeKvSessionFatalHandler();
+          }
+          console.warn(`[api] saveKey aborted "${key}" (sin sesión renovable)`, error);
+          return false;
+        }
+        const last = attempt === maxAttempts;
+        console.warn(`[api] saveKey failed for "${key}" (attempt ${attempt}/${maxAttempts}):`, error);
+        if (last) return false;
+        if (
+          backend === 'supabase' &&
+          !isSupabaseKvFatalAuthError(error)
+        ) {
+          try {
+            const { data: s } = await getSupabaseClient().auth.getSession();
+            if (s.session?.user) {
+              await Promise.race([
+                getSupabaseClient().auth.refreshSession(),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+              ]);
+            }
+          } catch {
+            // noop
+          }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      }
     }
+    return false;
   },
 
   /**

@@ -4,7 +4,7 @@ import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE } from "./r
 import { LoginPage } from "./pages/LoginPage";
 import { Overview } from "./components/dashboard/Overview";
 import { CashFlowChart } from "./components/dashboard/CashFlowChart";
-import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, SystemAlert, AlertThresholds, Requisition, ChartOfAccountEntry } from "./types";
+import { Transaction, Category, TransactionType, InvoiceDraft, Provider, Product, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, PettyCashFundDelivery, SystemAlert, AlertThresholds, ChartOfAccountEntry } from "./types";
 import {
   getAllSedeNames,
   getEnabledSedeNames,
@@ -13,7 +13,7 @@ import {
   type SedesCatalogSaveResult,
 } from "./utils/sedesCatalog";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
-import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings } from "./data/initialData";
+import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings, getSubcategories } from "./data/initialData";
 import { 
   LayoutDashboard, 
   ArrowUpCircle, 
@@ -36,7 +36,8 @@ import {
   Coins,
   TrendingUp,
   Landmark,
-  BookOpen
+  BookOpen,
+  Truck,
 } from "lucide-react";
 // Logo: coloque logo.png en la carpeta public/ para producción
 const logoUrl = '/logo.png';
@@ -52,27 +53,32 @@ import {
   ProviderManager,
   PurchaseRequestManager,
   CashFlowGrid,
+  SmartCashFlowSimulation,
   PnLView,
   RecentTransactions,
-  RequisitionModule,
+  ProductModule,
   RouteLoader,
   TransactionForm,
   TransactionImporter,
   TreasuryModule,
   UserManager,
+  FleetModule,
 } from "./lazyRouteModules";
 import { UserMenu } from "./components/layout/UserMenu";
 import { UserProfileDialog } from "./components/users/UserProfileDialog";
-import { addMonths, subMonths, format } from "date-fns";
+import { addMonths, subMonths, format, startOfDay, isValid, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./components/ui/dialog";
-import { api } from "./services/api";
+import { api, setKvSessionFatalHandler } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
 import { hydrateTransactions } from "./utils/hydrateTransactions";
+import { labelsMatch } from "./utils/labelMatch";
+import { formatDateInputValue, parseTransactionDate } from "./utils/transactionDate";
 import { generateAlerts } from "./components/alerts/alertEngine";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
@@ -86,58 +92,14 @@ import { mergePettyCashFilterCatalog } from "./utils/providerCatalog";
 import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
 import { getFirstAllowedViewPath, roleRecordHasModuleAccess } from "./utils/rolePermissions";
 import { getSuperAdminEmails } from "./config/superAdmins";
+import { weekKeyMatches } from "./utils/pettyCashWeekKey";
+import type { FleetDataset } from "./types/fleet";
+import { createDemoFleetDataset, normalizeFleetDataset } from "./utils/fleetData";
+import { enqueueKvSerializedSave } from "./utils/kvSerializedSave";
 
-const initialTransactions: Transaction[] = [
-  {
-    id: "1",
-    amount: 150.00,
-    type: "income",
-    category: "Ingresos",
-    subcategory: "Efectivo",
-    description: "Venta de mostrador",
-    date: new Date("2024-03-10"),
-    location: "Principal"
-  },
-  {
-    id: "2",
-    amount: 5000.00,
-    type: "expense",
-    category: "Servicios Básicos",
-    subcategory: "Alquiler",
-    concept: "Chavez",
-    description: "Alquiler Marzo Sede Chavez",
-    date: new Date("2024-03-05"),
-    location: "Norte"
-  },
-  {
-    id: "3",
-    amount: 350.00,
-    type: "expense",
-    category: "Área Médica",
-    subcategory: "Fumigación Ecocontratista",
-    description: "Servicio de fumigación mensual",
-    date: new Date("2024-03-12"),
-    location: "Sur"
-  },
-  {
-    id: "4",
-    amount: 1200.00,
-    type: "expense",
-    category: "Planilla",
-    subcategory: "(7) Planilla Médicos",
-    description: "Adelanto Dr. Perez",
-    date: new Date("2024-03-15"),
-  },
-  {
-    id: "5",
-    amount: 850.50,
-    type: "income",
-    category: "Ingresos",
-    subcategory: "POS",
-    description: "Cobro tarjeta",
-    date: new Date("2024-03-12"),
-  },
-];
+const initialTransactions: Transaction[] = [];
+const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
+type TransactionDatePreset = 'all' | 'last7' | 'currentMonth' | 'previousMonth' | 'year' | 'custom';
 
 const initialInvoices: InvoiceDraft[] = [
     {
@@ -194,6 +156,163 @@ const initialProviders: Provider[] = [
     }
 ];
 
+const initialProducts: Product[] = [
+    {
+        id: "prod-10",
+        systemCode: 10,
+        barcode: "",
+        name: "Bravecto 365",
+        brand: "BRAVECTO",
+        providerId: "prov-1",
+        providerName: "Distribuidora Veterinaria SAC",
+        line: "CLINICA",
+        category: "Antiparasitarios",
+        subcategory: "Tabletas",
+        unit: "UND",
+        salePrice: 80,
+        costPrice: 58,
+        stockAccounting: 0,
+        stockAvailable: 0,
+        minStock: 2,
+        location: "General",
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    },
+    {
+        id: "prod-8",
+        systemCode: 8,
+        barcode: "2230559328739",
+        name: "Apoquel (Oclacitinib) comprimidos 5.4 mg",
+        brand: "ZOETIS",
+        providerId: "prov-1",
+        providerName: "Distribuidora Veterinaria SAC",
+        line: "FARMACIA",
+        category: "Medicamentos",
+        subcategory: "Comprimidos",
+        unit: "Caja",
+        salePrice: 7.9,
+        costPrice: 5.4,
+        stockAccounting: 13,
+        stockAvailable: 13,
+        minStock: 5,
+        location: "General",
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    },
+    {
+        id: "prod-5",
+        systemCode: 5,
+        barcode: "1894185441069",
+        name: "Royal Canin - Persian Kitten 2 KG",
+        brand: "ROYAL CANIN",
+        providerId: "prov-1",
+        providerName: "Distribuidora Veterinaria SAC",
+        line: "PET SHOP",
+        category: "Alimentos",
+        subcategory: "Alimento seco",
+        unit: "Bolsa",
+        salePrice: 169.9,
+        costPrice: 125,
+        stockAccounting: 20,
+        stockAvailable: 20,
+        minStock: 4,
+        location: "General",
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    },
+    {
+        id: "prod-4",
+        systemCode: 4,
+        barcode: "6066899651338",
+        name: "Cat Chow Adultos Delimix 3 KG",
+        brand: "PURINA",
+        providerId: "prov-1",
+        providerName: "Distribuidora Veterinaria SAC",
+        line: "PET SHOP",
+        category: "Alimentos",
+        subcategory: "Alimento seco",
+        unit: "Bolsa",
+        salePrice: 57.9,
+        costPrice: 42,
+        stockAccounting: 30,
+        stockAvailable: 30,
+        minStock: 6,
+        location: "General",
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    },
+    {
+        id: "prod-3",
+        systemCode: 3,
+        barcode: "1553668242545",
+        name: "Bravecto gatos (6.25 - 12.5 kg)",
+        brand: "BRAVECTO",
+        providerId: "prov-1",
+        providerName: "Distribuidora Veterinaria SAC",
+        line: "FARMACIA",
+        category: "Antiparasitarios",
+        subcategory: "Tabletas",
+        unit: "UND",
+        salePrice: 164.9,
+        costPrice: 119,
+        stockAccounting: 14,
+        stockAvailable: 14,
+        minStock: 4,
+        location: "General",
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    },
+    {
+        id: "prod-2",
+        systemCode: 2,
+        barcode: "5622608233663",
+        name: "Bravecto Gato Plus 1.2 a 2.8 kg. (12 semanas)",
+        brand: "BRAVECTO",
+        providerId: "prov-1",
+        providerName: "Distribuidora Veterinaria SAC",
+        line: "FARMACIA",
+        category: "Antiparasitarios",
+        subcategory: "Gotas",
+        unit: "UND",
+        salePrice: 154.9,
+        costPrice: 113,
+        stockAccounting: 13,
+        stockAvailable: 13,
+        minStock: 4,
+        location: "General",
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    },
+    {
+        id: "prod-1",
+        systemCode: 1,
+        barcode: "9446719976101",
+        name: "Simparica 20 mg / 5 a 10 kg X 3 Tabletas",
+        brand: "ZOETIS",
+        providerId: "prov-1",
+        providerName: "Distribuidora Veterinaria SAC",
+        line: "FARMACIA",
+        category: "Antiparasitarios",
+        subcategory: "Tabletas",
+        unit: "Caja",
+        salePrice: 167.2,
+        costPrice: 120,
+        stockAccounting: 11,
+        stockAvailable: 11,
+        minStock: 3,
+        location: "General",
+        status: "active",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+    },
+];
+
 const initialRequests: PurchaseRequest[] = [
     {
         id: "req-1",
@@ -227,9 +346,13 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User>(GUEST_USER);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
   const [invoices, setInvoices] = useState<InvoiceDraft[]>(initialInvoices);
-  const [providers, setProviders] = useState<Provider[]>(initialProviders);
+  /** En Supabase: arranca vacío para no volcar los 2 proveedores demo al KV con el primer autosave. En local: demo. */
+  const [providers, setProviders] = useState<Provider[]>(() =>
+    (import.meta.env.VITE_BACKEND ?? 'supabase') === 'local' ? initialProviders : []
+  );
   const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccountEntry[]>([]);
   const [openQuickProviderModal, setOpenQuickProviderModal] = useState(false);
+  const [products, setProducts] = useState<Product[]>(initialProducts);
   const [requests, setRequests] = useState<PurchaseRequest[]>(initialRequests);
   const [pettyCashTransactions, setPettyCashTransactions] = useState<PettyCashTransaction[]>([]);
   
@@ -251,8 +374,7 @@ export default function App() {
   };
   const [feeReceipts, setFeeReceipts] = useState<FeeReceiptGlobal[]>([]);
 
-  // Requisitions global state
-  const [requisitions, setRequisitions] = useState<Requisition[]>([]);
+  const [fleetDataset, setFleetDataset] = useState<FleetDataset>(() => normalizeFleetDataset({}));
 
   // Treasury global state (persisted)
   const [treasuryInvoices, setTreasuryInvoices] = useState<any[]>([]);
@@ -265,10 +387,12 @@ export default function App() {
   const [config, setConfig] = useState<ConfigStructure>(initialStructure);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(initialSystemSettings);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const safeCurrentDate = isValid(currentDate) ? currentDate : new Date();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
   /** En Supabase: solo true tras leer `data:users` del KV con HTTP 200 (evita pisar la nube si el GET falló). */
   const [canSaveUsers, setCanSaveUsers] = useState(true);
   /** Evita doble carga y, en Supabase, permite volver a cargar tras logout/login. */
@@ -276,6 +400,51 @@ export default function App() {
   /** Una sola función para recargar KV + usuarios (login, refresh, SIGNED_IN). */
   const hydrateFromKvRef = useRef<(() => Promise<void>) | null>(null);
   const hydrateRunningRef = useRef(false);
+  /** Si llega un segundo hydrate mientras uno corre (p. ej. login + SIGNED_IN), se reintenta al terminar */
+  const pendingHydrateRef = useRef(false);
+  const lastSaveErrorAtRef = useRef<Record<string, number>>({});
+  /**
+   * Si un hydrate llega durante `await api.saveKey('data:providers')`, sin esto puede aplicarse un
+   * snapshot viejo del KV y revertir altas/edits recientes (lista «no guarda» aunque el POST sí llegó).
+   */
+  const skipProvidersHydrateRef = useRef(false);
+  /** Tras un POST exitoso a `data:providers`, ignorar GET remotos unos segundos (replica / cache puede traer lista vieja). */
+  const providersKvCooldownUntilRef = useRef(0);
+  const PROVIDERS_KV_COOLDOWN_MS = 8000;
+  /** Evita que un hydrate fallido o incompleto sobrescriba transacciones remotas con []. */
+  const transactionsCloudHydrationDoneRef = useRef(false);
+  const transactionsHydratedFromKvRef = useRef(false);
+  /** Evita autosave de proveedores antes de haber hidratado desde la nube (no pisar KV con [] o demos). */
+  const providersCloudHydrationDoneRef = useRef(false);
+  /**
+   * True tras aplicar lista desde KV en un hydrate donde `allowProvidersRemote` fue true (incluye KV vacío).
+   * Sin esto, un hydrate que salta ese bloque por carrera podría dejar [] en estado y el autosave borraría la nube.
+   */
+  const providersHydratedFromKvRef = useRef(false);
+  /** Tras el primer hydrate de `data:pettyCash`; evita autosave antes de leer la nube. */
+  const pettyCashHydratedFromKvRef = useRef(false);
+  const skipPettyCashHydrateRef = useRef(false);
+  const pettyCashKvCooldownUntilRef = useRef(0);
+  const PETTY_CASH_KV_COOLDOWN_MS = 8000;
+
+  /** Invalida escrituras KV encoladas antes de aplicar datos remotos o al cerrar sesión. */
+  const kvApplyGenerationRef = useRef(0);
+
+  const providersKvChainRef = useRef(Promise.resolve(true));
+  const providersKvLatestRef = useRef<Provider[]>([]);
+
+  const pettyCashKvChainRef = useRef(Promise.resolve(true));
+  const pettyCashKvLatestRef = useRef<PettyCashTransaction[]>([]);
+
+  const transactionsKvChainRef = useRef(Promise.resolve(true));
+  const transactionsKvLatestRef = useRef<Transaction[]>(initialTransactions);
+
+  const resetKvSaveChains = () => {
+    kvApplyGenerationRef.current += 1;
+    providersKvChainRef.current = Promise.resolve(true);
+    pettyCashKvChainRef.current = Promise.resolve(true);
+    transactionsKvChainRef.current = Promise.resolve(true);
+  };
 
   // Alerts System
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
@@ -293,34 +462,66 @@ export default function App() {
   const authNullDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Transaction Filters State
+  const [txDatePreset, setTxDatePreset] = useState<TransactionDatePreset>("all");
   const [txFilterDateStart, setTxFilterDateStart] = useState("");
   const [txFilterDateEnd, setTxFilterDateEnd] = useState("");
   const [txFilterCategory, setTxFilterCategory] = useState<string>("all");
+  const [txFilterSubcategory, setTxFilterSubcategory] = useState<string>("all");
+  const [txFilterConcept, setTxFilterConcept] = useState<string>("all");
   const [txFilterProvider, setTxFilterProvider] = useState<string>("all");
   
   // Transaction Editing State
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isTransactionImporterOpen, setIsTransactionImporterOpen] = useState(false);
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // --- KV + usuarios: un solo flujo (login manual, F5 y SIGNED_IN). Sin setUsers en handleLogin. ---
   useEffect(() => {
     let cancelled = false;
+    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+
+    const refreshSessionWithTimeout = async (ms = 2200) => {
+      return Promise.race([
+        supabase.auth.refreshSession(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+      ]);
+    };
+
+    const getStableSession = async () => {
+      const first = await supabase.auth.getSession();
+      if (first.data.session?.access_token) return first.data.session;
+      if (backend !== 'supabase') return first.data.session;
+      try {
+        await refreshSessionWithTimeout();
+      } catch {
+        // noop: tolerar carreras transitorias al refrescar la página.
+      }
+      const second = await supabase.auth.getSession();
+      return second.data.session;
+    };
 
     async function hydrateFromKv() {
-      if (hydrateRunningRef.current) return;
+      if (signingOutRef.current) {
+        pendingHydrateRef.current = false;
+        return;
+      }
+      if (hydrateRunningRef.current) {
+        pendingHydrateRef.current = true;
+        return;
+      }
       hydrateRunningRef.current = true;
-      const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+      const shouldShowAuthChecking = !cloudDataHydratedRef.current;
+      if (shouldShowAuthChecking) setIsAuthChecking(true);
 
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const session = await getStableSession();
 
         if (backend === 'supabase') {
           if (!session?.access_token) {
             setIsAuthenticated(false);
+            setIsAuthChecking(false);
             return;
           }
           setCanSaveUsers(false);
@@ -334,19 +535,18 @@ export default function App() {
           attempt += 1;
           if (cancelled) return;
           await new Promise((r) => setTimeout(r, 350 * attempt));
-          await supabase.auth.refreshSession();
+          await refreshSessionWithTimeout();
           data = await api.fetchInitialData();
         }
 
         if (cancelled || signingOutRef.current) return;
 
         /** Sesión al momento de aplicar auth (evita carrera si el usuario cerró sesión durante el fetch). */
-        const {
-          data: { session: sessionEffective },
-        } = await supabase.auth.getSession();
+        const sessionEffective = await getStableSession();
 
         if (backend === 'supabase' && !sessionEffective?.access_token) {
             setIsAuthenticated(false);
+            setIsAuthChecking(false);
             return;
         }
 
@@ -359,15 +559,32 @@ export default function App() {
           setCanSaveUsers(true);
         }
 
+        resetKvSaveChains();
+
         if (data['settings:config']) setConfig(data['settings:config']);
         if (data['settings:system']) {
           setSystemSettings(mergeSystemSettings(data['settings:system'] as Partial<SystemSettings>));
         }
 
-        if (data['data:transactions']) {
-          const hydrated = hydrateTransactions(data['data:transactions']);
-          const unique = Array.from(new Map(hydrated.map((t) => [t.id, t])).values());
+        if (data.__transactionsKvFetchFailed) {
+          transactionsCloudHydrationDoneRef.current = false;
+          transactionsHydratedFromKvRef.current = false;
+          toast.error(
+            'No se pudieron leer las transacciones desde la nube. Se detuvo el autoguardado para evitar sobrescribir el histórico.'
+          );
+        } else {
+          const remoteTransactions = Array.isArray(data['data:transactions'])
+            ? hydrateTransactions(data['data:transactions'])
+            : [];
+          const unique = Array.from(new Map(remoteTransactions.map((t) => [t.id, t])).values());
+          transactionsKvLatestRef.current = unique;
           setTransactions(unique);
+          transactionsCloudHydrationDoneRef.current = true;
+          transactionsHydratedFromKvRef.current = true;
+
+          if (data['maintenance:transactionsClearedAt'] !== TRANSACTION_HISTORY_CLEAR_MARK) {
+            void api.saveKey('maintenance:transactionsClearedAt', TRANSACTION_HISTORY_CLEAR_MARK);
+          }
         }
 
         if (data['data:invoices']) {
@@ -377,16 +594,40 @@ export default function App() {
           setInvoices(unique);
         }
 
-        if (data['data:providers']) {
-          const unique = Array.from(
-            new Map(data['data:providers'].map((p: Provider) => [p.id, p])).values()
-          ) as Provider[];
-          setProviders(unique);
+        const rawPv = data['data:providers'];
+        const allowProvidersRemote =
+          !data.__providersKvFetchFailed &&
+          !skipProvidersHydrateRef.current &&
+          Date.now() >= providersKvCooldownUntilRef.current;
+        if (data.__providersKvFetchFailed) {
+          toast.error(
+            'No se pudieron leer los proveedores desde la nube. Se detuvo el autoguardado para no borrar el directorio.'
+          );
+        } else if (allowProvidersRemote) {
+          providersHydratedFromKvRef.current = true;
+          const list = Array.isArray(rawPv)
+            ? (Array.from(new Map(rawPv.map((p: Provider) => [p.id, p])).values()) as Provider[])
+            : [];
+          providersKvLatestRef.current = list;
+          setProviders(list);
         }
 
         if (data['data:chartOfAccounts']) {
           const raw = data['data:chartOfAccounts'] as ChartOfAccountEntry[];
           setChartOfAccounts(Array.isArray(raw) ? raw : []);
+        }
+
+        if (data['data:products']) {
+          const unique = Array.from(
+            new Map((data['data:products'] as Product[]).map((p) => [p.id, p])).values()
+          ) as Product[];
+          setProducts(
+            unique.map((p) => ({
+              ...p,
+              createdAt: p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt),
+              updatedAt: p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt),
+            }))
+          );
         }
 
         if (data['data:requests']) {
@@ -410,22 +651,33 @@ export default function App() {
           );
         }
 
-        if (data['data:pettyCash']) {
-          const ptx = data['data:pettyCash'] as PettyCashTransaction[];
-          setPettyCashTransactions(
-            Array.isArray(ptx)
-              ? ptx.map((t) => ({
-                  ...t,
-                  date: t.date instanceof Date ? t.date : new Date(t.date as string),
-                  documentDate:
-                    t.documentDate != null
-                      ? t.documentDate instanceof Date
-                        ? t.documentDate
-                        : new Date(t.documentDate as string)
-                      : undefined,
-                }))
-              : []
-          );
+        {
+          const allowPettyRemote =
+            !data.__pettyCashKvFetchFailed &&
+            !skipPettyCashHydrateRef.current &&
+            Date.now() >= pettyCashKvCooldownUntilRef.current;
+          if (data.__pettyCashKvFetchFailed) {
+            pettyCashHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudo leer Caja chica desde la nube. Se detuvo el autoguardado para no perder movimientos.'
+            );
+          } else if (allowPettyRemote) {
+            const rawPc = data['data:pettyCash'];
+            const ptx = Array.isArray(rawPc) ? (rawPc as PettyCashTransaction[]) : [];
+            const mapped = ptx.map((t) => ({
+              ...t,
+              date: t.date instanceof Date ? t.date : new Date(t.date as string),
+              documentDate:
+                t.documentDate != null
+                  ? t.documentDate instanceof Date
+                    ? t.documentDate
+                    : new Date(t.documentDate as string)
+                  : undefined,
+            }));
+            pettyCashKvLatestRef.current = mapped;
+            setPettyCashTransactions(mapped);
+            pettyCashHydratedFromKvRef.current = true;
+          }
         }
 
         let nextUsers: User[] = [];
@@ -443,9 +695,6 @@ export default function App() {
           nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
         }
 
-        cloudDataHydratedRef.current = true;
-        setUsers(nextUsers);
-
         const hasLocalDemoSession =
           typeof window !== 'undefined' &&
           window.sessionStorage.getItem('grooflow_local_session') === '1';
@@ -455,38 +704,32 @@ export default function App() {
             window.sessionStorage.removeItem('grooflow_local_session');
           }
           const em = sessionEffective.user.email.trim().toLowerCase();
-          let row = resolveCurrentUserRow(nextUsers, sessionEffective.user.email);
+          const row = resolveCurrentUserRow(nextUsers, em);
           if (!row) {
-            const priv = getSuperAdminEmails().has(em);
-            row = {
-              id: sessionEffective.user.id,
-              email: sessionEffective.user.email,
-              name:
-                sessionEffective.user.user_metadata?.name ||
-                sessionEffective.user.email.split('@')[0],
-              initials: (sessionEffective.user.user_metadata?.name || sessionEffective.user.email)
-                .slice(0, 2)
-                .toUpperCase(),
-              role: priv ? 'super_admin' : 'manager',
-              status: 'active',
-              allSedes: priv ? true : undefined,
-            } as User;
-            const merged = dedupeUsersByEmail(applySuperAdminRoleFromConfig([...nextUsers, row]));
-            setUsers(merged);
-            row = resolveCurrentUserRow(merged, sessionEffective.user.email) ?? row;
+            await supabase.auth.signOut();
+            toast.error("Acceso denegado", {
+              description:
+                "Tu correo no aparece en la lista de usuarios del sistema. Un administrador debe darte de alta en «Gestión de usuarios».",
+              duration: 10000,
+            });
+            setCurrentUser(GUEST_USER);
+            setIsAuthenticated(false);
+            setIsAuthChecking(false);
+            return;
           }
           if (row.status === 'inactive' && !getSuperAdminEmails().has(em)) {
             await supabase.auth.signOut();
             toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
+            setCurrentUser(GUEST_USER);
             setIsAuthenticated(false);
+            setIsAuthChecking(false);
             return;
           }
           if (signingOutRef.current) return;
-          const {
-            data: { session: sessionLast },
-          } = await supabase.auth.getSession();
+          const sessionLast = await getStableSession();
           if (backend === 'supabase' && !sessionLast?.access_token) {
             setIsAuthenticated(false);
+            setIsAuthChecking(false);
             return;
           }
           setCurrentUser(row);
@@ -500,9 +743,12 @@ export default function App() {
           setIsAuthenticated(false);
         }
 
+        /** Solo tras validar sesión + fila de usuario (o modo invitado/local); evita “hidratación fantasma” en accesos denegados */
+        cloudDataHydratedRef.current = true;
+        setUsers(nextUsers);
+
         if (data['data:roles']) setRoles(mergeRolesWithDefaults(data['data:roles'] as Role[]));
         if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
-        if (data['data:requisitions']) setRequisitions(data['data:requisitions']);
         if (data['data:alertThresholds']) setAlertThresholds(data['data:alertThresholds']);
         if (data['settings:theme']) setTheme(data['settings:theme']);
         if (data['data:treasuryInvoices']) setTreasuryInvoices(data['data:treasuryInvoices']);
@@ -511,10 +757,25 @@ export default function App() {
         if (data['data:treasuryPaidHistory'])
           setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
 
+        if (data['data:fleet'] != null) {
+          setFleetDataset(normalizeFleetDataset(data['data:fleet']));
+        } else {
+          setFleetDataset(createDemoFleetDataset());
+        }
+
+        providersCloudHydrationDoneRef.current = true;
         setIsDataLoaded(true);
         toast.success('Datos sincronizados con la nube');
       } finally {
+        setIsAuthChecking(false);
         hydrateRunningRef.current = false;
+        const rerun = pendingHydrateRef.current;
+        pendingHydrateRef.current = false;
+        if (rerun && !cancelled && !signingOutRef.current) {
+          queueMicrotask(() => {
+            void hydrateFromKv();
+          });
+        }
       }
     }
 
@@ -529,22 +790,42 @@ export default function App() {
         clearTimeout(authNullDebounceRef.current);
         authNullDebounceRef.current = null;
       }
+      if (event === 'TOKEN_REFRESHED') {
+        return;
+      }
       if (session?.user) {
-        await hydrateFromKv();
+        /** No hacer KV full-hydrate en USER_UPDATED: Supabase puede emitirlo tras metadatos y pisa estado local
+         *  antes del autosave (ej. proveedores recién cargados parecían «no guardarse»). */
+        const shouldHydrate =
+          event === 'SIGNED_IN' ||
+          (event === 'INITIAL_SESSION' && !cloudDataHydratedRef.current);
+        if (shouldHydrate) {
+          await hydrateFromKv();
+        }
         return;
       }
       // Sesión nula: puede ser cierre real o carrera (F5, pestaña, red).
       if (event === 'TOKEN_REFRESHED') {
         return;
       }
-      const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
       if (backend !== 'supabase') {
         if (typeof window !== 'undefined') {
           window.sessionStorage.removeItem('grooflow_local_session');
         }
         setCurrentUser(GUEST_USER);
         setIsAuthenticated(false);
+        setIsAuthChecking(false);
         cloudDataHydratedRef.current = false;
+        transactionsCloudHydrationDoneRef.current = false;
+        transactionsHydratedFromKvRef.current = false;
+        providersCloudHydrationDoneRef.current = false;
+        providersHydratedFromKvRef.current = false;
+        pettyCashHydratedFromKvRef.current = false;
+        providersKvCooldownUntilRef.current = 0;
+        pettyCashKvCooldownUntilRef.current = 0;
+        skipProvidersHydrateRef.current = false;
+        skipPettyCashHydrateRef.current = false;
+        resetKvSaveChains();
         setCanSaveUsers(true);
         setIsDataLoaded(false);
         return;
@@ -552,11 +833,13 @@ export default function App() {
       authNullDebounceRef.current = setTimeout(async () => {
         authNullDebounceRef.current = null;
         if (cancelled || signingOutRef.current) return;
-        const {
-          data: { session: s2 },
-        } = await supabase.auth.getSession();
+        const s2 = await getStableSession();
         if (s2?.user) {
-          await hydrateFromKv();
+          /** Sesión recuperada tras un null transitorio (refresh/red): no re-hidratar KV
+           *  porque invalidaría colas de guardado y pisaría cambios locales recientes. */
+          if (!cloudDataHydratedRef.current) {
+            await hydrateFromKv();
+          }
           return;
         }
         if (typeof window !== 'undefined') {
@@ -564,7 +847,18 @@ export default function App() {
         }
         setCurrentUser(GUEST_USER);
         setIsAuthenticated(false);
+        setIsAuthChecking(false);
         cloudDataHydratedRef.current = false;
+        transactionsCloudHydrationDoneRef.current = false;
+        transactionsHydratedFromKvRef.current = false;
+        providersCloudHydrationDoneRef.current = false;
+        providersHydratedFromKvRef.current = false;
+        pettyCashHydratedFromKvRef.current = false;
+        providersKvCooldownUntilRef.current = 0;
+        pettyCashKvCooldownUntilRef.current = 0;
+        skipProvidersHydrateRef.current = false;
+        skipPettyCashHydrateRef.current = false;
+        resetKvSaveChains();
         setCanSaveUsers(true);
         setIsDataLoaded(false);
       }, 250);
@@ -583,28 +877,185 @@ export default function App() {
 
   // Auto-save Effects
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('settings:config', config);
+    if (!isDataLoaded) return;
+    void api.saveKey('settings:config', config).then((ok) => {
+      if (ok) return;
+      const now = Date.now();
+      const last = lastSaveErrorAtRef.current['settings:config'] ?? 0;
+      if (now - last < 8000) return;
+      lastSaveErrorAtRef.current['settings:config'] = now;
+      toast.error('No se pudo guardar Configuración → Operaciones. Reintente en unos segundos.');
+    });
   }, [config, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:pettyCash', pettyCashTransactions);
+    if (!isDataLoaded || !pettyCashHydratedFromKvRef.current) return;
+    void enqueueKvSerializedSave(
+      pettyCashKvChainRef,
+      kvApplyGenerationRef,
+      pettyCashKvLatestRef,
+      'data:pettyCash',
+      pettyCashTransactions
+    ).then((ok) => {
+      if (ok) {
+        pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
+        return;
+      }
+      const now = Date.now();
+      const last = lastSaveErrorAtRef.current['data:pettyCash'] ?? 0;
+      if (now - last < 8000) return;
+      lastSaveErrorAtRef.current['data:pettyCash'] = now;
+      toast.error(
+        'No se pudo guardar Caja chica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.'
+      );
+    });
   }, [pettyCashTransactions, isDataLoaded]);
 
   useEffect(() => {
     if (isDataLoaded) api.saveKey('settings:system', systemSettings);
   }, [systemSettings, isDataLoaded]);
 
+  const handlePersistSystemSettings = useCallback(
+    (next: SystemSettings) => {
+      const merged = mergeSystemSettings(next);
+      setSystemSettings(merged);
+      if (!isDataLoaded) return;
+      void api.saveKey('settings:system', merged).then((ok) => {
+        if (ok) return;
+        toast.error('No se pudo guardar la configuración del sistema en la nube.');
+      });
+    },
+    [isDataLoaded]
+  );
+
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:transactions', transactions);
+    if (!isDataLoaded || !transactionsCloudHydrationDoneRef.current) return;
+    if (transactions.length === 0 && !transactionsHydratedFromKvRef.current) return;
+    void enqueueKvSerializedSave(
+      transactionsKvChainRef,
+      kvApplyGenerationRef,
+      transactionsKvLatestRef,
+      'data:transactions',
+      transactions
+    ).then((ok) => {
+      if (ok) {
+        transactionsHydratedFromKvRef.current = true;
+        return;
+      }
+      const now = Date.now();
+      const last = lastSaveErrorAtRef.current['data:transactions'] ?? 0;
+      if (now - last < 8000) return;
+      lastSaveErrorAtRef.current['data:transactions'] = now;
+      toast.error('No se pudieron guardar las transacciones en la nube. Revisa sesión/red antes de cerrar.');
+    });
   }, [transactions, isDataLoaded]);
+
+  const persistTransactionsNow = useCallback(
+    async (next: Transaction[], successMessage?: string): Promise<boolean> => {
+      setTransactions(next);
+      if (!isDataLoaded || !transactionsCloudHydrationDoneRef.current) {
+        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
+        return false;
+      }
+      transactionsKvLatestRef.current = next;
+      const ok = await enqueueKvSerializedSave(
+        transactionsKvChainRef,
+        kvApplyGenerationRef,
+        transactionsKvLatestRef,
+        'data:transactions',
+        next
+      );
+      if (ok) {
+        transactionsHydratedFromKvRef.current = true;
+        if (successMessage) toast.success(successMessage);
+        return true;
+      }
+      toast.error('No se pudieron guardar las transacciones en la nube. No cierres ni actualices; revisa conexión/sesión.');
+      return false;
+    },
+    [isDataLoaded]
+  );
 
   useEffect(() => {
     if (isDataLoaded) api.saveKey('data:invoices', invoices);
   }, [invoices, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:providers', providers);
+    if (!isDataLoaded || !providersCloudHydrationDoneRef.current || !providersHydratedFromKvRef.current) return;
+    void enqueueKvSerializedSave(
+      providersKvChainRef,
+      kvApplyGenerationRef,
+      providersKvLatestRef,
+      'data:providers',
+      providers
+    ).then((ok) => {
+      if (ok) {
+        providersKvCooldownUntilRef.current = Date.now() + PROVIDERS_KV_COOLDOWN_MS;
+        providersHydratedFromKvRef.current = true;
+        return;
+      }
+      const now = Date.now();
+      const last = lastSaveErrorAtRef.current['data:providers'] ?? 0;
+      if (now - last < 8000) return;
+      lastSaveErrorAtRef.current['data:providers'] = now;
+      toast.error(
+        'No se pudo guardar el directorio de proveedores en la nube. Revisa sesión/red y vuelve a intentar.'
+      );
+    });
   }, [providers, isDataLoaded]);
+
+  /**
+   * Alta/edición/import masivo desde Proveedores u Honorarios.
+   * Persiste antes de reflejar en UI (`setProviders`) si la KV falla, tabla y nube siguen alineadas.
+   */
+  const handleUpdateProviders = useCallback(async (next: Provider[]): Promise<boolean> => {
+    if (!isDataLoaded) {
+      toast.error(
+        'Los datos siguen cargando desde la nube. Espera el aviso «Datos sincronizados con la nube» y vuelve a intentar.'
+      );
+      return false;
+    }
+    let clean: Provider[];
+    try {
+      clean = JSON.parse(JSON.stringify(next)) as Provider[];
+    } catch (e) {
+      console.warn('[GrooFlow] providers serialize:', e);
+      toast.error(
+        'No se pudo preparar la lista de proveedores para guardar. Revisa datos raros/caracteres en importación.'
+      );
+      return false;
+    }
+
+    skipProvidersHydrateRef.current = true;
+    try {
+      providersKvLatestRef.current = clean;
+      const ok = await enqueueKvSerializedSave(
+        providersKvChainRef,
+        kvApplyGenerationRef,
+        providersKvLatestRef,
+        'data:providers',
+        clean
+      );
+      if (!ok) {
+        toast.error(
+          'No se guardó el directorio en la nube (red, sesión o límite de tamaño). Reintenta sin cerrar sesión.'
+        );
+        return false;
+      }
+      providersKvCooldownUntilRef.current = Date.now() + PROVIDERS_KV_COOLDOWN_MS;
+      providersHydratedFromKvRef.current = true;
+      setProviders(next);
+      return true;
+    } catch (e) {
+      console.warn('[GrooFlow] providers persist:', e);
+      toast.error(
+        'Error de red al guardar proveedores. Comprueba conexión e inténtalo de nuevo.'
+      );
+      return false;
+    } finally {
+      skipProvidersHydrateRef.current = false;
+    }
+  }, [isDataLoaded]);
 
   useEffect(() => {
     if (isDataLoaded) api.saveKey('data:chartOfAccounts', chartOfAccounts);
@@ -629,6 +1080,21 @@ export default function App() {
     [isDataLoaded]
   );
 
+  /** Guarda roles de forma explícita para evitar perder cambios si falla el autosave. */
+  const handleUpdateRoles = useCallback(
+    async (nextRoles: Role[]) => {
+      setRoles(nextRoles);
+      if (!isDataLoaded) return false;
+      const ok = await api.saveKey('data:roles', nextRoles);
+      if (!ok) {
+        toast.error('No se pudo guardar la configuración de roles en la nube.');
+        return false;
+      }
+      return true;
+    },
+    [isDataLoaded]
+  );
+
   useEffect(() => {
     if (isDataLoaded && canSaveUsers) api.saveKey('data:users', users);
   }, [users, isDataLoaded, canSaveUsers]);
@@ -642,8 +1108,8 @@ export default function App() {
   }, [feeReceipts, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:requisitions', requisitions);
-  }, [requisitions, isDataLoaded]);
+    if (isDataLoaded) api.saveKey('data:products', products);
+  }, [products, isDataLoaded]);
 
   useEffect(() => {
     if (isDataLoaded) api.saveKey('data:alertThresholds', alertThresholds);
@@ -665,6 +1131,10 @@ export default function App() {
     if (isDataLoaded && treasuryPaidHistory.length > 0) api.saveKey('data:treasuryPaidHistory', treasuryPaidHistory);
   }, [treasuryPaidHistory, isDataLoaded]);
 
+  useEffect(() => {
+    if (isDataLoaded) api.saveKey('data:fleet', fleetDataset);
+  }, [fleetDataset, isDataLoaded]);
+
   // --- ALERTS ENGINE (diferido al idle: no bloquea el hilo al hidratar datos) ---
   useEffect(() => {
     if (!isDataLoaded) return;
@@ -678,6 +1148,7 @@ export default function App() {
         pettyCash: pettyCashTransactions,
         users,
         thresholds: alertThresholds,
+        fleetDataset,
       });
       setAlerts((prevAlerts) => {
         const readMap = new Map(prevAlerts.map((a) => [a.id, a.read]));
@@ -706,6 +1177,7 @@ export default function App() {
     pettyCashTransactions,
     users,
     alertThresholds,
+    fleetDataset,
     isDataLoaded,
   ]);
 
@@ -729,8 +1201,10 @@ export default function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const handlePrevMonth = () => setCurrentDate(prev => subMonths(prev, 1));
-  const handleNextMonth = () => setCurrentDate(prev => addMonths(prev, 1));
+  const handlePrevMonth = () =>
+    setCurrentDate((prev) => subMonths(isValid(prev) ? prev : new Date(), 1));
+  const handleNextMonth = () =>
+    setCurrentDate((prev) => addMonths(isValid(prev) ? prev : new Date(), 1));
 
   /**
    * Tras signIn en LoginPage: recargar KV + usuarios (la lista solo se muta aquí y en UserManager).
@@ -742,12 +1216,20 @@ export default function App() {
 
   const handleLogout = async () => {
       signingOutRef.current = true;
+      resetKvSaveChains();
+      pendingHydrateRef.current = false;
+      setIsAuthChecking(false);
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem('grooflow_local_session');
       }
+      const signOutWithTimeout = async () => {
+        await Promise.race([
+          supabase.auth.signOut({ scope: 'global' }),
+          new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+        ]);
+      };
       try {
-        const { error } = await supabase.auth.signOut({ scope: 'global' });
-        if (error) console.error('[GrooFlow] signOut:', error);
+        await signOutWithTimeout();
       } catch (e) {
         console.error('[GrooFlow] signOut', e);
       }
@@ -758,13 +1240,22 @@ export default function App() {
             data: { session: still },
           } = await supabase.auth.getSession();
           if (still?.access_token) {
-            await supabase.auth.signOut({ scope: 'global' });
+            await signOutWithTimeout();
           }
         }
       } catch {
         /* ignore */
       }
       cloudDataHydratedRef.current = false;
+      providersCloudHydrationDoneRef.current = false;
+      providersHydratedFromKvRef.current = false;
+      pettyCashHydratedFromKvRef.current = false;
+      providersKvCooldownUntilRef.current = 0;
+      pettyCashKvCooldownUntilRef.current = 0;
+      skipProvidersHydrateRef.current = false;
+      skipPettyCashHydrateRef.current = false;
+      setProviders((import.meta.env.VITE_BACKEND ?? 'supabase') === 'local' ? initialProviders : []);
+      setPettyCashTransactions([]);
       setCanSaveUsers(true);
       setIsDataLoaded(false);
       setCurrentUser(GUEST_USER);
@@ -773,6 +1264,16 @@ export default function App() {
       signingOutRef.current = false;
       navigate(viewToPath('dashboard'), { replace: true });
   };
+
+  const handleLogoutRef = useRef(handleLogout);
+  handleLogoutRef.current = handleLogout;
+
+  useEffect(() => {
+    setKvSessionFatalHandler(() => {
+      void handleLogoutRef.current();
+    });
+    return () => setKvSessionFatalHandler(null);
+  }, []);
 
   const handleSaveSedesCatalog = (result: SedesCatalogSaveResult) => {
     const fallback =
@@ -826,10 +1327,10 @@ export default function App() {
       }))
     );
 
-    setRequisitions((prev) =>
-      prev.map((req) => ({
-        ...req,
-        location: req.location ? loc(req.location) ?? fallback : req.location,
+    setProducts((prev) =>
+      prev.map((product) => ({
+        ...product,
+        location: product.location ? loc(product.location) ?? fallback : product.location,
       }))
     );
 
@@ -854,15 +1355,14 @@ export default function App() {
          ...editingTransaction,
          ...updatedData,
          amount: parseFloat(updatedData.amount),
-         date: new Date(updatedData.date),
+         date: parseTransactionDate(updatedData.date),
          id: editingTransaction.id
      };
 
      const updatedList = transactions.map(t => t.id === updatedTx.id ? updatedTx : t);
-     setTransactions(updatedList);
+     await persistTransactionsNow(updatedList, "Transacción actualizada correctamente");
      setIsEditDialogOpen(false);
      setEditingTransaction(null);
-     toast.success("Transacción actualizada correctamente");
   };
 
   const openEditDialog = (transaction: Transaction) => {
@@ -870,7 +1370,13 @@ export default function App() {
     setIsEditDialogOpen(true);
   };
 
-  const handleAddTransaction = (data: any) => {
+  const handleBulkDeleteTransactions = async (transactionIds: string[]) => {
+    const ids = new Set(transactionIds);
+    const next = transactions.filter((transaction) => !ids.has(transaction.id));
+    await persistTransactionsNow(next, `${transactionIds.length} transacción(es) eliminada(s)`);
+  };
+
+  const handleAddTransaction = async (data: any) => {
     const newTransaction: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
       amount: Number(data.amount),
@@ -879,24 +1385,88 @@ export default function App() {
       subcategory: data.subcategory,
       concept: data.concept,
       description: data.description,
-      date: new Date(data.date),
+      date: parseTransactionDate(data.date),
+      account: data.account || undefined,
+      currency: data.currency || undefined,
+      operation: data.operation || undefined,
+      reference: data.reference || undefined,
       providerId: data.providerId,
-      location: data.location,
+      location: data.location || undefined,
     };
-    setTransactions([newTransaction, ...transactions]);
+    await persistTransactionsNow([newTransaction, ...transactions], "Transacción guardada correctamente");
   };
 
-  const handleImportTransactions = (newTransactions: Transaction[]) => {
-    setTransactions(prev => [...newTransactions, ...prev]);
+  const handleImportTransactions = async (newTransactions: Transaction[]) => {
+    await persistTransactionsNow(
+      [...newTransactions, ...transactions],
+      `${newTransactions.length} transacción(es) importada(s) y guardada(s)`
+    );
   };
 
-  const handleProjectTransactions = (projectedTxs: Transaction[]) => {
-     setTransactions(prev => [...prev, ...projectedTxs]);
+  const handleProjectTransactions = async (projectedTxs: Transaction[]) => {
+     await persistTransactionsNow([...transactions, ...projectedTxs], `${projectedTxs.length} transacciones proyectadas guardadas`);
   };
 
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions(prev => prev.filter(t => t.id !== id));
-    toast.success("Transacción eliminada correctamente");
+  const mergedTreasuryForCashflow = useMemo(() => {
+    const m = new Map<string, Record<string, unknown>>();
+    for (const x of treasuryPaidHistory) {
+      if (x && typeof x === "object" && "id" in x && (x as { id: unknown }).id != null) {
+        m.set(String((x as { id: unknown }).id), x as Record<string, unknown>);
+      }
+    }
+    for (const x of treasuryInvoices) {
+      if (x && typeof x === "object" && "id" in x && (x as { id: unknown }).id != null) {
+        m.set(String((x as { id: unknown }).id), x as Record<string, unknown>);
+      }
+    }
+    return Array.from(m.values());
+  }, [treasuryInvoices, treasuryPaidHistory]);
+
+  const handleUpsertCashFlowCell = useCallback(
+    async (payload: {
+      category: string;
+      subcategory?: string;
+      concept?: string;
+      type: TransactionType;
+      date: Date;
+      amount: number;
+    }) => {
+      const day = startOfDay(payload.date).getTime();
+      const idx = transactions.findIndex((t) => {
+        const td = startOfDay(parseTransactionDate(t.date)).getTime();
+        return (
+          t.category === payload.category &&
+          (t.concept || "") === (payload.concept || "") &&
+          (t.subcategory || "") === (payload.subcategory || "") &&
+          t.type === payload.type &&
+          td === day
+        );
+      });
+      const next = [...transactions];
+      if (idx >= 0) {
+        next[idx] = { ...next[idx]!, amount: payload.amount };
+      } else {
+        next.unshift({
+          id: `cf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          amount: payload.amount,
+          type: payload.type,
+          category: payload.category as Category,
+          subcategory: payload.subcategory || undefined,
+          concept: payload.concept || undefined,
+          description: "Proyección flujo (triple capa)",
+          date: startOfDay(payload.date),
+        });
+      }
+      await persistTransactionsNow(next, "Valor guardado en transacciones");
+    },
+    [persistTransactionsNow, transactions]
+  );
+
+  const handleDeleteTransaction = async (id: string) => {
+    await persistTransactionsNow(
+      transactions.filter(t => t.id !== id),
+      "Transacción eliminada correctamente"
+    );
   };
 
   const handleDeleteInvoice = (id: string) => {
@@ -904,7 +1474,7 @@ export default function App() {
     toast.info("Factura eliminada desde auditoría");
   };
 
-  const handleRegisterPayment = (invoice: InvoiceDraft) => {
+  const handleRegisterPayment = async (invoice: InvoiceDraft) => {
     // 1. Create the Transaction
     const newTransaction: Transaction = {
         id: `pay-${invoice.id}`,
@@ -916,7 +1486,7 @@ export default function App() {
         date: new Date(), // Paid today
     };
 
-    setTransactions(prev => [newTransaction, ...prev]);
+    await persistTransactionsNow([newTransaction, ...transactions]);
 
     // 2. Update Invoice Status
     setInvoices(prev => prev.map(inv => inv.id === invoice.id ? { ...inv, status: 'paid' } : inv));
@@ -999,6 +1569,7 @@ export default function App() {
       setTransactions([]);
       setInvoices([]);
       setPettyCashTransactions([]);
+      setFleetDataset(normalizeFleetDataset({}));
       // We keep users and providers to avoid locking out the admin
       toast.success("Base de datos reiniciada correctamente.");
     };
@@ -1013,29 +1584,122 @@ export default function App() {
     return { totalIncome: income, totalExpense: expense, netCashFlow: income - expense };
   }, [transactions]);
 
+  const transactionSubcategoryOptions = useMemo(() => {
+    const subcategories = new Set<string>();
+
+    Object.entries(config)
+      .filter(([category]) => txFilterCategory === "all" || labelsMatch(category, txFilterCategory))
+      .forEach(([category, definition]) => {
+        getSubcategories(definition, category).forEach((subcategory) => {
+          if (subcategory.name) subcategories.add(subcategory.name);
+        });
+      });
+
+    transactions
+      .filter((transaction) => txFilterCategory === "all" || labelsMatch(transaction.category, txFilterCategory))
+      .forEach((transaction) => {
+        const subcategory = String(transaction.subcategory || '').trim();
+        if (subcategory) subcategories.add(subcategory);
+      });
+
+    return Array.from(subcategories).sort((a, b) => a.localeCompare(b));
+  }, [config, transactions, txFilterCategory]);
+
+  const transactionConceptOptions = useMemo(() => {
+    const concepts = new Set<string>();
+
+    Object.entries(config)
+      .filter(([category]) => txFilterCategory === "all" || labelsMatch(category, txFilterCategory))
+      .forEach(([category, definition]) => {
+        getSubcategories(definition, category)
+          .filter((subcategory) => txFilterSubcategory === "all" || labelsMatch(subcategory.name, txFilterSubcategory))
+          .forEach((subcategory) => {
+            subcategory.concepts.forEach((concept) => concepts.add(concept.name));
+          });
+      });
+
+    transactions
+      .filter((transaction) => txFilterCategory === "all" || labelsMatch(transaction.category, txFilterCategory))
+      .filter((transaction) => txFilterSubcategory === "all" || labelsMatch(transaction.subcategory, txFilterSubcategory))
+      .forEach((transaction) => {
+        const concept = String(transaction.concept || transaction.subcategory || '').trim();
+        if (concept) concepts.add(concept);
+      });
+
+    return Array.from(concepts).sort((a, b) => a.localeCompare(b));
+  }, [config, transactions, txFilterCategory, txFilterSubcategory]);
+
+  const applyTransactionDatePreset = useCallback((preset: TransactionDatePreset) => {
+    setTxDatePreset(preset);
+    const today = startOfDay(new Date());
+    if (preset === "all") {
+      setTxFilterDateStart("");
+      setTxFilterDateEnd("");
+      return;
+    }
+    if (preset === "custom") return;
+    if (preset === "last7") {
+      setTxFilterDateStart(formatDateInputValue(subDays(today, 6)));
+      setTxFilterDateEnd(formatDateInputValue(today));
+      return;
+    }
+    if (preset === "currentMonth") {
+      setTxFilterDateStart(formatDateInputValue(startOfMonth(today)));
+      setTxFilterDateEnd(formatDateInputValue(endOfMonth(today)));
+      return;
+    }
+    if (preset === "previousMonth") {
+      const previous = subMonths(today, 1);
+      setTxFilterDateStart(formatDateInputValue(startOfMonth(previous)));
+      setTxFilterDateEnd(formatDateInputValue(endOfMonth(previous)));
+      return;
+    }
+    if (preset === "year") {
+      setTxFilterDateStart(formatDateInputValue(startOfYear(today)));
+      setTxFilterDateEnd(formatDateInputValue(endOfYear(today)));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (txFilterConcept !== "all" && !transactionConceptOptions.includes(txFilterConcept)) {
+      setTxFilterConcept("all");
+    }
+  }, [transactionConceptOptions, txFilterConcept]);
+
+  useEffect(() => {
+    if (txFilterSubcategory !== "all" && !transactionSubcategoryOptions.includes(txFilterSubcategory)) {
+      setTxFilterSubcategory("all");
+    }
+  }, [transactionSubcategoryOptions, txFilterSubcategory]);
+
   // Filter Logic (evita re-filtrar en cada re-render)
   const filteredTransactions = useMemo(() => {
     return transactions
       .filter((t) => {
-        const tDate = new Date(t.date);
-        const start = txFilterDateStart ? new Date(txFilterDateStart) : null;
+        const tDate = parseTransactionDate(t.date);
+        const start = txFilterDateStart ? parseTransactionDate(txFilterDateStart) : null;
         if (start) start.setHours(0, 0, 0, 0);
 
-        const end = txFilterDateEnd ? new Date(txFilterDateEnd) : null;
+        const end = txFilterDateEnd ? parseTransactionDate(txFilterDateEnd) : null;
         if (end) end.setHours(23, 59, 59, 999);
 
         const dateMatch = (!start || tDate >= start) && (!end || tDate <= end);
-        const categoryMatch = txFilterCategory === "all" || t.category === txFilterCategory;
+        const categoryMatch = txFilterCategory === "all" || labelsMatch(t.category, txFilterCategory);
+        const subcategoryMatch = txFilterSubcategory === "all" || labelsMatch(t.subcategory, txFilterSubcategory);
+        const conceptValue = String(t.concept || t.subcategory || '').trim();
+        const conceptMatch = txFilterConcept === "all" || labelsMatch(conceptValue, txFilterConcept);
         const providerMatch = txFilterProvider === "all" || t.providerId === txFilterProvider;
 
-        return dateMatch && categoryMatch && providerMatch;
+        return dateMatch && categoryMatch && subcategoryMatch && conceptMatch && providerMatch;
       })
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .sort((a, b) => parseTransactionDate(b.date).getTime() - parseTransactionDate(a.date).getTime());
   }, [
     transactions,
     txFilterDateStart,
     txFilterDateEnd,
     txFilterCategory,
+    txFilterSubcategory,
+    txFilterConcept,
     txFilterProvider,
   ]);
 
@@ -1092,8 +1756,9 @@ export default function App() {
     hasPermission("Proveedores") ||
     hasPermission("Contabilidad") ||
     hasPermission("Compras") ||
-    hasPermission("Requerimientos") ||
-    hasPermission("Auditoría");
+    hasPermission("Productos") ||
+    hasPermission("Auditoría") ||
+    hasPermission("Gestión Vehicular");
 
   // --- SEDE FILTERING HELPERS (memoizado: menos re-renders en vistas que filtran por sede) ---
   const catalogSedes = useMemo(() => getAllSedeNames(systemSettings), [systemSettings]);
@@ -1107,8 +1772,8 @@ export default function App() {
     [enabledSedesForForms, catalogSedes]
   );
   const seesAllSedesInCatalog = useMemo(
-    () => currentUser.role === "super_admin" || currentUser.allSedes === true,
-    [currentUser.role, currentUser.allSedes]
+    () => isSuperAdmin || currentUser.allSedes === true,
+    [isSuperAdmin, currentUser.allSedes]
   );
   const visibleSedes = useMemo((): string[] => {
     if (seesAllSedesInCatalog) {
@@ -1162,14 +1827,166 @@ export default function App() {
     [isDataLoaded]
   );
 
+  const handleConfirmPettyCashFundDelivery = useCallback(
+    (delivery: PettyCashFundDelivery) => {
+      setSystemSettings((prev) => {
+        const existing = prev.pettyCash?.fundDeliveries ?? [];
+        const dup = existing.some(
+          (d) =>
+            d.custodianId === delivery.custodianId &&
+            weekKeyMatches(d.weekNumber, delivery.weekNumber)
+        );
+        if (dup) return prev;
+        const next: SystemSettings = {
+          ...prev,
+          pettyCash: {
+            ...initialSystemSettings.pettyCash,
+            ...prev.pettyCash,
+            fundDeliveries: [...existing, delivery],
+          },
+        };
+        if (isDataLoaded) {
+          void api.saveKey('settings:system', next);
+        }
+        return next;
+      });
+    },
+    [isDataLoaded]
+  );
+
+  const handleConsumeOpeningCarry = useCallback(
+    (custodianId: string) => {
+      setUsers((prev) => {
+        const next = prev.map((u) =>
+          u.id === custodianId
+            ? { ...u, pettyCashOpeningCarryConsumedAt: new Date().toISOString() }
+            : u
+        );
+        if (isDataLoaded) {
+          void persistUsersToCloud(next);
+        }
+        return next;
+      });
+    },
+    [isDataLoaded, persistUsersToCloud]
+  );
+
+  const handleRevokePettyCashFundDelivery = useCallback(
+    (custodianId: string, weekNumber: string) => {
+      const delivery = (systemSettings.pettyCash?.fundDeliveries ?? []).find(
+        (d) => d.custodianId === custodianId && weekKeyMatches(d.weekNumber, weekNumber)
+      );
+      if (!delivery) {
+        toast.error('No hay dotación registrada para revocar.');
+        return;
+      }
+      const weekClosed = (systemSettings.pettyCash?.weekClosures ?? []).some(
+        (c) => c.custodianId === custodianId && weekKeyMatches(c.weekNumber, weekNumber)
+      );
+      if (weekClosed) {
+        toast.error('La semana está cerrada; no se puede revocar la dotación.');
+        return;
+      }
+
+      const nextSettings = mergeSystemSettings({
+        ...systemSettings,
+        pettyCash: {
+          ...systemSettings.pettyCash,
+          fundDeliveries: (systemSettings.pettyCash?.fundDeliveries ?? []).filter(
+            (d) => !(d.custodianId === custodianId && weekKeyMatches(d.weekNumber, weekNumber))
+          ),
+        },
+      });
+      setSystemSettings(nextSettings);
+      if (isDataLoaded) {
+        void api.saveKey('settings:system', nextSettings);
+      }
+
+      if (delivery.isPeriodOpening) {
+        setUsers((prev) => {
+          const next = prev.map((u) =>
+            u.id === custodianId ? { ...u, pettyCashOpeningCarryConsumedAt: undefined } : u
+          );
+          if (isDataLoaded) {
+            void persistUsersToCloud(next);
+          }
+          return next;
+        });
+      }
+    },
+    [systemSettings, isDataLoaded, persistUsersToCloud]
+  );
+
+  const handleResetCustodianPettyCash = useCallback(
+    async (custodianId: string): Promise<boolean> => {
+      const nextTx = pettyCashTransactions.filter((t) => t.custodianId !== custodianId);
+      setPettyCashTransactions(nextTx);
+      pettyCashKvLatestRef.current = nextTx;
+
+      const nextSettings = mergeSystemSettings({
+        ...systemSettings,
+        pettyCash: {
+          ...systemSettings.pettyCash,
+          weekClosures: (systemSettings.pettyCash?.weekClosures ?? []).filter(
+            (c) => c.custodianId !== custodianId
+          ),
+          weekPreClosures: (systemSettings.pettyCash?.weekPreClosures ?? []).filter(
+            (p) => p.custodianId !== custodianId
+          ),
+          fundDeliveries: (systemSettings.pettyCash?.fundDeliveries ?? []).filter(
+            (d) => d.custodianId !== custodianId
+          ),
+        },
+      });
+      setSystemSettings(nextSettings);
+
+      const nextUsers = users.map((u) =>
+        u.id === custodianId ? { ...u, pettyCashOpeningCarryConsumedAt: undefined } : u
+      );
+      setUsers(nextUsers);
+
+      if (!isDataLoaded) return true;
+
+      skipPettyCashHydrateRef.current = true;
+      try {
+        const [txOk, settingsOk, usersOk] = await Promise.all([
+          enqueueKvSerializedSave(
+            pettyCashKvChainRef,
+            kvApplyGenerationRef,
+            pettyCashKvLatestRef,
+            'data:pettyCash',
+            nextTx
+          ),
+          api.saveKey('settings:system', nextSettings),
+          persistUsersToCloud(nextUsers),
+        ]);
+        if (!txOk || !settingsOk || !usersOk) {
+          toast.error('No se pudo guardar el reinicio completo en la nube. Reintente.');
+          return false;
+        }
+        pettyCashHydratedFromKvRef.current = true;
+        return true;
+      } finally {
+        skipPettyCashHydrateRef.current = false;
+      }
+    },
+    [
+      pettyCashTransactions,
+      systemSettings,
+      users,
+      isDataLoaded,
+      persistUsersToCloud,
+    ]
+  );
+
   const handlePreClosePettyCashWeek = useCallback((pre: PettyCashWeekPreClosure) => {
     setSystemSettings((prev) => {
       const existing = prev.pettyCash?.weekPreClosures ?? [];
       const dup = existing.some(
-        (p) => p.custodianId === pre.custodianId && String(p.weekNumber) === String(pre.weekNumber)
+        (p) => p.custodianId === pre.custodianId && weekKeyMatches(p.weekNumber, pre.weekNumber)
       );
       if (dup) return prev;
-      return {
+      const next: SystemSettings = {
         ...prev,
         pettyCash: {
           ...initialSystemSettings.pettyCash,
@@ -1177,8 +1994,12 @@ export default function App() {
           weekPreClosures: [...existing, pre],
         },
       };
+      if (isDataLoaded) {
+        void api.saveKey('settings:system', next);
+      }
+      return next;
     });
-  }, []);
+  }, [isDataLoaded]);
 
   const applyProviderCategoryRename = (from: string, to: string) => {
     const t = to.trim();
@@ -1218,10 +2039,73 @@ export default function App() {
     () => pettyCashTransactions.filter((tx) => !tx.location || canSeeSede(tx.location)),
     [pettyCashTransactions, canSeeSede]
   );
+
+  const handleUpdatePettyCashTransactions = useCallback(
+    async (nextVisibleTransactions: PettyCashTransaction[]): Promise<boolean> => {
+      if (!isDataLoaded) {
+        toast.error(
+          'Los datos siguen cargando desde la nube. Espera el aviso «Datos sincronizados con la nube» e intenta de nuevo.'
+        );
+        return false;
+      }
+      if (!pettyCashHydratedFromKvRef.current) {
+        toast.error(
+          'Caja chica aún no terminó de sincronizar. Espera unos segundos antes de registrar gastos.'
+        );
+        return false;
+      }
+
+      let merged: PettyCashTransaction[] = [];
+      setPettyCashTransactions((prev) => {
+        const hiddenTransactions = prev.filter(
+          (tx) => tx.location && !canSeeSede(tx.location)
+        );
+        merged = [...nextVisibleTransactions, ...hiddenTransactions];
+        pettyCashKvLatestRef.current = merged;
+        return merged;
+      });
+
+      skipPettyCashHydrateRef.current = true;
+      try {
+        const ok = await enqueueKvSerializedSave(
+          pettyCashKvChainRef,
+          kvApplyGenerationRef,
+          pettyCashKvLatestRef,
+          'data:pettyCash',
+          merged
+        );
+        if (!ok) {
+          toast.error(
+            'No se pudo guardar Caja chica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.'
+          );
+          return false;
+        }
+        pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
+        pettyCashHydratedFromKvRef.current = true;
+        return true;
+      } catch (e) {
+        console.warn('[GrooFlow] pettyCash persist:', e);
+        toast.error('Error al guardar caja chica en la nube.');
+        return false;
+      } finally {
+        skipPettyCashHydrateRef.current = false;
+      }
+    },
+    [canSeeSede, isDataLoaded]
+  );
+
   const filteredRequestsBySede = useMemo(
     () => requests.filter((r) => !r.location || canSeeSede(r.location)),
     [requests, canSeeSede]
   );
+
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-background text-foreground transition-colors duration-500 flex items-center justify-center">
+        <div className="text-sm text-muted-foreground">Verificando sesión...</div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -1286,7 +2170,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans transition-colors duration-500 relative overflow-x-hidden">
-      <AppProvider value={{ currentUser, theme, toggleTheme }}>
+      <AppProvider value={{ currentUser, roles, theme, toggleTheme }}>
       {/* Animated Neon Orbs */}
       <div className="orb-cyan bg-orb"></div>
       <div className="orb-violet bg-orb"></div>
@@ -1356,7 +2240,8 @@ export default function App() {
           )}
            <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Proveedores" />
            <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Contabilidad" />
-           <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Requerimientos" />
+           <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Gestión Vehicular" />
+           <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Productos" />
            <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
            
@@ -1435,7 +2320,8 @@ export default function App() {
                     <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" requiredModule="Honorarios" />
                     <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" requiredModule="Proveedores" />
                     <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400" requiredModule="Contabilidad" />
-                    <NavButton targetView="requisitions" icon={Package} label="Requerimientos" iconColorClass="text-fuchsia-400" requiredModule="Requerimientos" />
+                    <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400" requiredModule="Gestión Vehicular" />
+                    <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400" requiredModule="Productos" />
                     <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" requiredModule="Compras" />
                     <div className="pt-4 border-t border-border mt-4 space-y-2">
                         <NavButton targetView="users" icon={Users} label="Usuarios y Roles" requiredModule="Usuarios" />
@@ -1453,7 +2339,7 @@ export default function App() {
         <div className={`w-full ${view !== 'treasury' ? 'px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 lg:py-8' : ''}`}>
         <Suspense fallback={<RouteLoader />}>
           {/* Header Section for Views using Generic Wrapper */}
-          {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'requisitions'].includes(view) && (
+          {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
           <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5" style={{ borderBottom: '1px solid rgba(139,92,246,0.15)' }}>
             
             {/* Title & Date Controls */}
@@ -1465,13 +2351,13 @@ export default function App() {
                         {view === 'transactions' && <Wallet className="w-7 h-7" style={{ color: '#34d399', filter: 'drop-shadow(0 0 8px rgba(52,211,153,0.5))' }} />}
                         {view === 'cashflow' && <CalendarDays className="w-7 h-7" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 8px rgba(34,211,238,0.5))' }} />}
                         {view === 'pettycash' && <Coins className="w-7 h-7" style={{ color: '#fbbf24', filter: 'drop-shadow(0 0 8px rgba(251,191,36,0.5))' }} />}
-                        {view === 'requisitions' && <Package className="w-7 h-7" style={{ color: '#e879f9', filter: 'drop-shadow(0 0 8px rgba(232,121,249,0.5))' }} />}
+                        {view === 'products' && <Package className="w-7 h-7" style={{ color: '#e879f9', filter: 'drop-shadow(0 0 8px rgba(232,121,249,0.5))' }} />}
                         
                         {view === 'dashboard' ? 'Resumen Operativo' : 
                         view === 'alerts' ? 'Centro de Alertas' :
                         view === 'transactions' ? 'Gestión de Transacciones' :
                         view === 'cashflow' ? 'Flujo de Caja' : 
-                        view === 'requisitions' ? 'Requerimientos de Sede' :
+                        view === 'products' ? 'Catalogo de Productos' :
                         'Control de Caja Chica'}
                     </h1>
                     <p style={{ color: '#6b5fa5', fontSize: '0.875rem' }}>
@@ -1479,7 +2365,7 @@ export default function App() {
                         view === 'alerts' ? 'Notificaciones y avisos del sistema.' :
                         view === 'transactions' ? 'Registro y control de movimientos financieros.' :
                         view === 'cashflow' ? 'Proyección y análisis de liquidez.' : 
-                        view === 'requisitions' ? 'Gestión de insumos y pedidos internos.' :
+                        view === 'products' ? 'Control comercial, proveedores y stock disponible.' :
                         'Control de fondo fijo y gastos menores.'}
                     </p>
                 </div>
@@ -1493,7 +2379,7 @@ export default function App() {
                         <ChevronLeft className="h-4 w-4" />
                     </button>
                     <span className="px-3 text-sm font-medium min-w-[140px] text-center capitalize" style={{ color: '#F0EEFF' }}>
-                        {format(currentDate, 'MMMM yyyy', { locale: es })}
+                        {format(safeCurrentDate, 'MMMM yyyy', { locale: es })}
                     </span>
                     <button onClick={handleNextMonth} className="p-2 h-full flex items-center transition-colors hover:bg-white/5" style={{ color: '#8b7cf8' }}>
                         <ChevronRight className="h-4 w-4" />
@@ -1556,7 +2442,7 @@ export default function App() {
           {view === 'fees' && (
              <ProfessionalFeesModule 
                 providers={providers}
-                onUpdateProviders={setProviders}
+                onUpdateProviders={handleUpdateProviders}
                 receipts={feeReceipts.length > 0 ? (feeReceipts as any[]) : undefined}
                 onUpdateReceipts={(receipts) => setFeeReceipts(receipts as any[])}
                 onSendToTreasury={(receipts) => {
@@ -1597,10 +2483,12 @@ export default function App() {
                   transactions={transactions} 
                   alerts={alerts}
                   onOpenAlerts={() => navigate(viewToPath('alerts'))}
+                  fleetDataset={fleetDataset}
+                  onOpenFleet={() => navigate(viewToPath('fleet'))}
               />
 
               {/* Cash Flow Chart */}
-              <CashFlowChart transactions={transactions} currentDate={currentDate} />
+              <CashFlowChart transactions={transactions} currentDate={safeCurrentDate} />
             </div>
           )}
 
@@ -1626,52 +2514,95 @@ export default function App() {
           )}
 
             {view === 'transactions' && (
-            <div className="grid gap-6 md:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="md:col-span-4 lg:col-span-3 space-y-5">
+            <div className="grid gap-6 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="lg:col-span-4 xl:col-span-3 space-y-5">
                 <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
                   <h3 className="mb-5 flex items-center gap-2" style={{ color: '#F0EEFF', fontWeight: 700 }}>
                     <PlusCircle className="h-5 w-5" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.5))' }} />
                     Nueva Transacción
                   </h3>
-                  <TransactionForm onSubmit={handleAddTransaction} config={config} providers={providers} />
-                </div>
-
-                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
-                  <h3 className="mb-4" style={{ color: '#F0EEFF', fontWeight: 700 }}>Importar Excel</h3>
-                  <TransactionImporter onImport={handleImportTransactions} />
+                  <TransactionForm
+                    onSubmit={handleAddTransaction}
+                    config={config}
+                    providers={providers}
+                    sedesCatalog={enabledSedesForForms}
+                  />
                 </div>
               </div>
               
-              <div className="md:col-span-8 lg:col-span-9">
+              <div className="lg:col-span-8 xl:col-span-9">
                 <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
                   <div className="flex flex-col space-y-4 mb-5">
                     <div className="flex items-center justify-between pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <h3 style={{ color: '#F0EEFF', fontWeight: 700 }}>Historial de Transacciones</h3>
-                      <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', color: '#8b7cf8' }}>{filteredTransactions.length} registros</span>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-cyan-500/30 bg-transparent text-cyan-200 hover:bg-cyan-500/10"
+                          onClick={() => setIsTransactionImporterOpen(true)}
+                        >
+                          Importar Excel
+                        </Button>
+                        <span className="text-xs px-2.5 py-1 rounded-full font-bold" style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.2)', color: '#8b7cf8' }}>{filteredTransactions.length} registros</span>
+                      </div>
                     </div>
                     
                     {/* Filters Toolbar */}
                     <div className="flex flex-wrap gap-3 p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium" style={{ color: '#6b5fa5' }}>Desde:</span>
-                            <Input 
-                                type="date" 
-                                className="h-8 w-auto" 
-                                value={txFilterDateStart} 
-                                onChange={(e) => setTxFilterDateStart(e.target.value)} 
-                            />
+                        <div className="flex items-center gap-2 min-w-[180px]">
+                             <Select value={txDatePreset} onValueChange={(value) => applyTransactionDatePreset(value as TransactionDatePreset)}>
+                                <SelectTrigger className="h-8">
+                                    <SelectValue placeholder="Fecha" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas las fechas</SelectItem>
+                                    <SelectItem value="last7">Últimos 7 días</SelectItem>
+                                    <SelectItem value="currentMonth">Mes en curso</SelectItem>
+                                    <SelectItem value="previousMonth">Mes anterior</SelectItem>
+                                    <SelectItem value="year">Año en curso</SelectItem>
+                                    <SelectItem value="custom">Personalizado</SelectItem>
+                                </SelectContent>
+                             </Select>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium" style={{ color: '#6b5fa5' }}>Hasta:</span>
-                            <Input 
-                                type="date" 
-                                className="h-8 w-auto" 
-                                value={txFilterDateEnd} 
-                                onChange={(e) => setTxFilterDateEnd(e.target.value)} 
-                            />
-                        </div>
+                        {txDatePreset === 'custom' && (
+                          <>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium" style={{ color: '#6b5fa5' }}>Desde:</span>
+                                <Input 
+                                    type="date" 
+                                    className="h-8 w-auto" 
+                                    value={txFilterDateStart} 
+                                    onChange={(e) => {
+                                      setTxDatePreset("custom");
+                                      setTxFilterDateStart(e.target.value);
+                                    }} 
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium" style={{ color: '#6b5fa5' }}>Hasta:</span>
+                                <Input 
+                                    type="date" 
+                                    className="h-8 w-auto" 
+                                    value={txFilterDateEnd} 
+                                    onChange={(e) => {
+                                      setTxDatePreset("custom");
+                                      setTxFilterDateEnd(e.target.value);
+                                    }} 
+                                />
+                            </div>
+                          </>
+                        )}
                         <div className="flex items-center gap-2 min-w-[150px]">
-                             <Select value={txFilterCategory} onValueChange={setTxFilterCategory}>
+                             <Select
+                               value={txFilterCategory}
+                               onValueChange={(value) => {
+                                 setTxFilterCategory(value);
+                                 setTxFilterSubcategory("all");
+                                 setTxFilterConcept("all");
+                               }}
+                             >
                                 <SelectTrigger className="h-8">
                                     <SelectValue placeholder="Categoría" />
                                 </SelectTrigger>
@@ -1679,6 +2610,32 @@ export default function App() {
                                     <SelectItem value="all">Todas las categorías</SelectItem>
                                     {Object.keys(config).map(cat => (
                                         <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                             </Select>
+                        </div>
+                        <div className="flex items-center gap-2 min-w-[150px]">
+                             <Select value={txFilterSubcategory} onValueChange={setTxFilterSubcategory}>
+                                <SelectTrigger className="h-8">
+                                    <SelectValue placeholder="Subcategoría" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas las subcategorías</SelectItem>
+                                    {transactionSubcategoryOptions.map(subcategory => (
+                                        <SelectItem key={subcategory} value={subcategory}>{subcategory}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                             </Select>
+                        </div>
+                        <div className="flex items-center gap-2 min-w-[150px]">
+                             <Select value={txFilterConcept} onValueChange={setTxFilterConcept}>
+                                <SelectTrigger className="h-8">
+                                    <SelectValue placeholder="Concepto" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos los conceptos</SelectItem>
+                                    {transactionConceptOptions.map(concept => (
+                                        <SelectItem key={concept} value={concept}>{concept}</SelectItem>
                                     ))}
                                 </SelectContent>
                              </Select>
@@ -1696,12 +2653,15 @@ export default function App() {
                                 </SelectContent>
                              </Select>
                         </div>
-                        {(txFilterDateStart || txFilterDateEnd || txFilterCategory !== 'all' || txFilterProvider !== 'all') && (
+                        {(txDatePreset !== 'all' || txFilterDateStart || txFilterDateEnd || txFilterCategory !== 'all' || txFilterSubcategory !== 'all' || txFilterConcept !== 'all' || txFilterProvider !== 'all') && (
                             <button 
                                 onClick={() => {
+                                    setTxDatePreset("all");
                                     setTxFilterDateStart("");
                                     setTxFilterDateEnd("");
                                     setTxFilterCategory("all");
+                                    setTxFilterSubcategory("all");
+                                    setTxFilterConcept("all");
                                     setTxFilterProvider("all");
                                 }}
                                 className="text-xs font-bold px-2.5 py-1 rounded-lg transition-colors hover:bg-cyan-500/15"
@@ -1712,23 +2672,53 @@ export default function App() {
                         )}
                     </div>
                   </div>
-                  <RecentTransactions transactions={filteredTransactions.slice(0, 50)} onEdit={openEditDialog} />
+                  <RecentTransactions
+                    transactions={filteredTransactions}
+                    onEdit={openEditDialog}
+                    onDelete={handleDeleteTransaction}
+                    onBulkDelete={handleBulkDeleteTransactions}
+                  />
                 </div>
               </div>
             </div>
           )}
 
           {view === 'cashflow' && (
-             <div className="h-[calc(100vh-120px)] min-h-[500px] animate-in fade-in slide-in-from-bottom-4 duration-500">
-               <CashFlowGrid 
-                 transactions={transactions} 
-                 config={config} 
-                 onAddProjectedTransactions={handleProjectTransactions}
-                 currentDate={currentDate}
-                 systemSettings={systemSettings}
-                 onUpdateSettings={setSystemSettings}
-                 invoices={invoices}
-               />
+             <div className="flex min-h-[calc(100vh-120px)] flex-1 flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+               <Tabs defaultValue="matrix" className="flex min-h-0 flex-1 flex-col gap-4">
+                 <TabsList className="w-full max-w-md shrink-0 bg-slate-900/70 border border-cyan-500/20">
+                   <TabsTrigger value="matrix" className="data-[state=active]:bg-cyan-600/40 data-[state=active]:text-cyan-50">
+                     Matriz diaria / anual
+                   </TabsTrigger>
+                   <TabsTrigger value="smart" className="data-[state=active]:bg-cyan-600/40 data-[state=active]:text-cyan-50">
+                     Proyección inteligente
+                   </TabsTrigger>
+                 </TabsList>
+                 <TabsContent value="matrix" className="mt-0 flex min-h-[min(560px,calc(100vh-220px))] flex-1 flex-col overflow-hidden focus-visible:outline-none">
+                   <CashFlowGrid 
+                     transactions={transactions} 
+                     config={config} 
+                     onAddProjectedTransactions={handleProjectTransactions}
+                     currentDate={safeCurrentDate}
+                     onViewDateChange={setCurrentDate}
+                     systemSettings={systemSettings}
+                     onUpdateSettings={handlePersistSystemSettings}
+                     invoices={invoices}
+                     treasuryInvoices={mergedTreasuryForCashflow}
+                     onUpsertProjectedCell={handleUpsertCashFlowCell}
+                   />
+                 </TabsContent>
+                 <TabsContent value="smart" className="mt-0 flex min-h-[min(480px,calc(100vh-240px))] flex-1 flex-col overflow-auto focus-visible:outline-none">
+                   <SmartCashFlowSimulation 
+                     config={config}
+                     systemSettings={systemSettings}
+                     transactions={transactions}
+                     invoices={invoices}
+                     currentDate={safeCurrentDate}
+                     onUpdateSystemSettings={handlePersistSystemSettings}
+                   />
+                 </TabsContent>
+               </Tabs>
              </div>
           )}
 
@@ -1736,7 +2726,7 @@ export default function App() {
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                <PnLView 
                  transactions={transactions} 
-                 currentDate={currentDate} 
+                 currentDate={safeCurrentDate} 
                  onPrevMonth={handlePrevMonth}
                  onNextMonth={handleNextMonth}
                />
@@ -1752,14 +2742,14 @@ export default function App() {
                      <ChevronLeft className="h-4 w-4" />
                    </Button>
                    <span className="text-sm font-medium min-w-[140px] text-center">
-                     {format(currentDate, 'MMMM yyyy', { locale: es })}
+                     {format(safeCurrentDate, 'MMMM yyyy', { locale: es })}
                    </span>
                    <Button variant="outline" size="sm" onClick={handleNextMonth}>
                      <ChevronRight className="h-4 w-4" />
                    </Button>
                  </div>
                </div>
-               <MonthlySummary transactions={transactions} currentDate={currentDate} />
+               <MonthlySummary transactions={transactions} currentDate={safeCurrentDate} />
              </div>
           )}
 
@@ -1767,7 +2757,7 @@ export default function App() {
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <ProviderManager 
                     providers={providers} 
-                    onUpdateProviders={setProviders} 
+                    onUpdateProviders={handleUpdateProviders} 
                     config={config}
                     systemSettings={systemSettings}
                     onUpdateSystemSettings={setSystemSettings}
@@ -1786,22 +2776,25 @@ export default function App() {
                 chartOfAccounts={chartOfAccounts}
                 onUpdateChart={setChartOfAccounts}
                 systemSettings={systemSettings}
-                onUpdateSystemSettings={(next) => setSystemSettings(mergeSystemSettings(next))}
-                pettyCashTransactions={pettyCashTransactions}
-                providers={providers}
-                users={users}
+                onUpdateSystemSettings={handlePersistSystemSettings}
               />
             </div>
           )}
 
-          {view === 'requisitions' && (
+          {view === 'fleet' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <FleetModule dataset={fleetDataset} setDataset={setFleetDataset} />
+            </div>
+          )}
+
+          {view === 'products' && (
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <RequisitionModule 
-                    currentUser={currentUser}
-                    users={users}
+                <ProductModule 
+                    products={products}
+                    providers={providers}
+                    onUpdateProducts={setProducts}
                     visibleSedes={visibleSedes}
-                    requisitions={requisitions}
-                    onUpdateRequisitions={setRequisitions}
+                    currentUserName={currentUser.name}
                 />
              </div>
           )}
@@ -1836,7 +2829,7 @@ export default function App() {
                     knownSedeNames={catalogSedes}
                     sedesCatalogEntries={sedesEntriesForDialog}
                     onSaveSedesCatalog={handleSaveSedesCatalog}
-                    onUpdateRoles={setRoles}
+                    onUpdateRoles={handleUpdateRoles}
                     onUpdateUser={(updatedUser) => {
                         setUsers(prev => {
                           const next = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
@@ -1870,16 +2863,18 @@ export default function App() {
               config={config} 
               onUpdateConfig={setConfig} 
               systemSettings={systemSettings}
-              onUpdateSystemSettings={setSystemSettings}
+              onUpdateSystemSettings={handlePersistSystemSettings}
               onStressTest={handleStressTest}
               onResetData={handleResetData}
               users={users}
+              roles={roles}
               onUpdateUsers={setUsers}
               currentUser={currentUser}
               onApplyProviderCategoryRename={applyProviderCategoryRename}
               onApplyProviderAreaRename={applyProviderAreaRename}
               onApplyProviderCategoryRemoved={applyProviderCategoryRemoved}
               onApplyProviderAreaRemoved={applyProviderAreaRemoved}
+              onResetCustodianPettyCash={handleResetCustodianPettyCash}
             />
           )}
 
@@ -1896,7 +2891,7 @@ export default function App() {
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <PettyCashModule 
                   transactions={filteredPettyCashBySede}
-                  onUpdateTransactions={setPettyCashTransactions}
+                  onUpdateTransactions={handleUpdatePettyCashTransactions}
                   settings={systemSettings.pettyCash ?? initialSystemSettings.pettyCash}
                   users={users}
                   currentUser={currentUser}
@@ -1904,6 +2899,8 @@ export default function App() {
                   visibleSedes={visibleSedes}
                   canAccessConsolidated={canAccessPettyCashConsolidated}
                   businessName={systemSettings.businessName}
+                  businessLegalName={systemSettings.businessLegalName}
+                  businessRuc={systemSettings.businessRuc}
                   businessLogo={systemSettings.businessLogo}
                   commercialCategories={commercialCategories}
                   commercialAreas={commercialAreas}
@@ -1914,6 +2911,20 @@ export default function App() {
                   }}
                   onClosePettyCashWeek={handleClosePettyCashWeek}
                   onPreClosePettyCashWeek={handlePreClosePettyCashWeek}
+                  onConfirmFundDelivery={handleConfirmPettyCashFundDelivery}
+                  onConsumeOpeningCarry={handleConsumeOpeningCarry}
+                  onRevokeFundDelivery={handleRevokePettyCashFundDelivery}
+                  onPettyCashSettingsPatch={(patch) =>
+                    handlePersistSystemSettings(
+                      mergeSystemSettings({
+                        ...systemSettings,
+                        pettyCash: { ...systemSettings.pettyCash, ...patch },
+                      })
+                    )
+                  }
+                  chartOfAccounts={chartOfAccounts}
+                  accountingLinks={systemSettings.accounting ?? {}}
+                  journalPettyCashTransactions={pettyCashTransactions}
                 />
              </div>
           )}
@@ -1941,10 +2952,32 @@ export default function App() {
                   onSubmit={handleUpdateTransaction} 
                   config={config} 
                   providers={providers}
+                  sedesCatalog={enabledSedesForForms}
                   initialData={editingTransaction}
                   onCancel={() => setIsEditDialogOpen(false)}
                 />
               )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isTransactionImporterOpen} onOpenChange={setIsTransactionImporterOpen}>
+            <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Importar transacciones desde Excel</DialogTitle>
+                <DialogDescription>
+                  Descarga la plantilla actualizada o carga el archivo histórico de ingresos y egresos.
+                </DialogDescription>
+              </DialogHeader>
+              <TransactionImporter
+                onImport={async (items) => {
+                  await handleImportTransactions(items);
+                  setIsTransactionImporterOpen(false);
+                }}
+                config={config}
+                sedesCatalog={enabledSedesForForms}
+                providers={providers}
+                canManageHistoricalImport={isSuperAdmin}
+              />
             </DialogContent>
           </Dialog>
         </Suspense>

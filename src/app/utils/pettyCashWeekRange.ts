@@ -1,6 +1,7 @@
 import { endOfWeek, format, getWeek, setWeek, startOfWeek } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { PettyCashTransaction } from '../types';
+import { parsePettyCashWeekKey, weekKeyMatches } from './pettyCashWeekKey';
 
 /** Rango según fechas reales de movimientos de esa semana (más fiable que el calendario). */
 export function weekRangeFromTransactions(
@@ -9,7 +10,7 @@ export function weekRangeFromTransactions(
 ): string | null {
   const active = txs.filter(
     (e) =>
-      e.weekNumber?.toString() === weekStr &&
+      weekKeyMatches(e.weekNumber, weekStr) &&
       e.status !== 'voided' &&
       e.status !== 'rejected'
   );
@@ -24,13 +25,13 @@ export function weekRangeFromTransactions(
 }
 
 /**
- * Rango calendario de la semana `w` alineado con `format(date, 'w')` de date-fns
- * (weekStartsOn: 1, sin locale = mismo criterio que el guardado en `weekNumber`).
+ * Rango calendario para `weekNumber` (nuevo `YYYY-Www` o legado `1..53`).
  */
 export function weekRangeFromCalendarWeek(weekStr: string, referenceYear?: number): string {
-  const wn = parseInt(weekStr, 10);
+  const parsed = parsePettyCashWeekKey(weekStr);
+  const wn = parsed.week ?? parseInt(weekStr, 10);
   if (!Number.isFinite(wn)) return '';
-  const year = referenceYear ?? new Date().getFullYear();
+  const year = parsed.year ?? referenceYear ?? new Date().getFullYear();
   const opts = { weekStartsOn: 1 as const };
   const midYear = new Date(year, 5, 15);
   let d = setWeek(midYear, wn, opts);

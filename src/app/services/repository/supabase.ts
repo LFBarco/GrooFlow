@@ -83,8 +83,8 @@ function kvPathSegment(key: string): string {
   return encodeURIComponent(key);
 }
 
-/** True si el JWT falta o expira en menos de ~2 min (evita 401 en Edge con token viejo en storage). */
-function accessTokenNeedsRefresh(accessToken: string | undefined): boolean {
+/** True si el JWT ya expiró (margen corto por desfase de reloj). No renovar antes: el SDK ya refresca en segundo plano. */
+function isAccessTokenExpired(accessToken: string | undefined, skewSeconds = 15): boolean {
   if (!accessToken) return true;
   try {
     const parts = accessToken.split('.');
@@ -95,7 +95,7 @@ function accessTokenNeedsRefresh(accessToken: string | undefined): boolean {
     const payload = JSON.parse(json) as { exp?: number };
     const exp = typeof payload.exp === 'number' ? payload.exp : 0;
     const now = Date.now() / 1000;
-    return now >= exp - 120;
+    return now >= exp - skewSeconds;
   } catch {
     return true;
   }
@@ -129,7 +129,46 @@ function assertAccessTokenMatchesProject(accessToken: string, supabaseUrl: strin
   }
 }
 
-const REFRESH_SESSION_TIMEOUT_MS = 45_000;
+const REFRESH_SESSION_TIMEOUT_MS = 12_000;
+const REFRESH_WAIT_TIMEOUT_MS = 14_000;
+
+/** Una sola `refreshSession()` cuando muchos KV leen token a la vez (evita trabarse en «Verificando sesión»). */
+let sessionRefreshInFlight: Promise<string> | null = null;
+
+/**
+ * Errores KV irrecuperables (no reintentar en bucle infinito).
+ * `flattenErrorMessageChain` junta Caused-by (algunos errores llegan envueltos).
+ */
+export function flattenErrorMessageChain(err: unknown): string {
+  const parts: string[] = [];
+  let cur: unknown = err;
+  for (let d = 0; d < 6 && cur; d++) {
+    if (cur instanceof Error) {
+      parts.push(cur.message);
+      cur = cur.cause;
+    } else {
+      parts.push(String(cur));
+      break;
+    }
+  }
+  return parts.join(' | ');
+}
+
+export function isSupabaseKvFatalAuthError(err: unknown): boolean {
+  const flat = flattenErrorMessageChain(err);
+  const text = flat.toLowerCase();
+  return (
+    text.includes('auth session missing') ||
+    text.includes('invalid_grant') ||
+    text.includes('refresh token already') ||
+    text.includes('invalid refresh token') ||
+    text.includes('session_not_found') ||
+    (text.includes('no se pudo renovar') && text.includes('auth session')) ||
+    flat.includes('Sesión cerrada o caducada') ||
+    flat.includes('Sesión sin token de acceso') ||
+    flat.includes('sin renovación automática')
+  );
+}
 
 async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
@@ -146,25 +185,20 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
   }
 }
 
-/**
- * Token para Edge Functions (admin-create-user, KV, etc.).
- * IMPORTANTE: si el JWT aún es válido, se reutiliza sin llamar a refreshSession()
- * (refreshSession puede tardar mucho o quedar colgado en algunos entornos/redes).
- */
-async function getFreshAccessTokenForEdge(sb: SupabaseClient): Promise<string> {
-  const { data: existing } = await sb.auth.getSession();
-  const existingToken = existing.session?.access_token;
-  if (existingToken && !accessTokenNeedsRefresh(existingToken)) {
-    assertAccessTokenMatchesProject(existingToken, SUPABASE_URL);
-    return existingToken;
-  }
-
+async function runRefreshSessionForEdge(sb: SupabaseClient): Promise<string> {
   const { data, error } = await withTimeout(
     sb.auth.refreshSession(),
     REFRESH_SESSION_TIMEOUT_MS,
     'Renovar sesión (Supabase)'
   );
   if (error) {
+    const low = error.message.toLowerCase();
+    if (low.includes('auth session missing') || low.includes('invalid_grant')) {
+      throw new Error(
+        'Sesión cerrada o caducada. Vuelve a iniciar sesión para guardar en la nube. ' +
+          `(Detalle: ${error.message})`
+      );
+    }
     throw new Error(
       `No se pudo renovar la sesión: ${error.message}. ` +
         'Cierra sesión, recarga la página (Ctrl+F5) e inicia sesión de nuevo. ' +
@@ -179,6 +213,63 @@ async function getFreshAccessTokenForEdge(sb: SupabaseClient): Promise<string> {
   }
   assertAccessTokenMatchesProject(token, SUPABASE_URL);
   return token;
+}
+
+/**
+ * Token para Edge Functions (admin-create-user, KV, etc.).
+ * Reutiliza el JWT vigente; solo llama a refreshSession() si ya expiró.
+ * El cliente Supabase renueva en segundo plano (TOKEN_REFRESHED) — evitar refresh
+ * anticipado (~2 min antes) que bloqueaba LockManager y cortaba guardados.
+ */
+async function getFreshAccessTokenForEdge(sb: SupabaseClient): Promise<string> {
+  const { data: existing } = await sb.auth.getSession();
+  const session = existing.session;
+  const existingToken = session?.access_token;
+
+  if (existingToken && !isAccessTokenExpired(existingToken)) {
+    assertAccessTokenMatchesProject(existingToken, SUPABASE_URL);
+    return existingToken;
+  }
+
+  if (!session?.user) {
+    throw new Error(
+      'Sesión cerrada o caducada. Vuelve a iniciar sesión para guardar en la nube.'
+    );
+  }
+
+  if (existingToken && isAccessTokenExpired(existingToken)) {
+    // Último intento: el SDK pudo haber refrescado entre getSession y ahora.
+    const { data: again } = await sb.auth.getSession();
+    const retryToken = again.session?.access_token;
+    if (retryToken && !isAccessTokenExpired(retryToken)) {
+      assertAccessTokenMatchesProject(retryToken, SUPABASE_URL);
+      return retryToken;
+    }
+  }
+
+  if (!sessionRefreshInFlight) {
+    sessionRefreshInFlight = runRefreshSessionForEdge(sb).finally(() => {
+      sessionRefreshInFlight = null;
+    });
+  }
+
+  try {
+    return await withTimeout(
+      sessionRefreshInFlight,
+      REFRESH_WAIT_TIMEOUT_MS,
+      'Esperar renovación de sesión'
+    );
+  } catch (refreshErr) {
+    sessionRefreshInFlight = null;
+    const { data: fallback } = await sb.auth.getSession();
+    const fallbackToken = fallback.session?.access_token;
+    if (fallbackToken && fallback.session?.user) {
+      console.warn('[supabase] refresh lento/fallido; usando token de sesión actual', refreshErr);
+      assertAccessTokenMatchesProject(fallbackToken, SUPABASE_URL);
+      return fallbackToken;
+    }
+    throw refreshErr;
+  }
 }
 
 /** Evita que el botón "Creando…" quede colgado si la Edge Function no responde. */
@@ -239,6 +330,27 @@ async function postEdgeFunctionJson(
 
 let _client: SupabaseClient | null = null;
 
+/**
+ * Evita bloqueos del Navigator LockManager de Supabase Auth (guardados/logout colgados).
+ * Ejecuta la operación directamente; el SDK ya serializa refresh en la mayoría de casos.
+ */
+async function resilientAuthLock<T>(
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<T>
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err ?? '');
+    if (msg.includes('Navigator LockManager') || msg.includes('timed out')) {
+      console.warn('[supabase] auth lock timeout, retrying without lock coordination');
+      return await fn();
+    }
+    throw err;
+  }
+}
+
 /** URL/clave mínimas para que createClient no reciba "" (evita pantalla en blanco si .env falla). */
 const FALLBACK_URL = 'https://invalid-env-placeholder.supabase.co';
 const FALLBACK_KEY =
@@ -254,7 +366,15 @@ export function getSupabaseClient(): SupabaseClient {
       typeof SUPABASE_ANON_KEY === 'string' && SUPABASE_ANON_KEY.length >= 40;
     _client = createClient(
       urlOk ? SUPABASE_URL : FALLBACK_URL,
-      keyOk ? SUPABASE_ANON_KEY : FALLBACK_KEY
+      keyOk ? SUPABASE_ANON_KEY : FALLBACK_KEY,
+      {
+        auth: {
+          autoRefreshToken: true,
+          persistSession: true,
+          detectSessionInUrl: true,
+          lock: resilientAuthLock as any,
+        } as any,
+      }
     );
   }
   return _client;
@@ -377,11 +497,14 @@ class SupabaseKVRepository implements IKVRepository {
   }
 
   async getWithStatus<T = unknown>(key: string): Promise<{ ok: boolean; value: T | null }> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EDGE_FETCH_TIMEOUT_MS);
     try {
       const headers = await this.authHeaders();
       const res = await fetch(`${FUNCTIONS_URL}/kv/${kvPathSegment(key)}`, {
         method: 'GET',
         headers,
+        signal: controller.signal,
       });
       if (!res.ok) {
         console.error(`[kv:getWithStatus] ${key} HTTP ${res.status}`);
@@ -392,6 +515,8 @@ class SupabaseKVRepository implements IKVRepository {
     } catch (e) {
       console.error(`[kv:getWithStatus] ${key}`, e);
       return { ok: false, value: null };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -401,14 +526,31 @@ class SupabaseKVRepository implements IKVRepository {
   }
 
   async set(key: string, value: unknown): Promise<void> {
-    const headers = await this.authHeaders();
-    const res = await fetch(`${FUNCTIONS_URL}/kv/${kvPathSegment(key)}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(value),
-    });
-    if (!res.ok) {
-      throw new Error(`KV SET failed (${res.status})`);
+    await this.setOnce(key, value, false);
+  }
+
+  private async setOnce(key: string, value: unknown, retriedAfter401: boolean): Promise<void> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EDGE_FETCH_TIMEOUT_MS);
+    try {
+      const headers = await this.authHeaders();
+      const res = await fetch(`${FUNCTIONS_URL}/kv/${kvPathSegment(key)}`, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify(value),
+      });
+      if (res.status === 401 && !retriedAfter401) {
+        sessionRefreshInFlight = null;
+        await runRefreshSessionForEdge(getSupabaseClient());
+        clearTimeout(timeoutId);
+        return this.setOnce(key, value, true);
+      }
+      if (!res.ok) {
+        throw new Error(`KV SET failed (${res.status})`);
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

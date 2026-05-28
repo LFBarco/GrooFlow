@@ -14,7 +14,12 @@ import {
   getPettyCashRowType,
   isReplenishmentIncome,
   isAdminTopUpIncome,
+  isFundDeliveryIncome,
+  FUND_DELIVERY_CATEGORY,
 } from "../../utils/pettyCashAudit";
+import { formatCurrencyEs } from "../../utils/numberFormat";
+import { effectivePettyCashFundLimit } from "../../utils/pettyCashFund";
+import { parsePettyCashWeekKey } from "../../utils/pettyCashWeekKey";
 
 interface CashMovementsProps {
   transactions: PettyCashTransaction[];
@@ -26,6 +31,7 @@ interface CashMovementsProps {
   commercialAreas?: string[];
   /** Cierres de semana (para sumar fondo de apertura en la tarjeta de asignaciones). */
   weekClosures?: PettyCashWeekClosure[];
+  fundDeliveries?: import('../../types').PettyCashFundDelivery[];
   /** Usuarios con límite de caja chica por responsable. */
   custodianUsers?: User[];
   /** Límite global de fondo si el responsable no tiene límite propio. */
@@ -54,6 +60,7 @@ export function CashMovements({
   commercialCategories = [],
   commercialAreas = [],
   weekClosures,
+  fundDeliveries,
   custodianUsers,
   defaultFundLimit,
 }: CashMovementsProps) {
@@ -131,15 +138,19 @@ export function CashMovements({
     const uniq = new Map<string, { cid: string; w: string }>();
     for (const t of filteredTransactions) {
       if (!t.custodianId) continue;
-      const k = `${t.custodianId}|${String(t.weekNumber)}`;
-      if (!uniq.has(k)) uniq.set(k, { cid: t.custodianId, w: String(t.weekNumber) });
+      const parsed = parsePettyCashWeekKey(t.weekNumber);
+      const weekToken =
+        parsed.year != null && parsed.week != null
+          ? `${parsed.year}-W${String(parsed.week).padStart(2, "0")}`
+          : String(parsed.week ?? t.weekNumber);
+      const k = `${t.custodianId}|${weekToken}`;
+      if (!uniq.has(k)) uniq.set(k, { cid: t.custodianId, w: weekToken });
     }
     let sum = 0;
     for (const { cid, w } of uniq.values()) {
       const u = custodianUsers.find((x) => x.id === cid);
-      const lim =
-        u?.pettyCashLimit && u.pettyCashLimit > 0 ? u.pettyCashLimit : defaultFundLimit!;
-      sum += getOpeningFundForWeek(cid, w, weekClosures, lim);
+      const lim = effectivePettyCashFundLimit(u, defaultFundLimit!);
+      sum += getOpeningFundForWeek(cid, w, weekClosures, lim, fundDeliveries);
     }
     return sum;
   }, [
@@ -147,6 +158,7 @@ export function CashMovements({
     filteredTransactions,
     custodianUsers,
     weekClosures,
+    fundDeliveries,
     defaultFundLimit,
   ]);
 
@@ -279,35 +291,29 @@ export function CashMovements({
                                 Asignaciones al fondo (total)
                             </p>
                             <h3 className="text-2xl font-bold text-green-600">
-                                S/ {totalAssignments.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                {formatCurrencyEs(totalAssignments)}
                             </h3>
                             <div className="text-xs text-muted-foreground space-y-0.5 pt-1">
                                 {openingFundsTotal > 0 ? (
                                     <p>
-                                        Apertura de fondo (semanas en vista): S/{" "}
-                                        {openingFundsTotal.toLocaleString("es-PE", {
-                                            minimumFractionDigits: 2,
-                                        })}
+                                        Apertura de fondo (semanas en vista): {formatCurrencyEs(openingFundsTotal)}
                                     </p>
                                 ) : null}
                                 {explicitIncomeTotal > 0 ? (
                                     <p>
-                                        Ingresos registrados (reposición / refuerzos): S/{" "}
-                                        {explicitIncomeTotal.toLocaleString("es-PE", {
-                                            minimumFractionDigits: 2,
-                                        })}
+                                        Ingresos registrados (reposición / refuerzos): {formatCurrencyEs(explicitIncomeTotal)}
                                     </p>
                                 ) : null}
                                 {replenishmentIncome > 0 ? (
-                                    <p>— Reposiciones: S/ {replenishmentIncome.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
+                                    <p>— Reposiciones: {formatCurrencyEs(replenishmentIncome)}</p>
                                 ) : null}
                                 {adminTopupIncome > 0 ? (
                                     <p className="text-amber-700 dark:text-amber-400">
-                                        — Refuerzos admin.: S/ {adminTopupIncome.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                        — Refuerzos admin.: {formatCurrencyEs(adminTopupIncome)}
                                     </p>
                                 ) : null}
                                 {otherIncomeTotal > 0 ? (
-                                    <p>— Otros ingresos: S/ {otherIncomeTotal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}</p>
+                                    <p>— Otros ingresos: {formatCurrencyEs(otherIncomeTotal)}</p>
                                 ) : null}
                                 {totalAssignments === 0 ? (
                                     <p>Sin asignaciones con los filtros actuales (ni aperturas ni ingresos).</p>
@@ -333,7 +339,7 @@ export function CashMovements({
                     <div className="flex justify-between items-start">
                         <div>
                             <p className="text-sm font-medium text-muted-foreground">Gastos Registrados</p>
-                            <h3 className="text-2xl font-bold text-red-600">S/ {totalExpense.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</h3>
+                            <h3 className="text-2xl font-bold text-red-600">{formatCurrencyEs(totalExpense)}</h3>
                         </div>
                         <div className="p-2 bg-red-100 rounded-full">
                             <ArrowDownCircle className="w-6 h-6 text-red-600" />
@@ -348,7 +354,7 @@ export function CashMovements({
                         <div>
                             <p className="text-sm font-medium text-muted-foreground">Movimiento Neto</p>
                             <h3 className={`text-2xl font-bold ${net >= 0 ? 'text-blue-600' : 'text-orange-600'}`}>
-                                S/ {Math.abs(net).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                {formatCurrencyEs(Math.abs(net))}
                             </h3>
                             <p className="text-xs text-muted-foreground mt-1">
                                 {net < 0 ? 'Mayor salida de efectivo' : 'Mayor ingreso de fondos'}
@@ -396,22 +402,29 @@ export function CashMovements({
                         ) : (
                             filteredTransactions.map((t) => {
                                 const rowType = getPettyCashRowType(t);
-                                const tipoDoc =
-                                    t.receiptType || (rowType === "income" ? "Reposición" : "—");
+                                const isFundDelivery = isFundDeliveryIncome(t);
+                                const tipoDoc = isFundDelivery
+                                    ? '—'
+                                    : t.receiptType || (rowType === "income" ? "Reposición" : "—");
                                 const serie = t.docSeries?.trim() || '—';
                                 const nroDoc =
                                     t.voucherNumber?.trim() || t.receiptNumber?.trim() || '—';
-                                const nombre =
-                                    t.providerName?.trim() || t.requester || '—';
+                                const nombre = isFundDelivery
+                                    ? (t.description?.trim() || FUND_DELIVERY_CATEGORY)
+                                    : t.providerName?.trim() || t.requester || '—';
                                 return (
                                 <TableRow key={t.id}>
                                     <TableCell className="font-medium text-xs whitespace-nowrap">
                                         {format(new Date(t.date), "dd/MM/yyyy HH:mm", { locale: es })}
                                     </TableCell>
                                     <TableCell>
-                                        <Badge variant="outline" className="font-normal bg-muted">
-                                            {t.location || 'Principal'}
-                                        </Badge>
+                                        {isFundDelivery ? (
+                                            <span className="text-xs text-muted-foreground">—</span>
+                                        ) : (
+                                            <Badge variant="outline" className="font-normal bg-muted">
+                                                {t.location || 'Principal'}
+                                            </Badge>
+                                        )}
                                     </TableCell>
                                     <TableCell className="text-xs max-w-[120px] truncate" title={t.category}>
                                         {t.category}
@@ -436,7 +449,7 @@ export function CashMovements({
                                         </Badge>
                                     </TableCell>
                                     <TableCell className={`text-right font-bold whitespace-nowrap ${rowType === 'income' ? 'text-green-600' : 'text-red-600'}`}>
-                                        {rowType === 'income' ? '+' : '-'} S/ {(Number(t.amount) || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                                        {rowType === 'income' ? '+' : '-'} {formatCurrencyEs(Number(t.amount) || 0)}
                                     </TableCell>
                                 </TableRow>
                                 );

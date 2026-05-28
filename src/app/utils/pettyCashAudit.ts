@@ -5,6 +5,9 @@ import { getSuperAdminEmails } from '../config/superAdmins';
 /** Categoría reservada para ingresos de refuerzo de fondo (administración). */
 export const ADMIN_FUND_TOPUP_CATEGORY = 'Asignación extraordinaria de fondo';
 
+/** Categoría de dotación semanal confirmada por auditoría (ya incluida en fondo de apertura). */
+export const FUND_DELIVERY_CATEGORY = 'Dotación semanal de fondo fijo';
+
 /**
  * Normaliza tipo de movimiento (KV/JSON legado o variantes).
  */
@@ -17,8 +20,14 @@ export function getPettyCashRowType(t: PettyCashTransaction): 'income' | 'expens
         if (l === 'income' || l === 'ingreso') return 'income';
         if (l === 'expense' || l === 'egreso' || l === 'gasto') return 'expense';
     }
-    if (t.incomeSubtype === 'admin_topup' || t.incomeSubtype === 'replenishment') return 'income';
-    if (t.category === ADMIN_FUND_TOPUP_CATEGORY) return 'income';
+    if (
+        t.incomeSubtype === 'admin_topup' ||
+        t.incomeSubtype === 'replenishment' ||
+        t.incomeSubtype === 'fund_delivery'
+    ) {
+        return 'income';
+    }
+    if (t.category === ADMIN_FUND_TOPUP_CATEGORY || t.category === FUND_DELIVERY_CATEGORY) return 'income';
     return 'expense';
 }
 
@@ -54,14 +63,31 @@ export function canAdminFundTopUp(user: User): boolean {
     return ['admin', 'super_admin', 'manager'].includes(user.role);
 }
 
+/** Puede confirmar entrega de dotación semanal (auditoría / jefe de auditoría). */
+export function canConfirmPettyCashFundDelivery(
+    user: User | null | undefined,
+    roles?: Role[] | null
+): boolean {
+    return canApprovePettyCashMovements(user, roles);
+}
+
+export function isFundDeliveryIncome(t: PettyCashTransaction): boolean {
+    if (getPettyCashRowType(t) !== 'income') return false;
+    return t.incomeSubtype === 'fund_delivery' || t.category === FUND_DELIVERY_CATEGORY;
+}
+
 export function isAdminTopUpIncome(t: PettyCashTransaction): boolean {
     if (getPettyCashRowType(t) !== 'income') return false;
     return t.incomeSubtype === 'admin_topup' || t.category === ADMIN_FUND_TOPUP_CATEGORY;
 }
 
-/** Ingresos que no son refuerzo admin (reposiciones o legado sin subtype). */
+/** Ingresos que no son refuerzo admin ni dotación semanal (reposiciones o legado sin subtype). */
 export function isReplenishmentIncome(t: PettyCashTransaction): boolean {
-    return getPettyCashRowType(t) === 'income' && !isAdminTopUpIncome(t);
+    return (
+        getPettyCashRowType(t) === 'income' &&
+        !isAdminTopUpIncome(t) &&
+        !isFundDeliveryIncome(t)
+    );
 }
 
 /** Todos los movimientos que cuentan (no anulados ni rechazados) deben estar aprobados para cierre definitivo. */

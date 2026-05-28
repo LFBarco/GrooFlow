@@ -82,8 +82,8 @@ export function chartSelectOptionsWithOrphan(
   return [{ value: code, label }, ...base];
 }
 
-/** Clases de gasto habituales en PCGE (6): solo cuentas cuyo código empieza por 63, 64 o 65. */
-const DEFAULT_EXPENSE_CLASS_PREFIXES = ['63', '64', '65'] as const;
+/** Clases de gasto habituales en PCGE (6): cuentas cuyo código empieza por 62, 63, 64 o 65. */
+const DEFAULT_EXPENSE_CLASS_PREFIXES = ['62', '63', '64', '65'] as const;
 
 export function chartAccountStartsWithExpenseClasses(
   code: string | undefined | null,
@@ -134,7 +134,7 @@ export function chartSelectOptionsWithOrphanExpenseClasses(
   const warn = !entry
     ? ' (no está en el plan importado)'
     : !inTargetClass
-      ? ' (clase 63/64/65 requerida para proveedores)'
+      ? ' (clase 62/63/64/65 requerida para proveedores)'
       : want != null && lvl !== want
         ? ` (nivel ${lvl ?? '—'}; enlaces usan NIVEL ${want})`
         : '';

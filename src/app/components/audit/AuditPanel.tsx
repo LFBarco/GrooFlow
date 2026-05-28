@@ -26,6 +26,7 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { Input } from '../ui/input';
 import { Progress } from '../ui/progress';
+import { formatCurrencyEs } from '../../utils/numberFormat';
 
 interface AuditPanelProps {
   transactions: Transaction[];
@@ -119,7 +120,7 @@ export function AuditPanel({ transactions, invoices, onDeleteTransaction, onDele
       toast.success(`Se han eliminado ${remove.length} duplicados.`);
   };
 
-  const formatMoney = (amount: number) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount);
+  const formatMoney = (amount: number) => formatCurrencyEs(amount, 2);
 
   // Health Score Calculation
   const healthScore = Math.max(0, 100 - (duplicateTransactions.length * 5) - (duplicateInvoices.length * 10) - (suspiciousTransactions.length * 2));

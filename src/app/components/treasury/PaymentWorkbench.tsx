@@ -14,6 +14,7 @@ import {
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { formatCurrencyEs, formatPercentEs } from '../../utils/numberFormat';
 
 interface PaymentWorkbenchProps {
   invoices: Invoice[];
@@ -91,9 +92,8 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
             <div className="p-6 flex flex-col justify-center">
               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Saldo Real (Banco)</span>
               <div className="flex items-baseline gap-1">
-                <span className="text-lg text-muted-foreground font-medium">S/</span>
                 <span className="text-3xl font-bold text-foreground">
-                    {bankBalance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    {formatCurrencyEs(bankBalance)}
                 </span>
               </div>
             </div>
@@ -102,9 +102,8 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
             <div className="p-6 flex flex-col justify-center bg-primary/5">
               <span className="text-xs font-bold text-primary uppercase tracking-wider mb-2">Seleccionado</span>
               <div className="flex items-baseline gap-1 text-primary">
-                <span className="text-lg opacity-70 font-medium">S/</span>
                 <span className="text-3xl font-bold">
-                    {totalSelected.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    {formatCurrencyEs(totalSelected)}
                 </span>
               </div>
             </div>
@@ -113,13 +112,10 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
             <div className="p-6 flex flex-col justify-center">
               <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">Saldo Proyectado</span>
               <div className={clsx(
-                "flex items-baseline gap-1",
+                "flex items-baseline gap-1 text-3xl font-bold",
                 projectedBalance < 0 ? "text-red-500" : "text-green-500"
               )}>
-                <span className="text-lg opacity-70 font-medium">S/</span>
-                <span className="text-3xl font-bold">
-                    {projectedBalance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
-                </span>
+                    {formatCurrencyEs(projectedBalance)}
               </div>
             </div>
           </div>
@@ -175,7 +171,7 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
                 <span className="text-[10px] text-muted-foreground/80">Cobertura de pagos seleccionados</span>
              </div>
              <span className="text-xs font-medium text-muted-foreground">
-                {liquidityPercent.toFixed(1)}% Comprometido
+                {formatPercentEs(liquidityPercent, 1)} Comprometido
              </span>
           </div>
           
@@ -307,7 +303,7 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
                         </span>
                       </td>
                       <td className="px-4 py-4 text-right font-mono font-bold text-foreground">
-                        S/ {inv.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        {formatCurrencyEs(inv.amount)}
                       </td>
                       <td className="px-4 py-4 text-muted-foreground text-sm">
                          {format(inv.tentativePaymentDate, 'dd/MM/yyyy')}

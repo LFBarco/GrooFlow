@@ -15,7 +15,7 @@ interface RoleConfigDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     roles: Role[];
-    onSaveRoles: (roles: Role[]) => void;
+    onSaveRoles: (roles: Role[]) => Promise<boolean> | boolean | void;
     userCounts: Record<string, number>;
 }
 
@@ -93,8 +93,9 @@ export function RoleConfigDialog({ open, onOpenChange, roles: initialRoles, onSa
         });
     };
 
-    const handleSave = () => {
-        onSaveRoles(roles);
+    const handleSave = async () => {
+        const ok = await onSaveRoles(roles);
+        if (ok === false) return;
         setHasChanges(false);
         toast.success("Configuración de roles guardada");
         onOpenChange(false);

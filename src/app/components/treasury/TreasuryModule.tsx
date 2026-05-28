@@ -18,6 +18,7 @@ import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { formatCurrencyEs } from '../../utils/numberFormat';
 
 const INITIAL_TREASURY_INVOICES: Invoice[] = [
   {
@@ -221,7 +222,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
       }
     });
 
-    toast.success(`${allApproved.length} pago(s) aprobado(s) — S/ ${totalPaid.toLocaleString('es-PE', { minimumFractionDigits: 2 })} debitados`, {
+    toast.success(`${allApproved.length} pago(s) aprobado(s) — ${formatCurrencyEs(totalPaid)} debitados`, {
       description: feeIds.length > 0 ? `Incluye ${feeIds.length} recibo(s) de honorarios` : undefined
     });
   };
@@ -258,7 +259,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
         <div className="flex items-center gap-3 sm:gap-6">
            <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full border border-emerald-500/20">
              <Landmark className="w-4 h-4" />
-             <span className="text-xs sm:text-sm font-semibold">Caja Global: S/ {bankBalance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</span>
+             <span className="text-xs sm:text-sm font-semibold">Caja Global: {formatCurrencyEs(bankBalance)}</span>
            </div>
            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground border border-border">
              JD
@@ -405,7 +406,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
                               <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border">{inv.category}</span>
                             </td>
                             <td className="px-4 py-3 text-right font-mono font-bold text-emerald-500">
-                              S/ {inv.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                              {formatCurrencyEs(inv.amount)}
                             </td>
                             <td className="px-4 py-3 text-xs text-muted-foreground">{inv.branchId}</td>
                             <td className="px-4 py-3">

@@ -21,7 +21,7 @@ import {
     XCircle,
     Banknote,
 } from 'lucide-react';
-import { format, startOfWeek, subWeeks } from 'date-fns';
+import { format, startOfWeek } from 'date-fns';
 import { receiptTypeUsesIgv } from '../../utils/pettyCashReceiptType';
 import {
     getDocIdentityDigitLimit,
@@ -30,11 +30,19 @@ import {
 } from '../../utils/pettyCashDocIdentity';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
-import { PettyCashTransaction, PettyCashSettings, User, PettyCashWeekClosure, PettyCashWeekPreClosure } from '../../types';
+import {
+    PettyCashTransaction,
+    PettyCashSettings,
+    User,
+    PettyCashWeekClosure,
+    PettyCashWeekPreClosure,
+    PettyCashFundDelivery,
+} from '../../types';
 import type { Role } from '../users/types';
 import { mergePettyCashRenditionPrint } from '../../data/initialData';
 import { weekRangeFromCalendarWeek, weekRangeFromTransactions } from '../../utils/pettyCashWeekRange';
-import { getOpeningFundForWeek, isWeekClosed } from '../../utils/pettyCashWeekOpening';
+import { getWeekOpeningBreakdown, isWeekClosed, findFundDeliveryForWeek } from '../../utils/pettyCashWeekOpening';
+import { getUserOpeningCarryState } from '../../utils/pettyCashOpeningCarry';
 import { getPettyCashWeekBalance } from '../../utils/pettyCashBalance';
 import { findPettyCashDuplicate, canModifyPettyCashExpense } from '../../utils/pettyCashDocDuplicate';
 import { isWeekPreClosed } from '../../utils/pettyCashPreClose';
@@ -42,23 +50,29 @@ import {
     canApprovePettyCashMovements,
     allPettyCashWeekMovementsApproved,
     canAdminFundTopUp,
+    canConfirmPettyCashFundDelivery,
     ADMIN_FUND_TOPUP_CATEGORY,
+    FUND_DELIVERY_CATEGORY,
     isAdminTopUpIncome,
+    isFundDeliveryIncome,
     isReplenishmentIncome,
 } from '../../utils/pettyCashAudit';
-import { getSuperAdminEmails } from '../../config/superAdmins';
+import { userHasGlobalSedeAccess } from '../../utils/roleAccess';
+import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
 import {
     canSelectMultiplePettyCashCustodians,
     filterPettyCashCustodianUsersForViewer,
 } from '../../utils/pettyCashCustodianVisibility';
+import { effectivePettyCashFundLimit, userHasPettyCashFund } from '../../utils/pettyCashFund';
+import { getPettyCashWeekKey, parsePettyCashWeekKey, weekKeyMatches } from '../../utils/pettyCashWeekKey';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Switch } from '../ui/switch';
 import { Checkbox } from '../ui/checkbox';
 
-// --- Helper to get week number safely ---
-const getWeekStr = (date: Date) => format(date, 'w');
+// --- Helper to get ISO-like year-week key for petty cash ---
+const getWeekStr = (date: Date) => getPettyCashWeekKey(date);
 
 const LEGACY_CATEGORY_STYLES: Record<string, { label: string; color: string }> = {
     Movilidad: { label: 'Movilidad / Taxi', color: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -113,6 +127,15 @@ interface PettyCashManagerProps {
     onRequestProviderRegistration?: () => void;
     onClosePettyCashWeek?: (closure: PettyCashWeekClosure) => void;
     onPreClosePettyCashWeek?: (pre: PettyCashWeekPreClosure) => void;
+    /** Auditoría confirma entrega de dotación semanal (fondo fijo). */
+    onConfirmFundDelivery?: (delivery: PettyCashFundDelivery) => void;
+    /** Marca arrastre de apertura consumido en el usuario (apertura de periodo). */
+    onConsumeOpeningCarry?: (custodianId: string) => void;
+    /** Super admin revoca dotación semanal confirmada. */
+    onRevokeFundDelivery?: (custodianId: string, weekNumber: string) => void;
+    /** Semana contable activa (controlada desde el módulo padre para alinear registro de gastos). */
+    selectedWeek?: string;
+    onSelectedWeekChange?: (week: string) => void;
 }
 
 function pettyCashStatusLabel(status: PettyCashTransaction['status']): string {
@@ -154,8 +177,18 @@ export function PettyCashManager({
     onRequestProviderRegistration,
     onClosePettyCashWeek,
     onPreClosePettyCashWeek,
+    onConfirmFundDelivery,
+    onConsumeOpeningCarry,
+    onRevokeFundDelivery,
+    selectedWeek: selectedWeekProp,
+    onSelectedWeekChange,
 }: PettyCashManagerProps) {
-    const [selectedWeek, setSelectedWeek] = useState<string>(getWeekStr(new Date()));
+    const [selectedWeekInternal, setSelectedWeekInternal] = useState<string>(getWeekStr(new Date()));
+    const selectedWeek = selectedWeekProp ?? selectedWeekInternal;
+    const setSelectedWeek = (week: string) => {
+        if (onSelectedWeekChange) onSelectedWeekChange(week);
+        else setSelectedWeekInternal(week);
+    };
     const [searchTerm, setSearchTerm] = useState('');
 
     const [editOpen, setEditOpen] = useState(false);
@@ -180,6 +213,13 @@ export function PettyCashManager({
     const [topupAmount, setTopupAmount] = useState('');
     const [topupNote, setTopupNote] = useState('');
     const [topupSede, setTopupSede] = useState('');
+
+    const [deliveryOpen, setDeliveryOpen] = useState(false);
+    const [deliveryAmount, setDeliveryAmount] = useState('');
+    const [deliveryCarryAmount, setDeliveryCarryAmount] = useState('');
+    const [deliveryReason, setDeliveryReason] = useState('');
+
+    const fundDeliveries = settings.fundDeliveries ?? [];
 
     const categoryStyles = useMemo(
         () => buildCategoryStyleMap(categoryCatalog),
@@ -212,10 +252,7 @@ export function PettyCashManager({
     }, [editOpen, editCatalogMatch]);
 
     const viewerSeesAllSedes = useMemo(
-        () =>
-            currentUser.role === 'super_admin' ||
-            currentUser.allSedes === true ||
-            !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase())),
+        () => userHasGlobalSedeAccess(currentUser),
         [currentUser]
     );
 
@@ -272,22 +309,31 @@ export function PettyCashManager({
     }, [sedeOptions, topupSede]);
 
     const selectedCustodian = users.find(u => u.id === selectedCustodianId);
+    const isSuperAdminOnly = currentUser.role === 'super_admin';
+    const openingCarryState = useMemo(
+        () => getUserOpeningCarryState(selectedCustodian),
+        [selectedCustodian]
+    );
     /** Límite configurado (referencia); el fondo de apertura de la semana puede ser el arrastre del cierre anterior. */
-    const currentLimit = selectedCustodian?.pettyCashLimit || settings.totalFundLimit;
+    const currentLimit = effectivePettyCashFundLimit(selectedCustodian, settings.totalFundLimit);
 
     // Filter transactions by custodian (y por sedes asignadas si no es vista multi-responsable)
     const custodianTransactions = useMemo(() => {
         if (!selectedCustodianId) return transactions;
         let txs = transactions.filter((t) => t.custodianId === selectedCustodianId);
         if (!canPickMultipleCustodians && sedeOptions.length > 0) {
-            txs = txs.filter((t) => sedeOptions.includes((t.location || 'Principal').trim()));
+            txs = txs.filter(
+                (t) =>
+                    isFundDeliveryIncome(t) ||
+                    sedeOptions.includes((t.location || 'Principal').trim())
+            );
         }
         return txs;
     }, [transactions, selectedCustodianId, canPickMultipleCustodians, sedeOptions]);
 
     // Weekly Calculations
     const currentWeekExpenses = useMemo(() => {
-        return custodianTransactions.filter(e => e.weekNumber.toString() === selectedWeek.toString());
+        return custodianTransactions.filter((e) => weekKeyMatches(e.weekNumber, selectedWeek));
     }, [custodianTransactions, selectedWeek]);
 
     const breakdownCategoryKeys = useMemo(() => {
@@ -325,18 +371,46 @@ export function PettyCashManager({
         [currentWeekExpenses]
     );
 
-    const openingFundForWeek = useMemo(
+    const weekOpening = useMemo(
         () =>
-            getOpeningFundForWeek(
+            getWeekOpeningBreakdown(
                 selectedCustodianId,
                 String(selectedWeek),
                 settings.weekClosures,
-                currentLimit
+                fundDeliveries,
+                currentLimit,
+                openingCarryState
             ),
-        [selectedCustodianId, selectedWeek, settings.weekClosures, currentLimit]
+        [selectedCustodianId, selectedWeek, settings.weekClosures, fundDeliveries, currentLimit, openingCarryState]
     );
 
-    const currentBalance = openingFundForWeek - weeklyExpenseTotal + weeklyIncomeTotal;
+    const openingFundForWeek = weekOpening.openingTotal;
+    const existingFundDelivery = useMemo(
+        () => findFundDeliveryForWeek(selectedCustodianId, String(selectedWeek), fundDeliveries),
+        [selectedCustodianId, selectedWeek, fundDeliveries]
+    );
+
+    const currentBalance = useMemo(
+        () =>
+            getPettyCashWeekBalance(
+                transactions,
+                selectedCustodianId,
+                String(selectedWeek),
+                settings.weekClosures,
+                currentLimit,
+                fundDeliveries,
+                openingCarryState
+            ),
+        [
+            transactions,
+            selectedCustodianId,
+            selectedWeek,
+            settings.weekClosures,
+            currentLimit,
+            fundDeliveries,
+            openingCarryState,
+        ]
+    );
 
     const weekAlreadyClosed = useMemo(
         () => isWeekClosed(selectedCustodianId, String(selectedWeek), settings.weekClosures),
@@ -369,7 +443,7 @@ export function PettyCashManager({
         !weekAlreadyClosed &&
         !weekPreClosed &&
         selectedCustodianId === currentUser.id &&
-        (currentUser.pettyCashLimit ?? 0) > 0;
+        userHasPettyCashFund(currentUser);
 
     const canAttemptCloseWeek =
         !!onClosePettyCashWeek &&
@@ -384,6 +458,54 @@ export function PettyCashManager({
         if (fromTx) return fromTx;
         return weekRangeFromCalendarWeek(String(selectedWeek));
     }, [custodianTransactions, selectedWeek]);
+    const selectedCustodianSedeLabel = useMemo(() => {
+        if (!selectedCustodian) return 'Principal';
+        if (selectedCustodian.allSedes) return 'Todas las sedes';
+        if (selectedCustodian.sedes?.length) return selectedCustodian.sedes.join(', ');
+        if (selectedCustodian.location?.trim()) return selectedCustodian.location.trim();
+        return 'Principal';
+    }, [selectedCustodian]);
+    const availableWeeks = useMemo(() => {
+        const set = new Set<string>();
+        /** Permite trabajar histórico desde semana 1 hasta la semana actual del año en curso. */
+        const now = new Date();
+        const currentWeekKey = getWeekStr(now);
+        const parsedCurrent = parsePettyCashWeekKey(currentWeekKey);
+        const currentWeek = Math.max(1, parsedCurrent.week ?? 1);
+        const year = parsedCurrent.year ?? now.getFullYear();
+        for (let w = 1; w <= currentWeek; w++) {
+            set.add(`${year}-W${String(w).padStart(2, '0')}`);
+        }
+        custodianTransactions.forEach((t) => {
+            const wk = String(t.weekNumber || '').trim();
+            if (wk) set.add(wk);
+        });
+        (settings.weekClosures || []).forEach((c) => {
+            if (c.custodianId !== selectedCustodianId) return;
+            const wk = String(c.weekNumber || '').trim();
+            if (wk) set.add(wk);
+        });
+        (settings.weekPreClosures || []).forEach((c) => {
+            if (c.custodianId !== selectedCustodianId) return;
+            const wk = String(c.weekNumber || '').trim();
+            if (wk) set.add(wk);
+        });
+        return Array.from(set).sort((a, b) => {
+            const pa = parsePettyCashWeekKey(a);
+            const pb = parsePettyCashWeekKey(b);
+            if (pa.year != null && pb.year != null && pa.year !== pb.year) return pb.year - pa.year;
+            const wa = pa.week ?? 0;
+            const wb = pb.week ?? 0;
+            return wb - wa;
+        });
+    }, [custodianTransactions, settings.weekClosures, settings.weekPreClosures, selectedCustodianId]);
+
+    useEffect(() => {
+        if (!availableWeeks.length) return;
+        if (!availableWeeks.includes(String(selectedWeek))) {
+            setSelectedWeek(availableWeeks[0]!);
+        }
+    }, [availableWeeks, selectedWeek]);
 
     const editUsesIgv = receiptTypeUsesIgv(editClassification);
     const numBiEmptyE = editAmountBI.trim() === '';
@@ -480,6 +602,8 @@ export function PettyCashManager({
                 ? e.location
                 : sedeOptions[0] || e.location || 'Principal';
         setEditLocation(loc);
+        const nextCat =
+            categoryCatalog.includes(e.category) ? e.category : categoryCatalog[0] || e.category || '';
         setEditOpen(true);
     };
 
@@ -563,10 +687,7 @@ export function PettyCashManager({
         const weekStr = row ? String(row.weekNumber) : String(selectedWeek);
         if (cid) {
             const cUser = users.find((u) => u.id === cid);
-            const fundLimit =
-                cUser?.pettyCashLimit && cUser.pettyCashLimit > 0
-                    ? cUser.pettyCashLimit
-                    : settings.totalFundLimit;
+            const fundLimit = effectivePettyCashFundLimit(cUser, settings.totalFundLimit);
             const hypothetical = transactions.map((x) =>
                 x.id === editingId
                     ? {
@@ -585,11 +706,13 @@ export function PettyCashManager({
                 cid,
                 weekStr,
                 settings.weekClosures,
-                fundLimit
+                fundLimit,
+                fundDeliveries,
+                getUserOpeningCarryState(cUser)
             );
             if (balAfter < -0.009) {
                 toast.error('El importe dejaría el saldo de la semana en negativo.', {
-                    description: `Saldo resultante: S/ ${balAfter.toFixed(2)}. Reduzca el monto o registre reposición.`,
+                    description: `Saldo resultante: ${formatCurrencyEs(balAfter)}. Reduzca el monto o registre reposición.`,
                 });
                 return;
             }
@@ -597,7 +720,7 @@ export function PettyCashManager({
 
         if (settings.maxTransactionAmount > 0 && totalVal > settings.maxTransactionAmount + 0.009) {
             toast.error('El monto supera el tope por comprobante configurado.', {
-                description: `Tope: S/ ${settings.maxTransactionAmount.toFixed(2)}.`,
+                description: `Tope: ${formatCurrencyEs(settings.maxTransactionAmount)}.`,
             });
             return;
         }
@@ -667,6 +790,29 @@ export function PettyCashManager({
             transactions.map((t) => (t.id === e.id ? { ...t, status: 'voided' as const } : t))
         );
         toast.success('Movimiento anulado.');
+    };
+
+    const revokeFundDelivery = (e: PettyCashTransaction) => {
+        if (!isSuperAdminOnly) {
+            toast.error('Solo el super administrador puede revocar dotaciones.');
+            return;
+        }
+        if (weekAlreadyClosed) {
+            toast.error('La semana está cerrada; no se puede revocar la dotación.');
+            return;
+        }
+        if (!isFundDeliveryIncome(e) || !e.custodianId || !e.weekNumber) return;
+        if (
+            !window.confirm(
+                '¿Revocar esta dotación semanal?\n\n' +
+                    'Se eliminará la confirmación de entrega. La semana volverá a quedar pendiente de dotación por auditoría.'
+            )
+        ) {
+            return;
+        }
+        onUpdateTransactions(transactions.filter((t) => t.id !== e.id));
+        onRevokeFundDelivery?.(e.custodianId, String(e.weekNumber));
+        toast.success('Dotación semanal revocada.');
     };
 
     const approvePettyMovement = (row: PettyCashTransaction) => {
@@ -780,11 +926,122 @@ export function PettyCashManager({
         };
         onUpdateTransactions([row, ...transactions]);
         toast.success('Refuerzo de fondo registrado', {
-            description: `S/ ${amt.toFixed(2)} sumado al saldo de la semana ${selectedWeek}.`,
+            description: `${formatCurrencyEs(amt)} sumado al saldo de la semana ${selectedWeek}.`,
         });
         setTopupOpen(false);
         setTopupAmount('');
         setTopupNote('');
+    };
+
+    const openFundDeliveryDialog = () => {
+        if (!canConfirmPettyCashFundDelivery(currentUser, roles)) {
+            toast.error('Sin permiso para confirmar entrega de dotación.');
+            return;
+        }
+        if (!onConfirmFundDelivery || !selectedCustodianId) return;
+        if (weekAlreadyClosed) {
+            toast.error('Esta semana ya está cerrada.');
+            return;
+        }
+        if (existingFundDelivery) {
+            toast.info('La dotación de esta semana ya fue confirmada.');
+            return;
+        }
+        if (!weekOpening.requiresFundDelivery) {
+            toast.error('Esta semana no requiere confirmación de dotación.');
+            return;
+        }
+        const suggestedCarry = weekOpening.isPeriodOpeningWeek
+            ? openingCarryState.availableSuggested
+            : weekOpening.carryFromPrevious;
+        setDeliveryCarryAmount(
+            suggestedCarry > 0 ? String(Math.round(suggestedCarry * 100) / 100) : ''
+        );
+        setDeliveryAmount(String(currentLimit));
+        setDeliveryReason('');
+        setDeliveryOpen(true);
+    };
+
+    const handleSaveFundDelivery = () => {
+        if (!onConfirmFundDelivery || !selectedCustodianId) return;
+        if (!canConfirmPettyCashFundDelivery(currentUser, roles)) {
+            toast.error('Sin permiso para confirmar entrega de dotación.');
+            return;
+        }
+        if (existingFundDelivery) {
+            toast.error('La dotación ya fue registrada para esta semana.');
+            return;
+        }
+        const amt = parseFloat(deliveryAmount.replace(',', '.'));
+        if (!Number.isFinite(amt) || amt <= 0) {
+            toast.error('Ingrese un monto de dotación válido mayor a cero.');
+            return;
+        }
+        const carryRaw = deliveryCarryAmount.trim();
+        const carryAmt = carryRaw === '' ? 0 : parseFloat(carryRaw.replace(',', '.'));
+        if (carryRaw !== '' && (!Number.isFinite(carryAmt) || carryAmt < 0)) {
+            toast.error('El arrastre de apertura debe ser un monto válido ≥ 0.');
+            return;
+        }
+        const configured = currentLimit;
+        const suggestedCarry = weekOpening.isPeriodOpeningWeek
+            ? openingCarryState.availableSuggested
+            : 0;
+        const dotationDiffers = Math.abs(amt - configured) > 0.009;
+        const carryDiffers =
+            weekOpening.isPeriodOpeningWeek && Math.abs(carryAmt - suggestedCarry) > 0.009;
+        if ((dotationDiffers || carryDiffers) && !deliveryReason.trim()) {
+            toast.error('Indique el motivo cuando el monto difiere del sugerido en config.');
+            return;
+        }
+        const delivery: PettyCashFundDelivery = {
+            id: `pfd-${Date.now()}`,
+            custodianId: selectedCustodianId,
+            weekNumber: String(selectedWeek),
+            configuredAmount: configured,
+            deliveredAmount: Math.round(amt * 100) / 100,
+            deliveredAt: new Date().toISOString(),
+            deliveredByUserId: currentUser.id,
+            deliveredByName: currentUser.name,
+            reason: dotationDiffers || carryDiffers ? deliveryReason.trim() : undefined,
+            ...(weekOpening.isPeriodOpeningWeek
+                ? {
+                      openingCarryAmount: Math.round(carryAmt * 100) / 100,
+                      isPeriodOpening: true,
+                  }
+                : {}),
+        };
+        const incomeRow: PettyCashTransaction = {
+            id: `pc-fd-${Date.now()}`,
+            date: new Date(),
+            amount: delivery.deliveredAmount,
+            type: 'income',
+            incomeSubtype: 'fund_delivery',
+            description:
+                delivery.reason?.trim() ||
+                `Dotación semanal de fondo fijo — ${formatCurrencyEs(delivery.deliveredAmount)} (sem. ${selectedWeek})`,
+            category: FUND_DELIVERY_CATEGORY,
+            requester: currentUser.name,
+            custodianId: selectedCustodianId,
+            status: 'approved',
+            weekNumber: String(selectedWeek),
+        };
+        onConfirmFundDelivery(delivery);
+        if (delivery.isPeriodOpening) {
+            onConsumeOpeningCarry?.(selectedCustodianId);
+        }
+        onUpdateTransactions([incomeRow, ...transactions]);
+        const carryPart =
+            delivery.openingCarryAmount && delivery.openingCarryAmount > 0
+                ? ` · Arrastre ${formatCurrencyEs(delivery.openingCarryAmount)}`
+                : '';
+        toast.success('Dotación semanal confirmada', {
+            description: `${formatCurrencyEs(delivery.deliveredAmount)} entregados a ${selectedCustodian?.name ?? 'responsable'} · semana ${selectedWeek}${carryPart}.`,
+        });
+        setDeliveryOpen(false);
+        setDeliveryAmount('');
+        setDeliveryCarryAmount('');
+        setDeliveryReason('');
     };
 
     const handleCloseWeek = () => {
@@ -810,13 +1067,13 @@ export function PettyCashManager({
         const msg =
             `¿Cerrar DEFINITIVAMENTE la semana ${selectedWeek} para ${selectedCustodian?.name ?? 'el responsable'}?\n\n` +
             `Auditoría: todos los movimientos vigentes están aprobados.\n\n` +
-            `Fondo de apertura: S/ ${openingFundForWeek.toFixed(2)}\n` +
-            `Gastos: S/ ${weeklyExpenseTotal.toFixed(2)}\n` +
-            (weeklyIncomeTotal > 0 ? `Reposiciones: S/ ${weeklyIncomeTotal.toFixed(2)}\n` : '') +
-            `Saldo al cierre: S/ ${closing.toFixed(2)}\n` +
+            `Fondo de apertura: ${formatCurrencyEs(openingFundForWeek)}\n` +
+            `Gastos: ${formatCurrencyEs(weeklyExpenseTotal)}\n` +
+            (weeklyIncomeTotal > 0 ? `Reposiciones: ${formatCurrencyEs(weeklyIncomeTotal)}\n` : '') +
+            `Saldo al cierre: ${formatCurrencyEs(closing)}\n` +
             (carried > 0
-                ? `La semana siguiente abrirá con S/ ${carried.toFixed(2)} como fondo inicial (arrastre).`
-                : 'La semana siguiente abrirá con el límite configurado (sin arrastre de saldo).');
+                ? `Arrastre a la semana siguiente: ${formatCurrencyEs(carried)}.\nLa dotación fija (${formatCurrencyEs(currentLimit)}) la confirmará auditoría al entregar el efectivo.`
+                : `Sin arrastre de efectivo.\nLa semana siguiente quedará pendiente hasta que auditoría confirme la dotación de ${formatCurrencyEs(currentLimit)}.`);
 
         if (!window.confirm(msg)) return;
 
@@ -834,8 +1091,8 @@ export function PettyCashManager({
         toast.success(`Semana ${selectedWeek} cerrada`, {
             description:
                 carried > 0
-                    ? `Saldo S/ ${carried.toFixed(2)} queda como fondo inicial de la próxima semana.`
-                    : 'Próxima semana usará el límite configurado.',
+                    ? `Arrastre ${formatCurrencyEs(carried)}. Auditoría debe confirmar la dotación de la próxima semana.`
+                    : `Próxima semana pendiente de dotación (${formatCurrencyEs(currentLimit)}).`,
         });
     };
 
@@ -860,20 +1117,30 @@ export function PettyCashManager({
         const serieVal = (e: PettyCashTransaction) => (e.docSeries || '').trim() || '—';
         const nombreVal = (e: PettyCashTransaction) =>
             (e.providerName || e.requester || '').trim() || '—';
-        const tipoDoc = (e: PettyCashTransaction) =>
-            (e.receiptType || (e.type === 'income' ? 'Reposición' : '—')).trim();
+        const tipoDoc = (e: PettyCashTransaction) => {
+            if (isFundDeliveryIncome(e)) return '—';
+            return (e.receiptType || (e.type === 'income' ? 'Reposición' : '—')).trim();
+        };
+        const sedeVal = (e: PettyCashTransaction) =>
+            isFundDeliveryIncome(e) ? '—' : (e.location || 'Principal').trim();
+        const nombreForRow = (e: PettyCashTransaction) => {
+            if (isFundDeliveryIncome(e)) {
+                return (e.description || FUND_DELIVERY_CATEGORY).trim();
+            }
+            return nombreVal(e);
+        };
 
         const bodyRows = rows
             .map((e) => {
                 const d = format(new Date(e.date), 'dd/MM/yyyy HH:mm', { locale: es });
                 return `<tr>
           <td>${escHtml(d)}</td>
-          <td>${escHtml(e.location || 'Principal')}</td>
+          <td>${escHtml(sedeVal(e))}</td>
           <td>${escHtml(tipoDoc(e))}</td>
           <td>${escHtml(serieVal(e))}</td>
           <td>${escHtml(nroComprobante(e))}</td>
-          <td>${escHtml(nombreVal(e))}</td>
-          <td class="num">${Number(e.amount).toFixed(2)}</td>
+          <td>${escHtml(nombreForRow(e))}</td>
+          <td class="num">${formatNumberEs(Number(e.amount))}</td>
           <td>${escHtml(pettyCashStatusLabel(e.status))}</td>
         </tr>`;
             })
@@ -892,7 +1159,7 @@ export function PettyCashManager({
                           )
                           .reduce((acc, curr) => acc + curr.amount, 0);
                       if (catTotal === 0) return '';
-                      return `<div class="cat"><strong>${escHtml(catVal.label)}</strong> — S/ ${catTotal.toFixed(2)}</div>`;
+                      return `<div class="cat"><strong>${escHtml(catVal.label)}</strong> — ${formatCurrencyEs(catTotal)}</div>`;
                   })
                   .join('')
             : '';
@@ -939,21 +1206,21 @@ td.num{text-align:right;font-variant-numeric:tabular-nums;}
 </div>
 <div class="meta">
   <div><strong>${escHtml(businessName)}</strong></div>
-  <div>Responsable: ${escHtml(selectedCustodian?.name || '')} · Semana ${escHtml(String(selectedWeek))} · <strong>${escHtml(selectedWeekRangeLabel)}</strong></div>
+  <div>Responsable: ${escHtml(selectedCustodian?.name || '')} · Sede: ${escHtml(selectedCustodianSedeLabel)} · Semana ${escHtml(String(selectedWeek))} · <strong>${escHtml(selectedWeekRangeLabel)}</strong></div>
   <div>Impreso: ${escHtml(format(new Date(), "dd/MM/yyyy HH:mm", { locale: es }))}</div>
 </div>
 <table><thead><tr>
   <th>Fecha</th><th>Sede</th><th>Tipo Doc.</th><th>Serie</th><th>Nro documento</th><th>Nombre</th><th class="num">Monto</th><th>Estado auditoría</th>
 </tr></thead><tbody>${bodyRows || `<tr><td colspan="${colSpanEmpty}">Sin movimientos</td></tr>`}</tbody></table>
 <div class="totals">
-  <div><span>Fondo de apertura (semana)</span><strong>S/ ${openingFundForWeek.toFixed(2)}</strong></div>
-  <div><span>Total gastos</span><strong>S/ ${weeklyExpenseTotal.toFixed(2)}</strong></div>
+  <div><span>Fondo de apertura (semana)</span><strong>${formatCurrencyEs(openingFundForWeek)}</strong></div>
+  <div><span>Total gastos</span><strong>${formatCurrencyEs(weeklyExpenseTotal)}</strong></div>
   ${
       weeklyIncomeTotal > 0
-          ? `<div><span>Reposiciones / ingresos</span><strong>S/ ${weeklyIncomeTotal.toFixed(2)}</strong></div>`
+          ? `<div><span>Reposiciones / ingresos</span><strong>${formatCurrencyEs(weeklyIncomeTotal)}</strong></div>`
           : ''
   }
-  <div><span>Saldo calculado</span><strong>S/ ${currentBalance.toFixed(2)}</strong></div>
+  <div><span>Saldo calculado</span><strong>${formatCurrencyEs(currentBalance)}</strong></div>
 </div>
 ${catRows ? `<h3 style="margin-top:20px;font-size:13px;">Desglose por categoría</h3>${catRows}` : ''}
 ${signatures}
@@ -1031,47 +1298,104 @@ ${signatures}
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* Custodian Selector (Visible for Admins or if multiple custodians exist) */}
             {custodians.length > 0 && (
-                <div className="flex items-center justify-between bg-card p-4 rounded-lg border shadow-sm flex-wrap gap-3">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-primary/10 rounded-full">
-                            <UserCircle className="w-6 h-6 text-primary" />
+                <div
+                    className="relative overflow-hidden flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between p-4 rounded-xl border border-cyan-500/25 shadow-[0_4px_28px_rgba(34,211,238,0.1)] backdrop-blur-sm"
+                    style={{
+                        background:
+                            'linear-gradient(135deg, rgba(22,20,39,0.97) 0%, rgba(18,16,31,0.98) 50%, rgba(20,184,166,0.1) 100%)',
+                    }}
+                >
+                    <div className="flex items-center gap-3 shrink-0">
+                        <div className="p-2.5 rounded-full bg-cyan-500/15 border border-cyan-500/25 shadow-[0_0_20px_rgba(34,211,238,0.15)]">
+                            <UserCircle className="w-6 h-6 text-cyan-400" />
                         </div>
                         <div>
-                            <h3 className="font-semibold text-sm">Responsable de Caja Chica</h3>
-                            <p className="text-xs text-muted-foreground">
+                            <h3 className="font-semibold text-sm text-foreground">Responsable de Caja Chica</h3>
+                            <p className="text-xs text-cyan-200/70">
                                 {canPickMultipleCustodians
                                     ? 'Gestionando fondo de:'
                                     : 'Solo puede ver y operar su propio fondo en sus sedes asignadas.'}
                             </p>
                         </div>
                     </div>
-                    {canPickMultipleCustodians && custodians.length > 1 ? (
-                        <Select value={selectedCustodianId} onValueChange={setSelectedCustodianId}>
-                            <SelectTrigger className="w-[250px]">
-                                <SelectValue placeholder="Seleccionar Responsable" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {custodians.map((c) => (
-                                    <SelectItem key={c.id} value={c.id}>
-                                        {c.name}
-                                        {typeof c.pettyCashLimit === 'number' && c.pettyCashLimit > 0
-                                            ? ` (Fondo: S/ ${c.pettyCashLimit.toFixed(2)})`
-                                            : ''}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    ) : (
-                        <div className="text-sm font-medium rounded-md border bg-muted/40 px-3 py-2 min-w-[200px]">
-                            {selectedCustodian?.name ?? currentUser.name}
-                            {selectedCustodian?.pettyCashLimit ? (
-                                <span className="text-muted-foreground font-normal">
-                                    {' '}
-                                    · Límite S/ {selectedCustodian.pettyCashLimit}
-                                </span>
+
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 lg:justify-end lg:ml-auto">
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                            {weekAlreadyClosed ? (
+                                <Badge variant="secondary" className="text-xs shrink-0">
+                                    Semana cerrada
+                                </Badge>
+                            ) : weekPreClosed ? (
+                                <Badge
+                                    variant="outline"
+                                    className="text-xs shrink-0 border-amber-500/60 text-amber-700 dark:text-amber-400"
+                                >
+                                    Pre-cerrada
+                                </Badge>
                             ) : null}
+                            {!weekAlreadyClosed && hasPendingAudit ? (
+                                <Badge variant="outline" className="text-xs shrink-0">
+                                    Pend. auditoría
+                                </Badge>
+                            ) : null}
+                            {!weekAlreadyClosed &&
+                            allMovementsAuditedApproved &&
+                            currentWeekExpenses.some(
+                                (e) => e.status !== 'voided' && e.status !== 'rejected'
+                            ) ? (
+                                <Badge
+                                    variant="default"
+                                    className="text-xs shrink-0 bg-emerald-600 hover:bg-emerald-600 text-white"
+                                >
+                                    Listo para cierre
+                                </Badge>
+                            ) : null}
+                            <span className="text-xs whitespace-nowrap">
+                                <span className="font-semibold text-foreground/90">Periodo:</span>{' '}
+                                <span className="text-violet-300/95">{selectedWeekRangeLabel}</span>
+                            </span>
+                            <Select value={selectedWeek} onValueChange={setSelectedWeek}>
+                                <SelectTrigger className="w-[200px] h-9 border-cyan-500/30 bg-cyan-950/25 text-foreground">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {availableWeeks.map((wk) => (
+                                        <SelectItem key={wk} value={wk}>
+                                            Semana {wk}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         </div>
-                    )}
+
+                        {canPickMultipleCustodians && custodians.length > 1 ? (
+                            <Select value={selectedCustodianId} onValueChange={setSelectedCustodianId}>
+                                <SelectTrigger className="w-full sm:w-[280px] h-auto min-h-[40px] border-cyan-500/35 bg-cyan-950/30 font-medium shadow-inner">
+                                    <SelectValue placeholder="Seleccionar Responsable" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {custodians.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            {c.name}
+                                            {userHasPettyCashFund(c)
+                                                ? ` (Fondo: ${formatCurrencyEs(effectivePettyCashFundLimit(c, settings.totalFundLimit))})`
+                                                : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        ) : (
+                            <div className="text-sm font-semibold rounded-lg border border-cyan-500/35 bg-cyan-950/30 px-3 py-2 min-w-[200px] shadow-inner whitespace-nowrap">
+                                {selectedCustodian?.name ?? currentUser.name}
+                                {selectedCustodian && userHasPettyCashFund(selectedCustodian) ? (
+                                    <span className="text-violet-300/90 font-normal">
+                                        {' '}
+                                        — Límite {formatCurrencyEs(effectivePettyCashFundLimit(selectedCustodian, settings.totalFundLimit))}
+                                    </span>
+                                ) : null}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
             
@@ -1097,12 +1421,17 @@ ${signatures}
                         <CardDescription>
                             Saldo disponible ({selectedCustodian?.name?.split(/\s+/)?.[0] ?? '—'})
                             <span className="block text-[11px] text-muted-foreground/90 font-normal mt-0.5">
-                                Fondo apertura semana: S/ {openingFundForWeek.toFixed(2)} · Límite config.: S/{' '}
-                                {currentLimit.toFixed(2)}
+                                Arrastre: {formatCurrencyEs(weekOpening.carryFromPrevious)}
+                                {weekOpening.fundDeliveryAmount > 0
+                                    ? ` · Dotación: ${formatCurrencyEs(weekOpening.fundDeliveryAmount)}`
+                                    : weekOpening.deliveryPending
+                                      ? ` · Dotación pendiente (${formatCurrencyEs(currentLimit)} sugeridos)`
+                                      : ''}
+                                {' · '}Límite config.: {formatCurrencyEs(currentLimit)}
                             </span>
                         </CardDescription>
                         <CardTitle className="text-4xl font-bold text-primary">
-                            S/ {currentBalance.toFixed(2)}
+                            {formatCurrencyEs(currentBalance)}
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -1119,6 +1448,14 @@ ${signatures}
                         <p className="text-xs text-muted-foreground mt-2 text-right">
                             {weekAlreadyClosed ? (
                                 <span className="text-emerald-600 font-medium">Semana cerrada · saldo arrastrado según cierre</span>
+                            ) : weekOpening.deliveryPending ? (
+                                <span className="text-amber-600 font-medium">
+                                    Dotación pendiente: puede gastar solo hasta el arrastre ({formatCurrencyEs(weekOpening.carryFromPrevious)})
+                                </span>
+                            ) : weekOpening.requiresFundDelivery && existingFundDelivery ? (
+                                <span className="text-emerald-600 font-medium">
+                                    Dotación confirmada · fondo completo disponible
+                                </span>
                             ) : (
                                 <>Use «Cerrar semana» al rendir para arrastrar saldo positivo.</>
                             )}
@@ -1135,10 +1472,14 @@ ${signatures}
                             </span>
                         </CardDescription>
                         <CardTitle className="text-3xl font-bold text-foreground">
-                            S/ {openingFundForWeek.toFixed(2)}
+                            {formatCurrencyEs(openingFundForWeek)}
                         </CardTitle>
                         <p className="text-xs text-muted-foreground font-medium pt-1">
-                            Primer importe asignado (apertura de caja)
+                            {weekOpening.isFirstWeek
+                                ? 'Primer importe asignado (apertura de caja)'
+                                : weekOpening.deliveryPending
+                                  ? `Arrastre ${formatCurrencyEs(weekOpening.carryFromPrevious)} + dotación pendiente`
+                                  : `Arrastre ${formatCurrencyEs(weekOpening.carryFromPrevious)} + dotación ${formatCurrencyEs(weekOpening.fundDeliveryAmount)}`}
                         </p>
                     </CardHeader>
                     <CardContent>
@@ -1149,7 +1490,7 @@ ${signatures}
                                     Gastos acumulados
                                 </span>
                                 <span className="font-semibold text-foreground tabular-nums">
-                                    S/ {weeklyExpenseTotal.toFixed(2)}
+                                    {formatCurrencyEs(weeklyExpenseTotal)}
                                 </span>
                             </div>
                             {weeklyIncomeTotal > 0 ? (
@@ -1157,19 +1498,19 @@ ${signatures}
                                     <div className="flex items-center justify-between gap-2 text-emerald-600">
                                         <span>Total ingresos al fondo</span>
                                         <span className="font-semibold tabular-nums">
-                                            + S/ {weeklyIncomeTotal.toFixed(2)}
+                                            + {formatCurrencyEs(weeklyIncomeTotal)}
                                         </span>
                                     </div>
                                     {weeklyReplenishmentIncome > 0 ? (
                                         <div className="flex justify-between text-muted-foreground pl-2">
                                             <span>· Reposiciones</span>
-                                            <span className="tabular-nums">S/ {weeklyReplenishmentIncome.toFixed(2)}</span>
+                                            <span className="tabular-nums">{formatCurrencyEs(weeklyReplenishmentIncome)}</span>
                                         </div>
                                     ) : null}
                                     {weeklyAdminTopupIncome > 0 ? (
                                         <div className="flex justify-between text-amber-700 dark:text-amber-400 pl-2">
                                             <span>· Refuerzos admin.</span>
-                                            <span className="tabular-nums">S/ {weeklyAdminTopupIncome.toFixed(2)}</span>
+                                            <span className="tabular-nums">{formatCurrencyEs(weeklyAdminTopupIncome)}</span>
                                         </div>
                                     ) : null}
                                 </div>
@@ -1187,6 +1528,21 @@ ${signatures}
                 </Card>
 
                 <Card className="flex flex-col justify-center items-center text-center p-6 border-dashed border-2 gap-2">
+                    {canConfirmPettyCashFundDelivery(currentUser, roles) &&
+                    selectedCustodianId &&
+                    weekOpening.deliveryPending &&
+                    !weekAlreadyClosed ? (
+                        <Button
+                            size="lg"
+                            className="w-full"
+                            variant="default"
+                            onClick={openFundDeliveryDialog}
+                            title="Confirma entrega física del fondo fijo semanal"
+                        >
+                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                            Confirmar dotación semanal
+                        </Button>
+                    ) : null}
                     {canAdminFundTopUp(currentUser) && selectedCustodianId ? (
                         <Button
                             size="lg"
@@ -1271,41 +1627,6 @@ ${signatures}
                             <TabsTrigger value="details">Detalle de Movimientos</TabsTrigger>
                             <TabsTrigger value="summary">Rendición Semanal</TabsTrigger>
                         </TabsList>
-                        
-                        <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
-                            {weekAlreadyClosed ? (
-                                <Badge variant="secondary" className="text-xs shrink-0">
-                                    Semana cerrada
-                                </Badge>
-                            ) : weekPreClosed ? (
-                                <Badge variant="outline" className="text-xs shrink-0 border-amber-500/60 text-amber-700 dark:text-amber-400">
-                                    Pre-cerrada
-                                </Badge>
-                            ) : null}
-                            {!weekAlreadyClosed && hasPendingAudit ? (
-                                <Badge variant="outline" className="text-xs shrink-0">
-                                    Pend. auditoría
-                                </Badge>
-                            ) : null}
-                            {!weekAlreadyClosed && allMovementsAuditedApproved && currentWeekExpenses.some((e) => e.status !== 'voided' && e.status !== 'rejected') ? (
-                                <Badge variant="default" className="text-xs shrink-0 bg-emerald-600 hover:bg-emerald-600">
-                                    Listo para cierre
-                                </Badge>
-                            ) : null}
-                            <span className="text-xs text-muted-foreground text-right max-w-[280px] sm:max-w-none">
-                                <span className="font-medium text-foreground">Periodo:</span> {selectedWeekRangeLabel}
-                            </span>
-                            <Select value={selectedWeek} onValueChange={setSelectedWeek}>
-                                <SelectTrigger className="w-[200px]">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value={getWeekStr(new Date())}>Semana Actual ({getWeekStr(new Date())})</SelectItem>
-                                    <SelectItem value={getWeekStr(subWeeks(new Date(), 1))}>Semana Pasada ({getWeekStr(subWeeks(new Date(), 1))})</SelectItem>
-                                    <SelectItem value={getWeekStr(subWeeks(new Date(), 2))}>Hace 2 Semanas</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
 
                     <TabsContent value="details" className="space-y-4">
@@ -1313,7 +1634,7 @@ ${signatures}
                             <div className="relative flex-1">
                                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                                 <Input 
-                                    placeholder="Buscar por nombre, serie, nro. doc., descripción..." 
+                                    placeholder="Buscar por nombre, serie, nro. doc. o descripción…" 
                                     className="pl-9"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
@@ -1360,18 +1681,24 @@ ${signatures}
                                             <>
                                     {filtered
                                         .map((expense) => {
-                                            const tipoDoc =
-                                                expense.receiptType ||
-                                                (expense.type === 'income' ? 'Reposición' : '—');
+                                            const isFundDelivery = isFundDeliveryIncome(expense);
+                                            const tipoDoc = isFundDelivery
+                                                ? '—'
+                                                : expense.receiptType ||
+                                                  (expense.type === 'income' ? 'Reposición' : '—');
                                             const serie = expense.docSeries?.trim() || '—';
                                             const nroDoc =
                                                 expense.voucherNumber?.trim() ||
                                                 expense.receiptNumber?.trim() ||
                                                 '—';
-                                            const nombre =
-                                                expense.providerName?.trim() ||
-                                                expense.requester ||
-                                                '—';
+                                            const nombre = isFundDelivery
+                                                ? (
+                                                      expense.description?.trim() ||
+                                                      FUND_DELIVERY_CATEGORY
+                                                  )
+                                                : expense.providerName?.trim() ||
+                                                  expense.requester ||
+                                                  '—';
                                             const isIncome = expense.type === 'income';
                                             const isVoidedOrRejected =
                                                 expense.status === 'voided' || expense.status === 'rejected';
@@ -1380,6 +1707,12 @@ ${signatures}
                                                 !isVoidedOrRejected &&
                                                 canModifyPettyCashExpense(expense, currentUser) &&
                                                 !weekAlreadyClosed;
+                                            const canRevokeFundDelivery =
+                                                isFundDelivery &&
+                                                isSuperAdminOnly &&
+                                                !isVoidedOrRejected &&
+                                                !weekAlreadyClosed &&
+                                                Boolean(existingFundDelivery);
 
                                             return (
                                                 <TableRow
@@ -1396,9 +1729,13 @@ ${signatures}
                                                         })}
                                                     </TableCell>
                                                     <TableCell>
-                                                        <Badge variant="secondary" className="text-xs font-normal">
-                                                            {expense.location || 'Principal'}
-                                                        </Badge>
+                                                        {isFundDelivery ? (
+                                                            <span className="text-xs text-muted-foreground">—</span>
+                                                        ) : (
+                                                            <Badge variant="secondary" className="text-xs font-normal">
+                                                                {expense.location || 'Principal'}
+                                                            </Badge>
+                                                        )}
                                                     </TableCell>
                                                     <TableCell className="text-xs">{tipoDoc}</TableCell>
                                                     <TableCell className="text-xs font-mono">{serie}</TableCell>
@@ -1429,8 +1766,8 @@ ${signatures}
                                                         }`}
                                                     >
                                                         {isIncome
-                                                            ? `S/ ${expense.amount.toFixed(2)}`
-                                                            : `-S/ ${expense.amount.toFixed(2)}`}
+                                                            ? `${formatCurrencyEs(expense.amount)}`
+                                                            : `-${formatCurrencyEs(expense.amount)}`}
                                                     </TableCell>
                                                     <TableCell className="text-right p-1 align-middle">
                                                         {expense.status === 'voided' ||
@@ -1474,7 +1811,20 @@ ${signatures}
                                                         )}
                                                     </TableCell>
                                                     <TableCell className="text-right p-1">
-                                                        {isIncome ? (
+                                                        {canRevokeFundDelivery ? (
+                                                            <div className="flex justify-end gap-0.5">
+                                                                <Button
+                                                                    type="button"
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                                                    title="Revocar dotación semanal (super admin)"
+                                                                    onClick={() => revokeFundDelivery(expense)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        ) : isIncome ? (
                                                             <span className="text-muted-foreground text-xs pr-2">
                                                                 —
                                                             </span>
@@ -1523,14 +1873,14 @@ ${signatures}
                                         })}
                                     {currentWeekExpenses.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                                            <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                                                 No hay gastos registrados en esta semana para {selectedCustodian?.name}.
                                             </TableCell>
                                         </TableRow>
                                     )}
                                     {currentWeekExpenses.length > 0 && filtered.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                                            <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                                                 Ningún movimiento coincide con la búsqueda.
                                             </TableCell>
                                         </TableRow>
@@ -1555,23 +1905,23 @@ ${signatures}
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center py-2 border-b">
                                         <span className="text-muted-foreground">Fondo de apertura (semana)</span>
-                                        <span className="font-medium">S/ {openingFundForWeek.toFixed(2)}</span>
+                                        <span className="font-medium">{formatCurrencyEs(openingFundForWeek)}</span>
                                     </div>
                                     <div className="flex justify-between items-center py-2 border-b">
                                         <span className="text-muted-foreground">Total gastos</span>
-                                        <span className="font-bold text-red-500">- S/ {weeklyExpenseTotal.toFixed(2)}</span>
+                                        <span className="font-bold text-red-500">- {formatCurrencyEs(weeklyExpenseTotal)}</span>
                                     </div>
                                     {weeklyIncomeTotal > 0 ? (
                                         <div className="flex justify-between items-center py-2 border-b">
                                             <span className="text-muted-foreground">Reposiciones / ingresos</span>
                                             <span className="font-bold text-emerald-600">
-                                                + S/ {weeklyIncomeTotal.toFixed(2)}
+                                                + {formatCurrencyEs(weeklyIncomeTotal)}
                                             </span>
                                         </div>
                                     ) : null}
                                     <div className="flex justify-between items-center py-2 border-b bg-muted/20 px-2 rounded">
                                         <span className="font-medium">Saldo Final Calculado</span>
-                                        <span className="font-bold text-primary">S/ {currentBalance.toFixed(2)}</span>
+                                        <span className="font-bold text-primary">{formatCurrencyEs(currentBalance)}</span>
                                     </div>
                                 </div>
 
@@ -1594,7 +1944,7 @@ ${signatures}
                                             return (
                                                 <div key={catKey} className="border rounded p-3 text-center bg-card">
                                                     <div className="text-xs text-muted-foreground mb-1">{catVal.label}</div>
-                                                    <div className="font-bold text-lg">S/ {catTotal.toFixed(2)}</div>
+                                                    <div className="font-bold text-lg">{formatCurrencyEs(catTotal)}</div>
                                                 </div>
                                             );
                                         })}
@@ -1663,6 +2013,91 @@ ${signatures}
                             </Button>
                             <Button type="button" onClick={handleSaveAdminTopup}>
                                 Registrar refuerzo
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={deliveryOpen} onOpenChange={setDeliveryOpen}>
+                <DialogContent className="sm:max-w-[440px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                            Confirmar entrega de dotación semanal
+                        </DialogTitle>
+                        <DialogDescription>
+                            Registra la entrega física del fondo fijo a{' '}
+                            <strong>{selectedCustodian?.name ?? 'el responsable'}</strong> para la semana{' '}
+                            <strong>{selectedWeek}</strong>.
+                            {weekOpening.isPeriodOpeningWeek ? (
+                                <> Apertura de periodo: confirme arrastre y dotación por separado.</>
+                            ) : weekOpening.carryFromPrevious > 0 ? (
+                                <>
+                                    {' '}
+                                    Arrastre del cierre anterior:{' '}
+                                    <strong>{formatCurrencyEs(weekOpening.carryFromPrevious)}</strong>.
+                                </>
+                            ) : null}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-3 py-2">
+                        {weekOpening.isPeriodOpeningWeek ? (
+                            <div className="space-y-1">
+                                <Label className="text-xs">Arrastre de periodo anterior (S/)</Label>
+                                <Input
+                                    type="number"
+                                    min={0}
+                                    step="0.01"
+                                    value={deliveryCarryAmount}
+                                    onChange={(e) => setDeliveryCarryAmount(e.target.value)}
+                                    placeholder={
+                                        openingCarryState.availableSuggested > 0
+                                            ? String(openingCarryState.availableSuggested)
+                                            : '0.00'
+                                    }
+                                />
+                                <p className="text-[11px] text-muted-foreground">
+                                    Sugerido en config:{' '}
+                                    {formatCurrencyEs(openingCarryState.availableSuggested)} (no suma al fondo
+                                    fijo).
+                                </p>
+                            </div>
+                        ) : null}
+                        <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                            Dotación fondo fijo sugerida:{' '}
+                            <strong className="text-foreground">{formatCurrencyEs(currentLimit)}</strong>
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">Dotación entregada (S/)</Label>
+                            <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                value={deliveryAmount}
+                                onChange={(e) => setDeliveryAmount(e.target.value)}
+                                placeholder="0.00"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-xs">
+                                Motivo {Math.abs(parseFloat(deliveryAmount.replace(',', '.')) - currentLimit) > 0.009
+                                    ? '(obligatorio si difiere del configurado)'
+                                    : '(opcional)'}
+                            </Label>
+                            <Textarea
+                                value={deliveryReason}
+                                onChange={(e) => setDeliveryReason(e.target.value)}
+                                placeholder="Ej. Entrega parcial autorizada por tesorería…"
+                                rows={3}
+                            />
+                        </div>
+                        <div className="flex justify-end gap-2 pt-2">
+                            <Button type="button" variant="outline" onClick={() => setDeliveryOpen(false)}>
+                                Cancelar
+                            </Button>
+                            <Button type="button" onClick={handleSaveFundDelivery}>
+                                Confirmar entrega
                             </Button>
                         </div>
                     </div>
@@ -1879,7 +2314,7 @@ ${signatures}
                                         <Label className="text-xs">IGV ({editInvoiceIgv10 ? 10 : 18}%)</Label>
                                         <Input
                                             readOnly
-                                            value={badBiE ? '—' : editIgvPreview.toFixed(2)}
+                                            value={badBiE ? '—' : formatNumberEs(editIgvPreview)}
                                             className="bg-muted"
                                         />
                                     </div>
@@ -1889,7 +2324,7 @@ ${signatures}
                                             readOnly
                                             value={
                                                 Number.isFinite(editTotalPreview) && editTotalPreview > 0
-                                                    ? editTotalPreview.toFixed(2)
+                                                    ? formatNumberEs(editTotalPreview)
                                                     : ''
                                             }
                                             className="bg-muted font-semibold"
@@ -1937,7 +2372,9 @@ ${signatures}
                             <Button
                                 type="button"
                                 onClick={saveEditExpense}
-                                disabled={editDocIdentityComplete && !editCatalogMatch}
+                                disabled={
+                                    editDocIdentityComplete && !editCatalogMatch
+                                }
                                 title={
                                     editDocIdentityComplete && !editCatalogMatch
                                         ? 'El documento de identidad no está en el catálogo de proveedores'

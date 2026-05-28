@@ -15,6 +15,8 @@ import {
     Cell,
 } from "recharts";
 import { Transaction, SystemAlert } from "../../types";
+import type { FleetDataset } from "../../types/fleet";
+import { FleetDecisionAssistant } from "../fleet/FleetDecisionAssistant";
 import { format, subMonths, isSameMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { 
@@ -32,6 +34,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui/card";
 import { Button } from "../ui/button";
+import { formatAxisThousandsPEN, formatCurrencyEs, formatNumberEs } from "../../utils/numberFormat";
 
 // ─── GLOBAL NEON PALETTE ───────────────────────────────────────────────────
 // These are THE canonical hardcoded colors for all charts in the system.
@@ -65,9 +68,17 @@ interface OverviewProps {
   transactions?: Transaction[];
   alerts?: SystemAlert[];
   onOpenAlerts?: () => void;
+  fleetDataset?: FleetDataset;
+  onOpenFleet?: () => void;
 }
 
-export function Overview({ transactions = [], alerts = [], onOpenAlerts }: OverviewProps) {
+export function Overview({
+  transactions = [],
+  alerts = [],
+  onOpenAlerts,
+  fleetDataset,
+  onOpenFleet,
+}: OverviewProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [viewRange, setViewRange] = useState<'6m' | '12m'>('6m');
 
@@ -130,8 +141,8 @@ export function Overview({ transactions = [], alerts = [], onOpenAlerts }: Overv
         .slice(0, 5);
   }, [transactions]);
 
-  const formatMoney = (val: number) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN', maximumFractionDigits: 0 }).format(val);
-  const formatPercent = (val: number) => `${val > 0 ? '+' : ''}${val.toFixed(1)}%`;
+  const formatMoney = (val: number) => formatCurrencyEs(val, 0);
+  const formatPercent = (val: number) => `${val > 0 ? '+' : ''}${formatNumberEs(val, 1)}%`;
   const activeAlerts = useMemo(() => alerts.filter(a => !a.read).slice(0, 3), [alerts]);
   const unreadCount = alerts.filter(a => !a.read).length;
 
@@ -200,7 +211,10 @@ export function Overview({ transactions = [], alerts = [], onOpenAlerts }: Overv
 
   return (
     <div className="space-y-6">
-        
+      {fleetDataset && (
+        <FleetDecisionAssistant dataset={fleetDataset} onOpenFleet={onOpenFleet} />
+      )}
+
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <KpiCard
@@ -226,7 +240,7 @@ export function Overview({ transactions = [], alerts = [], onOpenAlerts }: Overv
         <KpiCard
           label="Utilidad Neta"
           value={formatMoney(currentMonthStats.net)}
-          badge={`${currentMonthStats.margin.toFixed(1)}% Margen`}
+          badge={`${formatNumberEs(currentMonthStats.margin, 1)}% Margen`}
           badgePositive={currentMonthStats.net >= 0}
           icon={Wallet}
           color={NEON.PROFIT}
@@ -320,7 +334,7 @@ export function Overview({ transactions = [], alerts = [], onOpenAlerts }: Overv
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fill: AXIS_TICK_COLOR, fontFamily: "'Inter', sans-serif" }}
-                  tickFormatter={(v) => `S/${(v/1000).toFixed(0)}k`}
+                  tickFormatter={(v) => formatAxisThousandsPEN(v)}
                   dx={-5}
                   width={52}
                 />

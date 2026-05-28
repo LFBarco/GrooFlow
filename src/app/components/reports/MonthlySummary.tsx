@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Lock, Unlock, TrendingUp, TrendingDown, DollarSign, CalendarDays } from 'lucide-react';
+import { formatCurrencyEs } from '../../utils/numberFormat';
 
 interface MonthlySummaryProps {
   transactions: Transaction[];
@@ -65,14 +66,7 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
     return { incomeGroups, expenseGroups };
   }, [monthTransactions]);
 
-  const formatMoney = (amount: number) => {
-    return new Intl.NumberFormat('es-PE', {
-      style: 'currency',
-      currency: 'PEN',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  const formatMoney = (amount: number) => formatCurrencyEs(amount, 0);
 
   const renderGroup = (groups: Map<string, { total: number, concepts: Map<string, number> }>, type: 'income' | 'expense') => {
     const sortedCategories = Array.from(groups.entries()).sort((a, b) => b[1].total - a[1].total);

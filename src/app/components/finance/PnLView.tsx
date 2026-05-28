@@ -24,6 +24,11 @@ import {
     ChevronRight,
 } from "lucide-react";
 
+import { formatNumberEs, formatPercentEs } from "../../utils/numberFormat";
+import { labelsMatch } from "../../utils/labelMatch";
+import { parseTransactionDate } from "../../utils/transactionDate";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+
 // ─── NEON PALETTE ──────────────────────────────────────────────────────────
 const NEON_INCOME  = '#22d3ee';
 const NEON_EXPENSE = '#fb7185';
@@ -40,6 +45,10 @@ const CARD_STYLE = {
   border: '1px solid rgba(255,255,255,0.06)',
   boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
 };
+
+const formatMoney = (value: number | string, decimals = 2) => formatNumberEs(value, decimals);
+const formatAxisThousands = (value: number) =>
+    Math.abs(value) >= 1000 ? `${formatNumberEs(value / 1000, 0)}k` : formatNumberEs(value, 0);
 // ───────────────────────────────────────────────────────────────────────────
 
 interface PnLViewProps {
@@ -51,18 +60,47 @@ interface PnLViewProps {
 
 export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }: PnLViewProps) {
     const [viewMode, setViewMode] = useState<'month' | 'ytd'>('month');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [conceptFilter, setConceptFilter] = useState('all');
+
+    const categoryOptions = useMemo(
+        () =>
+            Array.from(new Set(transactions.map((t) => String(t.category || '').trim()).filter(Boolean)))
+                .sort((a, b) => a.localeCompare(b)),
+        [transactions]
+    );
+
+    const conceptOptions = useMemo(
+        () =>
+            Array.from(new Set(
+                transactions
+                    .filter((t) => categoryFilter === 'all' || labelsMatch(t.category, categoryFilter))
+                    .map((t) => String(t.concept || t.subcategory || '').trim())
+                    .filter(Boolean)
+            )).sort((a, b) => a.localeCompare(b)),
+        [categoryFilter, transactions]
+    );
 
     const filteredTransactions = useMemo(() => {
+        const dateFiltered = (() => {
         if (viewMode === 'month') {
             const start = startOfMonth(currentDate);
             const end = endOfMonth(currentDate);
-            return transactions.filter(t => isWithinInterval(new Date(t.date), { start, end }));
+            return transactions.filter(t => isWithinInterval(parseTransactionDate(t.date), { start, end }));
         } else {
             const start = startOfYear(currentDate);
             const end = endOfMonth(currentDate);
-            return transactions.filter(t => isWithinInterval(new Date(t.date), { start, end }));
+            return transactions.filter(t => isWithinInterval(parseTransactionDate(t.date), { start, end }));
         }
-    }, [transactions, currentDate, viewMode]);
+        })();
+
+        return dateFiltered.filter((t) => {
+            const categoryMatch = categoryFilter === 'all' || labelsMatch(t.category, categoryFilter);
+            const conceptValue = t.concept || t.subcategory || '';
+            const conceptMatch = conceptFilter === 'all' || labelsMatch(conceptValue, conceptFilter);
+            return categoryMatch && conceptMatch;
+        });
+    }, [transactions, currentDate, viewMode, categoryFilter, conceptFilter]);
 
     const report = useMemo(() => generatePnLReport(filteredTransactions), [filteredTransactions]);
 
@@ -74,16 +112,12 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
         { name: 'Ut. Neta', value: report.netIncome, fill: report.netIncome >= 0 ? NEON_PROFIT : NEON_EXPENSE, isTotal: true }
     ];
 
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(amount);
-    };
-
     const PercentBadge = ({ value, total }: { value: number, total: number }) => {
         if (!total || total === 0) return <span>-</span>;
         const percent = (value / total) * 100;
         return (
             <span className="text-xs ml-2" style={{ color: AXIS_COLOR }}>
-                ({percent.toFixed(1)}%)
+                ({formatPercentEs(percent, 1)})
             </span>
         );
     };
@@ -126,33 +160,65 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                     )}
                 </div>
                 
-                {/* View Toggle */}
-                <div className="flex items-center gap-1 p-1 rounded-lg self-start xl:self-center"
-                  style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
-                >
-                    {(['month', 'ytd'] as const).map(mode => (
-                      <button key={mode}
-                        onClick={() => setViewMode(mode)}
-                        className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200"
-                        style={{
-                          background: viewMode === mode ? 'rgba(192,132,252,0.15)' : 'transparent',
-                          color: viewMode === mode ? '#c084fc' : AXIS_COLOR,
-                          border: viewMode === mode ? '1px solid rgba(192,132,252,0.25)' : '1px solid transparent',
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 self-start xl:self-center">
+                    <Select
+                        value={categoryFilter}
+                        onValueChange={(value) => {
+                            setCategoryFilter(value);
+                            setConceptFilter('all');
                         }}
-                      >
-                        {mode === 'month' ? 'Mes Actual' : 'Acumulado Año'}
-                      </button>
-                    ))}
+                    >
+                        <SelectTrigger className="h-9 w-full sm:w-[190px] bg-white/5 border-white/10 text-xs">
+                            <SelectValue placeholder="Todas las categorías" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todas las categorías</SelectItem>
+                            {categoryOptions.map((category) => (
+                                <SelectItem key={category} value={category}>{category}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    <Select value={conceptFilter} onValueChange={setConceptFilter}>
+                        <SelectTrigger className="h-9 w-full sm:w-[190px] bg-white/5 border-white/10 text-xs">
+                            <SelectValue placeholder="Todos los conceptos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los conceptos</SelectItem>
+                            {conceptOptions.map((concept) => (
+                                <SelectItem key={concept} value={concept}>{concept}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+
+                    {/* View Toggle */}
+                    <div className="flex items-center gap-1 p-1 rounded-lg"
+                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}
+                    >
+                        {(['month', 'ytd'] as const).map(mode => (
+                          <button key={mode}
+                            onClick={() => setViewMode(mode)}
+                            className="px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200"
+                            style={{
+                              background: viewMode === mode ? 'rgba(192,132,252,0.15)' : 'transparent',
+                              color: viewMode === mode ? '#c084fc' : AXIS_COLOR,
+                              border: viewMode === mode ? '1px solid rgba(192,132,252,0.25)' : '1px solid transparent',
+                            }}
+                          >
+                            {mode === 'month' ? 'Mes Actual' : 'Acumulado Año'}
+                          </button>
+                        ))}
+                    </div>
                 </div>
             </div>
 
             {/* ── KPI Cards ────────────────────────────────────────────── */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {[
-                  { label: 'Ingresos Totales', value: formatCurrency(report.revenue.total), sub: 'Ventas y Servicios', icon: DollarSign, color: NEON_INCOME },
-                  { label: 'Utilidad Bruta', value: formatCurrency(report.grossProfit), sub: `Margen: ${report.revenue.total ? ((report.grossProfit / report.revenue.total) * 100).toFixed(1) : 0}%`, icon: Activity, color: NEON_PROFIT },
-                  { label: 'Gastos Operativos', value: formatCurrency(report.expenses.total), sub: `${report.revenue.total ? ((report.expenses.total / report.revenue.total) * 100).toFixed(1) : 0}% de ingresos`, icon: TrendingDown, color: NEON_EXPENSE },
-                  { label: 'Utilidad Neta', value: formatCurrency(report.netIncome), sub: `Margen Neto: ${report.revenue.total ? ((report.netIncome / report.revenue.total) * 100).toFixed(1) : 0}%`, icon: PieChart, color: report.netIncome >= 0 ? NEON_PROFIT : NEON_EXPENSE },
+                  { label: 'Ingresos Totales', value: formatMoney(report.revenue.total), sub: 'Ventas y Servicios', icon: DollarSign, color: NEON_INCOME },
+                  { label: 'Utilidad Bruta', value: formatMoney(report.grossProfit), sub: `Margen: ${report.revenue.total ? formatPercentEs((report.grossProfit / report.revenue.total) * 100, 1) : '0%'}`, icon: Activity, color: NEON_PROFIT },
+                  { label: 'Gastos Operativos', value: formatMoney(report.expenses.total), sub: `${report.revenue.total ? formatPercentEs((report.expenses.total / report.revenue.total) * 100, 1) : '0%'} de ingresos`, icon: TrendingDown, color: NEON_EXPENSE },
+                  { label: 'Utilidad Neta', value: formatMoney(report.netIncome), sub: `Margen Neto: ${report.revenue.total ? formatPercentEs((report.netIncome / report.revenue.total) * 100, 1) : '0%'}`, icon: PieChart, color: report.netIncome >= 0 ? NEON_PROFIT : NEON_EXPENSE },
                 ].map((card, i) => (
                   <div key={i} className="rounded-2xl p-5 group cursor-default"
                     style={{
@@ -210,7 +276,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                 {/* Revenue Section */}
                                 <tr style={{ background: 'rgba(34,211,238,0.04)', borderBottom: '1px solid rgba(34,211,238,0.1)' }}>
                                     <td className="p-3 font-bold text-xs uppercase tracking-wider" style={{ color: NEON_INCOME }}>INGRESOS</td>
-                                    <td className="p-3 text-right font-bold" style={{ color: NEON_INCOME, fontFamily: "'JetBrains Mono', monospace" }}>{formatCurrency(report.revenue.total)}</td>
+                                    <td className="p-3 text-right font-bold" style={{ color: NEON_INCOME, fontFamily: "'JetBrains Mono', monospace" }}>{formatMoney(report.revenue.total)}</td>
                                     <td className="p-3 text-right" style={{ color: AXIS_COLOR }}>100%</td>
                                 </tr>
                                 {report.revenue.items.map(item => (
@@ -219,7 +285,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                                     >
                                         <td className="p-3 pl-7 text-xs" style={{ color: '#8b7cf8' }}>{item.name}</td>
-                                        <td className="p-3 text-right text-xs font-mono" style={{ color: '#F0EEFF' }}>{formatCurrency(item.amount)}</td>
+                                        <td className="p-3 text-right text-xs font-mono" style={{ color: '#F0EEFF' }}>{formatMoney(item.amount)}</td>
                                         <td className="p-3 text-right"><PercentBadge value={item.amount} total={report.revenue.total} /></td>
                                     </tr>
                                 ))}
@@ -227,7 +293,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                 {/* COGS Section */}
                                 <tr style={{ background: 'rgba(251,113,133,0.04)', borderBottom: '1px solid rgba(251,113,133,0.1)' }}>
                                     <td className="p-3 font-bold text-xs uppercase tracking-wider" style={{ color: NEON_EXPENSE }}>COSTOS DIRECTOS (COGS)</td>
-                                    <td className="p-3 text-right font-bold font-mono" style={{ color: NEON_EXPENSE }}>({formatCurrency(report.cogs.total)})</td>
+                                    <td className="p-3 text-right font-bold font-mono" style={{ color: NEON_EXPENSE }}>({formatMoney(report.cogs.total)})</td>
                                     <td className="p-3 text-right"><PercentBadge value={report.cogs.total} total={report.revenue.total} /></td>
                                 </tr>
                                 {report.cogs.items.map(item => (
@@ -236,7 +302,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                                     >
                                         <td className="p-3 pl-7 text-xs" style={{ color: '#8b7cf8' }}>{item.name}</td>
-                                        <td className="p-3 text-right text-xs font-mono" style={{ color: '#F0EEFF' }}>({formatCurrency(item.amount)})</td>
+                                        <td className="p-3 text-right text-xs font-mono" style={{ color: '#F0EEFF' }}>({formatMoney(item.amount)})</td>
                                         <td className="p-3 text-right"><PercentBadge value={item.amount} total={report.revenue.total} /></td>
                                     </tr>
                                 ))}
@@ -244,16 +310,16 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                 {/* Gross Profit Line */}
                                 <tr style={{ background: 'rgba(34,211,238,0.08)', borderTop: '2px solid rgba(34,211,238,0.2)', borderBottom: '1px solid rgba(34,211,238,0.12)' }}>
                                     <td className="p-3 font-bold uppercase" style={{ color: '#F0EEFF' }}>UTILIDAD BRUTA</td>
-                                    <td className="p-3 text-right font-bold font-mono" style={{ color: NEON_INCOME }}>{formatCurrency(report.grossProfit)}</td>
+                                    <td className="p-3 text-right font-bold font-mono" style={{ color: NEON_INCOME }}>{formatMoney(report.grossProfit)}</td>
                                     <td className="p-3 text-right font-bold" style={{ color: NEON_INCOME }}>
-                                        {report.revenue.total ? ((report.grossProfit / report.revenue.total) * 100).toFixed(1) : 0}%
+                                        {report.revenue.total ? formatPercentEs((report.grossProfit / report.revenue.total) * 100, 1) : '0%'}
                                     </td>
                                 </tr>
 
                                 {/* Expenses Section */}
                                 <tr style={{ background: 'rgba(251,113,133,0.04)', borderBottom: '1px solid rgba(251,113,133,0.1)' }}>
                                     <td className="p-3 font-bold text-xs uppercase tracking-wider" style={{ color: NEON_EXPENSE }}>GASTOS OPERATIVOS</td>
-                                    <td className="p-3 text-right font-bold font-mono" style={{ color: NEON_EXPENSE }}>({formatCurrency(report.expenses.total)})</td>
+                                    <td className="p-3 text-right font-bold font-mono" style={{ color: NEON_EXPENSE }}>({formatMoney(report.expenses.total)})</td>
                                     <td className="p-3 text-right"><PercentBadge value={report.expenses.total} total={report.revenue.total} /></td>
                                 </tr>
                                 {report.expenses.items.map(item => (
@@ -262,7 +328,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                       onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                                     >
                                         <td className="p-3 pl-7 text-xs" style={{ color: '#8b7cf8' }}>{item.name}</td>
-                                        <td className="p-3 text-right text-xs font-mono" style={{ color: '#F0EEFF' }}>({formatCurrency(item.amount)})</td>
+                                        <td className="p-3 text-right text-xs font-mono" style={{ color: '#F0EEFF' }}>({formatMoney(item.amount)})</td>
                                         <td className="p-3 text-right"><PercentBadge value={item.amount} total={report.revenue.total} /></td>
                                     </tr>
                                 ))}
@@ -275,11 +341,11 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                     <td className="p-3 font-bold uppercase" style={{ color: '#F0EEFF' }}>UTILIDAD NETA</td>
                                     <td className="p-3 text-right font-bold text-lg font-mono"
                                       style={{ color: report.netIncome >= 0 ? NEON_PROFIT : NEON_EXPENSE }}
-                                    >{formatCurrency(report.netIncome)}</td>
+                                    >{formatMoney(report.netIncome)}</td>
                                     <td className="p-3 text-right font-bold"
                                       style={{ color: report.netIncome >= 0 ? NEON_PROFIT : NEON_EXPENSE }}
                                     >
-                                        {report.revenue.total ? ((report.netIncome / report.revenue.total) * 100).toFixed(1) : 0}%
+                                        {report.revenue.total ? formatPercentEs((report.netIncome / report.revenue.total) * 100, 1) : '0%'}
                                     </td>
                                 </tr>
                             </tbody>
@@ -315,11 +381,11 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                     <YAxis
                                         axisLine={false} tickLine={false}
                                         tick={{ fontSize: 10, fill: AXIS_COLOR, fontFamily: "'Inter', sans-serif" }}
-                                        tickFormatter={(v) => `S/${(v/1000).toFixed(0)}k`}
+                                        tickFormatter={(v) => formatAxisThousands(v)}
                                         width={50}
                                     />
                                     <Tooltip
-                                        formatter={(value: number) => [formatCurrency(Math.abs(value)), 'Monto']}
+                                        formatter={(value: number) => [formatMoney(Math.abs(value)), 'Monto']}
                                         cursor={{ fill: 'rgba(139,92,246,0.06)' }}
                                         contentStyle={TOOLTIP_STYLE}
                                         itemStyle={TOOLTIP_ITEM}
@@ -337,9 +403,9 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                         {/* Ratios */}
                         <div className="mt-4 space-y-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '16px' }}>
                             {[
-                              { label: 'Rentabilidad Operativa', value: `${((report.netOperatingIncome / report.revenue.total) * 100).toFixed(1)}%`, color: NEON_PROFIT },
-                              { label: 'Ratio Costos Directos', value: `${((report.cogs.total / report.revenue.total) * 100).toFixed(1)}%`, color: NEON_EXPENSE },
-                              { label: 'Ratio Gastos Operativos', value: `${((report.expenses.total / report.revenue.total) * 100).toFixed(1)}%`, color: '#fbbf24' },
+                              { label: 'Rentabilidad Operativa', value: formatPercentEs((report.netOperatingIncome / report.revenue.total) * 100, 1), color: NEON_PROFIT },
+                              { label: 'Ratio Costos Directos', value: formatPercentEs((report.cogs.total / report.revenue.total) * 100, 1), color: NEON_EXPENSE },
+                              { label: 'Ratio Gastos Operativos', value: formatPercentEs((report.expenses.total / report.revenue.total) * 100, 1), color: '#fbbf24' },
                             ].map(({ label, value, color }) => (
                               <div key={label} className="flex justify-between items-center py-2"
                                 style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Calendar, RefreshCw, Plus, Trash2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Invoice } from './types'; // Using the Treasury types
 import { clsx } from 'clsx';
+import { formatCurrencyEs } from '../../utils/numberFormat';
 
 export interface Subscription {
   id: string;
@@ -136,7 +137,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({ onGene
               <div className="space-y-3 pl-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Monto Fijo:</span>
-                  <span className="font-bold text-gray-900">S/ {sub.amount.toFixed(2)}</span>
+                  <span className="font-bold text-gray-900">{formatCurrencyEs(sub.amount)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Frecuencia:</span>

@@ -1,8 +1,10 @@
 import { createContext, useContext, type ReactNode } from "react";
 import type { User } from "../types";
+import type { Role } from "../components/users/types";
 
 export interface AppContextValue {
   currentUser: User;
+  roles?: Role[];
   theme: "dark" | "light";
   toggleTheme: () => void;
 }

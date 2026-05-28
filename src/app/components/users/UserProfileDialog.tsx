@@ -28,7 +28,8 @@ export function UserProfileDialog({
     onOpenChange, 
     onLogout
 }: UserProfileDialogProps) {
-    const { currentUser: user, theme: currentTheme, toggleTheme: onToggleTheme } = useApp();
+    const { currentUser: user, roles = [], theme: currentTheme, toggleTheme: onToggleTheme } = useApp();
+    const roleLabel = roles.find((r) => r.id === user.role)?.name || user.role.replace(/_/g, ' ');
     const [activeTab, setActiveTab] = useState("general");
     const [loading, setLoading] = useState(false);
 
@@ -91,7 +92,7 @@ export function UserProfileDialog({
                     <DialogTitle className="text-2xl font-bold">{user.name}</DialogTitle>
                     <DialogDescription className="flex items-center gap-2 mt-1 justify-center">
                         <Badge variant="outline" className="capitalize border-primary/20 bg-primary/5 text-primary">
-                            {user.role.replace('_', ' ')}
+                            {roleLabel}
                         </Badge>
                         <span className="text-xs text-muted-foreground">ID: {user.id}</span>
                     </DialogDescription>
@@ -156,7 +157,7 @@ export function UserProfileDialog({
                                     <Shield className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                                     <Input 
                                         readOnly 
-                                        value={`Rol: ${user.role.toUpperCase()}`} 
+                                        value={`Rol: ${roleLabel}`} 
                                         className="pl-9 bg-muted/30 focus:bg-background transition-colors border-white/10" 
                                     />
                                 </div>

@@ -63,7 +63,7 @@ interface UserManagerProps {
     knownSedeNames: string[];
     sedesCatalogEntries: SedeCatalogEntry[];
     onSaveSedesCatalog: (result: SedesCatalogSaveResult) => void;
-    onUpdateRoles: (roles: Role[]) => void;
+    onUpdateRoles: (roles: Role[]) => Promise<boolean> | boolean | void;
     onUpdateUser: (user: User) => void;
     onAddUser: (user: User) => void;
     onDeleteUser: (userId: string) => void;
@@ -226,6 +226,7 @@ export function UserManager({
                     status: 'active',
                     allSedes: currentUserForm.allSedes ?? true,
                     sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),
+                    pettyCashFundEnabled: false,
                 };
                 onAddUser(user);
                 setIsNewUserOpen(false);
@@ -255,6 +256,9 @@ export function UserManager({
             status: currentUserForm.status || 'active',
             lastLogin: currentUserForm.lastLogin,
             pettyCashLimit: currentUserForm.pettyCashLimit,
+            pettyCashFundEnabled:
+                currentUserForm.pettyCashFundEnabled ??
+                uniqueUsers.find((u) => u.id === currentUserForm.id)?.pettyCashFundEnabled,
             location: currentUserForm.location,
             allSedes: currentUserForm.allSedes ?? true,
             sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),

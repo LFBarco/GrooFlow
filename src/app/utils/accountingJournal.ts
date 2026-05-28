@@ -7,6 +7,15 @@ import type {
 } from '../types';
 import { normalizeAccountCode } from './chartOfAccountsHelpers';
 import { receiptTypeUsesIgv } from './pettyCashReceiptType';
+import { formatNumberEs } from './numberFormat';
+
+function pettyConfigKey(value: string | undefined) {
+  return (value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
 
 export interface JournalLine {
   accountCode: string;
@@ -149,10 +158,20 @@ export function buildPettyCashExpenseJournal(
   const provider = findProviderByDocNumber(providers, tx.docNumber);
   const fromTx = (tx.accountingAccount || '').trim();
   const fromProvider = (provider?.accountingAccount || '').trim();
-  const cat = (tx.category || '').trim();
+  const cat = pettyConfigKey(tx.category);
+  const area = pettyConfigKey(tx.area);
   const fromPettyLine =
     provider?.pettyExpenseLines?.find(
-      (l) => (l.commercialCategory || '').trim() === cat && (l.defaultAccountingAccount || '').trim()
+      (l) =>
+        pettyConfigKey(l.commercialCategory) === cat &&
+        pettyConfigKey(l.commercialArea) === area &&
+        (l.defaultAccountingAccount || '').trim()
+    )?.defaultAccountingAccount ??
+    provider?.pettyExpenseLines?.find(
+      (l) =>
+        pettyConfigKey(l.commercialCategory) === cat &&
+        !pettyConfigKey(l.commercialArea) &&
+        (l.defaultAccountingAccount || '').trim()
     )?.defaultAccountingAccount;
   let fromPetty = (fromPettyLine || '').trim();
   /** Un solo motivo con cuenta en el proveedor: útil para histórico sin `accountingAccount` en el movimiento. */
@@ -238,7 +257,7 @@ export function buildPettyCashExpenseJournal(
   const sumCr = lines.reduce((s, l) => s + l.credit, 0);
   if (lines.length > 0 && Math.abs(sumDr - sumCr) > 0.02) {
     warnings.push(
-      `Asiento descuadrado: debe ${sumDr.toFixed(2)} vs haber ${sumCr.toFixed(2)} (revisar BI/IGV/total).`
+      `Asiento descuadrado: debe ${formatNumberEs(sumDr)} vs haber ${formatNumberEs(sumCr)} (revisar BI/IGV/total).`
     );
   }
 

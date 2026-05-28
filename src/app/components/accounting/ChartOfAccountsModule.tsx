@@ -1,13 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import type {
-  AccountingLinkSettings,
-  ChartOfAccountEntry,
-  PettyCashTransaction,
-  Provider,
-  SystemSettings,
-  User,
-} from '../../types';
+import type { AccountingLinkSettings, ChartOfAccountEntry, SystemSettings } from '../../types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -22,7 +15,6 @@ import {
   SelectValue,
 } from '../ui/select';
 import { toast } from 'sonner';
-import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import {
   BookOpen,
   FileDown,
@@ -39,11 +31,6 @@ import {
   chartSelectOptionsWithOrphan,
   normalizeAccountCode,
 } from '../../utils/chartOfAccountsHelpers';
-import {
-  buildPettyCashExpenseJournal,
-  flattenJournalsToExportRows,
-  pettyCashExpenseInPreviewDateRange,
-} from '../../utils/accountingJournal';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { getEnabledSedeNames } from '../../utils/sedesCatalog';
@@ -74,11 +61,6 @@ interface ChartOfAccountsModuleProps {
   onUpdateChart: (rows: ChartOfAccountEntry[]) => void;
   systemSettings: SystemSettings;
   onUpdateSystemSettings: (s: SystemSettings) => void;
-  /** Todos los movimientos de caja chica (todos los responsables / sedes). */
-  pettyCashTransactions: PettyCashTransaction[];
-  providers: Provider[];
-  /** Para mostrar responsable de caja en la vista previa (todos los usuarios). */
-  users?: User[];
 }
 
 function parseKind(raw: string | undefined): ChartOfAccountEntry['kind'] {
@@ -94,9 +76,6 @@ export function ChartOfAccountsModule({
   onUpdateChart,
   systemSettings,
   onUpdateSystemSettings,
-  pettyCashTransactions,
-  providers,
-  users = [],
 }: ChartOfAccountsModuleProps) {
   type ImportMode = 'merge' | 'replace';
   type PendingImport = {
@@ -106,10 +85,6 @@ export function ChartOfAccountsModule({
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
-  const [previewFrom, setPreviewFrom] = useState(() =>
-    format(new Date(Date.now() - 730 * 86400000), 'yyyy-MM-dd')
-  );
-  const [previewTo, setPreviewTo] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [editing, setEditing] = useState<ChartOfAccountEntry | null>(null);
   const [sedeConfigOpen, setSedeConfigOpen] = useState(false);
   const [importMode, setImportMode] = useState<ImportMode>('merge');
@@ -283,8 +258,33 @@ export function ChartOfAccountsModule({
     toast.success('Plantilla descargada');
   };
 
-  const getCell = (row: Record<string, unknown>, key: string) =>
-    row[key] ?? row[key.toLowerCase()] ?? row[key.toUpperCase()];
+  const normalizeHeaderKey = (s: string) =>
+    String(s || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toLowerCase();
+
+  const getCell = (row: Record<string, unknown>, ...keys: string[]) => {
+    const directCandidates = keys.flatMap((k) => [k, k.toLowerCase(), k.toUpperCase()]);
+    for (const k of directCandidates) {
+      const v = row[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    const rowKeys = Object.keys(row);
+    const normalizedRowEntries = rowKeys.map((rk) => ({
+      raw: rk,
+      norm: normalizeHeaderKey(rk),
+    }));
+    for (const k of keys) {
+      const target = normalizeHeaderKey(k);
+      const hit = normalizedRowEntries.find((e) => e.norm === target);
+      if (!hit) continue;
+      const v = row[hit.raw];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return undefined;
+  };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -347,7 +347,15 @@ export function ChartOfAccountsModule({
             cuentaAbono: String(getCell(row, 'CUENTA ABONO') ?? '').trim() || undefined,
             porcentaje: String(getCell(row, 'PORCENTAJE') ?? '').trim() || undefined,
             plFuncionGroo: String(getCell(row, 'PL FUNCION GROO') ?? '').trim() || undefined,
-            plplFuncionGoo: String(getCell(row, 'PLPL FUNCION GOO') ?? '').trim() || undefined,
+            plplFuncionGoo:
+              String(
+                getCell(
+                  row,
+                  'PLPL FUNCION GOO',
+                  'PLPL FUNCION GROO',
+                  'plplFuncionGoo',
+                ) ?? ''
+              ).trim() || undefined,
             kind: parseKind(tipo != null ? String(tipo) : undefined),
             active: true,
           });
@@ -427,54 +435,6 @@ export function ChartOfAccountsModule({
     toast.info('Plan de cuentas vaciado');
   };
 
-  const custodianNameById = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const u of users) {
-      if (u?.id) m.set(u.id, (u.name || u.email || u.id).trim());
-    }
-    return m;
-  }, [users]);
-
-  const previewBundles = useMemo(() => {
-    const txs = pettyCashTransactions.filter((t) =>
-      pettyCashExpenseInPreviewDateRange(t, previewFrom, previewTo)
-    );
-
-    return txs.map((t) =>
-      buildPettyCashExpenseJournal(t, providers, chartOfAccounts, accounting)
-    );
-  }, [pettyCashTransactions, previewFrom, previewTo, providers, chartOfAccounts, accounting]);
-
-  const previewStats = useMemo(() => {
-    const n = previewBundles.length;
-    const withLines = previewBundles.filter((b) => b.lines.length > 0).length;
-    return { total: n, withLines };
-  }, [previewBundles]);
-
-  const expenseCountInStore = useMemo(
-    () =>
-      pettyCashTransactions.filter(
-        (t) => t.type === 'expense' && t.status !== 'voided' && t.status !== 'rejected'
-      ).length,
-    [pettyCashTransactions]
-  );
-
-  const exportPreviewExcel = () => {
-    const rows = flattenJournalsToExportRows(previewBundles.filter((b) => b.lines.length > 0));
-    if (rows.length === 0) {
-      toast.error('No hay líneas para exportar (revisa fechas y cuentas configuradas).');
-      return;
-    }
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Asientos');
-    XLSX.writeFile(
-      wb,
-      `asientos_caja_chica_${previewFrom}_${previewTo}.xlsx`
-    );
-    toast.success('Excel de asientos generado');
-  };
-
   const exportChartWithStarsoftHeaders = () => {
     const rows = chartOfAccounts.map((r) => ({
       CUENTA: r.code,
@@ -511,8 +471,9 @@ export function ChartOfAccountsModule({
           Contabilidad — Plan de cuentas
         </h2>
         <p className="text-muted-foreground mt-1 max-w-3xl">
-          Importa tu plan contable (Excel). Configura cuentas de IGV y salida de caja para generar
-          vista previa de asientos y exportar a Excel antes de llevarlo a Starsoft.
+          Importa tu plan contable (Excel). Configura cuentas de IGV y salida de caja para que los
+          asientos de caja chica se generen correctamente (la vista previa está en el módulo{' '}
+          <strong>Caja chica</strong>).
         </p>
       </div>
 
@@ -1017,152 +978,6 @@ export function ChartOfAccountsModule({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Vista previa — asientos caja chica</CardTitle>
-          <CardDescription>
-            Incluye egresos de <strong>todos los responsables</strong> de caja chica (no solo el
-            usuario actual). El rango usa <strong>fecha de registro</strong> o{' '}
-            <strong>fecha del documento</strong> en hora local. Cuenta de gasto: comprobante,
-            proveedor o cuenta genérica en enlaces. Solo <strong>Factura</strong> desglosa IGV.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <Label>Desde</Label>
-              <Input
-                type="date"
-                value={previewFrom}
-                onChange={(e) => setPreviewFrom(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Hasta</Label>
-              <Input type="date" value={previewTo} onChange={(e) => setPreviewTo(e.target.value)} />
-            </div>
-            <Button type="button" variant="secondary" onClick={exportPreviewExcel}>
-              <Download className="h-4 w-4 mr-2" />
-              Exportar Excel (líneas)
-            </Button>
-          </div>
-
-          <p className="text-xs text-muted-foreground">
-            En el sistema hay <strong>{expenseCountInStore}</strong> egreso(s) válido(s). En este
-            rango: <strong>{previewStats.total}</strong> movimiento(s), con asiento completo:{' '}
-            <strong>{previewStats.withLines}</strong>.
-          </p>
-
-          {expenseCountInStore > 0 && previewStats.total === 0 ? (
-            <Alert className="border-amber-600/50 bg-amber-950/20">
-              <AlertTitle className="text-sm">Ningún egreso cae en las fechas elegidas</AlertTitle>
-              <AlertDescription className="text-xs">
-                Amplíe <strong>Desde</strong> / <strong>Hasta</strong> (el filtro usa fecha de
-                registro o de documento en hora local). El rango por defecto es amplio; si aún no
-                ve nada, compruebe que los gastos existan en Caja chica.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          {previewStats.total > 0 && previewStats.withLines === 0 ? (
-            <Alert className="border-amber-600/50 bg-amber-950/20">
-              <AlertTitle className="text-sm">Hay movimientos pero sin líneas de asiento</AlertTitle>
-              <AlertDescription className="text-xs">
-                Revise enlaces (cuenta caja, IGV, <strong>gasto sin cuenta mapeada</strong>) y que el
-                plan de cuentas tenga esas cuentas a nivel operativo. Las filas en amarillo detallan
-                el motivo por comprobante.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          <div className="rounded-md border max-h-[400px] overflow-auto text-sm">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cuenta contable</TableHead>
-                  <TableHead>Nombre cuenta</TableHead>
-                  <TableHead>Año y mes</TableHead>
-                  <TableHead>F. documento</TableHead>
-                  <TableHead>F. registro</TableHead>
-                  <TableHead>Tipo doc.</TableHead>
-                  <TableHead>Serie – Nro.</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Responsable caja</TableHead>
-                  <TableHead>Sede</TableHead>
-                  <TableHead className="text-right">Debe</TableHead>
-                  <TableHead className="text-right">Haber</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {previewBundles.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={12} className="text-center text-muted-foreground py-8">
-                      No hay egresos en el rango seleccionado.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  previewBundles.flatMap((b) => {
-                    const custodianLabel = b.custodianId
-                      ? custodianNameById.get(b.custodianId) || b.custodianId
-                      : '—';
-                    return b.lines.length === 0 ? (
-                      <TableRow key={b.transactionId + '-empty'}>
-                        <TableCell
-                          colSpan={12}
-                          className="text-amber-700 bg-amber-50/50 dark:bg-amber-950/20"
-                        >
-                          <span className="font-medium text-foreground/90">{custodianLabel}</span>
-                          {' · '}
-                          {b.transactionId}: {b.warnings.join(' ')}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      b.lines.map((ln, idx) => (
-                        <TableRow key={`${b.transactionId}-${idx}`}>
-                          <TableCell className="font-mono text-xs">{ln.accountCode}</TableCell>
-                          <TableCell className="text-xs max-w-[140px] truncate" title={ln.accountName}>
-                            {ln.accountName || '—'}
-                          </TableCell>
-                          <TableCell className="text-xs">{b.yearMonth}</TableCell>
-                          <TableCell className="text-xs whitespace-nowrap">
-                            {format(b.documentDate, 'dd/MM/yyyy')}
-                          </TableCell>
-                          <TableCell className="text-xs whitespace-nowrap">
-                            {format(b.date, 'dd/MM/yyyy')}
-                          </TableCell>
-                          <TableCell
-                            className="text-xs whitespace-nowrap max-w-[120px] truncate"
-                            title={b.receiptType}
-                          >
-                            {b.receiptType}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono max-w-[140px] truncate" title={b.serieNumero}>
-                            {b.serieNumero}
-                          </TableCell>
-                          <TableCell className="text-xs max-w-[200px] truncate" title={b.description}>
-                            {b.description}
-                          </TableCell>
-                          <TableCell className="text-xs max-w-[120px] truncate" title={custodianLabel}>
-                            {custodianLabel}
-                          </TableCell>
-                          <TableCell className="text-xs">{b.sede}</TableCell>
-                          <TableCell className="text-right">
-                            {ln.debit > 0 ? ln.debit.toFixed(2) : '—'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {ln.credit > 0 ? ln.credit.toFixed(2) : '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

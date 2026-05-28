@@ -32,6 +32,11 @@ export const PettyCashModule = lazy(() =>
 export const CashFlowGrid = lazy(() =>
   import('./components/dashboard/CashFlowGrid').then((m) => ({ default: m.CashFlowGrid }))
 );
+export const SmartCashFlowSimulation = lazy(() =>
+  import('./components/dashboard/SmartCashFlowSimulation').then((m) => ({
+    default: m.SmartCashFlowSimulation,
+  }))
+);
 export const AnalyticsDashboard = lazy(() =>
   import('./components/dashboard/AnalyticsDashboard').then((m) => ({ default: m.AnalyticsDashboard }))
 );
@@ -53,8 +58,8 @@ export const ChartOfAccountsModule = lazy(() =>
 export const PurchaseRequestManager = lazy(() =>
   import('./components/purchases/PurchaseRequestManager').then((m) => ({ default: m.PurchaseRequestManager }))
 );
-export const RequisitionModule = lazy(() =>
-  import('./components/procurement/RequisitionModule').then((m) => ({ default: m.RequisitionModule }))
+export const ProductModule = lazy(() =>
+  import('./components/products/ProductModule').then((m) => ({ default: m.ProductModule }))
 );
 export const UserManager = lazy(() =>
   import('./components/users/UserManager').then((m) => ({ default: m.UserManager }))
@@ -67,4 +72,7 @@ export const ProfessionalFeesModule = lazy(() =>
 );
 export const AlertsCenter = lazy(() =>
   import('./components/alerts/AlertsCenter').then((m) => ({ default: m.AlertsCenter }))
+);
+export const FleetModule = lazy(() =>
+  import('./components/fleet/FleetModule').then((m) => ({ default: m.FleetModule }))
 );

@@ -162,6 +162,7 @@ export const KV_KEYS = {
   TREASURY_BALANCE:     'data:treasuryBankBalance',
   TREASURY_PAID_HISTORY:'data:treasuryPaidHistory',
   CHART_OF_ACCOUNTS:    'data:chartOfAccounts',
+  FLEET:                'data:fleet',
 } as const;
 
 export type KVKey = typeof KV_KEYS[keyof typeof KV_KEYS];

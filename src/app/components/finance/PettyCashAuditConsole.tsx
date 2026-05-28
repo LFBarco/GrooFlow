@@ -23,7 +23,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Label } from '../ui/label';
 import { canApprovePettyCashMovements } from '../../utils/pettyCashAudit';
-import { getSuperAdminEmails } from '../../config/superAdmins';
+import { userHasGlobalSedeAccess } from '../../utils/roleAccess';
+import { formatCurrencyEs } from '../../utils/numberFormat';
 import { filterPettyCashCustodianUsersForViewer } from '../../utils/pettyCashCustodianVisibility';
 
 type StatusFilter = 'pending' | 'all' | 'approved' | 'rejected';
@@ -73,10 +74,7 @@ export function PettyCashAuditConsole({
     const [detail, setDetail] = useState<PettyCashTransaction | null>(null);
 
     const viewerSeesAllSedes = useMemo(
-        () =>
-            currentUser.role === 'super_admin' ||
-            currentUser.allSedes === true ||
-            !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase())),
+        () => userHasGlobalSedeAccess(currentUser),
         [currentUser]
     );
 
@@ -345,7 +343,7 @@ export function PettyCashAuditConsole({
                                             <TableCell className="text-xs max-w-[100px] truncate">{t.category}</TableCell>
                                             <TableCell className="text-xs max-w-[100px] truncate">{t.area || '—'}</TableCell>
                                             <TableCell className="text-right font-mono text-sm">
-                                                S/ {Number(t.amount).toFixed(2)}
+                                                {formatCurrencyEs(Number(t.amount), 2)}
                                             </TableCell>
                                             <TableCell>
                                                 <Badge
@@ -425,7 +423,7 @@ export function PettyCashAuditConsole({
                                 </div>
                                 <div>
                                     <span className="text-muted-foreground text-xs">Monto</span>
-                                    <p className="font-mono font-semibold">S/ {Number(detail.amount).toFixed(2)}</p>
+                                    <p className="font-mono font-semibold">{formatCurrencyEs(Number(detail.amount))}</p>
                                 </div>
                             </div>
                             <div>

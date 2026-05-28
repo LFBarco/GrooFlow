@@ -6,10 +6,11 @@ import {
 import { PettyCashTransaction } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { Button } from '../ui/button';
-import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval, parseISO, getMonth, getYear } from 'date-fns';
+import { Input } from '../ui/input';
+import { format, subMonths, startOfMonth, endOfMonth, addMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ArrowUpRight, ArrowDownRight, TrendingUp, DollarSign, PieChart as PieIcon, MapPin } from 'lucide-react';
+import { ArrowUpRight, TrendingUp, DollarSign, PieChart as PieIcon } from 'lucide-react';
+import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
 
 interface PettyCashAnalyticsProps {
     transactions: PettyCashTransaction[];
@@ -27,7 +28,9 @@ const TOOLTIP_STYLE = {
 const TOOLTIP_ITEM = { color: '#E4E0FF', fontSize: '12px' };
 
 export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnalyticsProps) {
-    const [timeRange, setTimeRange] = useState<'3m' | '6m' | '12m' | 'year'>('6m');
+    const now = useMemo(() => new Date(), []);
+    const [dateFrom, setDateFrom] = useState<string>(format(startOfMonth(subMonths(now, 5)), 'yyyy-MM-dd'));
+    const [dateTo, setDateTo] = useState<string>(format(now, 'yyyy-MM-dd'));
     const [selectedLocation, setSelectedLocation] = useState<string>('all');
 
     const locationOptions = useMemo(() => {
@@ -47,20 +50,25 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
         }
     }, [locationOptions, selectedLocation]);
 
+    const normalizedDateRange = useMemo(() => {
+        const from = dateFrom ? new Date(`${dateFrom}T00:00:00`) : startOfMonth(subMonths(now, 5));
+        const toRaw = dateTo ? new Date(`${dateTo}T23:59:59`) : new Date();
+        if (Number.isNaN(from.getTime()) || Number.isNaN(toRaw.getTime())) {
+            return { from: startOfMonth(subMonths(now, 5)), to: new Date() };
+        }
+        if (from <= toRaw) return { from, to: toRaw };
+        return { from: toRaw, to: from };
+    }, [dateFrom, dateTo, now]);
+
     // Filter Logic
     const filteredData = useMemo(() => {
-        const now = new Date();
-        let startDate = subMonths(now, 6);
-
-        if (timeRange === '3m') startDate = subMonths(now, 3);
-        if (timeRange === '12m') startDate = subMonths(now, 12);
-        if (timeRange === 'year') startDate = new Date(now.getFullYear(), 0, 1);
-
+        const startDate = normalizedDateRange.from;
+        const endDate = normalizedDateRange.to;
         return transactions.filter(t => {
             if (t.status === 'voided' || t.status === 'rejected') return false;
             const tDate = new Date(t.date);
             
-            const dateMatch = tDate >= startDate && tDate <= now;
+            const dateMatch = tDate >= startDate && tDate <= endDate;
             const loc = (t.location || 'Principal').trim();
             const locationMatch =
                 selectedLocation === 'all'
@@ -73,7 +81,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
 
             return dateMatch && locationMatch;
         });
-    }, [transactions, timeRange, selectedLocation, visibleSedes]);
+    }, [transactions, selectedLocation, visibleSedes, normalizedDateRange]);
 
     // KPI Calculations
     const totalExpense = useMemo(() => 
@@ -98,16 +106,10 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
 
     // 1. Expenses by Month (Bar Chart)
     const expensesByMonth = useMemo(() => {
-        const grouped: Record<string, number> = {};
-        
-        // Initialize timeline
         const timeline = [];
-        const now = new Date();
-        let monthsToGen = timeRange === '3m' ? 3 : timeRange === '6m' ? 6 : 12;
-        if (timeRange === 'year') monthsToGen = now.getMonth() + 1;
-
-        for (let i = monthsToGen - 1; i >= 0; i--) {
-            const d = subMonths(now, i);
+        let d = startOfMonth(normalizedDateRange.from);
+        const endMonth = endOfMonth(normalizedDateRange.to);
+        while (d <= endMonth) {
             const label = format(d, 'MMM yy', { locale: es });
             const monthKey = format(d, 'yyyy-MM');
             
@@ -119,9 +121,10 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                 .reduce((sum, t) => sum + t.amount, 0);
 
             timeline.push({ name: label, value: val });
+            d = addMonths(d, 1);
         }
         return timeline;
-    }, [filteredData, timeRange]);
+    }, [filteredData, normalizedDateRange]);
 
     // 2. Expenses by Category (Pie Chart)
     const expensesByCategory = useMemo(() => {
@@ -221,7 +224,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                 alerts.push({
                     level: 'warning',
                     title: 'Concentración por área',
-                    message: `${topArea.name} concentra ${concentration.toFixed(0)}% del gasto. Defina tope semanal y autorización adicional para esa área.`
+                    message: `${topArea.name} concentra ${formatNumberEs(concentration, 0)}% del gasto. Defina tope semanal y autorización adicional para esa área.`
                 });
             }
         }
@@ -233,7 +236,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                 alerts.push({
                     level: 'info',
                     title: 'Dependencia de proveedor',
-                    message: `${topProvider.name} representa ${providerShare.toFixed(0)}% del gasto total. Compare precios con al menos 2 alternativas.`
+                    message: `${topProvider.name} representa ${formatNumberEs(providerShare, 0)}% del gasto total. Compare precios con al menos 2 alternativas.`
                 });
             }
         }
@@ -276,27 +279,32 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                         </SelectContent>
                     </Select>
                     <div className="h-6 w-px" style={{ background: 'rgba(139,92,246,0.2)' }} />
-                    <Select value={timeRange} onValueChange={(val: any) => setTimeRange(val)}>
-                        <SelectTrigger className="w-[150px] border-none shadow-none">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="3m">Últimos 3 meses</SelectItem>
-                            <SelectItem value="6m">Últimos 6 meses</SelectItem>
-                            <SelectItem value="12m">Últimos 12 meses</SelectItem>
-                            <SelectItem value="year">Este Año (2025)</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2 px-2">
+                        <span className="text-xs text-muted-foreground">Desde</span>
+                        <Input
+                            type="date"
+                            className="h-8 w-[150px] border-none shadow-none bg-transparent px-1"
+                            value={dateFrom}
+                            onChange={(e) => setDateFrom(e.target.value)}
+                        />
+                        <span className="text-xs text-muted-foreground">Hasta</span>
+                        <Input
+                            type="date"
+                            className="h-8 w-[150px] border-none shadow-none bg-transparent px-1"
+                            value={dateTo}
+                            onChange={(e) => setDateTo(e.target.value)}
+                        />
+                    </div>
                 </div>
             </div>
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {[
-                  { label: 'Gasto Total', value: `S/ ${totalExpense.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`, sub: 'En el periodo', icon: DollarSign, color: '#fb7185' },
-                  { label: 'Promedio Mensual', value: `S/ ${monthlyAverage.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`, sub: 'Gasto medio', icon: TrendingUp, color: '#22d3ee' },
-                  { label: 'Reposiciones', value: `S/ ${totalIncome.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`, sub: 'Ingresos al fondo', icon: ArrowUpRight, color: '#34d399' },
-                  { label: 'Top Categoría', value: expensesByCategory[0]?.name || '-', sub: expensesByCategory[0] ? `S/ ${expensesByCategory[0].value.toFixed(2)}` : 'Sin datos', icon: PieIcon, color: '#c084fc' },
+                  { label: 'Gasto Total', value: formatCurrencyEs(totalExpense), sub: 'En el periodo', icon: DollarSign, color: '#fb7185' },
+                  { label: 'Promedio Mensual', value: formatCurrencyEs(monthlyAverage), sub: 'Gasto medio', icon: TrendingUp, color: '#22d3ee' },
+                  { label: 'Reposiciones', value: formatCurrencyEs(totalIncome), sub: 'Ingresos al fondo', icon: ArrowUpRight, color: '#34d399' },
+                  { label: 'Top Categoría', value: expensesByCategory[0]?.name || '-', sub: expensesByCategory[0] ? formatCurrencyEs(expensesByCategory[0].value) : 'Sin datos', icon: PieIcon, color: '#c084fc' },
                 ].map((card, i) => (
                   <div key={i} className="rounded-2xl p-4" style={{
                     background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)',
@@ -328,7 +336,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                                 <CartesianGrid strokeDasharray="3 6" vertical={false} stroke={GRID_COLOR} />
                                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} dy={6} />
                                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} tickFormatter={(v) => `S/${v}`} width={44} />
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [`S/ ${value.toFixed(2)}`, 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
                                 <Bar dataKey="value" fill="#22d3ee" radius={[4, 4, 0, 0]} opacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>
@@ -349,14 +357,14 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                                     labelLine={false}
                                     outerRadius={100}
                                     dataKey="value"
-                                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                    label={({ name, percent }) => `${name} ${formatNumberEs(percent * 100, 0)}%`}
                                     style={{ fontSize: '10px', fill: AXIS_COLOR }}
                                 >
                                     {expensesByCategory.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} opacity={0.9} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [`S/ ${value.toFixed(2)}`, 'Monto']} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Monto']} />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
@@ -376,7 +384,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                                 <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={GRID_COLOR} />
                                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} tickFormatter={(v) => `S/${v}`} />
                                 <YAxis dataKey="name" type="category" width={90} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} />
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [`S/ ${value.toFixed(2)}`, 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
                                 <Bar dataKey="value" fill="#c084fc" radius={[0, 4, 4, 0]} barSize={28} opacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>
@@ -395,7 +403,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                                 <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={GRID_COLOR} />
                                 <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} tickFormatter={(v) => `S/${v}`} />
                                 <YAxis dataKey="name" type="category" width={110} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} />
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [`S/ ${value.toFixed(2)}`, 'Área']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
+                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Área']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
                                 <Bar dataKey="value" fill="#34d399" radius={[0, 4, 4, 0]} barSize={24} opacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>
@@ -427,7 +435,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                                             </div>
                                         </div>
                                         <div className="font-bold text-sm">
-                                            S/ {provider.amount.toFixed(2)}
+                                            {formatCurrencyEs(provider.amount)}
                                         </div>
                                     </div>
                                 ))

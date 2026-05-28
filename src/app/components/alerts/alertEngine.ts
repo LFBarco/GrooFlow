@@ -8,6 +8,9 @@ import {
     User,
     AlertThresholds
 } from "../../types";
+import type { FleetDataset } from "../../types/fleet";
+import { buildFleetSystemAlerts } from "../../utils/fleetData";
+import { formatNumberEs } from '../../utils/numberFormat';
 import { 
     addDays, 
     isBefore, 
@@ -37,6 +40,8 @@ interface AlertContext {
     pettyCash: PettyCashTransaction[];
     users?: User[]; // Opcional, para análisis de personal
     thresholds?: Partial<AlertThresholds>;
+    /** Flota clínica — alertas SOAT, ITV, checklist, etc. */
+    fleetDataset?: FleetDataset;
 }
 
 export function generateAlerts(context: AlertContext): SystemAlert[] {
@@ -221,7 +226,7 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
              alerts.push({
                 id: `spending-spike-${cat}`,
                 title: 'Desviación de Presupuesto',
-                message: `El gasto en "${cat}" excede el promedio histórico en un ${increase.toFixed(0)}%.`,
+                message: `El gasto en "${cat}" excede el promedio histórico en un ${formatNumberEs(increase, 0)}%.`,
                 severity: 'warning',
                 type: 'spending_deviation',
                 category: 'financial',
@@ -258,6 +263,10 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
                 });
             }
         });
+    }
+
+    if (context.fleetDataset && context.fleetDataset.vehicles?.length > 0) {
+        alerts.push(...buildFleetSystemAlerts(context.fleetDataset));
     }
 
     return alerts.sort((a, b) => {

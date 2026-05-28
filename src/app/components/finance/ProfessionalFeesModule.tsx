@@ -53,6 +53,7 @@ import { Provider } from '../../types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
 import { read, utils } from 'xlsx';
+import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
 
 interface FeeReceipt {
   id: string;
@@ -111,7 +112,7 @@ const MOCK_RECEIPTS: FeeReceipt[] = [
 
 interface ProfessionalFeesModuleProps {
   providers?: Provider[];
-  onUpdateProviders?: (providers: Provider[]) => void;
+  onUpdateProviders?: (providers: Provider[]) => boolean | Promise<boolean>;
   onSendToTreasury?: (receipts: FeeReceipt[]) => void;
   receipts?: FeeReceipt[];
   onUpdateReceipts?: (receipts: FeeReceipt[]) => void;
@@ -418,15 +419,15 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
 
   // --- Handlers ---
 
-  const handleCreateProfessional = (e: React.FormEvent) => {
+  const handleCreateProfessional = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProf.name || !newProf.ruc) {
-      toast.error("Nombre y RUC son obligatorios");
+      toast.error('Nombre y RUC son obligatorios');
       return;
     }
 
     if (!onUpdateProviders) {
-      toast.error("Error de sistema: No se puede guardar el proveedor.");
+      toast.error('Error de sistema: No se puede guardar el proveedor.');
       return;
     }
 
@@ -437,15 +438,19 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
       email: newProf.email,
       type: 'Médico Externo',
       specialty: newProf.role || 'Colaborador Externo',
-      category: 'Servicios', // Categoría comercial default
+      category: 'Servicios',
       defaultCreditDays: 0,
-      totalPurchased: 0
+      totalPurchased: 0,
     };
 
-    onUpdateProviders([...providers, newProvider]);
+    const saved = await Promise.resolve(onUpdateProviders([...providers, newProvider]));
+    if (saved === false) {
+      toast.error('El profesional no se guardó en el directorio (nube). Reintenta luego.');
+      return;
+    }
     setIsNewProfessionalOpen(false);
     setNewProf({ name: '', role: '', ruc: '', email: '' });
-    toast.success("Profesional registrado exitosamente en el Directorio");
+    toast.success('Profesional registrado exitosamente en el Directorio');
     setActiveTab('professionals');
   };
 
@@ -921,7 +926,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Total Pendiente</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">S/ {receipts.filter(r => r.status === 'pending' || r.status === 'approved').reduce((acc, curr) => acc + curr.amount, 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</h3>
+              <h3 className="text-2xl font-bold text-foreground mt-1">{formatCurrencyEs(receipts.filter(r => r.status === 'pending' || r.status === 'approved').reduce((acc, curr) => acc + curr.amount, 0))}</h3>
             </div>
             <div className="p-2 bg-violet-500/10 rounded-lg">
               <DollarSign className="w-5 h-5 text-violet-500" />
@@ -937,7 +942,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Pagado este Mes</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">S/ {receipts.filter(r => r.status === 'paid' && r.issueDate.getMonth() === new Date().getMonth()).reduce((acc, curr) => acc + curr.amount, 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}</h3>
+              <h3 className="text-2xl font-bold text-foreground mt-1">{formatCurrencyEs(receipts.filter(r => r.status === 'paid' && r.issueDate.getMonth() === new Date().getMonth()).reduce((acc, curr) => acc + curr.amount, 0))}</h3>
             </div>
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <CheckCircle2 className="w-5 h-5 text-emerald-500" />
@@ -1055,7 +1060,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                      <div className="flex justify-between items-center mb-3">
                        <span className="text-xs text-muted-foreground">Pendiente de Pago</span>
                        <span className="font-bold text-lg font-mono text-foreground">
-                         S/ {getPendingAmount(prof.id).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                         {formatCurrencyEs(getPendingAmount(prof.id))}
                        </span>
                      </div>
                      <Button className="w-full bg-violet-600/10 hover:bg-violet-600/20 text-violet-500 border border-violet-600/20">
@@ -1364,16 +1369,16 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                           {visibleColumns.sede && <TableCell className="text-xs">{receipt.location || 'Principal'}</TableCell>}
                           {visibleColumns.moneda && <TableCell className="text-xs">PEN</TableCell>}
                           {visibleColumns.rentaBruta && <TableCell className="text-right font-mono text-xs">
-                            {rentaBruta.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            {formatNumberEs(rentaBruta)}
                           </TableCell>}
                           {visibleColumns.impuesto && <TableCell className="text-right font-mono text-xs text-red-400">
-                            {impuesto.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            {formatNumberEs(impuesto)}
                           </TableCell>}
                           {visibleColumns.rentaNeta && <TableCell className="text-right font-mono text-xs font-medium">
-                            {rentaNeta.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            {formatNumberEs(rentaNeta)}
                           </TableCell>}
                           {visibleColumns.montoPendiente && <TableCell className="text-right font-mono text-xs font-medium">
-                            {rentaNeta.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            {formatNumberEs(rentaNeta)}
                           </TableCell>}
 
                           {/* Sistema */}
@@ -1454,7 +1459,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                         <Wallet className="w-4 h-4 text-violet-500" />
                      </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-foreground">S/ {analyticsSummary.totalPaidYTD.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</h3>
+                  <h3 className="text-2xl font-bold text-foreground">{formatCurrencyEs(analyticsSummary.totalPaidYTD)}</h3>
                   <div className="flex items-center mt-2 text-xs text-green-500">
                      <TrendingUp className="w-3 h-3 mr-1" />
                      <span>+12% vs año anterior</span>
@@ -1468,7 +1473,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                         <AlertCircle className="w-4 h-4 text-orange-500" />
                      </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-foreground">S/ {analyticsSummary.pendingAmount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</h3>
+                  <h3 className="text-2xl font-bold text-foreground">{formatCurrencyEs(analyticsSummary.pendingAmount)}</h3>
                   <div className="flex items-center mt-2 text-xs text-orange-500">
                      <span>Por vencer en 30 días</span>
                   </div>
@@ -1482,7 +1487,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                      </div>
                   </div>
                   <h3 className="text-lg font-bold text-foreground truncate" title={analyticsSummary.topEarner.name}>{analyticsSummary.topEarner.name}</h3>
-                  <p className="text-sm font-mono text-muted-foreground mt-1">S/ {analyticsSummary.topEarner.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
+                  <p className="text-sm font-mono text-muted-foreground mt-1">{formatCurrencyEs(analyticsSummary.topEarner.amount)}</p>
                </Card>
 
                <Card className="p-4 border-emerald-500/10 bg-gradient-to-br from-emerald-500/5 to-transparent">
@@ -1528,7 +1533,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                          <YAxis fontSize={12} stroke="#888" tickFormatter={(val) => `S/ ${val}`} />
                          <Tooltip 
                             contentStyle={{ backgroundColor: '#1e1e1e', borderColor: '#333' }}
-                            formatter={(value: number) => [`S/ ${value.toLocaleString()}`, '']}
+                            formatter={(value: number) => [formatCurrencyEs(value), '']}
                          />
                          <Legend />
                          <Area type="monotone" dataKey="pagado" name="Pagado" stroke="#10b981" fillOpacity={1} fill="url(#colorPaid)" />
@@ -1553,7 +1558,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                             <YAxis fontSize={12} stroke="#888" tickFormatter={(val) => `S/ ${val}`} />
                             <Tooltip 
                                contentStyle={{ backgroundColor: '#1e1e1e', borderColor: '#333' }}
-                               formatter={(value: number) => [`S/ ${value.toLocaleString()}`, 'Monto']}
+                               formatter={(value: number) => [formatCurrencyEs(value), 'Monto']}
                             />
                             <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Monto por vencer" />
                          </BarChart>
@@ -1574,7 +1579,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                                cx="50%"
                                cy="50%"
                                labelLine={false}
-                               label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                               label={({ name, percent }) => `${name} ${formatNumberEs(percent * 100, 0)}%`}
                                outerRadius={80}
                                fill="#8884d8"
                                dataKey="value"
@@ -1583,7 +1588,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                ))}
                             </Pie>
-                            <Tooltip formatter={(value: number) => [`S/ ${value.toLocaleString()}`, 'Deuda']} />
+                            <Tooltip formatter={(value: number) => [formatCurrencyEs(value), 'Deuda']} />
                             <Legend />
                          </PieChart>
                       </ResponsiveContainer>

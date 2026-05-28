@@ -7,6 +7,12 @@ import {
 import { Brain, TrendingUp, TrendingDown, AlertCircle, Target, Wallet } from 'lucide-react';
 import { format, subMonths, isSameMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+  formatCurrencyEs,
+  formatNumberEs,
+  formatPercentEs,
+  formatAxisThousandsPEN,
+} from '../../utils/numberFormat';
 
 // ─── NEON PALETTE ──────────────────────────────────────────────────────
 const NEON = {
@@ -116,11 +122,11 @@ export function AnalyticsDashboard({
     const insights: Array<{ type: string; title: string; message: string; icon: any; color: string; glow: string }> = [];
     if (currExpense > currIncome) {
       insights.push({ type: 'warning', title: 'Alerta de Flujo', icon: AlertCircle, color: '#fb7185', glow: '#fb7185',
-        message: `Egresos superan ingresos por ${new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(currExpense - currIncome)}.` });
+        message: `Egresos superan ingresos por ${formatCurrencyEs(currExpense - currIncome)}.` });
     }
     if (incomeGrowth > 10) {
       insights.push({ type: 'positive', title: 'Crecimiento Sólido', icon: TrendingUp, color: '#34d399', glow: '#34d399',
-        message: `Ingresos crecieron ${incomeGrowth.toFixed(1)}% respecto al mes anterior.` });
+        message: `Ingresos crecieron ${formatNumberEs(incomeGrowth, 1)}% respecto al mes anterior.` });
     }
     if (categoryData.length > 0) {
       const topCat = categoryData[0];
@@ -128,7 +134,7 @@ export function AnalyticsDashboard({
       const percent = (topCat.value / totalExp) * 100;
       if (percent > 40) {
         insights.push({ type: 'neutral', title: 'Concentración de Gastos', icon: Target, color: '#22d3ee', glow: '#22d3ee',
-          message: `${percent.toFixed(0)}% de gastos en "${topCat.name}". Considera negociar con proveedores.` });
+          message: `${formatNumberEs(percent, 0)}% de gastos en "${topCat.name}". Considera negociar con proveedores.` });
       }
     }
     if (insights.length === 0) {
@@ -138,12 +144,12 @@ export function AnalyticsDashboard({
     return insights;
   }, [currExpense, currIncome, incomeGrowth, categoryData]);
 
-  const formatMoney = (val: number) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN', minimumFractionDigits: 0 }).format(val);
+  const formatMoney = (val: number) => formatCurrencyEs(val);
 
   const kpiCards = [
-    { label: 'Ingreso Mensual', value: formatMoney(currIncome), sub: `${incomeGrowth >= 0 ? '+' : ''}${incomeGrowth.toFixed(1)}% vs mes ant.`, subColor: incomeGrowth >= 0 ? NEON.PROFIT : NEON.EXPENSE, icon: TrendingUp, accent: NEON.INCOME },
+    { label: 'Ingreso Mensual', value: formatMoney(currIncome), sub: `${incomeGrowth >= 0 ? '+' : ''}${formatNumberEs(incomeGrowth, 1)}% vs mes ant.`, subColor: incomeGrowth >= 0 ? NEON.PROFIT : NEON.EXPENSE, icon: TrendingUp, accent: NEON.INCOME },
     { label: 'Gasto Mensual', value: formatMoney(currExpense), sub: `Burn rate: ${formatMoney(burnRate)}/mes`, subColor: AXIS_COLOR, icon: TrendingDown, accent: NEON.EXPENSE },
-    { label: 'Margen Operativo', value: `${currIncome > 0 ? ((currIncome - currExpense) / currIncome * 100).toFixed(1) : 0}%`, sub: 'Objetivo ideal: > 20%', subColor: AXIS_COLOR, icon: Wallet, accent: NEON.BLUE },
+    { label: 'Margen Operativo', value: `${currIncome > 0 ? formatPercentEs(((currIncome - currExpense) / currIncome) * 100, 1) : '0%'}`, sub: 'Objetivo ideal: > 20%', subColor: AXIS_COLOR, icon: Wallet, accent: NEON.BLUE },
     { label: 'Proyección Fin Mes', value: formatMoney(currIncome * 1.1), sub: 'Basado en tendencia', subColor: AXIS_COLOR, icon: Brain, accent: NEON.PURPLE },
   ];
 
@@ -228,7 +234,7 @@ export function AnalyticsDashboard({
                       tick={{ fontSize: 11, fill: AXIS_COLOR }} dy={8} />
                     <YAxis axisLine={false} tickLine={false}
                       tick={{ fontSize: 10, fill: AXIS_COLOR }}
-                      tickFormatter={(v) => `S/${(v/1000).toFixed(0)}k`} dx={-5} width={48} />
+                      tickFormatter={(v) => formatAxisThousandsPEN(v)} dx={-5} width={48} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM}
                       formatter={(v: number) => formatMoney(v)}
                       cursor={{ stroke: 'rgba(139,92,246,0.3)', strokeWidth: 1, strokeDasharray: '4 4' }} />
@@ -298,12 +304,16 @@ export function AnalyticsDashboard({
                     />
                   </svg>
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-2xl font-bold" style={{ color: '#F0EEFF', fontFamily: "'JetBrains Mono', monospace" }}>{healthScore.toFixed(0)}%</span>
+                    <span className="text-2xl font-bold" style={{ color: '#F0EEFF', fontFamily: "'JetBrains Mono', monospace" }}>{formatPercentEs(healthScore, 0)}</span>
                     <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: AXIS_COLOR }}>Score</span>
                   </div>
                 </div>
                 <p className="text-xs text-center leading-relaxed px-2" style={{ color: AXIS_COLOR }}>
-                  Por cada S/100 ingresados, quedan <span className="font-bold" style={{ color: '#F0EEFF' }}>S/{currIncome > 0 ? ((currIncome - currExpense) / currIncome * 100).toFixed(0) : '0'}</span> de ganancia neta.
+                  Por cada S/100 ingresados, quedan{' '}
+                  <span className="font-bold" style={{ color: '#F0EEFF' }}>
+                    {formatCurrencyEs(currIncome > 0 ? (100 * (currIncome - currExpense)) / currIncome : 0)}
+                  </span>{' '}
+                  de ganancia neta.
                 </p>
               </div>
             </NeonCard>

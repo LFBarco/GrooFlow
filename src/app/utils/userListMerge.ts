@@ -93,15 +93,22 @@ export function mergeAuthUserIntoUsers(
     );
   }
 
+  // Seguridad: si un usuario no existe en la lista del sistema, no se re-crea
+  // automáticamente al iniciar sesión (evita que "reaparezcan" usuarios eliminados).
+  // Excepción: correos privilegiados definidos como super admin.
+  if (!isPrivileged) {
+    return list;
+  }
+
   const row: User = {
     id: authUser.id,
     email: emailRaw,
     name: authUser.user_metadata?.name || emailRaw.split('@')[0],
     initials: (authUser.user_metadata?.name || emailRaw).slice(0, 2).toUpperCase(),
-    role: isPrivileged ? 'super_admin' : 'manager',
+    role: 'super_admin',
     status: 'active',
     lastLogin: new Date().toISOString(),
-    ...(isPrivileged ? { allSedes: true } : {}),
+    allSedes: true,
   };
   return [...list, row];
 }

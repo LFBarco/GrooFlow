@@ -28,7 +28,8 @@ export function UserMenu({
     side = "bottom",
     align = "end"
 }: UserMenuProps) {
-    const { currentUser: user, theme: currentTheme, toggleTheme: onToggleTheme } = useApp();
+    const { currentUser: user, roles = [], theme: currentTheme, toggleTheme: onToggleTheme } = useApp();
+    const roleLabel = roles.find((r) => r.id === user.role)?.name || user.role.replace(/_/g, ' ');
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -40,7 +41,7 @@ export function UserMenu({
                         </Avatar>
                         <div className="flex flex-col items-start text-left flex-1 min-w-0">
                             <span className="text-sm font-semibold truncate w-full" style={{ color: '#E4E0FF' }}>{user.name}</span>
-                            <span className="text-xs truncate w-full capitalize" style={{ color: '#6b5fa5' }}>{user.role.replace('_', ' ')}</span>
+                            <span className="text-xs truncate w-full" style={{ color: '#6b5fa5' }}>{roleLabel}</span>
                         </div>
                         <ChevronsUpDown className="ml-auto h-3.5 w-3.5" style={{ color: 'rgba(255,255,255,0.2)' }} />
                     </Button>

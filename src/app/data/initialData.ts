@@ -1,4 +1,11 @@
-import { SystemSettings, SYSTEM_SEDES, type SedeCatalogEntry, type PettyCashRenditionPrintSettings } from '../types';
+import {
+  SystemSettings,
+  SYSTEM_SEDES,
+  type SedeCatalogEntry,
+  type PettyCashPrintFormCounters,
+  type PettyCashRenditionPrintSettings,
+  type SmartCashFlowSettings,
+} from '../types';
 import {
   DEFAULT_PROVIDER_AREAS,
   DEFAULT_PROVIDER_CATEGORIES,
@@ -21,6 +28,20 @@ export function mergePettyCashRenditionPrint(
   partial?: PettyCashRenditionPrintSettings | null
 ): PettyCashRenditionPrintSettings {
   return { ...defaultPettyCashRenditionPrint, ...(partial || {}) };
+}
+
+/** Valores por defecto de correlativos imprimibles (recibo/planilla). Merge con KV. */
+export const defaultPettyCashPrintCounters: PettyCashPrintFormCounters = {
+  simpleReceiptSerie: 'RCC',
+  simpleReceiptNext: 1,
+  mobilitySerie: 'MOV',
+  mobilityNext: 1,
+};
+
+export function mergePettyCashPrintCounters(
+  partial?: Partial<PettyCashPrintFormCounters> | null
+): PettyCashPrintFormCounters {
+  return { ...defaultPettyCashPrintCounters, ...(partial || {}) };
 }
 
 export type TransactionType = 'income' | 'expense';
@@ -143,6 +164,8 @@ export const initialStructure: ConfigStructure = {
 
 export const initialSystemSettings: SystemSettings = {
   businessName: 'GrooFlow',
+  businessLegalName: '',
+  businessRuc: '',
   sedesCatalog: SYSTEM_SEDES.map(
     (name): SedeCatalogEntry => ({ name, enabled: true })
   ),
@@ -158,13 +181,52 @@ export const initialSystemSettings: SystemSettings = {
     renditionPrint: { ...defaultPettyCashRenditionPrint },
     weekClosures: [],
     weekPreClosures: [],
+    fundDeliveries: [],
+    printCounters: { ...defaultPettyCashPrintCounters },
   },
   providers: {
     categories: [...DEFAULT_PROVIDER_CATEGORIES],
     areas: [...DEFAULT_PROVIDER_AREAS],
   },
   accounting: {},
+  smartCashFlow: defaultSmartCashFlowSettings(),
 };
+
+/** Valores por defecto del submódulo Smart Cash Flow (Fase 2). */
+export function defaultSmartCashFlowSettings(): SmartCashFlowSettings {
+  return {
+    scheduleLines: [],
+    categoryOrder: { income: [], expense: [] },
+    aiIncomeEstimates: {},
+    includeInvoiceDueDates: false,
+  };
+}
+
+export function mergeSmartCashFlowSettings(
+  partial?: Partial<SmartCashFlowSettings> | null
+): SmartCashFlowSettings {
+  const base = defaultSmartCashFlowSettings();
+  if (!partial || typeof partial !== 'object') return { ...base };
+  return {
+    ...base,
+    ...partial,
+    categoryOrder: {
+      income: Array.isArray(partial.categoryOrder?.income)
+        ? partial.categoryOrder.income
+        : base.categoryOrder?.income,
+      expense: Array.isArray(partial.categoryOrder?.expense)
+        ? partial.categoryOrder.expense
+        : base.categoryOrder?.expense,
+    },
+    scheduleLines: Array.isArray(partial.scheduleLines)
+      ? partial.scheduleLines
+      : base.scheduleLines,
+    aiIncomeEstimates:
+      partial.aiIncomeEstimates && typeof partial.aiIncomeEstimates === 'object'
+        ? partial.aiIncomeEstimates
+        : base.aiIncomeEstimates,
+  };
+}
 
 /**
  * Fusiona ajustes leídos del KV con valores por defecto.
@@ -185,12 +247,18 @@ export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | u
       renditionPrint: mergePettyCashRenditionPrint(
         pc?.renditionPrint ?? base.pettyCash.renditionPrint
       ),
+      printCounters: mergePettyCashPrintCounters(
+        pc?.printCounters ?? base.pettyCash.printCounters
+      ),
       weekClosures: Array.isArray(pc?.weekClosures)
         ? pc.weekClosures
         : (base.pettyCash.weekClosures ?? []),
       weekPreClosures: Array.isArray(pc?.weekPreClosures)
         ? pc.weekPreClosures
         : (base.pettyCash.weekPreClosures ?? []),
+      fundDeliveries: Array.isArray(pc?.fundDeliveries)
+        ? pc.fundDeliveries
+        : (base.pettyCash.fundDeliveries ?? []),
     },
     providers: {
       categories:
@@ -207,5 +275,6 @@ export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | u
       ...base.accounting,
       ...(incoming.accounting || {}),
     },
+    smartCashFlow: mergeSmartCashFlowSettings(incoming.smartCashFlow ?? base.smartCashFlow),
   };
 }

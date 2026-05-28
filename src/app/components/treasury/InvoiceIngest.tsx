@@ -4,6 +4,7 @@ import { Upload, FileText, CheckCircle2, AlertCircle, X, Loader2, ArrowRight } f
 import { Invoice } from './types';
 import { processFile } from '../../utils/invoiceParser'; // Import the real parser
 import { clsx } from 'clsx';
+import { formatNumberEs } from '../../utils/numberFormat';
 import { twMerge } from 'tailwind-merge';
 
 interface InvoiceIngestProps {
@@ -260,7 +261,7 @@ export const InvoiceIngest: React.FC<InvoiceIngestProps> = ({ onProcessComplete 
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right font-mono font-medium text-gray-900">
-                        {inv.currency} {inv.amount.toFixed(2)}
+                        {inv.currency} {formatNumberEs(inv.amount)}
                       </td>
                       <td className="px-6 py-4 text-gray-600">
                         {inv.dueDate.toLocaleDateString()}

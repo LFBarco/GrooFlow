@@ -13,6 +13,7 @@ import { Transaction } from '../../types';
 import { format, getDaysInMonth, startOfMonth, addDays, isSameDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { TrendingUp, AlertTriangle } from 'lucide-react';
+import { formatAxisThousandsPEN, formatCurrencyEs } from '../../utils/numberFormat';
 
 // ─── CHART PALETTE ────────────────────────────────────────────────────
 const NEON_PURPLE  = '#c084fc';
@@ -66,7 +67,7 @@ export function CashFlowChart({ transactions, currentDate }: CashFlowChartProps)
   }, [transactions, currentDate]);
 
   const negativeDays = chartData.filter(d => d.balance < 0).length;
-  const formatMoney = (v: number) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN', minimumFractionDigits: 0 }).format(v);
+  const formatMoney = (v: number) => formatCurrencyEs(v, 0);
 
   return (
     <div className="rounded-2xl p-5" style={{
@@ -119,7 +120,7 @@ export function CashFlowChart({ transactions, currentDate }: CashFlowChartProps)
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: AXIS_COLOR, fontFamily: "'Inter', sans-serif" }}
-                tickFormatter={(v) => `S/${(v/1000).toFixed(0)}k`}
+                tickFormatter={(v) => formatAxisThousandsPEN(v)}
                 dx={-5}
                 width={48}
               />

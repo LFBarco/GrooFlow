@@ -1,0 +1,41 @@
+Lo que ya hice
+Creé la rama de pruebas y la subí:
+dev (remota: origin/dev)
+Dejé variables de Vercel por entorno:
+Production: configurado
+Development: configurado
+Preview (dev): configurado por rama dev
+Agregué scripts en package.json:
+npm run deploy:preview
+npm run deploy:prod
+npm run release:preview (build + preview)
+npm run release:prod (build + prod)
+Documenté el flujo en:
+docs/DEPLOY_RAMAS.md
+Probé despliegue de pruebas real desde dev:
+Preview URL: https://grooflow-mr3q6hlnv-luis-barco-projects.vercel.app
+Cómo funciona ahora (simple)
+Trabajo en pruebas: rama dev
+Paso a producción: fusionar dev -> main y desplegar prod
+Comandos que usarás
+Probar cambios (preview)
+git checkout dev
+# haces cambios
+git add .
+git commit -m "cambios en pruebas"
+git push
+npm run deploy:preview
+Pasar a producción
+git checkout main
+git pull
+git merge dev
+git push
+npm run deploy:prod
+Cómo pedírmelo a mí (automático)
+Puedes decirme literalmente:
+
+“Trabajemos en pruebas” -> hago cambios en dev y despliego preview.
+“Pasa esto a producción” -> fusiono dev a main y despliego prod.
+“Solo sube preview” -> ejecuto npm run deploy:preview.
+“Despliega producción” -> ejecuto npm run deploy:prod.
+Si quieres, en el siguiente paso te dejo también un alias más corto tipo npm run qa y npm run prod para que sea aún más rápido.

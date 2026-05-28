@@ -23,6 +23,7 @@ import {
 import { formatDistanceToNow, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { SystemAlert, AlertSeverity, AlertThresholds } from "../../types";
+import { formatNumberEs } from "../../utils/numberFormat";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { ScrollArea } from "../ui/scroll-area";
@@ -201,7 +202,7 @@ export function AlertsCenter({
                             </CardHeader>
                             <CardContent>
                                 <div className="text-2xl font-bold">
-                                    {metrics.total > 0 ? ((metrics.resolved / metrics.total) * 100).toFixed(0) : 0}%
+                                    {metrics.total > 0 ? formatNumberEs((metrics.resolved / metrics.total) * 100, 0) : '0'}%
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-1">Tasa de resolución</p>
                             </CardContent>

@@ -18,6 +18,7 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { formatCurrencyEs } from '../../utils/numberFormat';
 
 function toRequestDate(d: Date | string | undefined | null): Date {
   if (d instanceof Date && !isNaN(d.getTime())) return d;
@@ -198,7 +199,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
             isOpen: true,
             type,
             requestId: req.id,
-            requestDescription: `${req.providerName} - S/${req.amount.toFixed(2)}`
+            requestDescription: `${req.providerName} - ${formatCurrencyEs(req.amount, 2)}`
         });
         setActionComment('');
     };
@@ -433,7 +434,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.pendingCount}</div>
                         <p className="text-xs text-muted-foreground">
-                            Valor total: S/ {stats.pendingAmount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            Valor total: {formatCurrencyEs(stats.pendingAmount, 2)}
                         </p>
                     </CardContent>
                 </Card>
@@ -445,7 +446,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                     <CardContent>
                         <div className="text-2xl font-bold">{stats.approvedCount}</div>
                         <p className="text-xs text-muted-foreground">
-                            Valor total: S/ {stats.approvedAmount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                            Valor total: {formatCurrencyEs(stats.approvedAmount, 2)}
                         </p>
                     </CardContent>
                 </Card>
@@ -575,7 +576,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                                         </TableCell>
                                         <TableCell>{getPriorityBadge(req.priority)}</TableCell>
                                         <TableCell className="text-right font-mono font-medium">
-                                            S/ {req.amount.toFixed(2)}
+                                            {formatCurrencyEs(req.amount, 2)}
                                         </TableCell>
                                         <TableCell>
                                             {getStatusBadge(req.status)}

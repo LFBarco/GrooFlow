@@ -1,7 +1,9 @@
 import type { User } from '../types';
 import type { Role } from '../components/users/types';
 import { getSuperAdminEmails } from '../config/superAdmins';
+import { userHasGlobalSedeAccess } from './roleAccess';
 import { canApprovePettyCashMovements } from './pettyCashAudit';
+import { userHasPettyCashFund } from './pettyCashFund';
 
 /**
  * Puede elegir otros responsables de caja chica (no solo a sí mismo).
@@ -26,7 +28,7 @@ export function userAssignedSedeNames(user: User, enabledCatalog: string[]): str
   const raw = (user.sedes?.length ? user.sedes : user.location ? [user.location] : [])
     .map((s) => String(s).trim())
     .filter(Boolean);
-  if (user.allSedes === true || user.role === 'super_admin') {
+  if (userHasGlobalSedeAccess(user)) {
     return enabledCatalog.length > 0 ? [...enabledCatalog] : raw;
   }
   if (!enabledCatalog.length) return raw;
@@ -36,7 +38,8 @@ export function userAssignedSedeNames(user: User, enabledCatalog: string[]): str
 /**
  * Lista de usuarios que pueden aparecer como "Responsable de Caja Chica".
  * - Quien no tiene permiso elevado: solo él mismo.
- * - Quien sí: responsables con fondo (`pettyCashLimit > 0`) cuya sede intersecta con `viewerVisibleSedes`,
+ * - Quien sí: responsables con fondo activo (`pettyCashFundEnabled`; legado: `pettyCashLimit > 0`)
+ *   cuya sede intersecta con `viewerVisibleSedes`,
  *   o todos si `viewerSeesAllSedes` (super / todas las sedes).
  */
 export function filterPettyCashCustodianUsersForViewer(
@@ -56,7 +59,7 @@ export function filterPettyCashCustodianUsersForViewer(
   const catalog = viewerVisibleSedes.length > 0 ? viewerVisibleSedes : ['Principal'];
 
   return allUsers.filter((u) => {
-    const hasFund = (u.pettyCashLimit ?? 0) > 0;
+    const hasFund = userHasPettyCashFund(u);
     if (!hasFund) return false;
     if (viewerSeesAllSedes) return true;
     const custodianSedes = userAssignedSedeNames(u, catalog);

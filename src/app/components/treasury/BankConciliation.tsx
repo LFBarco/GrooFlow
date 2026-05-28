@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { BankMovement, Invoice } from './types';
 import { Check, X, ArrowRightLeft, Search, AlertTriangle, FileSpreadsheet, CheckCircle2, Calendar } from 'lucide-react';
 import { clsx } from 'clsx';
+import { formatCurrencyEs } from '../../utils/numberFormat';
 
 interface BankConciliationProps {
   movements: BankMovement[];
@@ -184,7 +185,7 @@ export const BankConciliation: React.FC<BankConciliationProps> = ({
                         <span className="text-xs text-gray-400 font-mono mt-0.5">OP: {mov.operationNumber}</span>
                     </div>
                     <span className="font-mono font-bold text-red-600 text-sm whitespace-nowrap">
-                        - S/ {Math.abs(mov.amount).toFixed(2)}
+                        - {formatCurrencyEs(Math.abs(mov.amount))}
                     </span>
                     </div>
                     <div className="flex justify-between items-center text-xs text-gray-500 border-t border-gray-100 pt-2 mt-2">
@@ -238,7 +239,7 @@ export const BankConciliation: React.FC<BankConciliationProps> = ({
                         <span className="text-xs text-gray-500 font-mono mt-0.5">{inv.documentType} {inv.documentNumber}</span>
                     </div>
                     <span className="font-mono font-bold text-gray-900 text-sm whitespace-nowrap">
-                        S/ {inv.amount.toFixed(2)}
+                        {formatCurrencyEs(inv.amount)}
                     </span>
                     </div>
                     <div className="flex justify-between items-center text-xs text-gray-500 border-t border-gray-100 pt-2 mt-2">
@@ -269,14 +270,14 @@ export const BankConciliation: React.FC<BankConciliationProps> = ({
             <div className="flex items-center gap-3 text-sm">
                 <div className="flex flex-col items-end">
                     <span className="text-[10px] text-gray-400 uppercase tracking-wider">Banco</span>
-                    <span className="font-mono font-bold text-red-300">S/ {Math.abs(movements.find(m => m.id === selectedMovement)?.amount || 0).toFixed(2)}</span>
+                    <span className="font-mono font-bold text-red-300">{formatCurrencyEs(Math.abs(movements.find(m => m.id === selectedMovement)?.amount || 0))}</span>
                 </div>
                 <div className="bg-gray-800 rounded-full p-1">
                      <ArrowRightLeft className="w-4 h-4 text-gray-400" />
                 </div>
                  <div className="flex flex-col items-start">
                     <span className="text-[10px] text-gray-400 uppercase tracking-wider">Sistema</span>
-                    <span className="font-mono font-bold text-green-300">S/ {systemPayments.find(i => i.id === selectedInvoice)?.amount.toFixed(2) || 0}</span>
+                    <span className="font-mono font-bold text-green-300">{formatCurrencyEs(systemPayments.find(i => i.id === selectedInvoice)?.amount ?? 0)}</span>
                 </div>
             </div>
             
