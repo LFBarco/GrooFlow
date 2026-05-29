@@ -17,6 +17,7 @@
 
 import { repository, KV_KEYS } from './repository';
 import { getSupabaseClient, isSupabaseKvFatalAuthError } from './repository/supabase';
+import { broadcastKvUpdate, shouldBroadcastKvUpdate } from '../utils/kvCrossTabSync';
 import { toast } from 'sonner';
 
 /** Evitar spam por cada autosave si la sesión murió */
@@ -272,6 +273,9 @@ export const api = {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         await repository.kv.set(key, data);
+        if (shouldBroadcastKvUpdate(key)) {
+          broadcastKvUpdate(key, data);
+        }
         return true;
       } catch (error) {
         if (backend === 'supabase' && isSupabaseKvFatalAuthError(error)) {

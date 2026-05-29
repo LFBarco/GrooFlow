@@ -102,9 +102,16 @@ import {
   persistKvDomainNow,
   resetKvDomainRefs,
   shouldAllowKvRemoteHydrate,
+  KV_DOMAIN_COOLDOWN_MS,
   type CloudSyncPhase,
 } from "./utils/kvDomainPersistence";
 import { CloudSyncIndicator } from "./components/layout/CloudSyncIndicator";
+import { useKvCrossTabSync } from "./hooks/useKvCrossTabSync";
+import {
+  kvKeyDisplayLabel,
+  kvPayloadsEqual,
+  markCrossTabEchoWindow,
+} from "./utils/kvCrossTabSync";
 
 const initialTransactions: Transaction[] = [];
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
@@ -1842,6 +1849,249 @@ export default function App() {
     setChartOfAccounts(next);
   }, []);
 
+  const applyRemoteKvRef = useRef<((key: string, value: unknown) => void) | null>(null);
+  const remoteKvToastLastAtRef = useRef(0);
+
+  applyRemoteKvRef.current = (key: string, value: unknown) => {
+    if (!isDataLoaded || signingOutRef.current) return;
+    if (key === 'maintenance:transactionsClearedAt') return;
+
+    let applied = false;
+
+    const finish = () => {
+      if (!applied) return;
+      markCrossTabEchoWindow(key);
+      const now = Date.now();
+      if (now - remoteKvToastLastAtRef.current >= 4000) {
+        remoteKvToastLastAtRef.current = now;
+        toast.info('Actualizado desde otra pestaña', {
+          description: kvKeyDisplayLabel(key),
+          duration: 2500,
+        });
+      }
+      cloudSyncErrorRef.current = false;
+      setCloudSyncPhase('synced');
+    };
+
+    switch (key) {
+      case 'settings:config': {
+        if (!configHydratedFromKvRef.current) return;
+        const next = value as ConfigStructure;
+        if (kvPayloadsEqual(configKvLatestRef.current, next)) return;
+        configKvLatestRef.current = next;
+        configKvCooldownUntilRef.current = Date.now() + CONFIG_KV_COOLDOWN_MS;
+        setConfig(next);
+        applied = true;
+        break;
+      }
+      case 'settings:system': {
+        if (!systemSettingsHydratedFromKvRef.current) return;
+        const merged = mergeSystemSettings(value as Partial<SystemSettings>);
+        if (kvPayloadsEqual(systemSettingsKvLatestRef.current, merged)) return;
+        systemSettingsKvLatestRef.current = merged;
+        systemSettingsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setSystemSettings(merged);
+        applied = true;
+        break;
+      }
+      case 'settings:theme': {
+        if (value !== 'dark' && value !== 'light') return;
+        markCrossTabEchoWindow(key);
+        setTheme(value);
+        applied = true;
+        break;
+      }
+      case 'settings:alertThresholds': {
+        if (!alertThresholdsHydratedFromKvRef.current) return;
+        const next = value as AlertThresholds;
+        if (kvPayloadsEqual(alertThresholdsKvLatestRef.current, next)) return;
+        alertThresholdsKvLatestRef.current = next;
+        alertThresholdsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setAlertThresholds(next);
+        applied = true;
+        break;
+      }
+      case 'data:transactions': {
+        if (!transactionsCloudHydrationDoneRef.current) return;
+        const remote = Array.isArray(value) ? hydrateTransactions(value) : [];
+        const unique = Array.from(new Map(remote.map((t) => [t.id, t])).values());
+        if (kvPayloadsEqual(transactionsKvLatestRef.current, unique)) return;
+        transactionsKvLatestRef.current = unique;
+        setTransactions(unique);
+        transactionsHydratedFromKvRef.current = true;
+        applied = true;
+        break;
+      }
+      case 'data:invoices': {
+        if (!invoicesHydratedFromKvRef.current) return;
+        const unique = Array.isArray(value)
+          ? (Array.from(
+              new Map((value as InvoiceDraft[]).map((i) => [i.id, i])).values()
+            ) as InvoiceDraft[])
+          : [];
+        if (kvPayloadsEqual(invoicesKvLatestRef.current, unique)) return;
+        invoicesKvLatestRef.current = unique;
+        invoicesKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setInvoices(unique);
+        applied = true;
+        break;
+      }
+      case 'data:providers': {
+        if (!providersHydratedFromKvRef.current) return;
+        const list = Array.isArray(value)
+          ? (Array.from(new Map((value as Provider[]).map((p) => [p.id, p])).values()) as Provider[])
+          : [];
+        if (kvPayloadsEqual(providersKvLatestRef.current, list)) return;
+        providersKvLatestRef.current = list;
+        providersKvCooldownUntilRef.current = Date.now() + PROVIDERS_KV_COOLDOWN_MS;
+        setProviders(list);
+        applied = true;
+        break;
+      }
+      case 'data:products': {
+        if (!productsHydratedFromKvRef.current) return;
+        const unique = Array.isArray(value)
+          ? (Array.from(
+              new Map((value as Product[]).map((p) => [p.id, p])).values()
+            ) as Product[])
+          : [];
+        const mapped = unique.map((p) => ({
+          ...p,
+          createdAt: p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt),
+          updatedAt: p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt),
+        }));
+        if (kvPayloadsEqual(productsKvLatestRef.current, mapped)) return;
+        productsKvLatestRef.current = mapped;
+        productsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setProducts(mapped);
+        applied = true;
+        break;
+      }
+      case 'data:requests': {
+        if (!requestsHydratedFromKvRef.current) return;
+        const unique = Array.isArray(value)
+          ? (Array.from(
+              new Map((value as PurchaseRequest[]).map((r) => [r.id, r])).values()
+            ) as PurchaseRequest[])
+          : [];
+        if (kvPayloadsEqual(requestsKvLatestRef.current, unique)) return;
+        requestsKvLatestRef.current = unique;
+        requestsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setRequests(unique);
+        applied = true;
+        break;
+      }
+      case 'data:pettyCash': {
+        if (!pettyCashHydratedFromKvRef.current) return;
+        const ptx = Array.isArray(value) ? (value as PettyCashTransaction[]) : [];
+        const mapped = ptx.map((t) => ({
+          ...t,
+          date: parseTransactionDate(t.date),
+          documentDate:
+            t.documentDate != null ? parseTransactionDate(t.documentDate) : undefined,
+        }));
+        if (kvPayloadsEqual(pettyCashKvLatestRef.current, mapped)) return;
+        pettyCashKvLatestRef.current = mapped;
+        pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
+        setPettyCashTransactions(mapped);
+        applied = true;
+        break;
+      }
+      case 'data:users': {
+        if (!canSaveUsers || !Array.isArray(value)) return;
+        let list = dedupeUsersByEmail(value as User[]);
+        list = applySuperAdminRoleFromConfig(list);
+        if (kvPayloadsEqual(users, list)) return;
+        setUsers(list);
+        const em = currentUser.email?.trim().toLowerCase();
+        if (em) {
+          const row = resolveCurrentUserRow(list, em);
+          if (row) setCurrentUser(row);
+        }
+        applied = true;
+        break;
+      }
+      case 'data:roles': {
+        if (!rolesHydratedFromKvRef.current) return;
+        const merged = mergeRolesWithDefaults(Array.isArray(value) ? (value as Role[]) : []);
+        if (kvPayloadsEqual(rolesKvLatestRef.current, merged)) return;
+        rolesKvLatestRef.current = merged;
+        rolesKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setRoles(merged);
+        applied = true;
+        break;
+      }
+      case 'data:feeReceipts': {
+        if (!feeReceiptsHydratedFromKvRef.current) return;
+        const list = Array.isArray(value) ? (value as FeeReceiptGlobal[]) : [];
+        if (kvPayloadsEqual(feeReceiptsKvLatestRef.current, list)) return;
+        feeReceiptsKvLatestRef.current = list;
+        feeReceiptsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setFeeReceipts(list);
+        applied = true;
+        break;
+      }
+      case 'data:treasuryInvoices': {
+        if (!treasuryHydratedFromKvRef.current) return;
+        const list = Array.isArray(value) ? value : [];
+        if (kvPayloadsEqual(treasuryInvoicesKvLatestRef.current, list)) return;
+        treasuryInvoicesKvLatestRef.current = list;
+        treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setTreasuryInvoices(list);
+        applied = true;
+        break;
+      }
+      case 'data:treasuryBankBalance': {
+        if (!treasuryBankBalanceLoadedFromKvRef.current && !treasuryHydratedFromKvRef.current) return;
+        const bal =
+          value !== undefined && value !== null ? Number(value) : undefined;
+        if (kvPayloadsEqual(treasuryBankBalanceKvLatestRef.current, bal)) return;
+        treasuryBankBalanceKvLatestRef.current = bal;
+        treasuryBankBalanceLoadedFromKvRef.current = true;
+        treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setTreasuryBankBalance(bal);
+        applied = true;
+        break;
+      }
+      case 'data:treasuryPaidHistory': {
+        if (!treasuryHydratedFromKvRef.current) return;
+        const list = Array.isArray(value) ? value : [];
+        if (kvPayloadsEqual(treasuryPaidHistoryKvLatestRef.current, list)) return;
+        treasuryPaidHistoryKvLatestRef.current = list;
+        treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setTreasuryPaidHistory(list);
+        applied = true;
+        break;
+      }
+      case 'data:fleet': {
+        if (!fleetHydratedFromKvRef.current) return;
+        const next = normalizeFleetDataset(value as Partial<FleetDataset>);
+        if (kvPayloadsEqual(fleetKvLatestRef.current, next)) return;
+        fleetKvLatestRef.current = next;
+        fleetKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setFleetDataset(next);
+        applied = true;
+        break;
+      }
+      case 'data:chartOfAccounts': {
+        if (!chartOfAccountsHydratedFromKvRef.current) return;
+        const list = Array.isArray(value) ? (value as ChartOfAccountEntry[]) : [];
+        if (kvPayloadsEqual(chartOfAccountsKvLatestRef.current, list)) return;
+        chartOfAccountsKvLatestRef.current = list;
+        chartOfAccountsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setChartOfAccounts(list);
+        applied = true;
+        break;
+      }
+      default:
+        return;
+    }
+
+    finish();
+  };
+
+  useKvCrossTabSync(isAuthenticated && isDataLoaded, applyRemoteKvRef);
+
   const handleCloudSyncRetry = useCallback(() => {
     cloudSyncErrorRef.current = false;
     void hydrateFromKvRef.current?.();
@@ -3530,7 +3780,18 @@ export default function App() {
 
           {view === 'fleet' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <FleetModule dataset={fleetDataset} setDataset={handleFleetDatasetUpdate} />
+              <FleetModule
+                dataset={fleetDataset}
+                setDataset={handleFleetDatasetUpdate}
+                visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                defaultHomeBase={
+                  currentUser.sedes?.[0] ||
+                  currentUser.location ||
+                  visibleSedes[0] ||
+                  enabledCatalog[0] ||
+                  'Principal'
+                }
+              />
             </div>
           )}
 

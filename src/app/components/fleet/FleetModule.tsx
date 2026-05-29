@@ -91,6 +91,10 @@ function newId(prefix: string) {
 export interface FleetModuleProps {
   dataset: FleetDataset;
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
+  /** Sedes habilitadas / visibles según configuración del sistema y permisos del usuario. */
+  visibleSedes?: string[];
+  /** Sede predeterminada al registrar un vehículo nuevo. */
+  defaultHomeBase?: string;
 }
 
 type FleetTab =
@@ -102,7 +106,7 @@ type FleetTab =
   | 'reports'
   | 'inspections';
 
-export function FleetModule({ dataset, setDataset }: FleetModuleProps) {
+export function FleetModule({ dataset, setDataset, visibleSedes, defaultHomeBase }: FleetModuleProps) {
   const [fleetTab, setFleetTab] = useState<FleetTab>('dashboard');
   const kpis = useMemo(() => computeFleetKpis(dataset), [dataset]);
   const alerts = useMemo(() => buildFleetAlerts(dataset), [dataset]);
@@ -286,7 +290,12 @@ export function FleetModule({ dataset, setDataset }: FleetModuleProps) {
         </TabsContent>
 
         <TabsContent value="fleet" className="focus-visible:outline-none">
-          <FleetVehiclesSection dataset={dataset} setDataset={setDataset} />
+          <FleetVehiclesSection
+            dataset={dataset}
+            setDataset={setDataset}
+            visibleSedes={visibleSedes}
+            defaultHomeBase={defaultHomeBase}
+          />
         </TabsContent>
 
         <TabsContent value="maintenance" className="focus-visible:outline-none">
@@ -376,13 +385,37 @@ function KpiTile({
 function FleetVehiclesSection({
   dataset,
   setDataset,
+  visibleSedes,
+  defaultHomeBase,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
+  visibleSedes?: string[];
+  defaultHomeBase?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<FleetVehicle | null>(null);
   const [form, setForm] = useState<Partial<FleetVehicle>>({});
+
+  const resolvedDefaultHomeBase =
+    defaultHomeBase?.trim() || visibleSedes?.[0]?.trim() || 'Principal';
+
+  const baseSedes = useMemo(() => {
+    if (visibleSedes && visibleSedes.length > 0) return visibleSedes;
+    return ['Principal'];
+  }, [visibleSedes]);
+
+  const sedeSelectOptions = useMemo(() => {
+    const set = new Set<string>(baseSedes);
+    const out = [...baseSedes];
+    for (const s of [resolvedDefaultHomeBase, form.homeBase]) {
+      if (s?.trim() && !set.has(s.trim())) {
+        set.add(s.trim());
+        out.unshift(s.trim());
+      }
+    }
+    return out;
+  }, [baseSedes, resolvedDefaultHomeBase, form.homeBase]);
 
   const openNew = () => {
     setEditing(null);
@@ -391,9 +424,19 @@ function FleetVehiclesSection({
       fuelType: 'gasoline',
       currentOdometerKm: 0,
       year: new Date().getFullYear(),
+      homeBase: resolvedDefaultHomeBase,
     });
     setOpen(true);
   };
+
+  useEffect(() => {
+    if (!open || editing) return;
+    if (sedeSelectOptions.length === 0) return;
+    const current = (form.homeBase || '').trim();
+    if (!current || !sedeSelectOptions.includes(current)) {
+      setForm((f) => ({ ...f, homeBase: sedeSelectOptions[0] }));
+    }
+  }, [open, editing, sedeSelectOptions, form.homeBase]);
 
   const openEdit = (v: FleetVehicle) => {
     setEditing(v);
@@ -593,7 +636,27 @@ function FleetVehiclesSection({
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-slate-300">Base / sede</Label>
-              <Input value={form.homeBase ?? ''} onChange={(e) => setForm((f) => ({ ...f, homeBase: e.target.value }))} placeholder="Ej. Principal" />
+              {baseSedes.length === 1 ? (
+                <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-900/50 text-sm text-slate-200">
+                  {form.homeBase || baseSedes[0]}
+                </div>
+              ) : (
+                <Select
+                  value={form.homeBase || sedeSelectOptions[0]}
+                  onValueChange={(val) => setForm((f) => ({ ...f, homeBase: val }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccione sede" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sedeSelectOptions.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-300">Vencimiento SOAT (yyyy-MM-dd)</Label>
