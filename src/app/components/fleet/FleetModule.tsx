@@ -81,6 +81,7 @@ import {
   FleetInspectionsGlobalTable,
   FleetVehicleInspectionBar,
 } from './FleetInspectionComponents';
+import { FleetSedeField, useFleetSedeOptions } from './FleetSedeField';
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#64748b'];
 
@@ -299,11 +300,21 @@ export function FleetModule({ dataset, setDataset, visibleSedes, defaultHomeBase
         </TabsContent>
 
         <TabsContent value="maintenance" className="focus-visible:outline-none">
-          <FleetMaintenanceSection dataset={dataset} setDataset={setDataset} />
+          <FleetMaintenanceSection
+            dataset={dataset}
+            setDataset={setDataset}
+            visibleSedes={visibleSedes}
+            defaultHomeBase={defaultHomeBase}
+          />
         </TabsContent>
 
         <TabsContent value="fuel" className="focus-visible:outline-none">
-          <FleetFuelSection dataset={dataset} setDataset={setDataset} />
+          <FleetFuelSection
+            dataset={dataset}
+            setDataset={setDataset}
+            visibleSedes={visibleSedes}
+            defaultHomeBase={defaultHomeBase}
+          />
         </TabsContent>
 
         <TabsContent value="alerts" className="focus-visible:outline-none">
@@ -400,22 +411,11 @@ function FleetVehiclesSection({
   const resolvedDefaultHomeBase =
     defaultHomeBase?.trim() || visibleSedes?.[0]?.trim() || 'Principal';
 
-  const baseSedes = useMemo(() => {
-    if (visibleSedes && visibleSedes.length > 0) return visibleSedes;
-    return ['Principal'];
-  }, [visibleSedes]);
-
-  const sedeSelectOptions = useMemo(() => {
-    const set = new Set<string>(baseSedes);
-    const out = [...baseSedes];
-    for (const s of [resolvedDefaultHomeBase, form.homeBase]) {
-      if (s?.trim() && !set.has(s.trim())) {
-        set.add(s.trim());
-        out.unshift(s.trim());
-      }
-    }
-    return out;
-  }, [baseSedes, resolvedDefaultHomeBase, form.homeBase]);
+  const { options: sedeSelectOptions } = useFleetSedeOptions(
+    visibleSedes,
+    defaultHomeBase,
+    form.homeBase
+  );
 
   const openNew = () => {
     setEditing(null);
@@ -634,29 +634,14 @@ function FleetVehiclesSection({
               <Label className="text-slate-300">Nro de licencia del conductor</Label>
               <Input value={form.assignedDriverLicense ?? ''} onChange={(e) => setForm((f) => ({ ...f, assignedDriverLicense: e.target.value }))} />
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label className="text-slate-300">Base / sede</Label>
-              {baseSedes.length === 1 ? (
-                <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-900/50 text-sm text-slate-200">
-                  {form.homeBase || baseSedes[0]}
-                </div>
-              ) : (
-                <Select
-                  value={form.homeBase || sedeSelectOptions[0]}
-                  onValueChange={(val) => setForm((f) => ({ ...f, homeBase: val }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccione sede" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sedeSelectOptions.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+            <div className="sm:col-span-2">
+            <FleetSedeField
+              label="Base / sede"
+              value={form.homeBase || resolvedDefaultHomeBase}
+              onChange={(val) => setForm((f) => ({ ...f, homeBase: val }))}
+              visibleSedes={visibleSedes}
+              defaultSede={defaultHomeBase}
+            />
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-300">Vencimiento SOAT (yyyy-MM-dd)</Label>
@@ -697,12 +682,17 @@ function FleetVehiclesSection({
 function FleetMaintenanceSection({
   dataset,
   setDataset,
+  visibleSedes,
+  defaultHomeBase,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
+  visibleSedes?: string[];
+  defaultHomeBase?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
+  const [location, setLocation] = useState('');
   const [kind, setKind] = useState<FleetMaintenanceKind>('preventive');
   const [dateStr, setDateStr] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [odometer, setOdometer] = useState<number>(0);
@@ -710,7 +700,37 @@ function FleetMaintenanceSection({
   const [description, setDescription] = useState('');
   const [labor, setLabor] = useState<number>(0);
   const [partsCost, setPartsCost] = useState<number>(0);
-  const [partsTxt, setPartsTxt] = useState(''); // formato: "Filtro x1 @45 \nAceite x4 @120"
+  const [partsTxt, setPartsTxt] = useState('');
+
+  const { resolvedDefault } = useFleetSedeOptions(visibleSedes, defaultHomeBase, location);
+
+  const vehiclesForSede = useMemo(() => {
+    const loc = (location || resolvedDefault).trim();
+    if (!loc) return dataset.vehicles;
+    const atBase = dataset.vehicles.filter((v) => (v.homeBase || '').trim() === loc);
+    return atBase.length > 0 ? atBase : dataset.vehicles;
+  }, [dataset.vehicles, location, resolvedDefault]);
+
+  const openDialog = () => {
+    const sede = resolvedDefault;
+    setLocation(sede);
+    const candidates = dataset.vehicles.filter((v) => (v.homeBase || '').trim() === sede);
+    const first = (candidates[0] ?? dataset.vehicles[0])?.id ?? '';
+    setVehicleId(first);
+    setOdometer(dataset.vehicles.find((v) => v.id === first)?.currentOdometerKm ?? 0);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    if (!vehicleId && vehiclesForSede[0]) {
+      setVehicleId(vehiclesForSede[0].id);
+      setOdometer(vehiclesForSede[0].currentOdometerKm);
+    } else if (vehicleId && !vehiclesForSede.some((v) => v.id === vehicleId) && vehiclesForSede[0]) {
+      setVehicleId(vehiclesForSede[0].id);
+      setOdometer(vehiclesForSede[0].currentOdometerKm);
+    }
+  }, [open, vehicleId, vehiclesForSede]);
 
   const parseParts = (): { name: string; qty: number; unitCost: number }[] => {
     const lines = partsTxt.split('\n').map((l) => l.trim()).filter(Boolean);
@@ -746,6 +766,7 @@ function FleetMaintenanceSection({
       date: dateStr,
       odometerKm: odometer,
       workshopName: workshop.trim() || undefined,
+      location: location.trim() || resolvedDefault,
       description: description.trim(),
       laborCost: labor,
       partsCost,
@@ -768,7 +789,7 @@ function FleetMaintenanceSection({
   return (
     <>
       <div className="flex justify-end mb-3">
-        <Button onClick={() => { setVehicleId(dataset.vehicles[0]?.id ?? ''); setOpen(true); }} className="gap-2" disabled={!dataset.vehicles.length}>
+        <Button onClick={openDialog} className="gap-2" disabled={!dataset.vehicles.length}>
           <Plus className="h-4 w-4" />
           Registrar mantenimiento
         </Button>
@@ -780,6 +801,7 @@ function FleetMaintenanceSection({
               <TableHead>Fecha</TableHead>
               <TableHead>Vehículo</TableHead>
               <TableHead>Tipo</TableHead>
+              <TableHead>Sede</TableHead>
               <TableHead>Descripción</TableHead>
               <TableHead className="text-right">Costo tot.</TableHead>
             </TableRow>
@@ -797,6 +819,7 @@ function FleetMaintenanceSection({
                       {r.kind === 'preventive' ? 'Preventivo' : 'Correctivo'}
                     </Badge>
                   </TableCell>
+                  <TableCell className="text-slate-400">{r.location || v?.homeBase || '—'}</TableCell>
                   <TableCell className="max-w-[240px] truncate text-slate-400">{r.description}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoneyStr(tot)}</TableCell>
                 </TableRow>
@@ -813,12 +836,26 @@ function FleetMaintenanceSection({
             <DialogDescription className="text-slate-400">Registrar costos y repuestos (una línea por repuesto).</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
+            <FleetSedeField
+              label="Sede / base"
+              value={location || resolvedDefault}
+              onChange={setLocation}
+              visibleSedes={visibleSedes}
+              defaultSede={defaultHomeBase}
+            />
             <div className="space-y-1.5">
               <Label>Vehículo</Label>
-              <Select value={vehicleId} onValueChange={setVehicleId}>
+              <Select
+                value={vehicleId}
+                onValueChange={(id) => {
+                  setVehicleId(id);
+                  const v = dataset.vehicles.find((x) => x.id === id);
+                  if (v) setOdometer(v.currentOdometerKm);
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Seleccione" /></SelectTrigger>
                 <SelectContent>
-                  {dataset.vehicles.map((v) => (
+                  {vehiclesForSede.map((v) => (
                     <SelectItem key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</SelectItem>
                   ))}
                 </SelectContent>
@@ -886,17 +923,52 @@ function FleetMaintenanceSection({
 function FleetFuelSection({
   dataset,
   setDataset,
+  visibleSedes,
+  defaultHomeBase,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
+  visibleSedes?: string[];
+  defaultHomeBase?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
+  const [location, setLocation] = useState('');
   const [dateStr, setDateStr] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [odometer, setOdometer] = useState<number>(0);
   const [liters, setLiters] = useState<number>(0);
   const [cost, setCost] = useState<number>(0);
   const [station, setStation] = useState('');
+
+  const { resolvedDefault } = useFleetSedeOptions(visibleSedes, defaultHomeBase, location);
+
+  const vehiclesForSede = useMemo(() => {
+    const loc = (location || resolvedDefault).trim();
+    if (!loc) return dataset.vehicles;
+    const atBase = dataset.vehicles.filter((v) => (v.homeBase || '').trim() === loc);
+    return atBase.length > 0 ? atBase : dataset.vehicles;
+  }, [dataset.vehicles, location, resolvedDefault]);
+
+  const openDialog = () => {
+    const sede = resolvedDefault;
+    setLocation(sede);
+    const candidates = dataset.vehicles.filter((v) => (v.homeBase || '').trim() === sede);
+    const first = (candidates[0] ?? dataset.vehicles[0])?.id ?? '';
+    setVehicleId(first);
+    setOdometer(dataset.vehicles.find((v) => v.id === first)?.currentOdometerKm ?? 0);
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    if (!vehicleId && vehiclesForSede[0]) {
+      setVehicleId(vehiclesForSede[0].id);
+      setOdometer(vehiclesForSede[0].currentOdometerKm);
+    } else if (vehicleId && !vehiclesForSede.some((v) => v.id === vehicleId) && vehiclesForSede[0]) {
+      setVehicleId(vehiclesForSede[0].id);
+      setOdometer(vehiclesForSede[0].currentOdometerKm);
+    }
+  }, [open, vehicleId, vehiclesForSede]);
 
   const submit = () => {
     const v = dataset.vehicles.find((x) => x.id === vehicleId);
@@ -913,6 +985,7 @@ function FleetFuelSection({
       liters,
       totalCost: cost,
       station: station.trim() || undefined,
+      location: location.trim() || resolvedDefault,
       createdAt: now,
       fullTank: false,
     };
@@ -968,7 +1041,7 @@ function FleetFuelSection({
             {consVid != null ? `${consVid.toFixed(1)} L / 100 km` : 'Necesita 2 repostajes consecutivos'}
           </Badge>
         </div>
-        <Button onClick={() => { setVehicleId(dataset.vehicles[0]?.id ?? ''); setOpen(true); }} className="gap-2 bg-cyan-600 hover:bg-cyan-500">
+        <Button onClick={openDialog} className="gap-2 bg-cyan-600 hover:bg-cyan-500">
           <Fuel className="h-4 w-4" />
           Registrar combustible
         </Button>
@@ -989,14 +1062,16 @@ function FleetFuelSection({
 
       <ScrollArea className="h-[260px] rounded-xl border border-white/10 bg-slate-950/60">
         <Table>
-          <TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Placa</TableHead><TableHead>L</TableHead><TableHead>Km</TableHead><TableHead className="text-right">S/</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Placa</TableHead><TableHead>Sede</TableHead><TableHead>L</TableHead><TableHead>Km</TableHead><TableHead className="text-right">S/</TableHead></TableRow></TableHeader>
           <TableBody>
             {[...dataset.fuelEntries].sort((a,b)=>parseISO(b.date).getTime()-parseISO(a.date).getTime()).map((r) => {
-              const pl = dataset.vehicles.find((v)=>v.id===r.vehicleId)?.plate ?? '?';
+              const v = dataset.vehicles.find((x)=>x.id===r.vehicleId);
+              const pl = v?.plate ?? '?';
               return (
                 <TableRow key={r.id}>
                   <TableCell>{r.date}</TableCell>
                   <TableCell className="font-mono">{pl}</TableCell>
+                  <TableCell className="text-slate-400">{r.location || v?.homeBase || '—'}</TableCell>
                   <TableCell>{r.liters}</TableCell>
                   <TableCell>{r.odometerKm.toLocaleString('es-PE')}</TableCell>
                   <TableCell className="text-right">{formatCurrencyEs(r.totalCost)}</TableCell>
@@ -1014,11 +1089,25 @@ function FleetFuelSection({
             <DialogDescription>Actualiza también el último kilometraje del vehículo.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
-            <Select value={vehicleId} onValueChange={setVehicleId}>
+            <FleetSedeField
+              label="Sede / base"
+              value={location || resolvedDefault}
+              onChange={setLocation}
+              visibleSedes={visibleSedes}
+              defaultSede={defaultHomeBase}
+            />
+            <Select
+              value={vehicleId}
+              onValueChange={(id) => {
+                setVehicleId(id);
+                const v = dataset.vehicles.find((x) => x.id === id);
+                if (v) setOdometer(v.currentOdometerKm);
+              }}
+            >
               <SelectTrigger><SelectValue placeholder="Vehículo" /></SelectTrigger>
               <SelectContent>
-                {dataset.vehicles.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>{v.plate}</SelectItem>
+                {vehiclesForSede.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>{v.plate} — {v.brand} {v.model}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

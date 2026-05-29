@@ -114,6 +114,8 @@ export interface InitialDataKeys {
   __treasuryBankBalanceKvFetchFailed?: boolean;
   /** Metadato interno: GET de historial pagos tesorería falló. */
   __treasuryPaidHistoryKvFetchFailed?: boolean;
+  /** Metadato interno: GET de tema falló. */
+  __themeKvFetchFailed?: boolean;
 }
 
 const KV_GET_WITH_STATUS_KEYS = new Set([
@@ -123,6 +125,7 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'data:providers',
   'data:pettyCash',
   'settings:config',
+  'settings:theme',
   'data:fleet',
   'settings:alertThresholds',
   'data:chartOfAccounts',
@@ -208,6 +211,7 @@ export const api = {
             else if (key === 'data:providers') result.__providersKvFetchFailed = true;
             else if (key === 'data:pettyCash') result.__pettyCashKvFetchFailed = true;
             else if (key === 'settings:config') result.__configKvFetchFailed = true;
+            else if (key === 'settings:theme') result.__themeKvFetchFailed = true;
             else if (key === 'data:fleet') result.__fleetKvFetchFailed = true;
             else if (key === 'settings:alertThresholds') result.__alertThresholdsKvFetchFailed = true;
             else if (key === 'data:chartOfAccounts') result.__chartOfAccountsKvFetchFailed = true;

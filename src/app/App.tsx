@@ -76,6 +76,14 @@ import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./components/ui/dialog";
 import { api, setKvSessionFatalHandler } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
+import { getSupabaseClient } from "./services/repository/supabase";
+import {
+  isFleetSqlEnabled,
+  loadFleetFromSql,
+  migrateFleetKvToSql,
+  saveFleetToSql,
+} from "./services/repository/fleetSql";
+import { useFleetRealtimeSync } from "./hooks/useFleetRealtimeSync";
 import { hydrateTransactions } from "./utils/hydrateTransactions";
 import { labelsMatch } from "./utils/labelMatch";
 import { formatDateInputValue, parseTransactionDate } from "./utils/transactionDate";
@@ -111,12 +119,14 @@ import {
   kvKeyDisplayLabel,
   kvPayloadsEqual,
   markCrossTabEchoWindow,
+  broadcastKvUpdate,
 } from "./utils/kvCrossTabSync";
 
 const initialTransactions: Transaction[] = [];
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
 type TransactionDatePreset = 'all' | 'last7' | 'currentMonth' | 'previousMonth' | 'year' | 'custom';
 const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
+const FLEET_USE_SQL = isFleetSqlEnabled();
 
 const initialInvoices: InvoiceDraft[] = [
     {
@@ -459,6 +469,7 @@ export default function App() {
   const skipFleetHydrateRef = useRef(false);
   const fleetKvCooldownUntilRef = useRef(0);
   const fleetKvChainRef = useRef(Promise.resolve(true));
+  const fleetSqlChainRef = useRef(Promise.resolve(true));
   const fleetKvLatestRef = useRef<FleetDataset>(normalizeFleetDataset({}));
   /** Umbrales de alertas (`settings:alertThresholds`). */
   const alertThresholdsHydratedFromKvRef = useRef(false);
@@ -526,6 +537,18 @@ export default function App() {
   const treasuryPaidHistoryKvLatestRef = useRef<any[]>([]);
   /** True tras leer saldo bancario del KV (aunque sea null). */
   const treasuryBankBalanceLoadedFromKvRef = useRef(false);
+  /** Tema visual (settings:theme). */
+  const themeHydratedFromKvRef = useRef(false);
+  const skipThemeHydrateRef = useRef(false);
+  const themeKvCooldownUntilRef = useRef(0);
+  const themeKvChainRef = useRef(Promise.resolve(true));
+  const themeKvLatestRef = useRef<'dark' | 'light'>('dark');
+  /** Lista de usuarios (data:users). */
+  const usersHydratedFromKvRef = useRef(false);
+  const skipUsersHydrateRef = useRef(false);
+  const usersKvCooldownUntilRef = useRef(0);
+  const usersKvChainRef = useRef(Promise.resolve(true));
+  const usersKvLatestRef = useRef<User[]>([]);
 
   /** Invalida escrituras KV encoladas antes de aplicar datos remotos o al cerrar sesión. */
   const kvApplyGenerationRef = useRef(0);
@@ -545,10 +568,12 @@ export default function App() {
   const [cloudSyncPhase, setCloudSyncPhase] = useState<CloudSyncPhase>('idle');
   const cloudSyncPendingRef = useRef(0);
   const cloudSyncErrorRef = useRef(false);
+  const cloudSyncErrorKeyRef = useRef<string | null>(null);
   const cloudSyncTrackerRef = useRef(createCloudSyncTracker(
     cloudSyncPendingRef,
     cloudSyncErrorRef,
-    setCloudSyncPhase
+    setCloudSyncPhase,
+    cloudSyncErrorKeyRef
   ));
 
   const resetKvSaveChains = () => {
@@ -558,6 +583,7 @@ export default function App() {
     transactionsKvChainRef.current = Promise.resolve(true);
     configKvChainRef.current = Promise.resolve(true);
     fleetKvChainRef.current = Promise.resolve(true);
+    fleetSqlChainRef.current = Promise.resolve(true);
     alertThresholdsKvChainRef.current = Promise.resolve(true);
     chartOfAccountsKvChainRef.current = Promise.resolve(true);
     productsKvChainRef.current = Promise.resolve(true);
@@ -569,6 +595,8 @@ export default function App() {
     treasuryInvoicesKvChainRef.current = Promise.resolve(true);
     treasuryBankBalanceKvChainRef.current = Promise.resolve(true);
     treasuryPaidHistoryKvChainRef.current = Promise.resolve(true);
+    themeKvChainRef.current = Promise.resolve(true);
+    usersKvChainRef.current = Promise.resolve(true);
   };
 
   const resetAllKvDomainRefs = () => {
@@ -639,6 +667,20 @@ export default function App() {
     skipTreasuryHydrateRef.current = false;
     treasuryKvCooldownUntilRef.current = 0;
     treasuryBankBalanceLoadedFromKvRef.current = false;
+    resetKvDomainRefs({
+      hydratedFromKvRef: themeHydratedFromKvRef,
+      skipHydrateRef: skipThemeHydrateRef,
+      cooldownUntilRef: themeKvCooldownUntilRef,
+      chainRef: themeKvChainRef,
+      latestRef: themeKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: usersHydratedFromKvRef,
+      skipHydrateRef: skipUsersHydrateRef,
+      cooldownUntilRef: usersKvCooldownUntilRef,
+      chainRef: usersKvChainRef,
+      latestRef: usersKvLatestRef,
+    });
   };
 
   // Alerts System
@@ -1045,6 +1087,12 @@ export default function App() {
         /** Solo tras validar sesión + fila de usuario (o modo invitado/local); evita “hidratación fantasma” en accesos denegados */
         cloudDataHydratedRef.current = true;
         setUsers(nextUsers);
+        if (!data.__usersKvFetchFailed) {
+          usersKvLatestRef.current = nextUsers;
+          usersHydratedFromKvRef.current = true;
+        } else {
+          usersHydratedFromKvRef.current = false;
+        }
 
         {
           const allowRolesRemote = shouldAllowKvRemoteHydrate(
@@ -1107,7 +1155,23 @@ export default function App() {
           }
         }
 
-        if (data['settings:theme']) setTheme(data['settings:theme']);
+        {
+          const allowThemeRemote = shouldAllowKvRemoteHydrate(
+            data.__themeKvFetchFailed,
+            skipThemeHydrateRef,
+            themeKvCooldownUntilRef
+          );
+          if (data.__themeKvFetchFailed) {
+            themeHydratedFromKvRef.current = false;
+            toast.error('No se pudo leer el tema desde la nube. Se detuvo el autoguardado.');
+          } else if (allowThemeRemote) {
+            const remote = data['settings:theme'];
+            const next: 'dark' | 'light' = remote === 'light' ? 'light' : 'dark';
+            themeKvLatestRef.current = next;
+            setTheme(next);
+            themeHydratedFromKvRef.current = true;
+          }
+        }
 
         {
           const treasuryFetchFailed =
@@ -1156,20 +1220,40 @@ export default function App() {
             skipFleetHydrateRef,
             fleetKvCooldownUntilRef
           );
-          if (data.__fleetKvFetchFailed) {
+          const fleetFetchFailed = data.__fleetKvFetchFailed && !FLEET_USE_SQL;
+          if (fleetFetchFailed) {
             fleetHydratedFromKvRef.current = false;
             toast.error(
               'No se pudo leer Flota clínica desde la nube. Se detuvo el autoguardado para no perder vehículos ni checklists.'
             );
-          } else if (allowFleetRemote) {
-            const rawFleet = data['data:fleet'];
+          } else if (allowFleetRemote || FLEET_USE_SQL) {
             let nextFleet: FleetDataset;
-            if (rawFleet != null) {
-              nextFleet = normalizeFleetDataset(rawFleet);
-            } else if (APP_BACKEND === 'local') {
-              nextFleet = createDemoFleetDataset();
+            const sessionUserId = sessionEffective?.user?.id ?? null;
+
+            if (FLEET_USE_SQL) {
+              const sqlLoad = await loadFleetFromSql(getSupabaseClient());
+              const rawFleet = data['data:fleet'];
+              if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
+                nextFleet = sqlLoad.data;
+              } else if (rawFleet != null) {
+                nextFleet = normalizeFleetDataset(rawFleet);
+                if (sqlLoad.ok) {
+                  void migrateFleetKvToSql(getSupabaseClient(), nextFleet, sessionUserId);
+                }
+              } else if (APP_BACKEND === 'local') {
+                nextFleet = createDemoFleetDataset();
+              } else {
+                nextFleet = normalizeFleetDataset({});
+              }
             } else {
-              nextFleet = normalizeFleetDataset({});
+              const rawFleet = data['data:fleet'];
+              if (rawFleet != null) {
+                nextFleet = normalizeFleetDataset(rawFleet);
+              } else if (APP_BACKEND === 'local') {
+                nextFleet = createDemoFleetDataset();
+              } else {
+                nextFleet = normalizeFleetDataset({});
+              }
             }
             fleetKvLatestRef.current = nextFleet;
             setFleetDataset(nextFleet);
@@ -1582,13 +1666,30 @@ export default function App() {
   /** Tras alta/edición/baja: guardar ya (no depender solo del efecto ni de canSaveUsers si el GET inicial falló). */
   const persistUsersToCloud = useCallback(
     async (list: User[]) => {
-      if (!isDataLoaded) return false;
-      const ok = await api.saveKey('data:users', list);
+      if (!isDataLoaded || !usersHydratedFromKvRef.current) {
+        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
+        return false;
+      }
+      usersKvLatestRef.current = list;
+      const ok = await persistKvDomainNow({
+        kvKey: 'data:users',
+        payload: list,
+        refs: {
+          hydratedFromKvRef: usersHydratedFromKvRef,
+          skipHydrateRef: skipUsersHydrateRef,
+          cooldownUntilRef: usersKvCooldownUntilRef,
+          chainRef: usersKvChainRef,
+          latestRef: usersKvLatestRef,
+        },
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        errorMessage: 'No se pudo guardar la lista de usuarios en la nube. Revisa conexión y vuelve a intentar.',
+        sync: cloudSyncTrackerRef.current,
+      });
       if (ok) {
         setCanSaveUsers(true);
         return true;
       }
-      toast.error('No se pudo guardar la lista de usuarios en la nube. Revisa conexión y vuelve a intentar.');
       return false;
     },
     [isDataLoaded]
@@ -1623,7 +1724,20 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (isDataLoaded && canSaveUsers) api.saveKey('data:users', users);
+    if (!isDataLoaded || !usersHydratedFromKvRef.current || !canSaveUsers) return;
+    void autosaveKvDomain({
+      kvKey: 'data:users',
+      payload: users,
+      refs: {
+        chainRef: usersKvChainRef,
+        latestRef: usersKvLatestRef,
+        cooldownUntilRef: usersKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar la lista de usuarios en la nube. Revisa conexión y vuelve a intentar.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [users, isDataLoaded, canSaveUsers]);
 
   useEffect(() => {
@@ -1695,7 +1809,20 @@ export default function App() {
   }, [alertThresholds, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('settings:theme', theme);
+    if (!isDataLoaded || !themeHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'settings:theme',
+      payload: theme,
+      refs: {
+        chainRef: themeKvChainRef,
+        latestRef: themeKvLatestRef,
+        cooldownUntilRef: themeKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar el tema en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [theme, isDataLoaded]);
 
   useEffect(() => {
@@ -1752,6 +1879,34 @@ export default function App() {
 
   useEffect(() => {
     if (!isDataLoaded || !fleetHydratedFromKvRef.current) return;
+
+    if (FLEET_USE_SQL) {
+      fleetKvLatestRef.current = fleetDataset;
+      fleetSqlChainRef.current = fleetSqlChainRef.current.then(async (): Promise<boolean> => {
+        cloudSyncTrackerRef.current.onStart();
+        const { data: sess } = await getSupabaseClient().auth.getSession();
+        const uid = sess.session?.user?.id ?? null;
+        const ok = await saveFleetToSql(getSupabaseClient(), fleetKvLatestRef.current, uid);
+        cloudSyncTrackerRef.current.onEnd(ok, 'data:fleet');
+        if (ok) {
+          fleetKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+          markCrossTabEchoWindow('data:fleet');
+          broadcastKvUpdate('data:fleet', fleetKvLatestRef.current);
+          return true;
+        }
+        const now = Date.now();
+        const last = lastSaveErrorAtRef.current['data:fleet'] ?? 0;
+        if (now - last >= 8000) {
+          lastSaveErrorAtRef.current['data:fleet'] = now;
+          toast.error(
+            'No se pudo guardar Flota clínica en SQL. Revisa sesión/red antes de cerrar o actualizar la página.'
+          );
+        }
+        return false;
+      });
+      return;
+    }
+
     void autosaveKvDomain({
       kvKey: 'data:fleet',
       payload: fleetDataset,
@@ -1776,6 +1931,31 @@ export default function App() {
         return false;
       }
       fleetKvLatestRef.current = next;
+
+      if (FLEET_USE_SQL) {
+        skipFleetHydrateRef.current = true;
+        cloudSyncTrackerRef.current.onStart();
+        try {
+          const { data: sess } = await getSupabaseClient().auth.getSession();
+          const uid = sess.session?.user?.id ?? null;
+          const ok = await saveFleetToSql(getSupabaseClient(), next, uid);
+          cloudSyncTrackerRef.current.onEnd(ok, 'data:fleet');
+          if (ok) {
+            fleetKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+            markCrossTabEchoWindow('data:fleet');
+            broadcastKvUpdate('data:fleet', next);
+            if (successMessage) toast.success(successMessage);
+            return true;
+          }
+          toast.error(
+            'No se pudo guardar Flota clínica en SQL. No cierres ni actualices; revisa conexión/sesión.'
+          );
+          return false;
+        } finally {
+          skipFleetHydrateRef.current = false;
+        }
+      }
+
       return persistKvDomainNow({
         kvKey: 'data:fleet',
         payload: next,
@@ -1895,7 +2075,11 @@ export default function App() {
         break;
       }
       case 'settings:theme': {
+        if (!themeHydratedFromKvRef.current) return;
         if (value !== 'dark' && value !== 'light') return;
+        if (kvPayloadsEqual(themeKvLatestRef.current, value)) return;
+        themeKvLatestRef.current = value;
+        themeKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         markCrossTabEchoWindow(key);
         setTheme(value);
         applied = true;
@@ -1998,10 +2182,12 @@ export default function App() {
         break;
       }
       case 'data:users': {
-        if (!canSaveUsers || !Array.isArray(value)) return;
+        if (!canSaveUsers || !usersHydratedFromKvRef.current || !Array.isArray(value)) return;
         let list = dedupeUsersByEmail(value as User[]);
         list = applySuperAdminRoleFromConfig(list);
-        if (kvPayloadsEqual(users, list)) return;
+        if (kvPayloadsEqual(usersKvLatestRef.current, list)) return;
+        usersKvLatestRef.current = list;
+        usersKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setUsers(list);
         const em = currentUser.email?.trim().toLowerCase();
         if (em) {
@@ -2091,6 +2277,32 @@ export default function App() {
   };
 
   useKvCrossTabSync(isAuthenticated && isDataLoaded, applyRemoteKvRef);
+
+  const applyFleetRemoteRef = useRef<((dataset: FleetDataset) => void) | null>(null);
+  const fleetRemoteToastLastAtRef = useRef(0);
+
+  applyFleetRemoteRef.current = (dataset: FleetDataset) => {
+    if (!isDataLoaded || signingOutRef.current || !fleetHydratedFromKvRef.current) return;
+    const normalized = normalizeFleetDataset(dataset);
+    if (kvPayloadsEqual(fleetKvLatestRef.current, normalized)) return;
+    fleetKvLatestRef.current = normalized;
+    fleetKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    setFleetDataset(normalized);
+    const now = Date.now();
+    if (now - fleetRemoteToastLastAtRef.current >= 4000) {
+      fleetRemoteToastLastAtRef.current = now;
+      toast.info('Flota actualizada desde la nube', { duration: 2500 });
+    }
+    cloudSyncErrorRef.current = false;
+    setCloudSyncPhase('synced');
+  };
+
+  useFleetRealtimeSync(
+    isAuthenticated && isDataLoaded && FLEET_USE_SQL,
+    applyFleetRemoteRef,
+    fleetKvLatestRef,
+    fleetKvCooldownUntilRef
+  );
 
   const handleCloudSyncRetry = useCallback(() => {
     cloudSyncErrorRef.current = false;
@@ -3184,6 +3396,8 @@ export default function App() {
                   visible
                   onRetry={handleCloudSyncRetry}
                   compact
+                  errorKey={cloudSyncPhase === 'error' ? cloudSyncErrorKeyRef.current : null}
+                  errorKeyLabel={kvKeyDisplayLabel}
                 />
               </div>
             )}
@@ -3284,6 +3498,8 @@ export default function App() {
               visible
               onRetry={handleCloudSyncRetry}
               compact
+              errorKey={cloudSyncPhase === 'error' ? cloudSyncErrorKeyRef.current : null}
+              errorKeyLabel={kvKeyDisplayLabel}
             />
           )}
         <UserMenu 

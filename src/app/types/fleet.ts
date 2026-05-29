@@ -62,6 +62,8 @@ export interface FleetMaintenanceRecord {
   date: string;
   odometerKm: number;
   workshopName?: string;
+  /** Sede donde se realizó el servicio */
+  location?: string;
   description: string;
   laborCost: number;
   partsCost: number;
@@ -82,6 +84,8 @@ export interface FleetFuelEntry {
   /** Costo total soles */
   totalCost: number;
   station?: string;
+  /** Sede / base del repostaje */
+  location?: string;
   fullTank?: boolean;
   notes?: string;
   createdAt: string;

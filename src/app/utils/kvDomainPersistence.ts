@@ -36,13 +36,14 @@ export type CloudSyncPhase = 'idle' | 'loading' | 'saving' | 'synced' | 'error';
 
 export interface CloudSyncTracker {
   onStart: () => void;
-  onEnd: (ok: boolean) => void;
+  onEnd: (ok: boolean, kvKey?: string) => void;
 }
 
 export function createCloudSyncTracker(
   pendingRef: MutableRefObject<number>,
   hasErrorRef: MutableRefObject<boolean>,
-  setPhase: (phase: CloudSyncPhase) => void
+  setPhase: (phase: CloudSyncPhase) => void,
+  errorKeyRef?: MutableRefObject<string | null>
 ): CloudSyncTracker {
   const recompute = () => {
     if (pendingRef.current > 0) {
@@ -57,10 +58,15 @@ export function createCloudSyncTracker(
       pendingRef.current += 1;
       setPhase('saving');
     },
-    onEnd: (ok: boolean) => {
+    onEnd: (ok: boolean, kvKey?: string) => {
       pendingRef.current = Math.max(0, pendingRef.current - 1);
-      if (!ok) hasErrorRef.current = true;
-      else if (pendingRef.current === 0) hasErrorRef.current = false;
+      if (!ok) {
+        hasErrorRef.current = true;
+        if (errorKeyRef && kvKey) errorKeyRef.current = kvKey;
+      } else {
+        if (pendingRef.current === 0) hasErrorRef.current = false;
+        if (errorKeyRef?.current === kvKey) errorKeyRef.current = null;
+      }
       recompute();
     },
   };
@@ -96,7 +102,7 @@ export async function autosaveKvDomain<T>(options: {
     kvKey,
     payload
   );
-  sync?.onEnd(ok);
+  sync?.onEnd(ok, kvKey);
 
   if (ok) {
     refs.cooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;

@@ -7,6 +7,9 @@ interface CloudSyncIndicatorProps {
   visible: boolean;
   onRetry?: () => void;
   compact?: boolean;
+  /** Clave KV del último error (ej. data:transactions) */
+  errorKey?: string | null;
+  errorKeyLabel?: (key: string) => string;
 }
 
 const LABELS: Record<CloudSyncPhase, string> = {
@@ -22,6 +25,8 @@ export function CloudSyncIndicator({
   visible,
   onRetry,
   compact = false,
+  errorKey,
+  errorKeyLabel,
 }: CloudSyncIndicatorProps) {
   if (!visible) return null;
 
@@ -38,6 +43,11 @@ export function CloudSyncIndicator({
         ? '#34d399'
         : 'rgba(255,255,255,0.35)';
 
+  const errorModule =
+    isError && errorKey && errorKeyLabel ? errorKeyLabel(errorKey) : null;
+  const title = errorModule ? `${LABELS[phase]} · ${errorModule}` : LABELS[phase];
+  const label = errorModule && !compact ? `${LABELS[phase]} · ${errorModule}` : LABELS[phase];
+
   return (
     <div
       className={`flex items-center gap-1.5 rounded-lg px-2 py-1 ${compact ? 'text-[10px]' : 'text-xs'}`}
@@ -46,10 +56,10 @@ export function CloudSyncIndicator({
         border: `1px solid ${isError ? 'rgba(251,113,133,0.35)' : 'rgba(255,255,255,0.08)'}`,
         color,
       }}
-      title={LABELS[phase]}
+      title={title}
     >
       <Icon className={`h-3.5 w-3.5 shrink-0 ${isSaving ? 'animate-spin' : ''}`} />
-      {!compact && <span className="font-medium whitespace-nowrap">{LABELS[phase]}</span>}
+      {!compact && <span className="font-medium whitespace-nowrap max-w-[180px] truncate">{label}</span>}
       {isError && onRetry && (
         <Button
           type="button"
