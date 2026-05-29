@@ -1,4 +1,5 @@
 import type { Transaction } from '../types';
+import { parseTransactionDate } from './transactionDate';
 
 /**
  * Normaliza transacciones cargadas desde KV / JSON (fechas como string, campos opcionales).
@@ -25,7 +26,7 @@ export function hydrateTransactions(raw: unknown): Transaction[] {
       subcategory: t.subcategory != null ? String(t.subcategory) : undefined,
       concept: t.concept != null ? String(t.concept) : undefined,
       description: String(t.description ?? ''),
-      date: isNaN(date.getTime()) ? new Date() : date,
+      date,
       providerId: t.providerId != null ? String(t.providerId) : undefined,
       location: t.location != null ? String(t.location) : undefined,
     };

@@ -87,6 +87,8 @@ export interface InitialDataKeys {
   __providersKvFetchFailed?: boolean;
   /** Metadato interno: GET de caja chica falló. */
   __pettyCashKvFetchFailed?: boolean;
+  /** Metadato interno: GET de configuración operativa (categorías) falló. */
+  __configKvFetchFailed?: boolean;
 }
 
 const KV_GET_WITH_STATUS_KEYS = new Set([
@@ -95,6 +97,7 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'maintenance:transactionsClearedAt',
   'data:providers',
   'data:pettyCash',
+  'settings:config',
 ]);
 
 const ALL_KEYS: Array<keyof InitialDataKeys> = [
@@ -163,6 +166,7 @@ export const api = {
               result.__transactionsKvFetchFailed = true;
             else if (key === 'data:providers') result.__providersKvFetchFailed = true;
             else if (key === 'data:pettyCash') result.__pettyCashKvFetchFailed = true;
+            else if (key === 'settings:config') result.__configKvFetchFailed = true;
           }
           return;
         }
@@ -187,7 +191,8 @@ export const api = {
       key === 'data:providers' ||
       key === 'data:transactions' ||
       key === 'data:pettyCash' ||
-      key === 'settings:system'
+      key === 'settings:system' ||
+      key === 'settings:config'
         ? (backend === 'supabase' ? 6 : 3)
         : backend === 'supabase' ? 3 : 2;
 

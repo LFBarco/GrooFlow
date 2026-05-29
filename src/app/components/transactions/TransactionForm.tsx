@@ -13,6 +13,7 @@ import {
 } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { ConfigStructure, getSubcategories } from "../../data/initialData";
+import { formatDateInputValue, parseTransactionDate } from "../../utils/transactionDate";
 import { Provider } from "../../types";
 
 interface TransactionFormProps {
@@ -42,13 +43,7 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
       setValue('providerId', initialData.providerId);
       setValue('location', initialData.location);
       
-      // Handle Date: If it's a Date object, format it. If string, use as is (assuming YYYY-MM-DD)
-      const dateVal = initialData.date instanceof Date 
-        ? initialData.date.toISOString().split('T')[0] 
-        : typeof initialData.date === 'string' 
-          ? initialData.date.split('T')[0] 
-          : new Date().toISOString().split('T')[0];
-      setValue('date', dateVal);
+      setValue('date', formatDateInputValue(parseTransactionDate(initialData.date)));
 
       // Set Type
       if (initialData.type) {
@@ -192,7 +187,7 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
             type="date"
             required
             className="bg-background"
-            defaultValue={new Date().toISOString().split('T')[0]}
+            defaultValue={formatDateInputValue(new Date())}
             {...register("date")}
           />
         </div>

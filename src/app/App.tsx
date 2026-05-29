@@ -426,6 +426,11 @@ export default function App() {
   const skipPettyCashHydrateRef = useRef(false);
   const pettyCashKvCooldownUntilRef = useRef(0);
   const PETTY_CASH_KV_COOLDOWN_MS = 8000;
+  /** Tras el primer hydrate de `settings:config`; evita autosave antes de leer la nube. */
+  const configHydratedFromKvRef = useRef(false);
+  const skipConfigHydrateRef = useRef(false);
+  const configKvCooldownUntilRef = useRef(0);
+  const CONFIG_KV_COOLDOWN_MS = 8000;
 
   /** Invalida escrituras KV encoladas antes de aplicar datos remotos o al cerrar sesión. */
   const kvApplyGenerationRef = useRef(0);
@@ -439,11 +444,15 @@ export default function App() {
   const transactionsKvChainRef = useRef(Promise.resolve(true));
   const transactionsKvLatestRef = useRef<Transaction[]>(initialTransactions);
 
+  const configKvChainRef = useRef(Promise.resolve(true));
+  const configKvLatestRef = useRef<ConfigStructure>(initialStructure);
+
   const resetKvSaveChains = () => {
     kvApplyGenerationRef.current += 1;
     providersKvChainRef.current = Promise.resolve(true);
     pettyCashKvChainRef.current = Promise.resolve(true);
     transactionsKvChainRef.current = Promise.resolve(true);
+    configKvChainRef.current = Promise.resolve(true);
   };
 
   // Alerts System
@@ -561,7 +570,28 @@ export default function App() {
 
         resetKvSaveChains();
 
-        if (data['settings:config']) setConfig(data['settings:config']);
+        {
+          const allowConfigRemote =
+            !data.__configKvFetchFailed &&
+            !skipConfigHydrateRef.current &&
+            Date.now() >= configKvCooldownUntilRef.current;
+          if (data.__configKvFetchFailed) {
+            configHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudo leer la configuración de Flujo de caja desde la nube. Los cambios no se guardarán hasta recargar o volver a iniciar sesión.'
+            );
+          } else if (allowConfigRemote) {
+            const remoteConfig = data['settings:config'] as ConfigStructure | null | undefined;
+            if (remoteConfig) {
+              setConfig(remoteConfig);
+              configKvLatestRef.current = remoteConfig;
+            } else {
+              configKvLatestRef.current = initialStructure;
+            }
+            configHydratedFromKvRef.current = true;
+          }
+        }
+
         if (data['settings:system']) {
           setSystemSettings(mergeSystemSettings(data['settings:system'] as Partial<SystemSettings>));
         }
@@ -666,13 +696,9 @@ export default function App() {
             const ptx = Array.isArray(rawPc) ? (rawPc as PettyCashTransaction[]) : [];
             const mapped = ptx.map((t) => ({
               ...t,
-              date: t.date instanceof Date ? t.date : new Date(t.date as string),
+              date: parseTransactionDate(t.date),
               documentDate:
-                t.documentDate != null
-                  ? t.documentDate instanceof Date
-                    ? t.documentDate
-                    : new Date(t.documentDate as string)
-                  : undefined,
+                t.documentDate != null ? parseTransactionDate(t.documentDate) : undefined,
             }));
             pettyCashKvLatestRef.current = mapped;
             setPettyCashTransactions(mapped);
@@ -823,8 +849,11 @@ export default function App() {
         pettyCashHydratedFromKvRef.current = false;
         providersKvCooldownUntilRef.current = 0;
         pettyCashKvCooldownUntilRef.current = 0;
+        configHydratedFromKvRef.current = false;
+        configKvCooldownUntilRef.current = 0;
         skipProvidersHydrateRef.current = false;
         skipPettyCashHydrateRef.current = false;
+        skipConfigHydrateRef.current = false;
         resetKvSaveChains();
         setCanSaveUsers(true);
         setIsDataLoaded(false);
@@ -856,8 +885,11 @@ export default function App() {
         pettyCashHydratedFromKvRef.current = false;
         providersKvCooldownUntilRef.current = 0;
         pettyCashKvCooldownUntilRef.current = 0;
+        configHydratedFromKvRef.current = false;
+        configKvCooldownUntilRef.current = 0;
         skipProvidersHydrateRef.current = false;
         skipPettyCashHydrateRef.current = false;
+        skipConfigHydrateRef.current = false;
         resetKvSaveChains();
         setCanSaveUsers(true);
         setIsDataLoaded(false);
@@ -877,9 +909,18 @@ export default function App() {
 
   // Auto-save Effects
   useEffect(() => {
-    if (!isDataLoaded) return;
-    void api.saveKey('settings:config', config).then((ok) => {
-      if (ok) return;
+    if (!isDataLoaded || !configHydratedFromKvRef.current) return;
+    void enqueueKvSerializedSave(
+      configKvChainRef,
+      kvApplyGenerationRef,
+      configKvLatestRef,
+      'settings:config',
+      config
+    ).then((ok) => {
+      if (ok) {
+        configKvCooldownUntilRef.current = Date.now() + CONFIG_KV_COOLDOWN_MS;
+        return;
+      }
       const now = Date.now();
       const last = lastSaveErrorAtRef.current['settings:config'] ?? 0;
       if (now - last < 8000) return;
@@ -1252,8 +1293,11 @@ export default function App() {
       pettyCashHydratedFromKvRef.current = false;
       providersKvCooldownUntilRef.current = 0;
       pettyCashKvCooldownUntilRef.current = 0;
+      configHydratedFromKvRef.current = false;
+      configKvCooldownUntilRef.current = 0;
       skipProvidersHydrateRef.current = false;
       skipPettyCashHydrateRef.current = false;
+      skipConfigHydrateRef.current = false;
       setProviders((import.meta.env.VITE_BACKEND ?? 'supabase') === 'local' ? initialProviders : []);
       setPettyCashTransactions([]);
       setCanSaveUsers(true);
