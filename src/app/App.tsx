@@ -355,7 +355,9 @@ export default function App() {
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
   const [currentUser, setCurrentUser] = useState<User>(GUEST_USER);
   const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
-  const [invoices, setInvoices] = useState<InvoiceDraft[]>(initialInvoices);
+  const [invoices, setInvoices] = useState<InvoiceDraft[]>(() =>
+    APP_BACKEND === 'local' ? initialInvoices : []
+  );
   /** En Supabase: arranca vacío para no volcar los 2 proveedores demo al KV con el primer autosave. En local: demo. */
   const [providers, setProviders] = useState<Provider[]>(() =>
     (import.meta.env.VITE_BACKEND ?? 'supabase') === 'local' ? initialProviders : []
@@ -365,7 +367,9 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>(() =>
     APP_BACKEND === 'local' ? initialProducts : []
   );
-  const [requests, setRequests] = useState<PurchaseRequest[]>(initialRequests);
+  const [requests, setRequests] = useState<PurchaseRequest[]>(() =>
+    APP_BACKEND === 'local' ? initialRequests : []
+  );
   const [pettyCashTransactions, setPettyCashTransactions] = useState<PettyCashTransaction[]>([]);
   
   // Fee Receipts state - shared between Honorarios and Treasury
@@ -479,6 +483,42 @@ export default function App() {
   const rolesKvCooldownUntilRef = useRef(0);
   const rolesKvChainRef = useRef(Promise.resolve(true));
   const rolesKvLatestRef = useRef<Role[]>(DEFAULT_ROLES);
+  /** Facturas (módulo tesorería / borradores). */
+  const invoicesHydratedFromKvRef = useRef(false);
+  const skipInvoicesHydrateRef = useRef(false);
+  const invoicesKvCooldownUntilRef = useRef(0);
+  const invoicesKvChainRef = useRef(Promise.resolve(true));
+  const invoicesKvLatestRef = useRef<InvoiceDraft[]>([]);
+  /** Solicitudes de compra. */
+  const requestsHydratedFromKvRef = useRef(false);
+  const skipRequestsHydrateRef = useRef(false);
+  const requestsKvCooldownUntilRef = useRef(0);
+  const requestsKvChainRef = useRef(Promise.resolve(true));
+  const requestsKvLatestRef = useRef<PurchaseRequest[]>([]);
+  /** Honorarios profesionales. */
+  const feeReceiptsHydratedFromKvRef = useRef(false);
+  const skipFeeReceiptsHydrateRef = useRef(false);
+  const feeReceiptsKvCooldownUntilRef = useRef(0);
+  const feeReceiptsKvChainRef = useRef(Promise.resolve(true));
+  const feeReceiptsKvLatestRef = useRef<FeeReceiptGlobal[]>([]);
+  /** Configuración global del sistema (sedes, caja chica, contabilidad). */
+  const systemSettingsHydratedFromKvRef = useRef(false);
+  const skipSystemSettingsHydrateRef = useRef(false);
+  const systemSettingsKvCooldownUntilRef = useRef(0);
+  const systemSettingsKvChainRef = useRef(Promise.resolve(true));
+  const systemSettingsKvLatestRef = useRef<SystemSettings>(initialSystemSettings);
+  /** Tesorería — tres claves KV relacionadas. */
+  const treasuryHydratedFromKvRef = useRef(false);
+  const skipTreasuryHydrateRef = useRef(false);
+  const treasuryKvCooldownUntilRef = useRef(0);
+  const treasuryInvoicesKvChainRef = useRef(Promise.resolve(true));
+  const treasuryInvoicesKvLatestRef = useRef<any[]>([]);
+  const treasuryBankBalanceKvChainRef = useRef(Promise.resolve(true));
+  const treasuryBankBalanceKvLatestRef = useRef<number | undefined>(undefined);
+  const treasuryPaidHistoryKvChainRef = useRef(Promise.resolve(true));
+  const treasuryPaidHistoryKvLatestRef = useRef<any[]>([]);
+  /** True tras leer saldo bancario del KV (aunque sea null). */
+  const treasuryBankBalanceLoadedFromKvRef = useRef(false);
 
   /** Invalida escrituras KV encoladas antes de aplicar datos remotos o al cerrar sesión. */
   const kvApplyGenerationRef = useRef(0);
@@ -515,6 +555,13 @@ export default function App() {
     chartOfAccountsKvChainRef.current = Promise.resolve(true);
     productsKvChainRef.current = Promise.resolve(true);
     rolesKvChainRef.current = Promise.resolve(true);
+    invoicesKvChainRef.current = Promise.resolve(true);
+    requestsKvChainRef.current = Promise.resolve(true);
+    feeReceiptsKvChainRef.current = Promise.resolve(true);
+    systemSettingsKvChainRef.current = Promise.resolve(true);
+    treasuryInvoicesKvChainRef.current = Promise.resolve(true);
+    treasuryBankBalanceKvChainRef.current = Promise.resolve(true);
+    treasuryPaidHistoryKvChainRef.current = Promise.resolve(true);
   };
 
   const resetAllKvDomainRefs = () => {
@@ -553,6 +600,38 @@ export default function App() {
       chainRef: rolesKvChainRef,
       latestRef: rolesKvLatestRef,
     });
+    resetKvDomainRefs({
+      hydratedFromKvRef: invoicesHydratedFromKvRef,
+      skipHydrateRef: skipInvoicesHydrateRef,
+      cooldownUntilRef: invoicesKvCooldownUntilRef,
+      chainRef: invoicesKvChainRef,
+      latestRef: invoicesKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: requestsHydratedFromKvRef,
+      skipHydrateRef: skipRequestsHydrateRef,
+      cooldownUntilRef: requestsKvCooldownUntilRef,
+      chainRef: requestsKvChainRef,
+      latestRef: requestsKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: feeReceiptsHydratedFromKvRef,
+      skipHydrateRef: skipFeeReceiptsHydrateRef,
+      cooldownUntilRef: feeReceiptsKvCooldownUntilRef,
+      chainRef: feeReceiptsKvChainRef,
+      latestRef: feeReceiptsKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: systemSettingsHydratedFromKvRef,
+      skipHydrateRef: skipSystemSettingsHydrateRef,
+      cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+      chainRef: systemSettingsKvChainRef,
+      latestRef: systemSettingsKvLatestRef,
+    });
+    treasuryHydratedFromKvRef.current = false;
+    skipTreasuryHydrateRef.current = false;
+    treasuryKvCooldownUntilRef.current = 0;
+    treasuryBankBalanceLoadedFromKvRef.current = false;
   };
 
   // Alerts System
@@ -693,8 +772,24 @@ export default function App() {
           }
         }
 
-        if (data['settings:system']) {
-          setSystemSettings(mergeSystemSettings(data['settings:system'] as Partial<SystemSettings>));
+        {
+          const allowSystemRemote = shouldAllowKvRemoteHydrate(
+            data.__systemSettingsKvFetchFailed,
+            skipSystemSettingsHydrateRef,
+            systemSettingsKvCooldownUntilRef
+          );
+          if (data.__systemSettingsKvFetchFailed) {
+            systemSettingsHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudo leer la configuración del sistema desde la nube. Se detuvo el autoguardado.'
+            );
+          } else if (allowSystemRemote) {
+            const remote = data['settings:system'] as Partial<SystemSettings> | null | undefined;
+            const merged = remote ? mergeSystemSettings(remote) : initialSystemSettings;
+            systemSettingsKvLatestRef.current = merged;
+            setSystemSettings(merged);
+            systemSettingsHydratedFromKvRef.current = true;
+          }
         }
 
         if (data.__transactionsKvFetchFailed) {
@@ -718,11 +813,30 @@ export default function App() {
           }
         }
 
-        if (data['data:invoices']) {
-          const unique = Array.from(
-            new Map(data['data:invoices'].map((i: InvoiceDraft) => [i.id, i])).values()
-          ) as InvoiceDraft[];
-          setInvoices(unique);
+        {
+          const allowInvoicesRemote = shouldAllowKvRemoteHydrate(
+            data.__invoicesKvFetchFailed,
+            skipInvoicesHydrateRef,
+            invoicesKvCooldownUntilRef
+          );
+          if (data.__invoicesKvFetchFailed) {
+            invoicesHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudieron leer las facturas desde la nube. Se detuvo el autoguardado para no sobrescribirlas.'
+            );
+          } else if (allowInvoicesRemote) {
+            const rawInv = data['data:invoices'];
+            const unique = Array.isArray(rawInv)
+              ? (Array.from(
+                  new Map((rawInv as InvoiceDraft[]).map((i) => [i.id, i])).values()
+                ) as InvoiceDraft[])
+              : APP_BACKEND === 'local'
+                ? initialInvoices
+                : [];
+            invoicesKvLatestRef.current = unique;
+            setInvoices(unique);
+            invoicesHydratedFromKvRef.current = true;
+          }
         }
 
         const rawPv = data['data:providers'];
@@ -794,12 +908,27 @@ export default function App() {
           }
         }
 
-        if (data['data:requests']) {
-          const unique = Array.from(
-            new Map(data['data:requests'].map((r: PurchaseRequest) => [r.id, r])).values()
-          ) as PurchaseRequest[];
-          setRequests(
-            unique.map((r) => {
+        {
+          const allowRequestsRemote = shouldAllowKvRemoteHydrate(
+            data.__requestsKvFetchFailed,
+            skipRequestsHydrateRef,
+            requestsKvCooldownUntilRef
+          );
+          if (data.__requestsKvFetchFailed) {
+            requestsHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudieron leer las solicitudes de compra desde la nube. Se detuvo el autoguardado.'
+            );
+          } else if (allowRequestsRemote) {
+            const rawReq = data['data:requests'];
+            const unique = Array.isArray(rawReq)
+              ? (Array.from(
+                  new Map((rawReq as PurchaseRequest[]).map((r) => [r.id, r])).values()
+                ) as PurchaseRequest[])
+              : APP_BACKEND === 'local'
+                ? initialRequests
+                : [];
+            const mapped = unique.map((r) => {
               const rd = r.requestDate;
               const asDate =
                 rd instanceof Date && !isNaN(rd.getTime())
@@ -811,8 +940,11 @@ export default function App() {
                 ...r,
                 requestDate: isNaN(asDate.getTime()) ? new Date() : asDate,
               };
-            })
-          );
+            });
+            requestsKvLatestRef.current = mapped;
+            setRequests(mapped);
+            requestsHydratedFromKvRef.current = true;
+          }
         }
 
         {
@@ -927,7 +1059,25 @@ export default function App() {
           }
         }
 
-        if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
+        {
+          const allowFeeReceiptsRemote = shouldAllowKvRemoteHydrate(
+            data.__feeReceiptsKvFetchFailed,
+            skipFeeReceiptsHydrateRef,
+            feeReceiptsKvCooldownUntilRef
+          );
+          if (data.__feeReceiptsKvFetchFailed) {
+            feeReceiptsHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudieron leer los honorarios desde la nube. Se detuvo el autoguardado.'
+            );
+          } else if (allowFeeReceiptsRemote) {
+            const raw = data['data:feeReceipts'];
+            const list = Array.isArray(raw) ? (raw as FeeReceiptGlobal[]) : [];
+            feeReceiptsKvLatestRef.current = list;
+            setFeeReceipts(list);
+            feeReceiptsHydratedFromKvRef.current = true;
+          }
+        }
 
         {
           const allowAlertThresholdsRemote = shouldAllowKvRemoteHydrate(
@@ -951,11 +1101,47 @@ export default function App() {
         }
 
         if (data['settings:theme']) setTheme(data['settings:theme']);
-        if (data['data:treasuryInvoices']) setTreasuryInvoices(data['data:treasuryInvoices']);
-        if (data['data:treasuryBankBalance'] !== undefined)
-          setTreasuryBankBalance(data['data:treasuryBankBalance']);
-        if (data['data:treasuryPaidHistory'])
-          setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
+
+        {
+          const treasuryFetchFailed =
+            data.__treasuryInvoicesKvFetchFailed ||
+            data.__treasuryBankBalanceKvFetchFailed ||
+            data.__treasuryPaidHistoryKvFetchFailed;
+          const allowTreasuryRemote =
+            !treasuryFetchFailed &&
+            !skipTreasuryHydrateRef.current &&
+            Date.now() >= treasuryKvCooldownUntilRef.current;
+
+          if (treasuryFetchFailed) {
+            treasuryHydratedFromKvRef.current = false;
+            treasuryBankBalanceLoadedFromKvRef.current = false;
+            toast.error(
+              'No se pudo leer Tesorería desde la nube. Se detuvo el autoguardado para no perder datos.'
+            );
+          } else if (allowTreasuryRemote) {
+            const rawTi = data['data:treasuryInvoices'];
+            const tiList = Array.isArray(rawTi) ? rawTi : [];
+            treasuryInvoicesKvLatestRef.current = tiList;
+            setTreasuryInvoices(tiList);
+
+            treasuryBankBalanceLoadedFromKvRef.current = true;
+            if (data['data:treasuryBankBalance'] !== undefined && data['data:treasuryBankBalance'] !== null) {
+              const bal = Number(data['data:treasuryBankBalance']);
+              treasuryBankBalanceKvLatestRef.current = bal;
+              setTreasuryBankBalance(bal);
+            } else {
+              treasuryBankBalanceKvLatestRef.current = undefined;
+              setTreasuryBankBalance(undefined);
+            }
+
+            const rawPh = data['data:treasuryPaidHistory'];
+            const phList = Array.isArray(rawPh) ? rawPh : [];
+            treasuryPaidHistoryKvLatestRef.current = phList;
+            setTreasuryPaidHistory(phList);
+
+            treasuryHydratedFromKvRef.current = true;
+          }
+        }
 
         {
           const allowFleetRemote = shouldAllowKvRemoteHydrate(
@@ -1158,20 +1344,56 @@ export default function App() {
   }, [pettyCashTransactions, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('settings:system', systemSettings);
+    if (!isDataLoaded || !systemSettingsHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'settings:system',
+      payload: systemSettings,
+      refs: {
+        chainRef: systemSettingsKvChainRef,
+        latestRef: systemSettingsKvLatestRef,
+        cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [systemSettings, isDataLoaded]);
 
-  const handlePersistSystemSettings = useCallback(
-    (next: SystemSettings) => {
+  const persistSystemSettingsNow = useCallback(
+    async (next: SystemSettings, successMessage?: string): Promise<boolean> => {
       const merged = mergeSystemSettings(next);
       setSystemSettings(merged);
-      if (!isDataLoaded) return;
-      void api.saveKey('settings:system', merged).then((ok) => {
-        if (ok) return;
-        toast.error('No se pudo guardar la configuración del sistema en la nube.');
+      if (!isDataLoaded || !systemSettingsHydratedFromKvRef.current) {
+        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
+        return false;
+      }
+      systemSettingsKvLatestRef.current = merged;
+      return persistKvDomainNow({
+        kvKey: 'settings:system',
+        payload: merged,
+        refs: {
+          hydratedFromKvRef: systemSettingsHydratedFromKvRef,
+          skipHydrateRef: skipSystemSettingsHydrateRef,
+          cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+          chainRef: systemSettingsKvChainRef,
+          latestRef: systemSettingsKvLatestRef,
+        },
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
+        successMessage,
+        sync: cloudSyncTrackerRef.current,
       });
     },
     [isDataLoaded]
+  );
+
+  const handlePersistSystemSettings = useCallback(
+    (next: SystemSettings) => {
+      void persistSystemSettingsNow(next);
+    },
+    [persistSystemSettingsNow]
   );
 
   useEffect(() => {
@@ -1223,7 +1445,20 @@ export default function App() {
   );
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:invoices', invoices);
+    if (!isDataLoaded || !invoicesHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:invoices',
+      payload: invoices,
+      refs: {
+        chainRef: invoicesKvChainRef,
+        latestRef: invoicesKvLatestRef,
+        cooldownUntilRef: invoicesKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudieron guardar las facturas en la nube. Reintente en unos segundos.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [invoices, isDataLoaded]);
 
   useEffect(() => {
@@ -1321,7 +1556,20 @@ export default function App() {
   }, [chartOfAccounts, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:requests', requests);
+    if (!isDataLoaded || !requestsHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:requests',
+      payload: requests,
+      refs: {
+        chainRef: requestsKvChainRef,
+        latestRef: requestsKvLatestRef,
+        cooldownUntilRef: requestsKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudieron guardar las solicitudes de compra en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [requests, isDataLoaded]);
 
   /** Tras alta/edición/baja: guardar ya (no depender solo del efecto ni de canSaveUsers si el GET inicial falló). */
@@ -1389,7 +1637,20 @@ export default function App() {
   }, [roles, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:feeReceipts', feeReceipts);
+    if (!isDataLoaded || !feeReceiptsHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:feeReceipts',
+      payload: feeReceipts,
+      refs: {
+        chainRef: feeReceiptsKvChainRef,
+        latestRef: feeReceiptsKvLatestRef,
+        cooldownUntilRef: feeReceiptsKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudieron guardar los honorarios en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [feeReceipts, isDataLoaded]);
 
   useEffect(() => {
@@ -1431,15 +1692,55 @@ export default function App() {
   }, [theme, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded && treasuryInvoices.length > 0) api.saveKey('data:treasuryInvoices', treasuryInvoices);
+    if (!isDataLoaded || !treasuryHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:treasuryInvoices',
+      payload: treasuryInvoices,
+      refs: {
+        chainRef: treasuryInvoicesKvChainRef,
+        latestRef: treasuryInvoicesKvLatestRef,
+        cooldownUntilRef: treasuryKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudieron guardar las facturas de tesorería en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [treasuryInvoices, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded && treasuryBankBalance !== undefined) api.saveKey('data:treasuryBankBalance', treasuryBankBalance);
+    if (!isDataLoaded || !treasuryHydratedFromKvRef.current || !treasuryBankBalanceLoadedFromKvRef.current) return;
+    if (treasuryBankBalance === undefined) return;
+    void autosaveKvDomain({
+      kvKey: 'data:treasuryBankBalance',
+      payload: treasuryBankBalance,
+      refs: {
+        chainRef: treasuryBankBalanceKvChainRef,
+        latestRef: treasuryBankBalanceKvLatestRef,
+        cooldownUntilRef: treasuryKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar el saldo bancario en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [treasuryBankBalance, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded && treasuryPaidHistory.length > 0) api.saveKey('data:treasuryPaidHistory', treasuryPaidHistory);
+    if (!isDataLoaded || !treasuryHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:treasuryPaidHistory',
+      payload: treasuryPaidHistory,
+      refs: {
+        chainRef: treasuryPaidHistoryKvChainRef,
+        latestRef: treasuryPaidHistoryKvLatestRef,
+        cooldownUntilRef: treasuryKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar el historial de pagos en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [treasuryPaidHistory, isDataLoaded]);
 
   useEffect(() => {
@@ -1503,6 +1804,37 @@ export default function App() {
   const handleProductsUpdate = useCallback((next: Product[]) => {
     productsKvLatestRef.current = next;
     setProducts(next);
+  }, []);
+
+  const handleInvoicesUpdate = useCallback((next: InvoiceDraft[]) => {
+    invoicesKvLatestRef.current = next;
+    setInvoices(next);
+  }, []);
+
+  const handleRequestsUpdate = useCallback((next: PurchaseRequest[]) => {
+    requestsKvLatestRef.current = next;
+    setRequests(next);
+  }, []);
+
+  const handleFeeReceiptsUpdate = useCallback((next: FeeReceiptGlobal[]) => {
+    feeReceiptsKvLatestRef.current = next;
+    setFeeReceipts(next);
+  }, []);
+
+  const handleTreasuryInvoicesUpdate = useCallback((next: any[]) => {
+    treasuryInvoicesKvLatestRef.current = next;
+    setTreasuryInvoices(next);
+  }, []);
+
+  const handleTreasuryBankBalanceUpdate = useCallback((next: number | undefined) => {
+    treasuryBankBalanceLoadedFromKvRef.current = true;
+    treasuryBankBalanceKvLatestRef.current = next;
+    setTreasuryBankBalance(next);
+  }, []);
+
+  const handleTreasuryPaidHistoryUpdate = useCallback((next: any[]) => {
+    treasuryPaidHistoryKvLatestRef.current = next;
+    setTreasuryPaidHistory(next);
   }, []);
 
   const handleChartOfAccountsUpdate = useCallback((next: ChartOfAccountEntry[]) => {
@@ -2206,9 +2538,6 @@ export default function App() {
             weekClosures: [...(prev.pettyCash?.weekClosures ?? []), closure],
           },
         };
-        if (isDataLoaded) {
-          void api.saveKey('settings:system', next);
-        }
         return next;
       });
     },
@@ -2233,9 +2562,6 @@ export default function App() {
             fundDeliveries: [...existing, delivery],
           },
         };
-        if (isDataLoaded) {
-          void api.saveKey('settings:system', next);
-        }
         return next;
       });
     },
@@ -2286,9 +2612,6 @@ export default function App() {
         },
       });
       setSystemSettings(nextSettings);
-      if (isDataLoaded) {
-        void api.saveKey('settings:system', nextSettings);
-      }
 
       if (delivery.isPeriodOpening) {
         setUsers((prev) => {
@@ -2327,6 +2650,7 @@ export default function App() {
         },
       });
       setSystemSettings(nextSettings);
+      systemSettingsKvLatestRef.current = nextSettings;
 
       const nextUsers = users.map((u) =>
         u.id === custodianId ? { ...u, pettyCashOpeningCarryConsumedAt: undefined } : u
@@ -2345,7 +2669,19 @@ export default function App() {
             'data:pettyCash',
             nextTx
           ),
-          api.saveKey('settings:system', nextSettings),
+          autosaveKvDomain({
+            kvKey: 'settings:system',
+            payload: nextSettings,
+            refs: {
+              chainRef: systemSettingsKvChainRef,
+              latestRef: systemSettingsKvLatestRef,
+              cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+            },
+            kvApplyGenerationRef,
+            lastSaveErrorAtRef,
+            errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
+            sync: cloudSyncTrackerRef.current,
+          }),
           persistUsersToCloud(nextUsers),
         ]);
         if (!txOk || !settingsOk || !usersOk) {
@@ -2382,12 +2718,9 @@ export default function App() {
           weekPreClosures: [...existing, pre],
         },
       };
-      if (isDataLoaded) {
-        void api.saveKey('settings:system', next);
-      }
       return next;
     });
-  }, [isDataLoaded]);
+  }, []);
 
   const applyProviderCategoryRename = (from: string, to: string) => {
     const t = to.trim();
@@ -2834,16 +3167,20 @@ export default function App() {
              <TreasuryModule 
                pendingFeeReceipts={feeReceipts.filter(r => r.status === 'requested_payment')}
                onMarkReceiptPaid={(receiptId, paymentDate) => {
-                 setFeeReceipts(prev => prev.map(r => 
-                   r.id === receiptId ? { ...r, status: 'paid' as const, paymentDate } : r
-                 ));
+                 setFeeReceipts((prev) => {
+                   const next = prev.map((r) =>
+                     r.id === receiptId ? { ...r, status: 'paid' as const, paymentDate } : r
+                   );
+                   feeReceiptsKvLatestRef.current = next;
+                   return next;
+                 });
                }}
                treasuryInvoices={treasuryInvoices.length > 0 ? treasuryInvoices : undefined}
-               onUpdateTreasuryInvoices={setTreasuryInvoices}
+               onUpdateTreasuryInvoices={handleTreasuryInvoicesUpdate}
                bankBalance={treasuryBankBalance}
-               onUpdateBankBalance={setTreasuryBankBalance}
+               onUpdateBankBalance={handleTreasuryBankBalanceUpdate}
                paidHistory={treasuryPaidHistory.length > 0 ? treasuryPaidHistory : undefined}
-               onUpdatePaidHistory={setTreasuryPaidHistory}
+               onUpdatePaidHistory={handleTreasuryPaidHistoryUpdate}
              />
           )}
 
@@ -2852,10 +3189,10 @@ export default function App() {
                 providers={providers}
                 onUpdateProviders={handleUpdateProviders}
                 receipts={feeReceipts.length > 0 ? (feeReceipts as any[]) : undefined}
-                onUpdateReceipts={(receipts) => setFeeReceipts(receipts as any[])}
+                onUpdateReceipts={(receipts) => handleFeeReceiptsUpdate(receipts as FeeReceiptGlobal[])}
                 onSendToTreasury={(receipts) => {
-                  setFeeReceipts(prev => {
-                    const existingIds = new Set(prev.map(r => r.id));
+                  setFeeReceipts((prev) => {
+                    const existingIds = new Set(prev.map((r) => r.id));
                     const newReceipts = (receipts as any[])
                       .filter((r: any) => !existingIds.has(r.id))
                       .map((r: any) => ({
@@ -2877,7 +3214,9 @@ export default function App() {
                       if (match) return { ...r, status: 'requested_payment' as const, paymentRequestedAt: match.paymentRequestedAt };
                       return r;
                     });
-                    return [...updated, ...newReceipts];
+                    const next = [...updated, ...newReceipts];
+                    feeReceiptsKvLatestRef.current = next;
+                    return next;
                   });
                   toast.success("Recibos enviados a Tesorería - Mesa de Pagos", { description: "Ve a Tesorería para aprobar los pagos." });
                 }}
@@ -3219,7 +3558,7 @@ export default function App() {
                             requesterInitials: currentUser.initials,
                             location: req.location || (visibleSedes[0] || 'Principal')
                         };
-                        setRequests([signedRequest, ...requests]);
+                        handleRequestsUpdate([signedRequest, ...requests]);
                     }}
                     onRequestStatusChange={handleRequestStatusChange}
                     currentUser={currentUser}

@@ -99,6 +99,20 @@ export interface InitialDataKeys {
   __productsKvFetchFailed?: boolean;
   /** Metadato interno: GET de roles falló. */
   __rolesKvFetchFailed?: boolean;
+  /** Metadato interno: GET de facturas falló. */
+  __invoicesKvFetchFailed?: boolean;
+  /** Metadato interno: GET de solicitudes falló. */
+  __requestsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de honorarios falló. */
+  __feeReceiptsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de configuración del sistema falló. */
+  __systemSettingsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de facturas tesorería falló. */
+  __treasuryInvoicesKvFetchFailed?: boolean;
+  /** Metadato interno: GET de saldo bancario tesorería falló. */
+  __treasuryBankBalanceKvFetchFailed?: boolean;
+  /** Metadato interno: GET de historial pagos tesorería falló. */
+  __treasuryPaidHistoryKvFetchFailed?: boolean;
 }
 
 const KV_GET_WITH_STATUS_KEYS = new Set([
@@ -113,6 +127,13 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'data:chartOfAccounts',
   'data:products',
   'data:roles',
+  'data:invoices',
+  'data:requests',
+  'data:feeReceipts',
+  'settings:system',
+  'data:treasuryInvoices',
+  'data:treasuryBankBalance',
+  'data:treasuryPaidHistory',
 ]);
 
 const ALL_KEYS: Array<keyof InitialDataKeys> = [
@@ -191,6 +212,13 @@ export const api = {
             else if (key === 'data:chartOfAccounts') result.__chartOfAccountsKvFetchFailed = true;
             else if (key === 'data:products') result.__productsKvFetchFailed = true;
             else if (key === 'data:roles') result.__rolesKvFetchFailed = true;
+            else if (key === 'data:invoices') result.__invoicesKvFetchFailed = true;
+            else if (key === 'data:requests') result.__requestsKvFetchFailed = true;
+            else if (key === 'data:feeReceipts') result.__feeReceiptsKvFetchFailed = true;
+            else if (key === 'settings:system') result.__systemSettingsKvFetchFailed = true;
+            else if (key === 'data:treasuryInvoices') result.__treasuryInvoicesKvFetchFailed = true;
+            else if (key === 'data:treasuryBankBalance') result.__treasuryBankBalanceKvFetchFailed = true;
+            else if (key === 'data:treasuryPaidHistory') result.__treasuryPaidHistoryKvFetchFailed = true;
           }
           return;
         }
@@ -232,7 +260,12 @@ export const api = {
       key === 'data:chartOfAccounts' ||
       key === 'data:products' ||
       key === 'data:roles' ||
-      key === 'settings:alertThresholds'
+      key === 'settings:alertThresholds' ||
+      key === 'data:invoices' ||
+      key === 'data:requests' ||
+      key === 'data:feeReceipts' ||
+      key === 'data:treasuryInvoices' ||
+      key === 'data:treasuryPaidHistory'
         ? (backend === 'supabase' ? 6 : 3)
         : backend === 'supabase' ? 3 : 2;
 
