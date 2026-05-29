@@ -1,0 +1,136 @@
+import type { MutableRefObject } from 'react';
+import { toast } from 'sonner';
+import { api } from '../services/api';
+import { enqueueKvSerializedSave } from './kvSerializedSave';
+
+/** Tras un POST exitoso, ignorar GET remotos unos segundos (replica / cache / re-hydrate). */
+export const KV_DOMAIN_COOLDOWN_MS = 8000;
+
+export interface KvDomainRefs<T> {
+  hydratedFromKvRef: MutableRefObject<boolean>;
+  skipHydrateRef: MutableRefObject<boolean>;
+  cooldownUntilRef: MutableRefObject<number>;
+  chainRef: MutableRefObject<Promise<boolean>>;
+  latestRef: MutableRefObject<T>;
+}
+
+export function shouldAllowKvRemoteHydrate(
+  fetchFailed: boolean | undefined,
+  skipHydrateRef: MutableRefObject<boolean>,
+  cooldownUntilRef: MutableRefObject<number>
+): boolean {
+  return (
+    !fetchFailed &&
+    !skipHydrateRef.current &&
+    Date.now() >= cooldownUntilRef.current
+  );
+}
+
+export function resetKvDomainRefs<T>(refs: KvDomainRefs<T>): void {
+  refs.hydratedFromKvRef.current = false;
+  refs.skipHydrateRef.current = false;
+  refs.cooldownUntilRef.current = 0;
+}
+
+export type CloudSyncPhase = 'idle' | 'loading' | 'saving' | 'synced' | 'error';
+
+export interface CloudSyncTracker {
+  onStart: () => void;
+  onEnd: (ok: boolean) => void;
+}
+
+export function createCloudSyncTracker(
+  pendingRef: MutableRefObject<number>,
+  hasErrorRef: MutableRefObject<boolean>,
+  setPhase: (phase: CloudSyncPhase) => void
+): CloudSyncTracker {
+  const recompute = () => {
+    if (pendingRef.current > 0) {
+      setPhase('saving');
+      return;
+    }
+    setPhase(hasErrorRef.current ? 'error' : 'synced');
+  };
+
+  return {
+    onStart: () => {
+      pendingRef.current += 1;
+      setPhase('saving');
+    },
+    onEnd: (ok: boolean) => {
+      pendingRef.current = Math.max(0, pendingRef.current - 1);
+      if (!ok) hasErrorRef.current = true;
+      else if (pendingRef.current === 0) hasErrorRef.current = false;
+      recompute();
+    },
+  };
+}
+
+/**
+ * Autosave encadenado con cooldown post-save y toast throttled en error.
+ */
+export async function autosaveKvDomain<T>(options: {
+  kvKey: string;
+  payload: T;
+  refs: Pick<KvDomainRefs<T>, 'chainRef' | 'latestRef' | 'cooldownUntilRef'>;
+  kvApplyGenerationRef: MutableRefObject<number>;
+  lastSaveErrorAtRef: MutableRefObject<Record<string, number>>;
+  errorMessage: string;
+  sync?: CloudSyncTracker;
+}): Promise<boolean> {
+  const {
+    kvKey,
+    payload,
+    refs,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+    errorMessage,
+    sync,
+  } = options;
+
+  sync?.onStart();
+  const ok = await enqueueKvSerializedSave(
+    refs.chainRef,
+    kvApplyGenerationRef,
+    refs.latestRef,
+    kvKey,
+    payload
+  );
+  sync?.onEnd(ok);
+
+  if (ok) {
+    refs.cooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    return true;
+  }
+
+  const now = Date.now();
+  const last = lastSaveErrorAtRef.current[kvKey] ?? 0;
+  if (now - last >= 8000) {
+    lastSaveErrorAtRef.current[kvKey] = now;
+    toast.error(errorMessage);
+  }
+  return false;
+}
+
+/** Persistencia inmediata (acciones críticas) con skip hydrate durante el POST. */
+export async function persistKvDomainNow<T>(options: {
+  kvKey: string;
+  payload: T;
+  refs: KvDomainRefs<T>;
+  kvApplyGenerationRef: MutableRefObject<number>;
+  lastSaveErrorAtRef: MutableRefObject<Record<string, number>>;
+  errorMessage: string;
+  successMessage?: string;
+  sync?: CloudSyncTracker;
+}): Promise<boolean> {
+  const { refs, ...rest } = options;
+  refs.latestRef.current = rest.payload;
+  refs.skipHydrateRef.current = true;
+  try {
+    const ok = await autosaveKvDomain({ ...rest, refs });
+    if (ok && rest.successMessage) toast.success(rest.successMessage);
+    return ok;
+  } finally {
+    refs.skipHydrateRef.current = false;
+  }
+}

@@ -89,6 +89,16 @@ export interface InitialDataKeys {
   __pettyCashKvFetchFailed?: boolean;
   /** Metadato interno: GET de configuración operativa (categorías) falló. */
   __configKvFetchFailed?: boolean;
+  /** Metadato interno: GET de flota falló. */
+  __fleetKvFetchFailed?: boolean;
+  /** Metadato interno: GET de umbrales de alertas falló. */
+  __alertThresholdsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de plan de cuentas falló. */
+  __chartOfAccountsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de productos falló. */
+  __productsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de roles falló. */
+  __rolesKvFetchFailed?: boolean;
 }
 
 const KV_GET_WITH_STATUS_KEYS = new Set([
@@ -98,6 +108,11 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'data:providers',
   'data:pettyCash',
   'settings:config',
+  'data:fleet',
+  'settings:alertThresholds',
+  'data:chartOfAccounts',
+  'data:products',
+  'data:roles',
 ]);
 
 const ALL_KEYS: Array<keyof InitialDataKeys> = [
@@ -156,7 +171,11 @@ export const api = {
           const { ok, value } = await kv.getWithStatus<unknown>(key);
           if (ok) {
             const fallback =
-              key === 'data:users' || key === 'data:providers' || key === 'data:pettyCash'
+              key === 'data:users' ||
+              key === 'data:providers' ||
+              key === 'data:pettyCash' ||
+              key === 'data:chartOfAccounts' ||
+              key === 'data:products'
                 ? []
                 : null;
             (result as Record<string, unknown>)[key] = value ?? fallback;
@@ -167,6 +186,11 @@ export const api = {
             else if (key === 'data:providers') result.__providersKvFetchFailed = true;
             else if (key === 'data:pettyCash') result.__pettyCashKvFetchFailed = true;
             else if (key === 'settings:config') result.__configKvFetchFailed = true;
+            else if (key === 'data:fleet') result.__fleetKvFetchFailed = true;
+            else if (key === 'settings:alertThresholds') result.__alertThresholdsKvFetchFailed = true;
+            else if (key === 'data:chartOfAccounts') result.__chartOfAccountsKvFetchFailed = true;
+            else if (key === 'data:products') result.__productsKvFetchFailed = true;
+            else if (key === 'data:roles') result.__rolesKvFetchFailed = true;
           }
           return;
         }
@@ -176,6 +200,17 @@ export const api = {
         }
       })
     );
+
+    if (!result.__alertThresholdsKvFetchFailed && result['settings:alertThresholds'] == null) {
+      try {
+        const legacy = await kv.get('data:alertThresholds');
+        if (legacy != null) {
+          result['settings:alertThresholds'] = legacy;
+        }
+      } catch {
+        /* migración legacy opcional */
+      }
+    }
 
     return result;
   },
@@ -192,7 +227,12 @@ export const api = {
       key === 'data:transactions' ||
       key === 'data:pettyCash' ||
       key === 'settings:system' ||
-      key === 'settings:config'
+      key === 'settings:config' ||
+      key === 'data:fleet' ||
+      key === 'data:chartOfAccounts' ||
+      key === 'data:products' ||
+      key === 'data:roles' ||
+      key === 'settings:alertThresholds'
         ? (backend === 'supabase' ? 6 : 3)
         : backend === 'supabase' ? 3 : 2;
 

@@ -96,10 +96,20 @@ import { weekKeyMatches } from "./utils/pettyCashWeekKey";
 import type { FleetDataset } from "./types/fleet";
 import { createDemoFleetDataset, normalizeFleetDataset } from "./utils/fleetData";
 import { enqueueKvSerializedSave } from "./utils/kvSerializedSave";
+import {
+  autosaveKvDomain,
+  createCloudSyncTracker,
+  persistKvDomainNow,
+  resetKvDomainRefs,
+  shouldAllowKvRemoteHydrate,
+  type CloudSyncPhase,
+} from "./utils/kvDomainPersistence";
+import { CloudSyncIndicator } from "./components/layout/CloudSyncIndicator";
 
 const initialTransactions: Transaction[] = [];
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
 type TransactionDatePreset = 'all' | 'last7' | 'currentMonth' | 'previousMonth' | 'year' | 'custom';
+const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
 
 const initialInvoices: InvoiceDraft[] = [
     {
@@ -352,7 +362,9 @@ export default function App() {
   );
   const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccountEntry[]>([]);
   const [openQuickProviderModal, setOpenQuickProviderModal] = useState(false);
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products, setProducts] = useState<Product[]>(() =>
+    APP_BACKEND === 'local' ? initialProducts : []
+  );
   const [requests, setRequests] = useState<PurchaseRequest[]>(initialRequests);
   const [pettyCashTransactions, setPettyCashTransactions] = useState<PettyCashTransaction[]>([]);
   
@@ -431,6 +443,42 @@ export default function App() {
   const skipConfigHydrateRef = useRef(false);
   const configKvCooldownUntilRef = useRef(0);
   const CONFIG_KV_COOLDOWN_MS = 8000;
+  /** Tras el primer hydrate de `data:fleet`; evita autosave antes de leer la nube. */
+  const fleetHydratedFromKvRef = useRef(false);
+  const skipFleetHydrateRef = useRef(false);
+  const fleetKvCooldownUntilRef = useRef(0);
+  const fleetKvChainRef = useRef(Promise.resolve(true));
+  const fleetKvLatestRef = useRef<FleetDataset>(normalizeFleetDataset({}));
+  /** Umbrales de alertas (`settings:alertThresholds`). */
+  const alertThresholdsHydratedFromKvRef = useRef(false);
+  const skipAlertThresholdsHydrateRef = useRef(false);
+  const alertThresholdsKvCooldownUntilRef = useRef(0);
+  const alertThresholdsKvChainRef = useRef(Promise.resolve(true));
+  const alertThresholdsKvLatestRef = useRef<AlertThresholds>({
+    liquidityMinDays: 3,
+    invoiceDueDays: 7,
+    spendingSpikePercent: 25,
+    pettyCashLowBalance: 20,
+    staleRequestDays: 3,
+  });
+  /** Plan de cuentas contables. */
+  const chartOfAccountsHydratedFromKvRef = useRef(false);
+  const skipChartOfAccountsHydrateRef = useRef(false);
+  const chartOfAccountsKvCooldownUntilRef = useRef(0);
+  const chartOfAccountsKvChainRef = useRef(Promise.resolve(true));
+  const chartOfAccountsKvLatestRef = useRef<ChartOfAccountEntry[]>([]);
+  /** Catálogo de productos. */
+  const productsHydratedFromKvRef = useRef(false);
+  const skipProductsHydrateRef = useRef(false);
+  const productsKvCooldownUntilRef = useRef(0);
+  const productsKvChainRef = useRef(Promise.resolve(true));
+  const productsKvLatestRef = useRef<Product[]>([]);
+  /** Roles RBAC. */
+  const rolesHydratedFromKvRef = useRef(false);
+  const skipRolesHydrateRef = useRef(false);
+  const rolesKvCooldownUntilRef = useRef(0);
+  const rolesKvChainRef = useRef(Promise.resolve(true));
+  const rolesKvLatestRef = useRef<Role[]>(DEFAULT_ROLES);
 
   /** Invalida escrituras KV encoladas antes de aplicar datos remotos o al cerrar sesión. */
   const kvApplyGenerationRef = useRef(0);
@@ -447,12 +495,64 @@ export default function App() {
   const configKvChainRef = useRef(Promise.resolve(true));
   const configKvLatestRef = useRef<ConfigStructure>(initialStructure);
 
+  const [cloudSyncPhase, setCloudSyncPhase] = useState<CloudSyncPhase>('idle');
+  const cloudSyncPendingRef = useRef(0);
+  const cloudSyncErrorRef = useRef(false);
+  const cloudSyncTrackerRef = useRef(createCloudSyncTracker(
+    cloudSyncPendingRef,
+    cloudSyncErrorRef,
+    setCloudSyncPhase
+  ));
+
   const resetKvSaveChains = () => {
     kvApplyGenerationRef.current += 1;
     providersKvChainRef.current = Promise.resolve(true);
     pettyCashKvChainRef.current = Promise.resolve(true);
     transactionsKvChainRef.current = Promise.resolve(true);
     configKvChainRef.current = Promise.resolve(true);
+    fleetKvChainRef.current = Promise.resolve(true);
+    alertThresholdsKvChainRef.current = Promise.resolve(true);
+    chartOfAccountsKvChainRef.current = Promise.resolve(true);
+    productsKvChainRef.current = Promise.resolve(true);
+    rolesKvChainRef.current = Promise.resolve(true);
+  };
+
+  const resetAllKvDomainRefs = () => {
+    resetKvDomainRefs({
+      hydratedFromKvRef: fleetHydratedFromKvRef,
+      skipHydrateRef: skipFleetHydrateRef,
+      cooldownUntilRef: fleetKvCooldownUntilRef,
+      chainRef: fleetKvChainRef,
+      latestRef: fleetKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: alertThresholdsHydratedFromKvRef,
+      skipHydrateRef: skipAlertThresholdsHydrateRef,
+      cooldownUntilRef: alertThresholdsKvCooldownUntilRef,
+      chainRef: alertThresholdsKvChainRef,
+      latestRef: alertThresholdsKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: chartOfAccountsHydratedFromKvRef,
+      skipHydrateRef: skipChartOfAccountsHydrateRef,
+      cooldownUntilRef: chartOfAccountsKvCooldownUntilRef,
+      chainRef: chartOfAccountsKvChainRef,
+      latestRef: chartOfAccountsKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: productsHydratedFromKvRef,
+      skipHydrateRef: skipProductsHydrateRef,
+      cooldownUntilRef: productsKvCooldownUntilRef,
+      chainRef: productsKvChainRef,
+      latestRef: productsKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: rolesHydratedFromKvRef,
+      skipHydrateRef: skipRolesHydrateRef,
+      cooldownUntilRef: rolesKvCooldownUntilRef,
+      chainRef: rolesKvChainRef,
+      latestRef: rolesKvLatestRef,
+    });
   };
 
   // Alerts System
@@ -523,6 +623,7 @@ export default function App() {
       hydrateRunningRef.current = true;
       const shouldShowAuthChecking = !cloudDataHydratedRef.current;
       if (shouldShowAuthChecking) setIsAuthChecking(true);
+      setCloudSyncPhase('loading');
 
       try {
         const session = await getStableSession();
@@ -642,22 +743,55 @@ export default function App() {
           setProviders(list);
         }
 
-        if (data['data:chartOfAccounts']) {
-          const raw = data['data:chartOfAccounts'] as ChartOfAccountEntry[];
-          setChartOfAccounts(Array.isArray(raw) ? raw : []);
+        {
+          const allowChartRemote = shouldAllowKvRemoteHydrate(
+            data.__chartOfAccountsKvFetchFailed,
+            skipChartOfAccountsHydrateRef,
+            chartOfAccountsKvCooldownUntilRef
+          );
+          if (data.__chartOfAccountsKvFetchFailed) {
+            chartOfAccountsHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudo leer el plan de cuentas desde la nube. Se detuvo el autoguardado para no borrarlo.'
+            );
+          } else if (allowChartRemote) {
+            const raw = data['data:chartOfAccounts'] as ChartOfAccountEntry[] | null | undefined;
+            const list = Array.isArray(raw) ? raw : [];
+            chartOfAccountsKvLatestRef.current = list;
+            setChartOfAccounts(list);
+            chartOfAccountsHydratedFromKvRef.current = true;
+          }
         }
 
-        if (data['data:products']) {
-          const unique = Array.from(
-            new Map((data['data:products'] as Product[]).map((p) => [p.id, p])).values()
-          ) as Product[];
-          setProducts(
-            unique.map((p) => ({
+        {
+          const allowProductsRemote = shouldAllowKvRemoteHydrate(
+            data.__productsKvFetchFailed,
+            skipProductsHydrateRef,
+            productsKvCooldownUntilRef
+          );
+          if (data.__productsKvFetchFailed) {
+            productsHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudieron leer los productos desde la nube. Se detuvo el autoguardado para no borrar el catálogo.'
+            );
+          } else if (allowProductsRemote) {
+            const rawPv = data['data:products'];
+            const unique = Array.isArray(rawPv)
+              ? (Array.from(
+                  new Map((rawPv as Product[]).map((p) => [p.id, p])).values()
+                ) as Product[])
+              : APP_BACKEND === 'local'
+                ? initialProducts
+                : [];
+            const mapped = unique.map((p) => ({
               ...p,
               createdAt: p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt),
               updatedAt: p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt),
-            }))
-          );
+            }));
+            productsKvLatestRef.current = mapped;
+            setProducts(mapped);
+            productsHydratedFromKvRef.current = true;
+          }
         }
 
         if (data['data:requests']) {
@@ -773,9 +907,49 @@ export default function App() {
         cloudDataHydratedRef.current = true;
         setUsers(nextUsers);
 
-        if (data['data:roles']) setRoles(mergeRolesWithDefaults(data['data:roles'] as Role[]));
+        {
+          const allowRolesRemote = shouldAllowKvRemoteHydrate(
+            data.__rolesKvFetchFailed,
+            skipRolesHydrateRef,
+            rolesKvCooldownUntilRef
+          );
+          if (data.__rolesKvFetchFailed) {
+            rolesHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudieron leer los roles desde la nube. Se detuvo el autoguardado para no sobrescribirlos.'
+            );
+          } else if (allowRolesRemote) {
+            const rawRoles = data['data:roles'] as Role[] | null | undefined;
+            const merged = rawRoles ? mergeRolesWithDefaults(rawRoles) : DEFAULT_ROLES;
+            rolesKvLatestRef.current = merged;
+            setRoles(merged);
+            rolesHydratedFromKvRef.current = true;
+          }
+        }
+
         if (data['data:feeReceipts']) setFeeReceipts(data['data:feeReceipts']);
-        if (data['data:alertThresholds']) setAlertThresholds(data['data:alertThresholds']);
+
+        {
+          const allowAlertThresholdsRemote = shouldAllowKvRemoteHydrate(
+            data.__alertThresholdsKvFetchFailed,
+            skipAlertThresholdsHydrateRef,
+            alertThresholdsKvCooldownUntilRef
+          );
+          if (data.__alertThresholdsKvFetchFailed) {
+            alertThresholdsHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudieron leer los umbrales de alertas desde la nube. Se detuvo el autoguardado.'
+            );
+          } else if (allowAlertThresholdsRemote) {
+            const remoteThresholds = data['settings:alertThresholds'] as AlertThresholds | null | undefined;
+            if (remoteThresholds) {
+              alertThresholdsKvLatestRef.current = remoteThresholds;
+              setAlertThresholds(remoteThresholds);
+            }
+            alertThresholdsHydratedFromKvRef.current = true;
+          }
+        }
+
         if (data['settings:theme']) setTheme(data['settings:theme']);
         if (data['data:treasuryInvoices']) setTreasuryInvoices(data['data:treasuryInvoices']);
         if (data['data:treasuryBankBalance'] !== undefined)
@@ -783,13 +957,36 @@ export default function App() {
         if (data['data:treasuryPaidHistory'])
           setTreasuryPaidHistory(data['data:treasuryPaidHistory']);
 
-        if (data['data:fleet'] != null) {
-          setFleetDataset(normalizeFleetDataset(data['data:fleet']));
-        } else {
-          setFleetDataset(createDemoFleetDataset());
+        {
+          const allowFleetRemote = shouldAllowKvRemoteHydrate(
+            data.__fleetKvFetchFailed,
+            skipFleetHydrateRef,
+            fleetKvCooldownUntilRef
+          );
+          if (data.__fleetKvFetchFailed) {
+            fleetHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudo leer Flota clínica desde la nube. Se detuvo el autoguardado para no perder vehículos ni checklists.'
+            );
+          } else if (allowFleetRemote) {
+            const rawFleet = data['data:fleet'];
+            let nextFleet: FleetDataset;
+            if (rawFleet != null) {
+              nextFleet = normalizeFleetDataset(rawFleet);
+            } else if (APP_BACKEND === 'local') {
+              nextFleet = createDemoFleetDataset();
+            } else {
+              nextFleet = normalizeFleetDataset({});
+            }
+            fleetKvLatestRef.current = nextFleet;
+            setFleetDataset(nextFleet);
+            fleetHydratedFromKvRef.current = true;
+          }
         }
 
         providersCloudHydrationDoneRef.current = true;
+        cloudSyncErrorRef.current = false;
+        setCloudSyncPhase('synced');
         setIsDataLoaded(true);
         toast.success('Datos sincronizados con la nube');
       } finally {
@@ -854,7 +1051,11 @@ export default function App() {
         skipProvidersHydrateRef.current = false;
         skipPettyCashHydrateRef.current = false;
         skipConfigHydrateRef.current = false;
+        resetAllKvDomainRefs();
         resetKvSaveChains();
+        cloudSyncPendingRef.current = 0;
+        cloudSyncErrorRef.current = false;
+        setCloudSyncPhase('idle');
         setCanSaveUsers(true);
         setIsDataLoaded(false);
         return;
@@ -890,7 +1091,11 @@ export default function App() {
         skipProvidersHydrateRef.current = false;
         skipPettyCashHydrateRef.current = false;
         skipConfigHydrateRef.current = false;
+        resetAllKvDomainRefs();
         resetKvSaveChains();
+        cloudSyncPendingRef.current = 0;
+        cloudSyncErrorRef.current = false;
+        setCloudSyncPhase('idle');
         setCanSaveUsers(true);
         setIsDataLoaded(false);
       }, 250);
@@ -1099,7 +1304,20 @@ export default function App() {
   }, [isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:chartOfAccounts', chartOfAccounts);
+    if (!isDataLoaded || !chartOfAccountsHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:chartOfAccounts',
+      payload: chartOfAccounts,
+      refs: {
+        chainRef: chartOfAccountsKvChainRef,
+        latestRef: chartOfAccountsKvLatestRef,
+        cooldownUntilRef: chartOfAccountsKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar el plan de cuentas en la nube. Reintente en unos segundos.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [chartOfAccounts, isDataLoaded]);
 
   useEffect(() => {
@@ -1125,13 +1343,26 @@ export default function App() {
   const handleUpdateRoles = useCallback(
     async (nextRoles: Role[]) => {
       setRoles(nextRoles);
-      if (!isDataLoaded) return false;
-      const ok = await api.saveKey('data:roles', nextRoles);
-      if (!ok) {
-        toast.error('No se pudo guardar la configuración de roles en la nube.');
+      if (!isDataLoaded || !rolesHydratedFromKvRef.current) {
+        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
         return false;
       }
-      return true;
+      rolesKvLatestRef.current = nextRoles;
+      return persistKvDomainNow({
+        kvKey: 'data:roles',
+        payload: nextRoles,
+        refs: {
+          hydratedFromKvRef: rolesHydratedFromKvRef,
+          skipHydrateRef: skipRolesHydrateRef,
+          cooldownUntilRef: rolesKvCooldownUntilRef,
+          chainRef: rolesKvChainRef,
+          latestRef: rolesKvLatestRef,
+        },
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        errorMessage: 'No se pudo guardar la configuración de roles en la nube.',
+        sync: cloudSyncTrackerRef.current,
+      });
     },
     [isDataLoaded]
   );
@@ -1141,7 +1372,20 @@ export default function App() {
   }, [users, isDataLoaded, canSaveUsers]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:roles', roles);
+    if (!isDataLoaded || !rolesHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:roles',
+      payload: roles,
+      refs: {
+        chainRef: rolesKvChainRef,
+        latestRef: rolesKvLatestRef,
+        cooldownUntilRef: rolesKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar la configuración de roles en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [roles, isDataLoaded]);
 
   useEffect(() => {
@@ -1149,11 +1393,37 @@ export default function App() {
   }, [feeReceipts, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:products', products);
+    if (!isDataLoaded || !productsHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:products',
+      payload: products,
+      refs: {
+        chainRef: productsKvChainRef,
+        latestRef: productsKvLatestRef,
+        cooldownUntilRef: productsKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudo guardar el catálogo de productos en la nube. Reintente en unos segundos.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [products, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:alertThresholds', alertThresholds);
+    if (!isDataLoaded || !alertThresholdsHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'settings:alertThresholds',
+      payload: alertThresholds,
+      refs: {
+        chainRef: alertThresholdsKvChainRef,
+        latestRef: alertThresholdsKvLatestRef,
+        cooldownUntilRef: alertThresholdsKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage: 'No se pudieron guardar los umbrales de alertas en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [alertThresholds, isDataLoaded]);
 
   useEffect(() => {
@@ -1173,8 +1443,77 @@ export default function App() {
   }, [treasuryPaidHistory, isDataLoaded]);
 
   useEffect(() => {
-    if (isDataLoaded) api.saveKey('data:fleet', fleetDataset);
+    if (!isDataLoaded || !fleetHydratedFromKvRef.current) return;
+    void autosaveKvDomain({
+      kvKey: 'data:fleet',
+      payload: fleetDataset,
+      refs: {
+        chainRef: fleetKvChainRef,
+        latestRef: fleetKvLatestRef,
+        cooldownUntilRef: fleetKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage:
+        'No se pudo guardar Flota clínica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.',
+      sync: cloudSyncTrackerRef.current,
+    });
   }, [fleetDataset, isDataLoaded]);
+
+  const persistFleetNow = useCallback(
+    async (next: FleetDataset, successMessage?: string): Promise<boolean> => {
+      setFleetDataset(next);
+      if (!isDataLoaded || !fleetHydratedFromKvRef.current) {
+        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
+        return false;
+      }
+      fleetKvLatestRef.current = next;
+      return persistKvDomainNow({
+        kvKey: 'data:fleet',
+        payload: next,
+        refs: {
+          hydratedFromKvRef: fleetHydratedFromKvRef,
+          skipHydrateRef: skipFleetHydrateRef,
+          cooldownUntilRef: fleetKvCooldownUntilRef,
+          chainRef: fleetKvChainRef,
+          latestRef: fleetKvLatestRef,
+        },
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        errorMessage:
+          'No se pudo guardar Flota clínica en la nube. No cierres ni actualices; revisa conexión/sesión.',
+        successMessage,
+        sync: cloudSyncTrackerRef.current,
+      });
+    },
+    [isDataLoaded]
+  );
+
+  const handleFleetDatasetUpdate = useCallback(
+    (updater: FleetDataset | ((prev: FleetDataset) => FleetDataset)) => {
+      setFleetDataset((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        fleetKvLatestRef.current = next;
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleProductsUpdate = useCallback((next: Product[]) => {
+    productsKvLatestRef.current = next;
+    setProducts(next);
+  }, []);
+
+  const handleChartOfAccountsUpdate = useCallback((next: ChartOfAccountEntry[]) => {
+    chartOfAccountsKvLatestRef.current = next;
+    setChartOfAccounts(next);
+  }, []);
+
+  const handleCloudSyncRetry = useCallback(() => {
+    cloudSyncErrorRef.current = false;
+    void hydrateFromKvRef.current?.();
+  }, []);
 
   // --- ALERTS ENGINE (diferido al idle: no bloquea el hilo al hidratar datos) ---
   useEffect(() => {
@@ -1298,6 +1637,11 @@ export default function App() {
       skipProvidersHydrateRef.current = false;
       skipPettyCashHydrateRef.current = false;
       skipConfigHydrateRef.current = false;
+      resetAllKvDomainRefs();
+      resetKvSaveChains();
+      cloudSyncPendingRef.current = 0;
+      cloudSyncErrorRef.current = false;
+      setCloudSyncPhase('idle');
       setProviders((import.meta.env.VITE_BACKEND ?? 'supabase') === 'local' ? initialProviders : []);
       setPettyCashTransactions([]);
       setCanSaveUsers(true);
@@ -2250,6 +2594,16 @@ export default function App() {
           
           <div className={`ml-3 overflow-hidden transition-all duration-500 ${isSidebarCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100'}`}>
             <span className="text-2xl font-bold tracking-tight block gradient-text-cyber truncate max-w-[180px]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{systemSettings.businessName || 'GrooFlow'}</span>
+            {isAuthenticated && isDataLoaded && (
+              <div className="mt-1.5">
+                <CloudSyncIndicator
+                  phase={cloudSyncPhase}
+                  visible
+                  onRetry={handleCloudSyncRetry}
+                  compact
+                />
+              </div>
+            )}
           </div>
         </div>
         
@@ -2340,10 +2694,20 @@ export default function App() {
             )}
             <span className="text-base font-bold tracking-tight gradient-text-cyber truncate max-w-[150px]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{systemSettings.businessName || 'GrooFlow'}</span>
         </div>
+        <div className="flex items-center gap-2">
+          {isAuthenticated && isDataLoaded && (
+            <CloudSyncIndicator
+              phase={cloudSyncPhase}
+              visible
+              onRetry={handleCloudSyncRetry}
+              compact
+            />
+          )}
         <UserMenu 
             onLogout={handleLogout} 
             onProfileClick={() => setIsProfileOpen(true)} 
         />
+        </div>
       </div>
 
        {/* Mobile Menu Dropdown */}
@@ -2818,7 +3182,7 @@ export default function App() {
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               <ChartOfAccountsModule
                 chartOfAccounts={chartOfAccounts}
-                onUpdateChart={setChartOfAccounts}
+                onUpdateChart={handleChartOfAccountsUpdate}
                 systemSettings={systemSettings}
                 onUpdateSystemSettings={handlePersistSystemSettings}
               />
@@ -2827,7 +3191,7 @@ export default function App() {
 
           {view === 'fleet' && (
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <FleetModule dataset={fleetDataset} setDataset={setFleetDataset} />
+              <FleetModule dataset={fleetDataset} setDataset={handleFleetDatasetUpdate} />
             </div>
           )}
 
@@ -2836,7 +3200,7 @@ export default function App() {
                 <ProductModule 
                     products={products}
                     providers={providers}
-                    onUpdateProducts={setProducts}
+                    onUpdateProducts={handleProductsUpdate}
                     visibleSedes={visibleSedes}
                     currentUserName={currentUser.name}
                 />
