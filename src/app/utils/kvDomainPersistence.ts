@@ -1,7 +1,7 @@
 import type { MutableRefObject } from 'react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
-import { enqueueKvSerializedSave } from './kvSerializedSave';
+import { enqueueKvSerializedSave, kvSaveSucceeded, type KvSaveResult } from './kvSerializedSave';
 
 /** Tras un POST exitoso, ignorar GET remotos unos segundos (replica / cache / re-hydrate). */
 export const KV_DOMAIN_COOLDOWN_MS = 8000;
@@ -10,7 +10,7 @@ export interface KvDomainRefs<T> {
   hydratedFromKvRef: MutableRefObject<boolean>;
   skipHydrateRef: MutableRefObject<boolean>;
   cooldownUntilRef: MutableRefObject<number>;
-  chainRef: MutableRefObject<Promise<boolean>>;
+  chainRef: MutableRefObject<Promise<KvSaveResult>>;
   latestRef: MutableRefObject<T>;
 }
 
@@ -95,13 +95,14 @@ export async function autosaveKvDomain<T>(options: {
   } = options;
 
   sync?.onStart();
-  const ok = await enqueueKvSerializedSave(
+  const result = await enqueueKvSerializedSave(
     refs.chainRef,
     kvApplyGenerationRef,
     refs.latestRef,
     kvKey,
     payload
   );
+  const ok = kvSaveSucceeded(result);
   sync?.onEnd(ok, kvKey);
 
   if (ok) {

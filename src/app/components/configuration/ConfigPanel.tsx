@@ -1,8 +1,8 @@
 import { useState, useRef } from 'react';
 import { ConfigStructure, TransactionType, ConceptDefinition, SubcategoryDefinition, Flexibility, getSubcategories, subcategoryId } from '../../data/initialData';
-import { SystemSettings, type PettyCashRenditionPrintSettings } from '../../types';
+import { SystemSettings, type PettyCashRenditionPrintSettings, type BankAccountConfig, type BankCurrency } from '../../types';
 import { mergePettyCashRenditionPrint } from '../../data/initialData';
-import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon, Tags } from 'lucide-react';
+import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon, Tags, Landmark } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -31,6 +31,11 @@ import { Badge } from "../ui/badge";
 import { User } from '../../types';
 import { getSedesCatalogEntries } from '../../utils/sedesCatalog';
 import { getProviderAreas, getProviderCategories } from '../../utils/providerCatalog';
+import {
+  formatBankAccountLabel,
+  getBankAccounts,
+  normalizeBankAccountsPrimary,
+} from '../../utils/bankAccounts';
 import { MapPin, Globe, Building2 as Building2Icon } from 'lucide-react';
 import { DEFAULT_ROLES, type Role } from '../users/types';
 import {
@@ -92,6 +97,9 @@ export function ConfigPanel({
 
   const [newCommercialCategory, setNewCommercialCategory] = useState('');
   const [newCommercialArea, setNewCommercialArea] = useState('');
+  const [newBankName, setNewBankName] = useState('');
+  const [newBankAccountNumber, setNewBankAccountNumber] = useState('');
+  const [newBankCurrency, setNewBankCurrency] = useState<BankCurrency>('PEN');
   const [catalogRename, setCatalogRename] = useState<
     null | { kind: 'category' | 'area'; original: string; draft: string }
   >(null);
@@ -340,6 +348,59 @@ export function ConfigPanel({
 
   const providerCategoriesList = getProviderCategories(systemSettings);
   const providerAreasList = getProviderAreas(systemSettings);
+  const bankAccountsList = getBankAccounts(systemSettings.accounting);
+
+  const persistBankAccounts = (accounts: BankAccountConfig[]) => {
+    onUpdateSystemSettings({
+      ...systemSettings,
+      accounting: {
+        ...(systemSettings.accounting ?? {}),
+        bankAccounts: normalizeBankAccountsPrimary(accounts),
+      },
+    });
+  };
+
+  const addBankAccount = () => {
+    const bankName = newBankName.trim();
+    const accountNumber = newBankAccountNumber.trim();
+    if (!bankName || !accountNumber) {
+      toast.error('Complete banco y número de cuenta');
+      return;
+    }
+    const duplicate = bankAccountsList.some(
+      (a) =>
+        a.bankName.toLowerCase() === bankName.toLowerCase() &&
+        a.accountNumber === accountNumber &&
+        a.currency === newBankCurrency
+    );
+    if (duplicate) {
+      toast.error('Esa cuenta ya está registrada');
+      return;
+    }
+    const entry: BankAccountConfig = {
+      id: `bank_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      bankName,
+      accountNumber,
+      currency: newBankCurrency,
+      isPrimary: bankAccountsList.length === 0,
+    };
+    persistBankAccounts([...bankAccountsList, entry]);
+    setNewBankName('');
+    setNewBankAccountNumber('');
+    setNewBankCurrency('PEN');
+    toast.success('Cuenta bancaria agregada');
+  };
+
+  const removeBankAccount = (id: string) => {
+    persistBankAccounts(bankAccountsList.filter((a) => a.id !== id));
+    toast.success('Cuenta eliminada');
+  };
+
+  const setPrimaryBankAccount = (id: string) => {
+    persistBankAccounts(normalizeBankAccountsPrimary(bankAccountsList, id));
+    toast.success('Cuenta principal actualizada');
+  };
+
 
   const persistProviderCatalog = (next: { categories?: string[]; areas?: string[] }) => {
     const prev = systemSettings.providers ?? { categories: providerCategoriesList, areas: providerAreasList };
@@ -1111,6 +1172,122 @@ export function ConfigPanel({
                   {!isSystemAdmin && (
                     <p className="text-xs text-muted-foreground mt-4">
                       Solo administradores pueden modificar el catálogo.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Landmark className="w-5 h-5" />
+                    Cuentas bancarias
+                  </CardTitle>
+                  <CardDescription>
+                    Registre los bancos y cuentas en soles y dólares. La cuenta marcada como <strong>principal</strong> se preselecciona al registrar transacciones y en la plantilla de carga masiva.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                    <Input
+                      placeholder="Banco (ej. BBVA)"
+                      value={newBankName}
+                      onChange={(e) => setNewBankName(e.target.value)}
+                      disabled={!isSystemAdmin}
+                      onKeyDown={(e) => e.key === 'Enter' && addBankAccount()}
+                    />
+                    <Input
+                      placeholder="N° cuenta / CCI"
+                      value={newBankAccountNumber}
+                      onChange={(e) => setNewBankAccountNumber(e.target.value)}
+                      disabled={!isSystemAdmin}
+                      onKeyDown={(e) => e.key === 'Enter' && addBankAccount()}
+                    />
+                    <Select
+                      value={newBankCurrency}
+                      onValueChange={(v) => setNewBankCurrency(v as BankCurrency)}
+                      disabled={!isSystemAdmin}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PEN">Soles (PEN)</SelectItem>
+                        <SelectItem value="USD">Dólares (USD)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" onClick={addBankAccount} disabled={!isSystemAdmin}>
+                      <Plus className="w-4 h-4 mr-1" />
+                      Agregar
+                    </Button>
+                  </div>
+
+                  <div className="border rounded-md overflow-hidden">
+                    <Table>
+                      <TableHeader className="bg-muted/50">
+                        <TableRow>
+                          <TableHead className="w-[72px]">Principal</TableHead>
+                          <TableHead>Banco</TableHead>
+                          <TableHead>Cuenta</TableHead>
+                          <TableHead className="w-[90px]">Moneda</TableHead>
+                          <TableHead className="w-[80px] text-right">Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {bankAccountsList.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-sm text-muted-foreground py-8">
+                              Sin cuentas registradas. Agregue al menos una para vincular transacciones.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          bankAccountsList.map((acc) => (
+                            <TableRow key={acc.id}>
+                              <TableCell>
+                                <input
+                                  type="radio"
+                                  name="primary-bank-account"
+                                  checked={!!acc.isPrimary}
+                                  disabled={!isSystemAdmin}
+                                  onChange={() => setPrimaryBankAccount(acc.id)}
+                                  className="h-4 w-4 accent-cyan-500"
+                                  title="Cuenta principal"
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium">{acc.bankName}</TableCell>
+                              <TableCell className="font-mono text-sm">{acc.accountNumber}</TableCell>
+                              <TableCell>
+                                <Badge variant="outline">{acc.currency}</Badge>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive"
+                                  disabled={!isSystemAdmin}
+                                  onClick={() => removeBankAccount(acc.id)}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  {bankAccountsList.some((a) => a.isPrimary) && (
+                    <p className="text-xs text-muted-foreground">
+                      Principal actual:{' '}
+                      <span className="font-medium text-foreground">
+                        {formatBankAccountLabel(bankAccountsList.find((a) => a.isPrimary)!)}
+                      </span>
+                    </p>
+                  )}
+                  {!isSystemAdmin && (
+                    <p className="text-xs text-muted-foreground">
+                      Solo administradores pueden modificar las cuentas bancarias.
                     </p>
                   )}
                 </CardContent>

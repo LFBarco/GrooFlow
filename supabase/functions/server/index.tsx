@@ -194,8 +194,27 @@ function kvKeyFromUrl(c: { req: { url: string } }): string | null {
 /** Supabase puede exponer el path como `/make-server-…/kv/…` o `/server/make-server-…/kv/…` según el gateway. */
 const KV_PATH_BASES = [BASE_PATH, `/server${BASE_PATH}`];
 
+async function requireAuthenticatedRequest(c: { req: { header: (name: string) => string | undefined }; json: (body: unknown, status?: number) => Response }) {
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return { response: c.json({ error: "Debe iniciar sesión." }, 401), user: null as null };
+  }
+  const userClient = createClient(
+    Deno.env.get("SUPABASE_URL") || "",
+    Deno.env.get("SUPABASE_ANON_KEY") || "",
+    { global: { headers: { Authorization: authHeader } } }
+  );
+  const { data, error } = await userClient.auth.getUser();
+  if (error || !data?.user?.id) {
+    return { response: c.json({ error: "Sesión inválida." }, 401), user: null as null };
+  }
+  return { response: null as null, user: data.user };
+}
+
 for (const base of KV_PATH_BASES) {
   app.get(`${base}/kv/*`, async (c) => {
+    const auth = await requireAuthenticatedRequest(c);
+    if (auth.response) return auth.response;
     const key = kvKeyFromUrl(c);
     if (key == null || key === "") {
       return c.json({ error: "Missing key" }, 400);
@@ -210,6 +229,8 @@ for (const base of KV_PATH_BASES) {
   });
 
   app.post(`${base}/kv/*`, async (c) => {
+    const auth = await requireAuthenticatedRequest(c);
+    if (auth.response) return auth.response;
     const key = kvKeyFromUrl(c);
     if (key == null || key === "") {
       return c.json({ error: "Missing key" }, 400);
@@ -228,6 +249,8 @@ for (const base of KV_PATH_BASES) {
 // --- INITIALIZATION ENDPOINT ---
 // Helps to batch load everything on startup
 app.get(`${BASE_PATH}/init`, async (c) => {
+  const auth = await requireAuthenticatedRequest(c);
+  if (auth.response) return auth.response;
   try {
     // List of keys we care about
     const keys = [

@@ -82,6 +82,7 @@ import {
   FleetVehicleInspectionBar,
 } from './FleetInspectionComponents';
 import { FleetSedeField, useFleetSedeOptions } from './FleetSedeField';
+import { applyFleetDatasetChange, type FleetPersistFn } from '../../utils/fleetPersist';
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#64748b'];
 
@@ -92,6 +93,8 @@ function newId(prefix: string) {
 export interface FleetModuleProps {
   dataset: FleetDataset;
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
+  /** Guardado inmediato en nube (KV + SQL). Si falta, solo actualiza state local. */
+  onPersistDataset?: FleetPersistFn;
   /** Sedes habilitadas / visibles según configuración del sistema y permisos del usuario. */
   visibleSedes?: string[];
   /** Sede predeterminada al registrar un vehículo nuevo. */
@@ -107,7 +110,7 @@ type FleetTab =
   | 'reports'
   | 'inspections';
 
-export function FleetModule({ dataset, setDataset, visibleSedes, defaultHomeBase }: FleetModuleProps) {
+export function FleetModule({ dataset, setDataset, onPersistDataset, visibleSedes, defaultHomeBase }: FleetModuleProps) {
   const [fleetTab, setFleetTab] = useState<FleetTab>('dashboard');
   const kpis = useMemo(() => computeFleetKpis(dataset), [dataset]);
   const alerts = useMemo(() => buildFleetAlerts(dataset), [dataset]);
@@ -294,6 +297,7 @@ export function FleetModule({ dataset, setDataset, visibleSedes, defaultHomeBase
           <FleetVehiclesSection
             dataset={dataset}
             setDataset={setDataset}
+            onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
           />
@@ -303,6 +307,7 @@ export function FleetModule({ dataset, setDataset, visibleSedes, defaultHomeBase
           <FleetMaintenanceSection
             dataset={dataset}
             setDataset={setDataset}
+            onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
           />
@@ -312,6 +317,7 @@ export function FleetModule({ dataset, setDataset, visibleSedes, defaultHomeBase
           <FleetFuelSection
             dataset={dataset}
             setDataset={setDataset}
+            onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
           />
@@ -343,7 +349,11 @@ export function FleetModule({ dataset, setDataset, visibleSedes, defaultHomeBase
               <TabsTrigger value="inspection-global-hist">Historial global</TabsTrigger>
             </TabsList>
             <TabsContent value="checklist-config" className="focus-visible:outline-none">
-              <FleetChecklistConfigurator dataset={dataset} setDataset={setDataset} />
+              <FleetChecklistConfigurator
+                dataset={dataset}
+                setDataset={setDataset}
+                onPersistDataset={onPersistDataset}
+              />
             </TabsContent>
             <TabsContent value="inspection-global-hist" className="focus-visible:outline-none">
               <FleetInspectionsGlobalTable dataset={dataset} />
@@ -396,11 +406,13 @@ function KpiTile({
 function FleetVehiclesSection({
   dataset,
   setDataset,
+  onPersistDataset,
   visibleSedes,
   defaultHomeBase,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
+  onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
 }) {
@@ -444,7 +456,7 @@ function FleetVehiclesSection({
     setOpen(true);
   };
 
-  const save = () => {
+  const save = async () => {
     const plate = (form.plate || '').trim();
     const brand = (form.brand || '').trim();
     const model = (form.model || '').trim();
@@ -484,26 +496,31 @@ function FleetVehiclesSection({
       updatedAt: now,
     };
 
-    setDataset((prev) => ({
-      ...prev,
+    const next: FleetDataset = {
+      ...dataset,
       vehicles: editing
-        ? prev.vehicles.map((v) => (v.id === id ? row : v))
-        : [...prev.vehicles, row],
-    }));
-    toast.success(editing ? 'Vehículo actualizado.' : 'Vehículo agregado.');
-    setOpen(false);
+        ? dataset.vehicles.map((v) => (v.id === id ? row : v))
+        : [...dataset.vehicles, row],
+    };
+    const ok = await applyFleetDatasetChange(
+      setDataset,
+      onPersistDataset,
+      next,
+      editing ? 'Vehículo actualizado.' : 'Vehículo agregado.'
+    );
+    if (ok) setOpen(false);
   };
 
-  const removeVehicle = (v: FleetVehicle) => {
+  const removeVehicle = async (v: FleetVehicle) => {
     if (!confirm(`¿Eliminar ${v.plate} y sus referencias locales? Mantenimiento/combustible quedarán huérfanos en reportes hasta que los borre.`)) return;
-    setDataset((prev) => ({
-      ...prev,
-      vehicles: prev.vehicles.filter((x) => x.id !== v.id),
-      maintenance: prev.maintenance.filter((m) => m.vehicleId !== v.id),
-      fuelEntries: prev.fuelEntries.filter((f) => f.vehicleId !== v.id),
-      inspections: prev.inspections.filter((i) => i.vehicleId !== v.id),
-    }));
-    toast.success('Vehículo eliminado.');
+    const next: FleetDataset = {
+      ...dataset,
+      vehicles: dataset.vehicles.filter((x) => x.id !== v.id),
+      maintenance: dataset.maintenance.filter((m) => m.vehicleId !== v.id),
+      fuelEntries: dataset.fuelEntries.filter((f) => f.vehicleId !== v.id),
+      inspections: dataset.inspections.filter((i) => i.vehicleId !== v.id),
+    };
+    await applyFleetDatasetChange(setDataset, onPersistDataset, next, 'Vehículo eliminado.');
   };
 
   return (
@@ -566,7 +583,12 @@ function FleetVehiclesSection({
                   Eliminar
                 </Button>
               </div>
-              <FleetVehicleInspectionBar vehicle={v} dataset={dataset} setDataset={setDataset} />
+              <FleetVehicleInspectionBar
+                vehicle={v}
+                dataset={dataset}
+                setDataset={setDataset}
+                onPersistDataset={onPersistDataset}
+              />
             </CardContent>
           </Card>
         ))}
@@ -682,11 +704,13 @@ function FleetVehiclesSection({
 function FleetMaintenanceSection({
   dataset,
   setDataset,
+  onPersistDataset,
   visibleSedes,
   defaultHomeBase,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
+  onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
 }) {
@@ -748,7 +772,7 @@ function FleetMaintenanceSection({
     return out;
   };
 
-  const submit = () => {
+  const submit = async () => {
     const v = dataset.vehicles.find((x) => x.id === vehicleId);
     if (!v) {
       toast.error('Seleccione un vehículo.');
@@ -773,15 +797,19 @@ function FleetMaintenanceSection({
       parts: parseParts(),
       createdAt: now,
     };
-    setDataset((prev) => ({
-      ...prev,
-      maintenance: [rec, ...prev.maintenance],
-      vehicles: prev.vehicles.map((x) => (x.id === v.id ? { ...x, currentOdometerKm: Math.max(x.currentOdometerKm, odometer), updatedAt: now } : x)),
-    }));
-    toast.success('Mantenimiento registrado.');
-    setOpen(false);
-    setVehicleId('');
-    setDescription('');
+    const next: FleetDataset = {
+      ...dataset,
+      maintenance: [rec, ...dataset.maintenance],
+      vehicles: dataset.vehicles.map((x) =>
+        x.id === v.id ? { ...x, currentOdometerKm: Math.max(x.currentOdometerKm, odometer), updatedAt: now } : x
+      ),
+    };
+    const ok = await applyFleetDatasetChange(setDataset, onPersistDataset, next, 'Mantenimiento registrado.');
+    if (ok) {
+      setOpen(false);
+      setVehicleId('');
+      setDescription('');
+    }
   };
 
   const rows = [...dataset.maintenance].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
@@ -923,11 +951,13 @@ function FleetMaintenanceSection({
 function FleetFuelSection({
   dataset,
   setDataset,
+  onPersistDataset,
   visibleSedes,
   defaultHomeBase,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
+  onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
 }) {
@@ -970,7 +1000,7 @@ function FleetFuelSection({
     }
   }, [open, vehicleId, vehiclesForSede]);
 
-  const submit = () => {
+  const submit = async () => {
     const v = dataset.vehicles.find((x) => x.id === vehicleId);
     if (!v) {
       toast.error('Seleccione vehículo.');
@@ -989,14 +1019,19 @@ function FleetFuelSection({
       createdAt: now,
       fullTank: false,
     };
-    setDataset((prev) => ({
-      ...prev,
-      fuelEntries: [row, ...prev.fuelEntries],
-      vehicles: prev.vehicles.map((x) => (x.id === v.id ? { ...x, currentOdometerKm: Math.max(x.currentOdometerKm, odometer), updatedAt: now } : x)),
-    }));
-    toast.success('Repostaje registrado.');
-    setOpen(false);
-    setLiters(0); setCost(0);
+    const next: FleetDataset = {
+      ...dataset,
+      fuelEntries: [row, ...dataset.fuelEntries],
+      vehicles: dataset.vehicles.map((x) =>
+        x.id === v.id ? { ...x, currentOdometerKm: Math.max(x.currentOdometerKm, odometer), updatedAt: now } : x
+      ),
+    };
+    const ok = await applyFleetDatasetChange(setDataset, onPersistDataset, next, 'Repostaje registrado.');
+    if (ok) {
+      setOpen(false);
+      setLiters(0);
+      setCost(0);
+    }
   };
 
   const [chartVid, setChartVid] = useState('');

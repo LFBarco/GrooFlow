@@ -437,6 +437,18 @@ export interface ChartOfAccountEntry {
   active: boolean;
 }
 
+export type BankCurrency = 'PEN' | 'USD';
+
+/** Cuenta bancaria de la empresa (tesorería / transacciones). */
+export interface BankAccountConfig {
+  id: string;
+  bankName: string;
+  accountNumber: string;
+  currency: BankCurrency;
+  /** Solo una cuenta puede ser principal en todo el catálogo. */
+  isPrimary?: boolean;
+}
+
 /**
  * Cuentas “puente” para armar asientos: IGV compras, salida caja chica, banco.
  * Los códigos deben existir en el plan importado (validación en UI).
@@ -455,6 +467,8 @@ export interface AccountingLinkSettings {
   pettyCashCreditBySede?: Record<string, string>;
   /** Opcional: pago desde cuenta bancaria (si más adelante exportas tesorería). */
   bankPaymentAccountCode?: string;
+  /** Cuentas bancarias operativas (Flujo de caja / transacciones). */
+  bankAccounts?: BankAccountConfig[];
 }
 
 export interface SystemSettings {

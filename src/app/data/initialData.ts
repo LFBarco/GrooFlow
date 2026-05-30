@@ -10,6 +10,7 @@ import {
   DEFAULT_PROVIDER_AREAS,
   DEFAULT_PROVIDER_CATEGORIES,
 } from '../utils/providerCatalog';
+import { mergeBankAccounts } from '../utils/bankAccounts';
 
 /** Valores por defecto de la plantilla de rendición (merge con `settings.pettyCash.renditionPrint`). */
 export const defaultPettyCashRenditionPrint: PettyCashRenditionPrintSettings = {
@@ -274,6 +275,9 @@ export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | u
     accounting: {
       ...base.accounting,
       ...(incoming.accounting || {}),
+      bankAccounts: mergeBankAccounts(
+        incoming.accounting?.bankAccounts ?? base.accounting?.bankAccounts
+      ),
     },
     smartCashFlow: mergeSmartCashFlowSettings(incoming.smartCashFlow ?? base.smartCashFlow),
   };

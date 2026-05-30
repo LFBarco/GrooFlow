@@ -30,6 +30,7 @@ import {
   DEFAULT_FLEET_CHECKLIST,
   getAllChecklistItemIds,
 } from '../../utils/fleetData';
+import { applyFleetDatasetChange, type FleetPersistFn } from '../../utils/fleetPersist';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -199,15 +200,22 @@ export function SignaturePad({
 export function FleetChecklistConfigurator({
   dataset,
   setDataset,
+  onPersistDataset,
 }: {
   dataset: FleetDataset;
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
+  onPersistDataset?: FleetPersistFn;
 }) {
   const sections = dataset.checklistSections?.length ? dataset.checklistSections : DEFAULT_FLEET_CHECKLIST;
 
-  const persist = (next: FleetChecklistSection[]) => {
-    setDataset((d) => ({ ...d, checklistSections: next }));
-    toast.success('Plantilla de checklist actualizada.');
+  const persist = async (nextSections: FleetChecklistSection[]) => {
+    const next: FleetDataset = { ...dataset, checklistSections: nextSections };
+    await applyFleetDatasetChange(
+      setDataset,
+      onPersistDataset,
+      next,
+      'Plantilla de checklist actualizada.'
+    );
   };
 
   const addSection = () => {
@@ -473,10 +481,12 @@ export function FleetVehicleInspectionBar({
   vehicle,
   dataset,
   setDataset,
+  onPersistDataset,
 }: {
   vehicle: FleetVehicle;
   dataset: FleetDataset;
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
+  onPersistDataset?: FleetPersistFn;
 }) {
   const [openNew, setOpenNew] = useState(false);
   const [openHist, setOpenHist] = useState(false);
@@ -544,7 +554,7 @@ export function FleetVehicleInspectionBar({
     e.target.value = '';
   };
 
-  const submitInspection = () => {
+  const submitInspection = async () => {
     if (!driverName.trim()) {
       toast.error('Indique nombre del chofer.');
       return;
@@ -585,10 +595,10 @@ export function FleetVehicleInspectionBar({
       createdAt: now,
     };
 
-    setDataset((prev) => ({
-      ...prev,
-      inspections: [rec, ...prev.inspections],
-      vehicles: prev.vehicles.map((v) =>
+    const next: FleetDataset = {
+      ...dataset,
+      inspections: [rec, ...dataset.inspections],
+      vehicles: dataset.vehicles.map((v) =>
         v.id === vehicle.id
           ? {
               ...v,
@@ -601,9 +611,14 @@ export function FleetVehicleInspectionBar({
             }
           : v
       ),
-    }));
-    toast.success(`Inspección registrada · ${compliance}% cumplimiento`);
-    setOpenNew(false);
+    };
+    const ok = await applyFleetDatasetChange(
+      setDataset,
+      onPersistDataset,
+      next,
+      `Inspección registrada · ${compliance}% cumplimiento`
+    );
+    if (ok) setOpenNew(false);
   };
 
   return (

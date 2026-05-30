@@ -9,9 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Trash2 } from "lucide-react";
 import { formatNumberEs } from "../../utils/numberFormat";
 import { parseTransactionDate } from "../../utils/transactionDate";
+import { formatBankAccountLabel, resolveBankAccount } from "../../utils/bankAccounts";
+import type { BankAccountConfig } from "../../types";
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
+  bankAccounts?: BankAccountConfig[];
   onEdit?: (transaction: Transaction) => void;
   onDelete?: (transactionId: string) => void;
   onBulkDelete?: (transactionIds: string[]) => void;
@@ -32,12 +35,18 @@ type SortKey =
   | 'reference';
 type SortDirection = 'asc' | 'desc';
 
-export function RecentTransactions({ transactions, onEdit, onDelete, onBulkDelete }: RecentTransactionsProps) {
+export function RecentTransactions({ transactions, bankAccounts = [], onEdit, onDelete, onBulkDelete }: RecentTransactionsProps) {
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const accountLabel = (transaction: Transaction) => {
+    const acc = resolveBankAccount(bankAccounts, transaction.account);
+    if (acc) return formatBankAccountLabel(acc);
+    return transaction.account || '-';
+  };
 
   const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize));
   const sortedTransactions = useMemo(() => {
@@ -201,7 +210,7 @@ export function RecentTransactions({ transactions, onEdit, onDelete, onBulkDelet
                   />
                 </td>
                 <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
-                  {transaction.account || '-'}
+                  {accountLabel(transaction)}
                 </td>
                 <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
                   {transaction.currency || '-'}

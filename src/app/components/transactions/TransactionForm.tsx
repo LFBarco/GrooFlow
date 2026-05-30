@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
-import { TransactionType } from "../../types";
+import { TransactionType, type BankAccountConfig, type Provider } from "../../types";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
@@ -14,56 +14,85 @@ import {
 import { Textarea } from "../ui/textarea";
 import { ConfigStructure, getSubcategories } from "../../data/initialData";
 import { formatDateInputValue, parseTransactionDate } from "../../utils/transactionDate";
-import { Provider } from "../../types";
+import { formatBankAccountLabel, getPrimaryBankAccount } from "../../utils/bankAccounts";
 
 interface TransactionFormProps {
   onSubmit: (data: any) => void;
   config?: ConfigStructure;
   providers?: Provider[];
+  bankAccounts?: BankAccountConfig[];
+  sedesCatalog?: string[];
   initialData?: any;
   onCancel?: () => void;
 }
 
-export function TransactionForm({ onSubmit, config, providers = [], initialData, onCancel }: TransactionFormProps) {
+export function TransactionForm({
+  onSubmit,
+  config,
+  providers = [],
+  bankAccounts = [],
+  sedesCatalog = [],
+  initialData,
+  onCancel,
+}: TransactionFormProps) {
   const { register, handleSubmit, reset, setValue, watch } = useForm();
   const [selectedType, setSelectedType] = useState<TransactionType>("expense");
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availableSubcategories, setAvailableSubcategories] = useState<{ id: string; name: string }[]>([]);
   const [availableConcepts, setAvailableConcepts] = useState<string[]>([]);
-  
-  const selectedCategory = watch('category');
-  const selectedSubcategory = watch('subcategory');
+
+  const selectedCategory = watch("category");
+  const selectedSubcategory = watch("subcategory");
+  const selectedAccountId = watch("account");
+  const sedeOptions = useMemo(
+    () => (sedesCatalog.length > 0 ? sedesCatalog : ["Principal"]),
+    [sedesCatalog]
+  );
+  const primaryAccount = useMemo(() => getPrimaryBankAccount(bankAccounts), [bankAccounts]);
+  const selectedBankAccount = useMemo(
+    () => bankAccounts.find((a) => a.id === selectedAccountId),
+    [bankAccounts, selectedAccountId]
+  );
+  const amountSymbol = selectedBankAccount?.currency === "USD" ? "$" : "S/";
 
   // Load initial data
   useEffect(() => {
     if (initialData) {
-      // Set simple fields
-      setValue('amount', initialData.amount);
-      setValue('description', initialData.description);
-      setValue('providerId', initialData.providerId);
-      setValue('location', initialData.location);
-      
-      setValue('date', formatDateInputValue(parseTransactionDate(initialData.date)));
+      setValue("amount", initialData.amount);
+      setValue("description", initialData.description);
+      setValue("providerId", initialData.providerId);
+      setValue("location", initialData.location);
+      setValue("operation", initialData.operation);
+      setValue("reference", initialData.reference);
+      setValue("account", initialData.account);
+      setValue("currency", initialData.currency);
 
-      // Set Type
+      setValue("date", formatDateInputValue(parseTransactionDate(initialData.date)));
+
       if (initialData.type) {
         setSelectedType(initialData.type);
       }
-      
-      // Category and Subcategory will be set after the type effect runs
-      // But we need to ensure they are set after the options are available
-      // Using a timeout or a separate effect dependent on availableCategories might be needed
-      // For now, let's force set them after a tick to allow the type-effect to populate categories
+
       setTimeout(() => {
-        if (initialData.category) setValue('category', initialData.category);
+        if (initialData.category) setValue("category", initialData.category);
         setTimeout(() => {
-          if (initialData.subcategory) setValue('subcategory', initialData.subcategory);
-          if (initialData.concept) setValue('concept', initialData.concept);
-          else if (initialData.subcategory && !initialData.concept) setValue('concept', initialData.subcategory);
+          if (initialData.subcategory) setValue("subcategory", initialData.subcategory);
+          if (initialData.concept) setValue("concept", initialData.concept);
+          else if (initialData.subcategory && !initialData.concept)
+            setValue("concept", initialData.subcategory);
         }, 50);
       }, 50);
+    } else if (primaryAccount) {
+      setValue("account", primaryAccount.id);
+      setValue("currency", primaryAccount.currency);
     }
-  }, [initialData, setValue]);
+  }, [initialData, primaryAccount, setValue]);
+
+  useEffect(() => {
+    if (selectedBankAccount) {
+      setValue("currency", selectedBankAccount.currency);
+    }
+  }, [selectedBankAccount, setValue]);
 
   // Filter categories based on selected Type (Income/Expense)
   useEffect(() => {
@@ -72,52 +101,43 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
         .filter(([_, def]) => def.type === selectedType)
         .map(([key]) => key);
       setAvailableCategories(filtered);
-      
-      // Smart Auto-selection Logic
+
       let autoSelectCategory = "";
 
-      // 1. If there is a category named exactly like "Ingresos" for income type, pick it.
-      if (selectedType === 'income' && filtered.includes('Ingresos')) {
-        autoSelectCategory = 'Ingresos';
-      }
-      // 2. If there is only one category available, pick it automatically.
-      else if (filtered.length === 1) {
+      if (selectedType === "income" && filtered.includes("Ingresos")) {
+        autoSelectCategory = "Ingresos";
+      } else if (filtered.length === 1) {
         autoSelectCategory = filtered[0];
       }
 
-      // Apply selection
       if (autoSelectCategory) {
-         // Only set if current selection is invalid or empty, to avoid overwriting during edit
-         const currentIsValid = selectedCategory && filtered.includes(selectedCategory);
-         if (!currentIsValid && selectedCategory !== autoSelectCategory) {
-            setValue('category', autoSelectCategory);
-         }
+        const currentIsValid = selectedCategory && filtered.includes(selectedCategory);
+        if (!currentIsValid && selectedCategory !== autoSelectCategory) {
+          setValue("category", autoSelectCategory);
+        }
       } else {
-         // Reset category if the current selection is no longer valid for the new type
-         if (selectedCategory && !filtered.includes(selectedCategory)) {
-           setValue('category', '');
-           setValue('subcategory', '');
-           setValue('concept', '');
-         }
+        if (selectedCategory && !filtered.includes(selectedCategory)) {
+          setValue("category", "");
+          setValue("subcategory", "");
+          setValue("concept", "");
+        }
       }
     }
-  }, [selectedType, config, setValue, selectedCategory]); 
+  }, [selectedType, config, setValue, selectedCategory]);
 
-  // Subcategories for selected category
   useEffect(() => {
     if (config && selectedCategory && config[selectedCategory]) {
       const subs = getSubcategories(config[selectedCategory], selectedCategory);
-      setAvailableSubcategories(subs.map(s => ({ id: s.id, name: s.name })));
-      if (subs.length === 1) setValue('subcategory', subs[0].name);
-      else setValue('subcategory', '');
-      setValue('concept', '');
+      setAvailableSubcategories(subs.map((s) => ({ id: s.id, name: s.name })));
+      if (subs.length === 1) setValue("subcategory", subs[0].name);
+      else if (!initialData) setValue("subcategory", "");
+      if (!initialData) setValue("concept", "");
     } else {
       setAvailableSubcategories([]);
       setAvailableConcepts([]);
     }
-  }, [selectedCategory, config, setValue]);
+  }, [selectedCategory, config, setValue, initialData]);
 
-  // Concepts when category (and subcategory if multiple) change
   useEffect(() => {
     if (!config || !selectedCategory || !config[selectedCategory]) {
       setAvailableConcepts([]);
@@ -125,11 +145,11 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
     }
     const subs = getSubcategories(config[selectedCategory], selectedCategory);
     if (subs.length === 1) {
-      setAvailableConcepts(subs[0].concepts.map(c => c.name));
+      setAvailableConcepts(subs[0].concepts.map((c) => c.name));
       return;
     }
-    const sub = subs.find(s => s.name === selectedSubcategory);
-    setAvailableConcepts(sub ? sub.concepts.map(c => c.name) : []);
+    const sub = subs.find((s) => s.name === selectedSubcategory);
+    setAvailableConcepts(sub ? sub.concepts.map((c) => c.name) : []);
   }, [selectedCategory, selectedSubcategory, config]);
 
   const onFormSubmit = (data: any) => {
@@ -146,6 +166,10 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
       setValue("category", "");
       setValue("subcategory", "");
       setValue("concept", "");
+      if (primaryAccount) {
+        setValue("account", primaryAccount.id);
+        setValue("currency", primaryAccount.currency);
+      }
     }
   };
 
@@ -179,7 +203,7 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
             </button>
           </div>
         </div>
-        
+
         <div className="space-y-2">
           <Label htmlFor="date">Fecha</Label>
           <Input
@@ -193,10 +217,41 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
         </div>
       </div>
 
+      {bankAccounts.length > 0 && (
+        <div className="space-y-2">
+          <Label>Cuenta bancaria</Label>
+          <Select
+            value={selectedAccountId || ""}
+            onValueChange={(val) => {
+              setValue("account", val);
+              const acc = bankAccounts.find((a) => a.id === val);
+              if (acc) setValue("currency", acc.currency);
+            }}
+          >
+            <SelectTrigger className="w-full bg-background">
+              <SelectValue placeholder="Seleccionar cuenta..." />
+            </SelectTrigger>
+            <SelectContent>
+              {bankAccounts.map((acc) => (
+                <SelectItem key={acc.id} value={acc.id}>
+                  {formatBankAccountLabel(acc)}
+                  {acc.isPrimary ? " · Principal" : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input type="hidden" {...register("account")} />
+          <input type="hidden" {...register("currency")} />
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="provider">Proveedor (Opcional)</Label>
-          <Select onValueChange={(val) => setValue("providerId", val)}>
+          <Select
+            onValueChange={(val) => setValue("providerId", val)}
+            defaultValue={initialData?.providerId}
+          >
             <SelectTrigger className="w-full bg-background">
               <SelectValue placeholder="Seleccionar..." />
             </SelectTrigger>
@@ -213,14 +268,19 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
 
         <div className="space-y-2">
           <Label htmlFor="location">Sede (Opcional)</Label>
-          <Select onValueChange={(val) => setValue("location", val)} defaultValue="Principal">
+          <Select
+            onValueChange={(val) => setValue("location", val)}
+            defaultValue={initialData?.location || sedeOptions[0]}
+          >
             <SelectTrigger className="w-full bg-background">
               <SelectValue placeholder="Seleccionar..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="Principal">Principal</SelectItem>
-              <SelectItem value="Norte">Norte</SelectItem>
-              <SelectItem value="Sur">Sur</SelectItem>
+              {sedeOptions.map((sede) => (
+                <SelectItem key={sede} value={sede}>
+                  {sede}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <input type="hidden" {...register("location")} />
@@ -229,7 +289,7 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
 
       <div className="space-y-2">
         <Label htmlFor="category">Categoría</Label>
-        <Select 
+        <Select
           onValueChange={(val) => {
             setValue("category", val);
             setValue("subcategory", "");
@@ -254,8 +314,11 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
       {availableSubcategories.length > 1 && (
         <div className="space-y-2">
           <Label>Subcategoría</Label>
-          <Select 
-            onValueChange={(val) => { setValue("subcategory", val); setValue("concept", ""); }} 
+          <Select
+            onValueChange={(val) => {
+              setValue("subcategory", val);
+              setValue("concept", "");
+            }}
             value={selectedSubcategory || ""}
           >
             <SelectTrigger className="w-full bg-background">
@@ -263,7 +326,9 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
             </SelectTrigger>
             <SelectContent>
               {availableSubcategories.map((s) => (
-                <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>
+                <SelectItem key={s.id} value={s.name}>
+                  {s.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -274,21 +339,23 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
       <div className="space-y-2">
         <Label htmlFor="concept">Concepto (Fila)</Label>
         {availableConcepts.length > 0 ? (
-          <Select onValueChange={(val) => setValue("concept", val)} value={watch('concept') || ""}>
+          <Select onValueChange={(val) => setValue("concept", val)} value={watch("concept") || ""}>
             <SelectTrigger className="w-full bg-background">
               <SelectValue placeholder="Seleccionar concepto" />
             </SelectTrigger>
             <SelectContent>
               {availableConcepts.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
         ) : (
-          <Input 
-            id="concept" 
-            placeholder="Escribe un concepto..." 
-            {...register("concept")} 
+          <Input
+            id="concept"
+            placeholder="Escribe un concepto..."
+            {...register("concept")}
             disabled={!selectedCategory}
             className="bg-background"
           />
@@ -296,20 +363,41 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
         <input type="hidden" {...register("concept", { required: true })} />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="amount">Monto</Label>
-        <div className="relative">
-          <span className="absolute left-3 top-2.5 text-gray-500">S/</span>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="amount">Monto</Label>
+          <div className="relative">
+            <span className="absolute left-3 top-2.5 text-gray-500">{amountSymbol}</span>
+            <Input
+              id="amount"
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              className="pl-9 bg-background"
+              required
+              {...register("amount", { min: 0 })}
+            />
+          </div>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="operation">Nro Operación</Label>
           <Input
-            id="amount"
-            type="number"
-            step="0.01"
-            placeholder="0.00"
-            className="pl-7 bg-background"
-            required
-            {...register("amount", { min: 0 })}
+            id="operation"
+            placeholder="Ej. 001-234567"
+            className="bg-background"
+            {...register("operation")}
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="reference">Referencia</Label>
+        <Input
+          id="reference"
+          placeholder="Referencia bancaria o interna"
+          className="bg-background"
+          {...register("reference")}
+        />
       </div>
 
       <div className="space-y-2">
@@ -329,7 +417,7 @@ export function TransactionForm({ onSubmit, config, providers = [], initialData,
           </Button>
         )}
         <Button type="submit" className="w-full">
-          {initialData ? 'Actualizar Transacción' : 'Registrar Transacción'}
+          {initialData ? "Actualizar Transacción" : "Registrar Transacción"}
         </Button>
       </div>
     </form>

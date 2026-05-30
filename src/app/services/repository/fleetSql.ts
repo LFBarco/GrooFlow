@@ -129,11 +129,22 @@ export async function loadFleetFromSql(
   return { ok: true, data, empty };
 }
 
+export type FleetSqlSaveResult = {
+  ok: boolean;
+  errors: string[];
+};
+
 export async function saveFleetToSql(
   client: SupabaseClient,
   dataset: FleetDataset,
-  userId: string | null
-): Promise<boolean> {
+  userId: string | null,
+  options?: { allowPruneWhenEmpty?: boolean }
+): Promise<FleetSqlSaveResult> {
+  const errors: string[] = [];
+  if (!userId) {
+    return { ok: false, errors: ['Sin sesión de usuario (auth.uid)'] };
+  }
+
   const vehicleMap = new Map(dataset.vehicles.map((v) => [v.id, v.homeBase]));
 
   const vehicleRows = dataset.vehicles.map((v) => vehicleRow(v, userId));
@@ -143,17 +154,11 @@ export async function saveFleetToSql(
     inspectionRow(i, vehicleMap.get(i.vehicleId), userId)
   );
 
-  const ids = {
-    vehicles: new Set(dataset.vehicles.map((v) => v.id)),
-    maintenance: new Set(dataset.maintenance.map((m) => m.id)),
-    fuel: new Set(dataset.fuelEntries.map((f) => f.id)),
-    inspections: new Set(dataset.inspections.map((i) => i.id)),
-  };
-
   const upsert = async (table: string, rows: Record<string, unknown>[]) => {
     if (rows.length === 0) return true;
     const { error } = await client.from(table).upsert(rows, { onConflict: 'id' });
     if (error) {
+      errors.push(`${table}: ${error.message}`);
       console.warn(`[fleetSql] upsert ${table}`, error);
       return false;
     }
@@ -163,20 +168,25 @@ export async function saveFleetToSql(
   const prune = async (table: string, keepIds: Set<string>) => {
     const { data, error } = await client.from(table).select('id');
     if (error) {
-      if (isMissingTableError(error)) return true;
+      if (isMissingTableError(error)) return;
       console.warn(`[fleetSql] prune list ${table}`, error);
-      return false;
+      return;
     }
     const toDelete = (data ?? [])
       .map((r) => r.id as string)
       .filter((id) => !keepIds.has(id));
-    if (toDelete.length === 0) return true;
+    if (toDelete.length === 0) return;
     const { error: delErr } = await client.from(table).delete().in('id', toDelete);
     if (delErr) {
-      console.warn(`[fleetSql] prune delete ${table}`, delErr);
-      return false;
+      console.warn(`[fleetSql] prune delete ${table} (no fatal)`, delErr);
     }
-    return true;
+  };
+
+  const ids = {
+    vehicles: new Set(dataset.vehicles.map((v) => v.id)),
+    maintenance: new Set(dataset.maintenance.map((m) => m.id)),
+    fuel: new Set(dataset.fuelEntries.map((f) => f.id)),
+    inspections: new Set(dataset.inspections.map((i) => i.id)),
   };
 
   const results = await Promise.all([
@@ -196,6 +206,7 @@ export async function saveFleetToSql(
       )
       .then(({ error }) => {
         if (error) {
+          errors.push(`fleet_checklist: ${error.message}`);
           console.warn('[fleetSql] upsert fleet_checklist', error);
           return false;
         }
@@ -203,16 +214,23 @@ export async function saveFleetToSql(
       }),
   ]);
 
-  if (!results.every(Boolean)) return false;
+  if (results.every(Boolean)) {
+    const isEmpty =
+      dataset.vehicles.length === 0 &&
+      dataset.maintenance.length === 0 &&
+      dataset.fuelEntries.length === 0 &&
+      dataset.inspections.length === 0;
+    if (!isEmpty || options?.allowPruneWhenEmpty) {
+      await Promise.all([
+        prune('fleet_vehicles', ids.vehicles),
+        prune('fleet_maintenance', ids.maintenance),
+        prune('fleet_fuel_entries', ids.fuel),
+        prune('fleet_inspections', ids.inspections),
+      ]);
+    }
+  }
 
-  const prunes = await Promise.all([
-    prune('fleet_vehicles', ids.vehicles),
-    prune('fleet_maintenance', ids.maintenance),
-    prune('fleet_fuel_entries', ids.fuel),
-    prune('fleet_inspections', ids.inspections),
-  ]);
-
-  return prunes.every(Boolean);
+  return { ok: results.every(Boolean) && errors.length === 0, errors };
 }
 
 /** Migra blob KV → SQL (one-shot). */
@@ -222,7 +240,8 @@ export async function migrateFleetKvToSql(
   userId: string | null
 ): Promise<boolean> {
   const normalized = normalizeFleetDataset(kvDataset);
-  return saveFleetToSql(client, normalized, userId);
+  const result = await saveFleetToSql(client, normalized, userId);
+  return result.ok;
 }
 
 export function isFleetSqlEnabled(): boolean {
