@@ -122,7 +122,6 @@ import {
   saveProvidersToSql,
   loadPettyCashFromSql,
   migratePettyCashKvToSql,
-  savePettyCashToSql,
   loadInvoicesFromSql,
   migrateInvoicesKvToSql,
   saveInvoicesToSql,
@@ -170,6 +169,10 @@ import {
   applyPettyCashMetaRemoteUpdate,
   usePettyCashMetaPersistence,
 } from "./hooks/usePettyCashMetaPersistence";
+import { useConfigPersistence } from "./hooks/useConfigPersistence";
+import { usePettyCashTransactionsPersistence } from "./hooks/usePettyCashTransactionsPersistence";
+import { useSystemSettingsPersistence } from "./hooks/useSystemSettingsPersistence";
+import { useTransactionsPersistence } from "./hooks/useTransactionsPersistence";
 import {
   extractPettyCashMeta,
   mergePettyCashMetaIntoSettings,
@@ -1724,92 +1727,43 @@ export default function App() {
     getLatestSnapshot: getSqlRetryLatestSnapshot,
   });
 
-  // Auto-save Effects
-  useEffect(() => {
-    if (!isDataLoaded || !configHydratedFromKvRef.current) return;
-    void enqueueKvSerializedSave(
-      configKvChainRef,
-      kvApplyGenerationRef,
-      configKvLatestRef,
-      'settings:config',
-      config
-    ).then((result) => {
-      if (kvSaveSucceeded(result)) {
-        configKvCooldownUntilRef.current = Date.now() + CONFIG_KV_COOLDOWN_MS;
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'settings:config',
-          config,
-          lastSaveErrorAtRef
-        );
-        return;
-      }
-      if (result === 'skipped') return;
-      const now = Date.now();
-      const last = lastSaveErrorAtRef.current['settings:config'] ?? 0;
-      if (now - last < 8000) return;
-      lastSaveErrorAtRef.current['settings:config'] = now;
-      toast.error('No se pudo guardar Configuración → Operaciones. Reintente en unos segundos.');
-    });
-  }, [config, isDataLoaded]);
+  useConfigPersistence({
+    isDataLoaded,
+    config,
+    hydratedRef: configHydratedFromKvRef,
+    chainRef: configKvChainRef,
+    latestRef: configKvLatestRef,
+    cooldownUntilRef: configKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+  });
 
-  useEffect(() => {
-    if (!isDataLoaded || !pettyCashHydratedFromKvRef.current) return;
-    void enqueueKvSerializedSave(
-      pettyCashKvChainRef,
-      kvApplyGenerationRef,
-      pettyCashKvLatestRef,
-      'data:pettyCash',
-      pettyCashTransactions
-    ).then((result) => {
-      if (kvSaveSucceeded(result)) {
-        pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
-        void backupDomainSqlAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:pettyCash',
-          pettyCashTransactions,
-          savePettyCashToSql,
-          lastSaveErrorAtRef
-        );
-        return;
-      }
-      if (result === 'skipped') return;
-      const now = Date.now();
-      const last = lastSaveErrorAtRef.current['data:pettyCash'] ?? 0;
-      if (now - last < 8000) return;
-      lastSaveErrorAtRef.current['data:pettyCash'] = now;
-      toast.error(
-        'No se pudo guardar Caja chica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.'
-      );
-    });
-  }, [pettyCashTransactions, isDataLoaded]);
+  usePettyCashTransactionsPersistence({
+    isDataLoaded,
+    transactions: pettyCashTransactions,
+    hydratedRef: pettyCashHydratedFromKvRef,
+    chainRef: pettyCashKvChainRef,
+    latestRef: pettyCashKvLatestRef,
+    cooldownUntilRef: pettyCashKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+  });
 
-  useEffect(() => {
-    if (!isDataLoaded || !systemSettingsHydratedFromKvRef.current) return;
-    const systemPayload = stripPettyCashMetaForSystemKv(systemSettings);
-    void autosaveKvDomain({
-      kvKey: 'settings:system',
-      payload: systemPayload,
-      refs: {
-        chainRef: systemSettingsKvChainRef,
-        latestRef: systemSettingsKvLatestRef,
-        cooldownUntilRef: systemSettingsKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'settings:system',
-          systemPayload,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [systemSettings, isDataLoaded]);
+  const { persistSystemSettingsNow, handlePersistSystemSettings } = useSystemSettingsPersistence({
+    isDataLoaded,
+    systemSettings,
+    setSystemSettings,
+    hydratedRef: systemSettingsHydratedFromKvRef,
+    skipHydrateRef: skipSystemSettingsHydrateRef,
+    chainRef: systemSettingsKvChainRef,
+    latestRef: systemSettingsKvLatestRef,
+    cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+    pettyCashMetaLatestRef: pettyCashMetaKvLatestRef,
+    pettyCashMetaChainRef: pettyCashMetaKvChainRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+    cloudSync: cloudSyncTrackerRef.current,
+  });
 
   usePettyCashMetaPersistence({
     isDataLoaded,
@@ -1823,156 +1777,18 @@ export default function App() {
     cloudSync: cloudSyncTrackerRef.current,
   });
 
-  const persistSystemSettingsNow = useCallback(
-    async (next: SystemSettings, successMessage?: string): Promise<boolean> => {
-      const merged = mergeSystemSettings(next);
-      setSystemSettings(merged);
-      if (!isDataLoaded || !systemSettingsHydratedFromKvRef.current) {
-        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
-        return false;
-      }
-      systemSettingsKvLatestRef.current = merged;
-      const meta = extractPettyCashMeta(merged.pettyCash);
-      pettyCashMetaKvLatestRef.current = meta;
-      const systemPayload = stripPettyCashMetaForSystemKv(merged);
-
-      if (PRODUCTION_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const uid = sess.session?.user?.id ?? null;
-        const [settingsSqlOk, metaSqlOk] = await Promise.all([
-          ensureSqlSave(
-            true,
-            'settings:system',
-            () => saveAppKvKey(getSupabaseClient(), 'settings:system', systemPayload, uid),
-            lastSaveErrorAtRef
-          ),
-          ensureSqlSave(
-            true,
-            PETTY_CASH_META_KV_KEY,
-            () => savePettyCashMetaToSql(getSupabaseClient(), meta, uid),
-            lastSaveErrorAtRef
-          ),
-        ]);
-        if (!settingsSqlOk || !metaSqlOk) return false;
-      }
-
-      const metaKvOk = await enqueueKvSerializedSave(
-        pettyCashMetaKvChainRef,
-        kvApplyGenerationRef,
-        pettyCashMetaKvLatestRef,
-        PETTY_CASH_META_KV_KEY,
-        meta
-      );
-      if (!kvSaveSucceeded(metaKvOk)) {
-        toast.error('No se pudieron guardar cierres y dotaciones de caja chica en la nube.');
-        return false;
-      }
-
-      return persistKvDomainNow({
-        kvKey: 'settings:system',
-        payload: systemPayload,
-        refs: {
-          hydratedFromKvRef: systemSettingsHydratedFromKvRef,
-          skipHydrateRef: skipSystemSettingsHydrateRef,
-          cooldownUntilRef: systemSettingsKvCooldownUntilRef,
-          chainRef: systemSettingsKvChainRef,
-          latestRef: systemSettingsKvLatestRef,
-        },
-        kvApplyGenerationRef,
-        lastSaveErrorAtRef,
-        errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
-        successMessage,
-        sync: cloudSyncTrackerRef.current,
-      });
-    },
-    [isDataLoaded]
-  );
-
-  const handlePersistSystemSettings = useCallback(
-    (next: SystemSettings) => {
-      void persistSystemSettingsNow(next);
-    },
-    [persistSystemSettingsNow]
-  );
-
-  useEffect(() => {
-    if (!isDataLoaded || !transactionsCloudHydrationDoneRef.current) return;
-    if (transactions.length === 0 && !transactionsHydratedFromKvRef.current) return;
-    void enqueueKvSerializedSave(
-      transactionsKvChainRef,
-      kvApplyGenerationRef,
-      transactionsKvLatestRef,
-      'data:transactions',
-      transactions
-    ).then((result) => {
-      if (kvSaveSucceeded(result)) {
-        transactionsHydratedFromKvRef.current = true;
-        transactionsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
-        void backupDomainSqlAfterKvSave(
-          TRANSACTIONS_USE_SQL,
-          'data:transactions',
-          transactions,
-          saveTransactionsToSql,
-          lastSaveErrorAtRef
-        );
-        return;
-      }
-      if (result === 'skipped') return;
-      const now = Date.now();
-      const last = lastSaveErrorAtRef.current['data:transactions'] ?? 0;
-      if (now - last < 8000) return;
-      lastSaveErrorAtRef.current['data:transactions'] = now;
-      toast.error('No se pudieron guardar las transacciones en la nube. Revisa sesión/red antes de cerrar.');
-    });
-  }, [transactions, isDataLoaded]);
-
-  const persistTransactionsNow = useCallback(
-    async (
-      next: Transaction[],
-      successMessage?: string,
-      options?: { allowPruneWhenEmpty?: boolean }
-    ): Promise<boolean> => {
-      setTransactions(next);
-      if (!isDataLoaded || !transactionsCloudHydrationDoneRef.current) {
-        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
-        return false;
-      }
-      transactionsKvLatestRef.current = next;
-
-      if (TRANSACTIONS_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const uid = sess.session?.user?.id ?? null;
-        const sqlOk = await ensureSqlSave(
-          true,
-          'data:transactions',
-          () => saveTransactionsToSql(getSupabaseClient(), next, uid, options),
-          lastSaveErrorAtRef
-        );
-        if (!sqlOk) return false;
-      }
-
-      const result = await enqueueKvSerializedSave(
-        transactionsKvChainRef,
-        kvApplyGenerationRef,
-        transactionsKvLatestRef,
-        'data:transactions',
-        next
-      );
-      if (kvSaveSucceeded(result)) {
-        transactionsHydratedFromKvRef.current = true;
-        transactionsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
-        if (successMessage) toast.success(successMessage);
-        return true;
-      }
-      if (result === 'skipped') {
-        toast.error('No se pudo confirmar el guardado (sesión en transición). Espera un momento e intenta de nuevo.');
-        return false;
-      }
-      toast.error('No se pudieron guardar las transacciones en la nube. No cierres ni actualices; revisa conexión/sesión.');
-      return false;
-    },
-    [isDataLoaded]
-  );
+  const { persistTransactionsNow } = useTransactionsPersistence({
+    isDataLoaded,
+    transactions,
+    setTransactions,
+    cloudHydrationDoneRef: transactionsCloudHydrationDoneRef,
+    hydratedFromKvRef: transactionsHydratedFromKvRef,
+    chainRef: transactionsKvChainRef,
+    latestRef: transactionsKvLatestRef,
+    cooldownUntilRef: transactionsKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+  });
 
   useEffect(() => {
     if (!isDataLoaded || !invoicesHydratedFromKvRef.current) return;
