@@ -36,3 +36,5 @@ npm run release:prod
 - Dual-write: KV Edge + SQL.
 - Borrado SQL en lotes (máx. 50 IDs por request).
 - Cargas SQL paginadas (1000 filas/página).
+- Cola SQL serializada por dominio (`getSqlSaveQueue`) en autosave y `persistNow`.
+- Reintentos SQL en `localStorage` tras fallo de respaldo; se procesan al hidratar y al volver `online`.

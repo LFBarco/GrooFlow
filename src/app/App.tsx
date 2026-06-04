@@ -165,9 +165,7 @@ import {
 } from "./utils/kvCrossTabSync";
 import { clearOperationalData } from "./utils/clearOperationalData";
 import { writeAuditLog } from "./services/repository/auditLogSql";
-import { createSqlSaveQueue } from "./utils/sqlSaveQueue";
-import { processPendingSqlRetries } from "./utils/sqlRetryProcessor";
-import { getAuthUserId } from "./services/productionSqlBridge";
+import { useSqlRetryProcessor } from "./hooks/useSqlRetryProcessor";
 
 const initialTransactions: Transaction[] = [];
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
@@ -499,7 +497,6 @@ export default function App() {
   const transactionsHydratedFromKvRef = useRef(false);
   const skipTransactionsHydrateRef = useRef(false);
   const transactionsKvCooldownUntilRef = useRef(0);
-  const transactionsSqlQueueRef = useRef(createSqlSaveQueue());
   /** Evita autosave de proveedores antes de haber hidratado desde la nube (no pisar KV con [] o demos). */
   const providersCloudHydrationDoneRef = useRef(false);
   /**
@@ -1651,88 +1648,34 @@ export default function App() {
     };
   }, []);
 
-  const processPendingSqlRetryQueue = useCallback(
-    async (notify?: boolean) => {
-      const anySql = PRODUCTION_USE_SQL || TRANSACTIONS_USE_SQL || FLEET_USE_SQL;
-      if (!anySql || !isDataLoaded) return;
-      const uid = await getAuthUserId();
-      const client = getSupabaseClient();
-      const appKvRunner = (kvKey: string, value: unknown) => () =>
-        saveAppKvKey(client, kvKey, value, uid);
-
-      const runners: Parameters<typeof processPendingSqlRetries>[0] = {};
-
-      if (TRANSACTIONS_USE_SQL) {
-        runners['data:transactions'] = () =>
-          transactionsSqlQueueRef.current.enqueue('retry:data:transactions', () =>
-            saveTransactionsToSql(client, transactionsKvLatestRef.current, uid)
-          );
-      }
-      if (FLEET_USE_SQL) {
-        runners['data:fleet'] = () =>
-          saveFleetToSql(client, fleetKvLatestRef.current, uid);
-      }
-      if (PRODUCTION_USE_SQL) {
-        runners['settings:config'] = appKvRunner('settings:config', configKvLatestRef.current);
-        runners['settings:system'] = appKvRunner('settings:system', systemSettingsKvLatestRef.current);
-        runners['settings:theme'] = appKvRunner('settings:theme', themeKvLatestRef.current);
-        runners['settings:alertThresholds'] = appKvRunner(
-          'settings:alertThresholds',
-          alertThresholdsKvLatestRef.current
-        );
-        runners['data:providers'] = () =>
-          saveProvidersToSql(client, providersKvLatestRef.current, uid);
-        runners['data:pettyCash'] = () =>
-          savePettyCashToSql(client, pettyCashKvLatestRef.current, uid);
-        runners['data:invoices'] = () =>
-          saveInvoicesToSql(client, invoicesKvLatestRef.current, uid);
-        runners['data:requests'] = () =>
-          savePurchaseRequestsToSql(client, requestsKvLatestRef.current, uid);
-        runners['data:users'] = () =>
-          saveAppUsersToSql(client, usersKvLatestRef.current, uid);
-        runners['data:roles'] = () => saveRolesToSql(client, rolesKvLatestRef.current, uid);
-        runners['data:feeReceipts'] = appKvRunner(
-          'data:feeReceipts',
-          feeReceiptsKvLatestRef.current
-        );
-        runners['data:products'] = appKvRunner('data:products', productsKvLatestRef.current);
-        runners['data:chartOfAccounts'] = appKvRunner(
-          'data:chartOfAccounts',
-          chartOfAccountsKvLatestRef.current
-        );
-        runners['data:treasuryInvoices'] = appKvRunner(
-          'data:treasuryInvoices',
-          treasuryInvoicesKvLatestRef.current
-        );
-        runners['data:treasuryBankBalance'] = appKvRunner(
-          'data:treasuryBankBalance',
-          treasuryBankBalanceKvLatestRef.current
-        );
-        runners['data:treasuryPaidHistory'] = appKvRunner(
-          'data:treasuryPaidHistory',
-          treasuryPaidHistoryKvLatestRef.current
-        );
-      }
-
-      await processPendingSqlRetries(runners, { notify });
-    },
-    [isDataLoaded]
+  const getSqlRetryLatestSnapshot = useCallback(
+    () => ({
+      config: configKvLatestRef.current,
+      systemSettings: systemSettingsKvLatestRef.current,
+      theme: themeKvLatestRef.current,
+      alertThresholds: alertThresholdsKvLatestRef.current,
+      transactions: transactionsKvLatestRef.current,
+      providers: providersKvLatestRef.current,
+      pettyCash: pettyCashKvLatestRef.current,
+      invoices: invoicesKvLatestRef.current,
+      requests: requestsKvLatestRef.current,
+      users: usersKvLatestRef.current,
+      roles: rolesKvLatestRef.current,
+      feeReceipts: feeReceiptsKvLatestRef.current,
+      products: productsKvLatestRef.current,
+      chartOfAccounts: chartOfAccountsKvLatestRef.current,
+      treasuryInvoices: treasuryInvoicesKvLatestRef.current,
+      treasuryBankBalance: treasuryBankBalanceKvLatestRef.current,
+      treasuryPaidHistory: treasuryPaidHistoryKvLatestRef.current,
+      fleet: fleetKvLatestRef.current,
+    }),
+    []
   );
 
-  useEffect(() => {
-    if (!isDataLoaded) return;
-    const timer = window.setTimeout(() => {
-      void processPendingSqlRetryQueue(true);
-    }, 4000);
-    return () => window.clearTimeout(timer);
-  }, [isDataLoaded, processPendingSqlRetryQueue]);
-
-  useEffect(() => {
-    if (!isDataLoaded) return;
-    const onOnline = () => void processPendingSqlRetryQueue(true);
-    window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
-  }, [isDataLoaded, processPendingSqlRetryQueue]);
+  useSqlRetryProcessor({
+    isDataLoaded,
+    getLatestSnapshot: getSqlRetryLatestSnapshot,
+  });
 
   // Auto-save Effects
   useEffect(() => {
@@ -1922,13 +1865,11 @@ export default function App() {
       if (TRANSACTIONS_USE_SQL) {
         const { data: sess } = await getSupabaseClient().auth.getSession();
         const uid = sess.session?.user?.id ?? null;
-        const sqlOk = await transactionsSqlQueueRef.current.enqueue('data:transactions', () =>
-          ensureSqlSave(
-            true,
-            'data:transactions',
-            () => saveTransactionsToSql(getSupabaseClient(), next, uid, options),
-            lastSaveErrorAtRef
-          )
+        const sqlOk = await ensureSqlSave(
+          true,
+          'data:transactions',
+          () => saveTransactionsToSql(getSupabaseClient(), next, uid, options),
+          lastSaveErrorAtRef
         );
         if (!sqlOk) return false;
       }

@@ -9,6 +9,7 @@ import { saveAppKvKey, type AppKvSaveResult } from '../services/repository/appKv
 import { getAuthUserId } from '../services/productionSqlBridge';
 import { enqueueSqlRetry, dequeueSqlRetry } from '../services/repository/sqlRetryQueue';
 import type { SqlSaveResult } from '../services/repository/sqlDomainUtils';
+import { getSqlSaveQueue } from './sqlSaveQueue';
 
 export type SqlBackupResult = { ok: boolean; errors: string[] };
 
@@ -73,17 +74,12 @@ function reportSqlBackupError(
   console.warn(`[sqlAutosave] ${storageKey}`, errors);
 }
 
-/**
- * Ejecuta respaldo SQL tras KV OK. Retorna false si SQL falló.
- */
-export async function backupToSqlAfterKvSave(options: {
-  enabled: boolean;
+async function backupToSqlAfterKvSaveUnqueued(options: {
   storageKey: string;
   errorMessage?: string;
   lastSaveErrorAtRef?: MutableRefObject<Record<string, number>>;
   run: () => Promise<SqlBackupResult>;
 }): Promise<boolean> {
-  if (!options.enabled) return true;
   const message =
     options.errorMessage ??
     SQL_BACKUP_ERROR_MESSAGES[options.storageKey] ??
@@ -103,6 +99,23 @@ export async function backupToSqlAfterKvSave(options: {
     reportSqlBackupError(options.storageKey, message, [errMsg], options.lastSaveErrorAtRef);
     return false;
   }
+}
+
+/**
+ * Ejecuta respaldo SQL tras KV OK (serializado por dominio). Retorna false si SQL falló.
+ */
+export async function backupToSqlAfterKvSave(options: {
+  enabled: boolean;
+  storageKey: string;
+  errorMessage?: string;
+  lastSaveErrorAtRef?: MutableRefObject<Record<string, number>>;
+  run: () => Promise<SqlBackupResult>;
+}): Promise<boolean> {
+  if (!options.enabled) return true;
+  return getSqlSaveQueue(options.storageKey).enqueue(
+    `backup:${options.storageKey}`,
+    () => backupToSqlAfterKvSaveUnqueued(options)
+  );
 }
 
 export async function backupAppKvAfterKvSave(
