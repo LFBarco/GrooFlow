@@ -34,6 +34,8 @@ import {
 
   upsertWithPrune,
 
+  selectAllRowsPaginated,
+
   type SqlLoadResult,
 
   type SqlSaveResult,
@@ -138,19 +140,21 @@ function rowToProvider(row: Record<string, unknown>): Provider {
 
 export async function loadProvidersFromSql(client: SupabaseClient): Promise<SqlLoadResult<Provider>> {
 
-  const { data, error } = await client.from('providers').select('*').order('name');
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(client, 'providers', {
+    order: { column: 'name', ascending: true },
+  });
 
-  if (error) {
+  if (missingTable) return { ok: false, data: null, empty: true };
 
-    if (isMissingTableError(error)) return { ok: false, data: null, empty: true };
+  if (errors.length > 0) {
 
-    console.warn('[providersSql] load error', error);
+    console.warn('[providersSql] load error', errors);
 
     return { ok: false, data: null, empty: false };
 
   }
 
-  const items = ((data ?? []) as Record<string, unknown>[]).map(rowToProvider);
+  const items = rows.map(rowToProvider);
 
   return { ok: true, data: items, empty: items.length === 0 };
 
@@ -342,25 +346,23 @@ export async function loadPettyCashFromSql(
 
 ): Promise<SqlLoadResult<PettyCashTransaction>> {
 
-  const { data, error } = await client
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(
+    client,
+    'petty_cash_transactions',
+    { order: { column: 'date', ascending: false } }
+  );
 
-    .from('petty_cash_transactions')
+  if (missingTable) return { ok: false, data: null, empty: true };
 
-    .select('*')
+  if (errors.length > 0) {
 
-    .order('date', { ascending: false });
-
-  if (error) {
-
-    if (isMissingTableError(error)) return { ok: false, data: null, empty: true };
-
-    console.warn('[pettyCashSql] load error', error);
+    console.warn('[pettyCashSql] load error', errors);
 
     return { ok: false, data: null, empty: false };
 
   }
 
-  const items = ((data ?? []) as Record<string, unknown>[]).map(rowToPettyCash);
+  const items = rows.map(rowToPettyCash);
 
   return { ok: true, data: items, empty: items.length === 0 };
 
@@ -496,19 +498,21 @@ export async function loadInvoicesFromSql(
 
 ): Promise<SqlLoadResult<InvoiceDraft>> {
 
-  const { data, error } = await client.from('invoices').select('*').order('issue_date', { ascending: false });
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(client, 'invoices', {
+    order: { column: 'issue_date', ascending: false },
+  });
 
-  if (error) {
+  if (missingTable) return { ok: false, data: null, empty: true };
 
-    if (isMissingTableError(error)) return { ok: false, data: null, empty: true };
+  if (errors.length > 0) {
 
-    console.warn('[invoicesSql] load error', error);
+    console.warn('[invoicesSql] load error', errors);
 
     return { ok: false, data: null, empty: false };
 
   }
 
-  const items = ((data ?? []) as Record<string, unknown>[]).map(rowToInvoice);
+  const items = rows.map(rowToInvoice);
 
   return { ok: true, data: items, empty: items.length === 0 };
 
@@ -638,25 +642,23 @@ export async function loadPurchaseRequestsFromSql(
 
 ): Promise<SqlLoadResult<PurchaseRequest>> {
 
-  const { data, error } = await client
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(
+    client,
+    'purchase_requests',
+    { order: { column: 'request_date', ascending: false } }
+  );
 
-    .from('purchase_requests')
+  if (missingTable) return { ok: false, data: null, empty: true };
 
-    .select('*')
+  if (errors.length > 0) {
 
-    .order('request_date', { ascending: false });
-
-  if (error) {
-
-    if (isMissingTableError(error)) return { ok: false, data: null, empty: true };
-
-    console.warn('[purchaseRequestsSql] load error', error);
+    console.warn('[purchaseRequestsSql] load error', errors);
 
     return { ok: false, data: null, empty: false };
 
   }
 
-  const items = ((data ?? []) as Record<string, unknown>[]).map(rowToPurchaseRequest);
+  const items = rows.map(rowToPurchaseRequest);
 
   return { ok: true, data: items, empty: items.length === 0 };
 
@@ -804,19 +806,21 @@ function rowToAppUser(row: Record<string, unknown>): User {
 
 export async function loadAppUsersFromSql(client: SupabaseClient): Promise<SqlLoadResult<User>> {
 
-  const { data, error } = await client.from('app_users').select('*').order('name');
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(client, 'app_users', {
+    order: { column: 'name', ascending: true },
+  });
 
-  if (error) {
+  if (missingTable) return { ok: false, data: null, empty: true };
 
-    if (isMissingTableError(error)) return { ok: false, data: null, empty: true };
+  if (errors.length > 0) {
 
-    console.warn('[appUsersSql] load error', error);
+    console.warn('[appUsersSql] load error', errors);
 
     return { ok: false, data: null, empty: false };
 
   }
 
-  const items = ((data ?? []) as Record<string, unknown>[]).map(rowToAppUser);
+  const items = rows.map(rowToAppUser);
 
   return { ok: true, data: items, empty: items.length === 0 };
 
@@ -922,19 +926,21 @@ function rowToRole(row: Record<string, unknown>): Role {
 
 export async function loadRolesFromSql(client: SupabaseClient): Promise<SqlLoadResult<Role>> {
 
-  const { data, error } = await client.from('roles').select('*').order('name');
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(client, 'roles', {
+    order: { column: 'name', ascending: true },
+  });
 
-  if (error) {
+  if (missingTable) return { ok: false, data: null, empty: true };
 
-    if (isMissingTableError(error)) return { ok: false, data: null, empty: true };
+  if (errors.length > 0) {
 
-    console.warn('[rolesSql] load error', error);
+    console.warn('[rolesSql] load error', errors);
 
     return { ok: false, data: null, empty: false };
 
   }
 
-  const items = ((data ?? []) as Record<string, unknown>[]).map(rowToRole);
+  const items = rows.map(rowToRole);
 
   return { ok: true, data: items, empty: items.length === 0 };
 

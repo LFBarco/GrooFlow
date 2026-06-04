@@ -495,7 +495,6 @@ export default function App() {
   const transactionsHydratedFromKvRef = useRef(false);
   const skipTransactionsHydrateRef = useRef(false);
   const transactionsKvCooldownUntilRef = useRef(0);
-  const transactionsSqlChainRef = useRef(Promise.resolve(true));
   /** Evita autosave de proveedores antes de haber hidratado desde la nube (no pisar KV con [] o demos). */
   const providersCloudHydrationDoneRef = useRef(false);
   /**
@@ -3452,6 +3451,14 @@ export default function App() {
     };
 
     const handleResetData = async () => {
+      const email = currentUser.email?.trim().toLowerCase();
+      const canReset =
+        currentUser.role === 'super_admin' ||
+        !!(email && getSuperAdminEmails().has(email));
+      if (!canReset) {
+        toast.error('Solo super administradores pueden reiniciar datos operativos.');
+        return;
+      }
       if (!isDataLoaded) {
         toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
         return;

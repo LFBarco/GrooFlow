@@ -5,23 +5,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Transaction } from '../types';
 import { parseTransactionDate } from '../../utils/transactionDate';
+import { deleteRowsByIdBatched, fetchAllRowIds, selectAllRowsPaginated } from './sqlDomainUtils';
 
 export type TransactionsSqlLoadResult = {
   ok: boolean;
   data: Transaction[] | null;
   empty: boolean;
 };
-
-function isMissingTableError(err: { code?: string; message?: string } | null): boolean {
-  if (!err) return false;
-  const msg = (err.message || '').toLowerCase();
-  return (
-    err.code === '42P01' ||
-    err.code === 'PGRST205' ||
-    msg.includes('does not exist') ||
-    msg.includes('could not find the table')
-  );
-}
 
 function rowToTransaction(row: Record<string, unknown>): Transaction {
   return {
@@ -66,20 +56,18 @@ function transactionToRow(t: Transaction, userId: string | null) {
 export async function loadTransactionsFromSql(
   client: SupabaseClient
 ): Promise<TransactionsSqlLoadResult> {
-  const { data, error } = await client
-    .from('transactions')
-    .select('*')
-    .order('date', { ascending: false });
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(client, 'transactions', {
+    order: { column: 'date', ascending: false },
+  });
 
-  if (error) {
-    if (isMissingTableError(error)) {
-      return { ok: false, data: null, empty: true };
-    }
-    console.warn('[transactionsSql] load error', error);
+  if (missingTable) {
+    return { ok: false, data: null, empty: true };
+  }
+  if (errors.length > 0) {
+    console.warn('[transactionsSql] load error', errors);
     return { ok: false, data: null, empty: false };
   }
 
-  const rows = (data ?? []) as Record<string, unknown>[];
   const transactions = rows.map(rowToTransaction);
   return { ok: true, data: transactions, empty: transactions.length === 0 };
 }
@@ -116,28 +104,23 @@ export async function saveTransactionsToSql(
     return { ok: true, errors: [] };
   }
 
-  const { data: existing, error: listErr } = await client.from('transactions').select('id');
-  if (listErr) {
-    if (!isMissingTableError(listErr)) {
-      console.warn('[transactionsSql] prune list failed', listErr);
-    }
-    return { ok: errors.length === 0, errors };
+  const { ids: existing, errors: listErrors } = await fetchAllRowIds(client, 'transactions');
+  errors.push(...listErrors);
+  if (listErrors.length > 0) {
+    return { ok: false, errors };
   }
 
-  const toDelete = (existing ?? [])
-    .map((r) => r.id as string)
-    .filter((id) => !keepIds.has(id));
-
+  const toDelete = existing.filter((id) => !keepIds.has(id));
   if (toDelete.length > 0) {
-    const { error: delErr } = await client.from('transactions').delete().in('id', toDelete);
-    if (delErr) {
-      errors.push(`delete: ${delErr.message}`);
-      console.warn('[transactionsSql] prune delete failed', delErr);
+    const deleteErrors = await deleteRowsByIdBatched(client, 'transactions', toDelete);
+    errors.push(...deleteErrors.map((msg) => (msg.startsWith('delete') ? msg : `delete: ${msg}`)));
+    if (deleteErrors.length > 0) {
+      console.warn('[transactionsSql] prune delete failed', deleteErrors);
       return { ok: false, errors };
     }
   }
 
-  return { ok: true, errors: [] };
+  return { ok: errors.length === 0, errors: [] };
 }
 
 export async function migrateTransactionsKvToSql(

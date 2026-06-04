@@ -111,42 +111,12 @@ app.post(`${BASE_PATH}/signup`, async (c) => {
   });
 
   if (error) {
-    // Handle specific error codes gracefully without logging full stack traces
     if (error.code === 'email_exists' || error.status === 422) {
-      console.log(`User ${email} exists. Attempting to update password...`);
-
-      // Find the user to update their password (Recovery/Reset mechanism)
-      const { data: userList, error: listError } = await supabase.auth.admin.listUsers();
-      
-      if (listError) {
-        console.error("List users error:", listError);
-        return c.json({ error: "Error verifying user" }, 500);
-      }
-
-      const existingUser = userList.users.find(u => u.email === email);
-
-      if (existingUser) {
-        const { data: updateData, error: updateError } = await supabase.auth.admin.updateUserById(
-          existingUser.id, 
-          { 
-            password: password,
-            email_confirm: true,
-            user_metadata: { ...existingUser.user_metadata, name: name || existingUser.user_metadata.name }
-          }
-        );
-
-        if (updateError) {
-           console.error("Update password error:", updateError);
-           return c.json({ error: "No se pudo actualizar la contraseña" }, 400);
-        }
-
-        return c.json({ data: updateData.user, message: "Password updated successfully" });
-      }
-      
-      return c.json({ 
-        error: "A user with this email address has already been registered", 
-        code: "email_exists" 
-      }, 400);
+      return c.json({
+        error:
+          'Ya existe un usuario con este email. Use la función admin-update-password para cambiar contraseñas.',
+        code: 'email_exists',
+      }, 409);
     }
 
     console.error("Signup error:", error);

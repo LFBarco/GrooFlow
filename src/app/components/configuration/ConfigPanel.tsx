@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
+import { getSuperAdminEmails } from '../../config/superAdmins';
 import { ConfigStructure, TransactionType, ConceptDefinition, SubcategoryDefinition, Flexibility, getSubcategories, subcategoryId } from '../../data/initialData';
 import { SystemSettings, type PettyCashRenditionPrintSettings, type BankAccountConfig, type BankCurrency } from '../../types';
 import { mergePettyCashRenditionPrint } from '../../data/initialData';
@@ -87,6 +88,13 @@ export function ConfigPanel({
   const reportRenditionLogoInputRef = useRef<HTMLInputElement>(null);
   const isSystemAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
   const isSuperAdminOnly = currentUser?.role === 'super_admin';
+  const canUseDangerZone = useMemo(() => {
+    const email = currentUser?.email?.trim().toLowerCase();
+    return (
+      currentUser?.role === 'super_admin' ||
+      !!(email && getSuperAdminEmails().has(email))
+    );
+  }, [currentUser?.email, currentUser?.role]);
   const catalogEntries = getSedesCatalogEntries(systemSettings);
   const roleNameById = new Map<string, string>(
     [...DEFAULT_ROLES, ...roles].map((r) => [r.id, r.name]),
@@ -580,12 +588,14 @@ export function ConfigPanel({
           >
             Sedes
           </TabsTrigger>
-          <TabsTrigger 
-            value="debug" 
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2 text-red-500 font-bold"
-          >
-            Stress Test
-          </TabsTrigger>
+          {canUseDangerZone && (
+            <TabsTrigger 
+              value="debug" 
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2 text-red-500 font-bold"
+            >
+              Stress Test
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <div className="flex-1 min-h-0 overflow-auto py-6">
@@ -1896,52 +1906,66 @@ export function ConfigPanel({
             </div>
           </TabsContent>
 
-          <TabsContent value="debug" className="mt-0 outline-none data-[state=inactive]:hidden">
-            <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-600">
-                  <ShieldAlert className="w-5 h-5" />
-                  Zona de Pruebas de Estrés
-                </CardTitle>
-                <CardDescription>
-                  Herramientas para desarrolladores y pruebas de carga.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="p-4 bg-background rounded-lg border border-red-200 space-y-4">
-                  <div>
-                    <h3 className="font-semibold text-foreground">Generación Masiva de Datos</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Esto inyectará 1000 transacciones, 500 facturas y 20 usuarios en el sistema actual para verificar el rendimiento.
-                    </p>
-                    <div className="flex gap-4">
-                      <Button 
-                        variant="destructive" 
-                        onClick={() => {
-                          if (confirm("¿Estás seguro? Esto mezclará datos de prueba con tus datos actuales.")) {
-                            onStressTest?.();
-                          }
-                        }}
-                      >
-                        Ejecutar Prueba de Carga (Stress Test)
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        className="text-red-500 border-red-200 hover:bg-red-50"
-                        onClick={() => {
-                          if (confirm("¡CUIDADO! Esto borrará TODAS las transacciones, facturas y datos. ¿Estás seguro?")) {
+          {canUseDangerZone && (
+            <TabsContent value="debug" className="mt-0 outline-none data-[state=inactive]:hidden">
+              <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-red-600">
+                    <ShieldAlert className="w-5 h-5" />
+                    Zona de Pruebas de Estrés
+                  </CardTitle>
+                  <CardDescription>
+                    Solo super administradores. Herramientas destructivas para pruebas de carga.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-4 bg-background rounded-lg border border-red-200 space-y-4">
+                    <div>
+                      <h3 className="font-semibold text-foreground">Generación Masiva de Datos</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Inyecta 1000 transacciones, 500 facturas y 20 usuarios. No borra usuarios ni configuración.
+                      </p>
+                      <div className="flex flex-wrap gap-4">
+                        <Button 
+                          variant="destructive" 
+                          onClick={() => {
+                            if (confirm('¿Estás seguro? Esto mezclará datos de prueba con tus datos actuales.')) {
+                              onStressTest?.();
+                            }
+                          }}
+                        >
+                          Ejecutar Prueba de Carga (Stress Test)
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          className="text-red-500 border-red-200 hover:bg-red-50"
+                          onClick={() => {
+                            if (
+                              !confirm(
+                                '¡CUIDADO! Esto borrará datos operativos (transacciones, facturas, proveedores, flota, etc.). Los usuarios y la configuración se conservan. ¿Continuar?'
+                              )
+                            ) {
+                              return;
+                            }
+                            if (
+                              !confirm(
+                                'ÚLTIMA CONFIRMACIÓN: esta acción no se puede deshacer fácilmente. ¿Borrar todos los datos operativos?'
+                              )
+                            ) {
+                              return;
+                            }
                             onResetData?.();
-                          }
-                        }}
-                      >
-                        Limpiar Todos los Datos
-                      </Button>
+                          }}
+                        >
+                          Limpiar Todos los Datos
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </div>
       </Tabs>
 

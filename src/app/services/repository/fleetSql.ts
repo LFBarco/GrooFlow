@@ -12,6 +12,7 @@ import type {
   FleetChecklistSection,
 } from '../../types/fleet';
 import { normalizeFleetDataset } from '../../utils/fleetData';
+import { deleteRowsByIdBatched, fetchAllRowIds, selectAllRowsPaginated } from './sqlDomainUtils';
 
 export type FleetSqlLoadResult = {
   ok: boolean;
@@ -78,32 +79,63 @@ function isMissingTableError(err: { code?: string; message?: string } | null): b
   );
 }
 
+async function loadFleetBodies<T>(
+  client: SupabaseClient,
+  table: string
+): Promise<{ items: T[]; missingTable: boolean; errors: string[] }> {
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(client, table, {
+    select: 'body',
+  });
+  if (missingTable || errors.length > 0) {
+    return { items: [], missingTable, errors };
+  }
+  return {
+    items: rows.map((r) => r.body as T),
+    missingTable: false,
+    errors: [],
+  };
+}
+
 export async function loadFleetFromSql(
   client: SupabaseClient,
   vehicleHomeBaseById?: Map<string, string | undefined>
 ): Promise<FleetSqlLoadResult> {
-  const [vehiclesRes, maintRes, fuelRes, inspRes, checklistRes] = await Promise.all([
-    client.from('fleet_vehicles').select('body'),
-    client.from('fleet_maintenance').select('body'),
-    client.from('fleet_fuel_entries').select('body'),
-    client.from('fleet_inspections').select('body'),
+  const [vehiclesLoad, maintLoad, fuelLoad, inspLoad, checklistRes] = await Promise.all([
+    loadFleetBodies<FleetVehicle>(client, 'fleet_vehicles'),
+    loadFleetBodies<FleetMaintenanceRecord>(client, 'fleet_maintenance'),
+    loadFleetBodies<FleetFuelEntry>(client, 'fleet_fuel_entries'),
+    loadFleetBodies<FleetInspectionRecord>(client, 'fleet_inspections'),
     client.from('fleet_checklist').select('sections').eq('id', 'default').maybeSingle(),
   ]);
 
-  const firstErr =
-    vehiclesRes.error || maintRes.error || fuelRes.error || inspRes.error || checklistRes.error;
-  if (firstErr) {
-    if (isMissingTableError(firstErr)) {
-      return { ok: false, data: null, empty: true };
+  const firstMissing =
+    vehiclesLoad.missingTable ||
+    maintLoad.missingTable ||
+    fuelLoad.missingTable ||
+    inspLoad.missingTable;
+  if (firstMissing) {
+    return { ok: false, data: null, empty: true };
+  }
+
+  const loadErrors = [
+    ...vehiclesLoad.errors,
+    ...maintLoad.errors,
+    ...fuelLoad.errors,
+    ...inspLoad.errors,
+    checklistRes.error?.message,
+  ].filter(Boolean) as string[];
+  if (loadErrors.length > 0 || checklistRes.error) {
+    if (checklistRes.error && !isMissingTableError(checklistRes.error)) {
+      console.warn('[fleetSql] load error', checklistRes.error);
     }
-    console.warn('[fleetSql] load error', firstErr);
+    if (loadErrors.length > 0) console.warn('[fleetSql] load error', loadErrors);
     return { ok: false, data: null, empty: false };
   }
 
-  const vehicles = (vehiclesRes.data ?? []).map((r) => r.body as FleetVehicle);
-  const maintenance = (maintRes.data ?? []).map((r) => r.body as FleetMaintenanceRecord);
-  const fuelEntries = (fuelRes.data ?? []).map((r) => r.body as FleetFuelEntry);
-  const inspections = (inspRes.data ?? []).map((r) => r.body as FleetInspectionRecord);
+  const vehicles = vehiclesLoad.items;
+  const maintenance = maintLoad.items;
+  const fuelEntries = fuelLoad.items;
+  const inspections = inspLoad.items;
   const checklistSections = (checklistRes.data?.sections ?? []) as FleetChecklistSection[];
 
   const homeMap =
@@ -166,19 +198,16 @@ export async function saveFleetToSql(
   };
 
   const prune = async (table: string, keepIds: Set<string>) => {
-    const { data, error } = await client.from(table).select('id');
-    if (error) {
-      if (isMissingTableError(error)) return;
-      console.warn(`[fleetSql] prune list ${table}`, error);
+    const { ids: existing, errors: listErrors } = await fetchAllRowIds(client, table);
+    if (listErrors.length > 0) {
+      console.warn(`[fleetSql] prune list ${table}`, listErrors);
       return;
     }
-    const toDelete = (data ?? [])
-      .map((r) => r.id as string)
-      .filter((id) => !keepIds.has(id));
+    const toDelete = existing.filter((id) => !keepIds.has(id));
     if (toDelete.length === 0) return;
-    const { error: delErr } = await client.from(table).delete().in('id', toDelete);
-    if (delErr) {
-      console.warn(`[fleetSql] prune delete ${table} (no fatal)`, delErr);
+    const deleteErrors = await deleteRowsByIdBatched(client, table, toDelete);
+    if (deleteErrors.length > 0) {
+      console.warn(`[fleetSql] prune delete ${table} (no fatal)`, deleteErrors);
     }
   };
 
