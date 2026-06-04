@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { getSupabaseClient } from '../services/repository/supabase';
 import { saveAppKvKey, type AppKvSaveResult } from '../services/repository/appKvSql';
 import { getAuthUserId } from '../services/productionSqlBridge';
+import { enqueueSqlRetry, dequeueSqlRetry } from '../services/repository/sqlRetryQueue';
 import type { SqlSaveResult } from '../services/repository/sqlDomainUtils';
 
 export type SqlBackupResult = { ok: boolean; errors: string[] };
@@ -89,7 +90,11 @@ export async function backupToSqlAfterKvSave(options: {
     'No se pudo guardar en SQL. Revisa sesión o permisos.';
   try {
     const result = await options.run();
-    if (result.ok) return true;
+    if (result.ok) {
+      dequeueSqlRetry(options.storageKey);
+      return true;
+    }
+    enqueueSqlRetry(options.storageKey);
     reportSqlBackupError(options.storageKey, message, result.errors, options.lastSaveErrorAtRef);
     return false;
   } catch (e) {

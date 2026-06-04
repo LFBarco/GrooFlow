@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { getSupabaseClient } from '../../services/repository/supabase';
+import { loadAuditLogs, mapAuditRowToEntry, type AuditLogEntry } from '../../services/repository/auditLogSql';
 import { Transaction, InvoiceDraft } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
@@ -33,22 +35,40 @@ interface AuditPanelProps {
   invoices: InvoiceDraft[];
   onDeleteTransaction: (id: string) => void;
   onDeleteInvoice: (id: string) => void;
+  canViewAuditLogs?: boolean;
+  currentUserEmail?: string;
 }
 
-// Mock Audit Log Data
-const MOCK_AUDIT_LOGS = Array.from({ length: 15 }).map((_, i) => ({
-    id: `log-${i}`,
-    user: i % 3 === 0 ? 'Admin' : 'Contabilidad',
-    action: i % 4 === 0 ? 'Eliminación' : i % 4 === 1 ? 'Edición' : 'Creación',
-    entity: i % 2 === 0 ? 'Transacción' : 'Factura',
-    details: i % 4 === 0 ? 'Eliminó registro duplicado #TRX-99' : 'Actualizó monto de factura #F001',
-    date: subDays(new Date(), i),
-    severity: i % 4 === 0 ? 'high' : 'low'
-}));
-
-export function AuditPanel({ transactions, invoices, onDeleteTransaction, onDeleteInvoice }: AuditPanelProps) {
+export function AuditPanel({
+  transactions,
+  invoices,
+  onDeleteTransaction,
+  onDeleteInvoice,
+  canViewAuditLogs = false,
+  currentUserEmail,
+}: AuditPanelProps) {
   const [selectedTab, setSelectedTab] = useState('overview');
   const [searchTerm, setSearchTerm] = useState('');
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
+  const [auditLogsLoading, setAuditLogsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!canViewAuditLogs) {
+      setAuditLogs([]);
+      return;
+    }
+    let cancelled = false;
+    setAuditLogsLoading(true);
+    void loadAuditLogs(getSupabaseClient(), 80).then(({ ok, rows }) => {
+      if (cancelled) return;
+      setAuditLogsLoading(false);
+      if (!ok) return;
+      setAuditLogs(rows.map((r) => mapAuditRowToEntry(r, currentUserEmail)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewAuditLogs, currentUserEmail, transactions.length, invoices.length]);
 
   // --- LOGIC: Find Duplicate Transactions ---
   const duplicateTransactions = useMemo(() => {
@@ -307,7 +327,7 @@ export function AuditPanel({ transactions, invoices, onDeleteTransaction, onDele
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            {MOCK_AUDIT_LOGS.slice(0, 5).map(log => (
+                            {(auditLogs.length > 0 ? auditLogs : []).slice(0, 5).map(log => (
                                 <div key={log.id} className="flex items-center gap-3 text-sm">
                                     <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
                                         <User className="w-4 h-4 text-muted-foreground" />
@@ -534,7 +554,20 @@ export function AuditPanel({ transactions, invoices, onDeleteTransaction, onDele
                 </CardHeader>
                 <CardContent>
                     <div className="relative border-l border-muted ml-4 space-y-6 pb-4">
-                        {MOCK_AUDIT_LOGS.map((log, index) => (
+                        {auditLogsLoading && (
+                          <p className="text-sm text-muted-foreground p-4">Cargando historial…</p>
+                        )}
+                        {!canViewAuditLogs && (
+                          <p className="text-sm text-muted-foreground p-4">
+                            El historial de actividad en base de datos solo está disponible para administradores.
+                          </p>
+                        )}
+                        {canViewAuditLogs && !auditLogsLoading && auditLogs.length === 0 && (
+                          <p className="text-sm text-muted-foreground p-4">
+                            Sin registros de auditoría aún. Las eliminaciones y reinicios quedarán aquí.
+                          </p>
+                        )}
+                        {auditLogs.map((log, index) => (
                             <div key={log.id} className="ml-6 relative group">
                                 <span className={`absolute -left-[31px] top-1 flex h-4 w-4 items-center justify-center rounded-full border bg-background ${
                                     log.severity === 'high' ? 'border-red-500 text-red-500' : 

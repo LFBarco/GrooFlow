@@ -164,6 +164,8 @@ import {
   broadcastKvUpdate,
 } from "./utils/kvCrossTabSync";
 import { clearOperationalData } from "./utils/clearOperationalData";
+import { writeAuditLog } from "./services/repository/auditLogSql";
+import { createSqlSaveQueue } from "./utils/sqlSaveQueue";
 
 const initialTransactions: Transaction[] = [];
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
@@ -495,6 +497,7 @@ export default function App() {
   const transactionsHydratedFromKvRef = useRef(false);
   const skipTransactionsHydrateRef = useRef(false);
   const transactionsKvCooldownUntilRef = useRef(0);
+  const transactionsSqlQueueRef = useRef(createSqlSaveQueue());
   /** Evita autosave de proveedores antes de haber hidratado desde la nube (no pisar KV con [] o demos). */
   const providersCloudHydrationDoneRef = useRef(false);
   /**
@@ -1834,11 +1837,13 @@ export default function App() {
       if (TRANSACTIONS_USE_SQL) {
         const { data: sess } = await getSupabaseClient().auth.getSession();
         const uid = sess.session?.user?.id ?? null;
-        const sqlOk = await ensureSqlSave(
-          true,
-          'data:transactions',
-          () => saveTransactionsToSql(getSupabaseClient(), next, uid, options),
-          lastSaveErrorAtRef
+        const sqlOk = await transactionsSqlQueueRef.current.enqueue('data:transactions', () =>
+          ensureSqlSave(
+            true,
+            'data:transactions',
+            () => saveTransactionsToSql(getSupabaseClient(), next, uid, options),
+            lastSaveErrorAtRef
+          )
         );
         if (!sqlOk) return false;
       }
@@ -3258,7 +3263,17 @@ export default function App() {
   const handleBulkDeleteTransactions = async (transactionIds: string[]) => {
     const ids = new Set(transactionIds);
     const next = transactions.filter((transaction) => !ids.has(transaction.id));
-    await persistTransactionsNow(next, `${transactionIds.length} transacción(es) eliminada(s)`);
+    const ok = await persistTransactionsNow(
+      next,
+      `${transactionIds.length} transacción(es) eliminada(s)`
+    );
+    if (ok) {
+      void writeAuditLog(getSupabaseClient(), 'transaction_bulk_delete', {
+        entity: 'Transacciones',
+        details: `Eliminó ${transactionIds.length} transacción(es)`,
+        count: transactionIds.length,
+      });
+    }
   };
 
   const handleAddTransaction = async (data: any) => {
@@ -3348,10 +3363,20 @@ export default function App() {
   );
 
   const handleDeleteTransaction = async (id: string) => {
-    await persistTransactionsNow(
-      transactions.filter(t => t.id !== id),
-      "Transacción eliminada correctamente"
+    const removed = transactions.find((t) => t.id === id);
+    const ok = await persistTransactionsNow(
+      transactions.filter((t) => t.id !== id),
+      'Transacción eliminada correctamente'
     );
+    if (ok && removed) {
+      void writeAuditLog(getSupabaseClient(), 'transaction_delete', {
+        entity: 'Transacción',
+        details: `Eliminó: ${(removed.description || removed.category || id).slice(0, 120)}`,
+        transactionId: id,
+        amount: removed.amount,
+        location: removed.location ?? null,
+      });
+    }
   };
 
   const handleDeleteInvoice = (id: string) => {
@@ -3504,6 +3529,11 @@ export default function App() {
         });
         return;
       }
+      void writeAuditLog(getSupabaseClient(), 'operational_reset', {
+        entity: 'Sistema',
+        details: 'Reinicio de datos operativos (super admin)',
+        failedDomains: failed,
+      });
       toast.success('Base de datos reiniciada correctamente.', {
         description: 'Se conservaron usuarios, roles y configuración.',
       });
@@ -3654,6 +3684,8 @@ export default function App() {
     currentUser.role === 'super_admin' ||
     currentUser.role === 'admin' ||
     !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
+
+  const canViewAuditLogs = isAdminAppUser(currentUser);
 
   const hasPermission = (moduleName: string): boolean => {
     if (isSuperAdmin) return true;
@@ -4868,6 +4900,8 @@ export default function App() {
                 invoices={invoices} 
                 onDeleteTransaction={handleDeleteTransaction}
                 onDeleteInvoice={handleDeleteInvoice}
+                canViewAuditLogs={canViewAuditLogs}
+                currentUserEmail={currentUser.email}
             />
           )}
 
