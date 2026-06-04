@@ -70,6 +70,8 @@ export interface InitialDataKeys {
   'data:products'?:             unknown;
   'data:requests'?:             unknown;
   'data:pettyCash'?:            unknown;
+  /** Cierres, pre-cierres y dotaciones de caja chica (separado de settings:system). */
+  'data:pettyCashMeta'?:        unknown;
   'data:users'?:                unknown;
   'data:roles'?:                unknown;
   'data:feeReceipts'?:          unknown;
@@ -124,6 +126,7 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'maintenance:transactionsClearedAt',
   'data:providers',
   'data:pettyCash',
+  'data:pettyCashMeta',
   'settings:config',
   'settings:theme',
   'data:fleet',
@@ -152,6 +155,7 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'data:products',
   'data:requests',
   'data:pettyCash',
+  'data:pettyCashMeta',
   'data:users',
   'data:roles',
   'data:feeReceipts',

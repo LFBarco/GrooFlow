@@ -24,7 +24,9 @@ import {
   saveRolesToSql,
 } from '../services/repository/businessDomainsSql';
 import { saveFleetToSql } from '../services/repository/fleetSql';
+import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
 import { saveTransactionsToSql } from '../services/repository/transactionsSql';
+import { PETTY_CASH_META_KV_KEY, type PettyCashWeekMetaPayload } from './pettyCashMeta';
 import type { SqlRetryRunnerMap } from './sqlRetryProcessor';
 import { getSqlSaveQueue } from './sqlSaveQueue';
 
@@ -53,6 +55,7 @@ export type SqlRetryLatestSnapshot = {
   treasuryBankBalance: number | undefined;
   treasuryPaidHistory: unknown[];
   fleet: FleetDataset;
+  pettyCashMeta: PettyCashWeekMetaPayload;
 };
 
 export type BuildSqlRetryRunnersInput = {
@@ -98,6 +101,9 @@ export function buildSqlRetryRunners(input: BuildSqlRetryRunnersInput): SqlRetry
   );
   runners['data:pettyCash'] = queuedRunner('data:pettyCash', () =>
     savePettyCashToSql(client, latest.pettyCash, uid)
+  );
+  runners[PETTY_CASH_META_KV_KEY] = queuedRunner(PETTY_CASH_META_KV_KEY, () =>
+    savePettyCashMetaToSql(client, latest.pettyCashMeta, uid)
   );
   runners['data:invoices'] = queuedRunner('data:invoices', () =>
     saveInvoicesToSql(client, latest.invoices, uid)

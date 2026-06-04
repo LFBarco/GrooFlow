@@ -10,6 +10,8 @@ import {
   saveInvoicesToSql,
   savePurchaseRequestsToSql,
 } from '../services/repository/businessDomainsSql';
+import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
+import { PETTY_CASH_META_KV_KEY } from './pettyCashMeta';
 import { isFleetSqlEnabled, saveFleetToSql } from '../services/repository/fleetSql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import { isTransactionsSqlEnabled, saveTransactionsToSql } from '../services/repository/transactionsSql';
@@ -31,6 +33,7 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     ['data:invoices', []],
     ['data:providers', []],
     ['data:pettyCash', []],
+    [PETTY_CASH_META_KV_KEY, { weekClosures: [], weekPreClosures: [], fundDeliveries: [] }],
     ['data:requests', []],
     ['data:products', []],
     ['data:feeReceipts', []],
@@ -63,6 +66,15 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
   sqlTasks.push(
     { label: 'providers', run: () => saveProvidersToSql(client, [], userId, PRUNE_EMPTY) },
     { label: 'pettyCash', run: () => savePettyCashToSql(client, [], userId, PRUNE_EMPTY) },
+    {
+      label: 'pettyCashMeta',
+      run: () =>
+        savePettyCashMetaToSql(
+          client,
+          { weekClosures: [], weekPreClosures: [], fundDeliveries: [] },
+          userId
+        ),
+    },
     { label: 'invoices', run: () => saveInvoicesToSql(client, [], userId, PRUNE_EMPTY) },
     { label: 'requests', run: () => savePurchaseRequestsToSql(client, [], userId, PRUNE_EMPTY) },
     { label: 'products', run: () => saveAppKvKey(client, 'data:products', [], userId) },

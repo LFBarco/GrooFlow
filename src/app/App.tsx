@@ -166,6 +166,20 @@ import {
 import { clearOperationalData } from "./utils/clearOperationalData";
 import { writeAuditLog } from "./services/repository/auditLogSql";
 import { useSqlRetryProcessor } from "./hooks/useSqlRetryProcessor";
+import {
+  extractPettyCashMeta,
+  mergePettyCashMetaIntoSettings,
+  normalizePettyCashMeta,
+  PETTY_CASH_META_KV_KEY,
+  isPettyCashMetaEmpty,
+  resolvePettyCashMeta,
+  stripPettyCashMetaForSystemKv,
+} from "./utils/pettyCashMeta";
+import {
+  loadPettyCashMetaFromSql,
+  migratePettyCashMetaKvToSql,
+  savePettyCashMetaToSql,
+} from "./services/repository/pettyCashMetaSql";
 
 const initialTransactions: Transaction[] = [];
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
@@ -607,6 +621,8 @@ export default function App() {
 
   const pettyCashKvChainRef = useRef(Promise.resolve(true));
   const pettyCashKvLatestRef = useRef<PettyCashTransaction[]>([]);
+  const pettyCashMetaKvLatestRef = useRef(extractPettyCashMeta(initialSystemSettings.pettyCash));
+  const pettyCashMetaKvChainRef = useRef(Promise.resolve(true));
 
   const transactionsKvChainRef = useRef(KV_CHAIN_IDLE);
   const transactionsKvLatestRef = useRef<Transaction[]>(initialTransactions);
@@ -906,7 +922,33 @@ export default function App() {
                   (v) => v == null
                 )) as Partial<SystemSettings> | null | undefined) ?? remote;
             }
-            const merged = resolvedRemote ? mergeSystemSettings(resolvedRemote) : initialSystemSettings;
+            const mergedBase = resolvedRemote
+              ? mergeSystemSettings(resolvedRemote)
+              : initialSystemSettings;
+            const legacyMeta = extractPettyCashMeta(mergedBase.pettyCash);
+            let remoteMeta = normalizePettyCashMeta(data[PETTY_CASH_META_KV_KEY]);
+            if (PRODUCTION_USE_SQL) {
+              const sqlMetaLoad = await loadPettyCashMetaFromSql(getSupabaseClient());
+              if (sqlMetaLoad.ok && sqlMetaLoad.data) {
+                remoteMeta = sqlMetaLoad.data;
+              }
+            }
+            const resolvedMeta = resolvePettyCashMeta(remoteMeta, legacyMeta);
+            if (
+              PRODUCTION_USE_SQL &&
+              sessionUserId &&
+              !remoteMeta.weekClosures.length &&
+              !remoteMeta.fundDeliveries.length &&
+              (legacyMeta.weekClosures.length > 0 || legacyMeta.fundDeliveries.length > 0)
+            ) {
+              void migratePettyCashMetaKvToSql(
+                getSupabaseClient(),
+                legacyMeta,
+                sessionUserId
+              );
+            }
+            const merged = mergePettyCashMetaIntoSettings(mergedBase, resolvedMeta);
+            pettyCashMetaKvLatestRef.current = resolvedMeta;
             systemSettingsKvLatestRef.current = merged;
             setSystemSettings(merged);
             systemSettingsHydratedFromKvRef.current = true;
@@ -1668,6 +1710,7 @@ export default function App() {
       treasuryBankBalance: treasuryBankBalanceKvLatestRef.current,
       treasuryPaidHistory: treasuryPaidHistoryKvLatestRef.current,
       fleet: fleetKvLatestRef.current,
+      pettyCashMeta: pettyCashMetaKvLatestRef.current,
     }),
     []
   );
@@ -1739,9 +1782,10 @@ export default function App() {
 
   useEffect(() => {
     if (!isDataLoaded || !systemSettingsHydratedFromKvRef.current) return;
+    const systemPayload = stripPettyCashMetaForSystemKv(systemSettings);
     void autosaveKvDomain({
       kvKey: 'settings:system',
-      payload: systemSettings,
+      payload: systemPayload,
       refs: {
         chainRef: systemSettingsKvChainRef,
         latestRef: systemSettingsKvLatestRef,
@@ -1756,12 +1800,47 @@ export default function App() {
         void backupAppKvAfterKvSave(
           PRODUCTION_USE_SQL,
           'settings:system',
-          systemSettings,
+          systemPayload,
           lastSaveErrorAtRef
         );
       }
     });
   }, [systemSettings, isDataLoaded]);
+
+  useEffect(() => {
+    if (!isDataLoaded || !systemSettingsHydratedFromKvRef.current) return;
+    const meta = extractPettyCashMeta(systemSettings.pettyCash);
+    pettyCashMetaKvLatestRef.current = meta;
+    void autosaveKvDomain({
+      kvKey: PETTY_CASH_META_KV_KEY,
+      payload: meta,
+      refs: {
+        chainRef: pettyCashMetaKvChainRef,
+        latestRef: pettyCashMetaKvLatestRef,
+        cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+      },
+      kvApplyGenerationRef,
+      lastSaveErrorAtRef,
+      errorMessage:
+        'No se pudieron guardar cierres y dotaciones de caja chica en la nube.',
+      sync: cloudSyncTrackerRef.current,
+    }).then((ok) => {
+      if (ok) {
+        void backupDomainSqlAfterKvSave(
+          PRODUCTION_USE_SQL,
+          PETTY_CASH_META_KV_KEY,
+          meta,
+          savePettyCashMetaToSql,
+          lastSaveErrorAtRef
+        );
+      }
+    });
+  }, [
+    systemSettings.pettyCash?.weekClosures,
+    systemSettings.pettyCash?.weekPreClosures,
+    systemSettings.pettyCash?.fundDeliveries,
+    isDataLoaded,
+  ]);
 
   const persistSystemSettingsNow = useCallback(
     async (next: SystemSettings, successMessage?: string): Promise<boolean> => {
@@ -1772,28 +1851,45 @@ export default function App() {
         return false;
       }
       systemSettingsKvLatestRef.current = merged;
+      const meta = extractPettyCashMeta(merged.pettyCash);
+      pettyCashMetaKvLatestRef.current = meta;
+      const systemPayload = stripPettyCashMetaForSystemKv(merged);
 
       if (PRODUCTION_USE_SQL) {
-        const sqlOk = await ensureSqlSave(
-          true,
-          'settings:system',
-          async () => {
-            const { data: sess } = await getSupabaseClient().auth.getSession();
-            return saveAppKvKey(
-              getSupabaseClient(),
-              'settings:system',
-              merged,
-              sess.session?.user?.id ?? null
-            );
-          },
-          lastSaveErrorAtRef
-        );
-        if (!sqlOk) return false;
+        const { data: sess } = await getSupabaseClient().auth.getSession();
+        const uid = sess.session?.user?.id ?? null;
+        const [settingsSqlOk, metaSqlOk] = await Promise.all([
+          ensureSqlSave(
+            true,
+            'settings:system',
+            () => saveAppKvKey(getSupabaseClient(), 'settings:system', systemPayload, uid),
+            lastSaveErrorAtRef
+          ),
+          ensureSqlSave(
+            true,
+            PETTY_CASH_META_KV_KEY,
+            () => savePettyCashMetaToSql(getSupabaseClient(), meta, uid),
+            lastSaveErrorAtRef
+          ),
+        ]);
+        if (!settingsSqlOk || !metaSqlOk) return false;
+      }
+
+      const metaKvOk = await enqueueKvSerializedSave(
+        pettyCashMetaKvChainRef,
+        kvApplyGenerationRef,
+        pettyCashMetaKvLatestRef,
+        PETTY_CASH_META_KV_KEY,
+        meta
+      );
+      if (!kvSaveSucceeded(metaKvOk)) {
+        toast.error('No se pudieron guardar cierres y dotaciones de caja chica en la nube.');
+        return false;
       }
 
       return persistKvDomainNow({
         kvKey: 'settings:system',
-        payload: merged,
+        payload: systemPayload,
         refs: {
           hydratedFromKvRef: systemSettingsHydratedFromKvRef,
           skipHydrateRef: skipSystemSettingsHydrateRef,
@@ -3928,6 +4024,7 @@ export default function App() {
       });
       setSystemSettings(nextSettings);
       systemSettingsKvLatestRef.current = nextSettings;
+      pettyCashMetaKvLatestRef.current = extractPettyCashMeta(nextSettings.pettyCash);
 
       const nextUsers = users.map((u) =>
         u.id === custodianId ? { ...u, pettyCashOpeningCarryConsumedAt: undefined } : u
@@ -3936,9 +4033,12 @@ export default function App() {
 
       if (!isDataLoaded) return true;
 
+      const meta = extractPettyCashMeta(nextSettings.pettyCash);
+      const systemPayload = stripPettyCashMetaForSystemKv(nextSettings);
+
       skipPettyCashHydrateRef.current = true;
       try {
-        const [txOk, settingsOk, usersOk] = await Promise.all([
+        const [txOk, settingsOk, metaOk, usersOk] = await Promise.all([
           enqueueKvSerializedSave(
             pettyCashKvChainRef,
             kvApplyGenerationRef,
@@ -3948,7 +4048,7 @@ export default function App() {
           ),
           autosaveKvDomain({
             kvKey: 'settings:system',
-            payload: nextSettings,
+            payload: systemPayload,
             refs: {
               chainRef: systemSettingsKvChainRef,
               latestRef: systemSettingsKvLatestRef,
@@ -3959,9 +4059,16 @@ export default function App() {
             errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
             sync: cloudSyncTrackerRef.current,
           }),
+          enqueueKvSerializedSave(
+            pettyCashMetaKvChainRef,
+            kvApplyGenerationRef,
+            pettyCashMetaKvLatestRef,
+            PETTY_CASH_META_KV_KEY,
+            meta
+          ),
           persistUsersToCloud(nextUsers),
         ]);
-        if (!txOk || !settingsOk || !usersOk) {
+        if (!txOk || !settingsOk || !kvSaveSucceeded(metaOk) || !usersOk) {
           toast.error('No se pudo guardar el reinicio completo en la nube. Reintente.');
           return false;
         }

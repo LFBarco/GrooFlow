@@ -38,3 +38,4 @@ npm run release:prod
 - Cargas SQL paginadas (1000 filas/página).
 - Cola SQL serializada por dominio (`getSqlSaveQueue`) en autosave y `persistNow`.
 - Reintentos SQL en `localStorage` tras fallo de respaldo; se procesan al hidratar y al volver `online`.
+- Caja chica: movimientos en `petty_cash_transactions`; cierres/dotaciones en `petty_cash_week_meta` + KV `data:pettyCashMeta` (ya no duplicados en `settings:system`).

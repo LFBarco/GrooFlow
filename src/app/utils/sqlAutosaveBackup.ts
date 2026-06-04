@@ -30,6 +30,8 @@ export const SQL_BACKUP_ERROR_MESSAGES: Record<string, string> = {
     'No se pudo guardar el directorio de proveedores en SQL. Revisa sesión o permisos.',
   'data:pettyCash':
     'No se pudo guardar Caja chica en SQL. Revisa sesión o permisos antes de cerrar.',
+  'data:pettyCashMeta':
+    'No se pudieron guardar cierres y dotaciones de caja chica en SQL. Revisa sesión o permisos.',
   'data:invoices':
     'No se pudieron guardar las facturas en SQL. Revisa sesión o permisos.',
   'data:requests':
