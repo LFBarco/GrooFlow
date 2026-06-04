@@ -167,6 +167,10 @@ import { clearOperationalData } from "./utils/clearOperationalData";
 import { writeAuditLog } from "./services/repository/auditLogSql";
 import { useSqlRetryProcessor } from "./hooks/useSqlRetryProcessor";
 import {
+  applyPettyCashMetaRemoteUpdate,
+  usePettyCashMetaPersistence,
+} from "./hooks/usePettyCashMetaPersistence";
+import {
   extractPettyCashMeta,
   mergePettyCashMetaIntoSettings,
   normalizePettyCashMeta,
@@ -1807,40 +1811,17 @@ export default function App() {
     });
   }, [systemSettings, isDataLoaded]);
 
-  useEffect(() => {
-    if (!isDataLoaded || !systemSettingsHydratedFromKvRef.current) return;
-    const meta = extractPettyCashMeta(systemSettings.pettyCash);
-    pettyCashMetaKvLatestRef.current = meta;
-    void autosaveKvDomain({
-      kvKey: PETTY_CASH_META_KV_KEY,
-      payload: meta,
-      refs: {
-        chainRef: pettyCashMetaKvChainRef,
-        latestRef: pettyCashMetaKvLatestRef,
-        cooldownUntilRef: systemSettingsKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage:
-        'No se pudieron guardar cierres y dotaciones de caja chica en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupDomainSqlAfterKvSave(
-          PRODUCTION_USE_SQL,
-          PETTY_CASH_META_KV_KEY,
-          meta,
-          savePettyCashMetaToSql,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [
-    systemSettings.pettyCash?.weekClosures,
-    systemSettings.pettyCash?.weekPreClosures,
-    systemSettings.pettyCash?.fundDeliveries,
+  usePettyCashMetaPersistence({
     isDataLoaded,
-  ]);
+    systemSettingsHydratedRef: systemSettingsHydratedFromKvRef,
+    systemSettings,
+    pettyCashMetaLatestRef: pettyCashMetaKvLatestRef,
+    pettyCashMetaChainRef: pettyCashMetaKvChainRef,
+    cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+    cloudSync: cloudSyncTrackerRef.current,
+  });
 
   const persistSystemSettingsNow = useCallback(
     async (next: SystemSettings, successMessage?: string): Promise<boolean> => {
@@ -2664,11 +2645,31 @@ export default function App() {
       case 'settings:system': {
         if (PRODUCTION_USE_SQL) return;
         if (!systemSettingsHydratedFromKvRef.current) return;
-        const merged = mergeSystemSettings(value as Partial<SystemSettings>);
+        const base = mergeSystemSettings(value as Partial<SystemSettings>);
+        const merged = mergePettyCashMetaIntoSettings(
+          base,
+          pettyCashMetaKvLatestRef.current
+        );
         if (kvPayloadsEqual(systemSettingsKvLatestRef.current, merged)) return;
         systemSettingsKvLatestRef.current = merged;
         systemSettingsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setSystemSettings(merged);
+        applied = true;
+        break;
+      }
+      case PETTY_CASH_META_KV_KEY: {
+        if (!systemSettingsHydratedFromKvRef.current) return;
+        setSystemSettings((prev) => {
+          const next = applyPettyCashMetaRemoteUpdate(
+            prev,
+            value,
+            pettyCashMetaKvLatestRef
+          );
+          if (!next) return prev;
+          systemSettingsKvLatestRef.current = next;
+          systemSettingsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+          return next;
+        });
         applied = true;
         break;
       }
@@ -3032,8 +3033,14 @@ export default function App() {
     if (!isDataLoaded || signingOutRef.current || !systemSettingsHydratedFromKvRef.current) return;
     if (kvPayloadsEqual(systemSettingsKvLatestRef.current, items)) return;
     systemSettingsKvLatestRef.current = items;
+    pettyCashMetaKvLatestRef.current = extractPettyCashMeta(items.pettyCash);
     systemSettingsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
     setSystemSettings(items);
+  };
+
+  const applyPettyCashMetaRemoteRef = useRef<((items: SystemSettings) => void) | null>(null);
+  applyPettyCashMetaRemoteRef.current = (items) => {
+    applySystemSettingsRemoteRef.current?.(items);
   };
 
   const applyAlertThresholdsRemoteRef = useRef<((items: AlertThresholds) => void) | null>(null);
@@ -3088,6 +3095,8 @@ export default function App() {
       providersLatest: providersKvLatestRef,
       pettyCash: applyPettyCashRemoteRef,
       pettyCashLatest: pettyCashKvLatestRef,
+      pettyCashMeta: applyPettyCashMetaRemoteRef,
+      pettyCashMetaLatest: pettyCashMetaKvLatestRef,
       invoices: applyInvoicesRemoteRef,
       invoicesLatest: invoicesKvLatestRef,
       requests: applyRequestsRemoteRef,

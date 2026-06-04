@@ -15,6 +15,12 @@ import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import { loadProvidersFromSql } from '../services/repository/businessDomainsSql';
 
 import { loadPettyCashFromSql } from '../services/repository/businessDomainsSql';
+import { loadPettyCashMetaFromSql } from '../services/repository/pettyCashMetaSql';
+import {
+  extractPettyCashMeta,
+  mergePettyCashMetaIntoSettings,
+  type PettyCashWeekMetaPayload,
+} from '../utils/pettyCashMeta';
 
 import { loadInvoicesFromSql } from '../services/repository/businessDomainsSql';
 
@@ -108,6 +114,10 @@ export type ProductionRealtimeHandlers = {
 
   pettyCashLatest?: MutableRefObject<PettyCashTransaction[]>;
 
+  pettyCashMeta?: MutableRefObject<((items: SystemSettings) => void) | null>;
+
+  pettyCashMetaLatest?: MutableRefObject<PettyCashWeekMetaPayload>;
+
   invoices?: MutableRefObject<((items: InvoiceDraft[]) => void) | null>;
 
   invoicesLatest?: MutableRefObject<InvoiceDraft[]>;
@@ -175,6 +185,8 @@ const TABLE_CHANNELS: Array<{ table: string; channel: string }> = [
   { table: 'providers', channel: 'grooflow-rt-providers' },
 
   { table: 'petty_cash_transactions', channel: 'grooflow-rt-petty-cash' },
+
+  { table: 'petty_cash_week_meta', channel: 'grooflow-rt-petty-cash-meta' },
 
   { table: 'invoices', channel: 'grooflow-rt-invoices' },
 
@@ -507,9 +519,15 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
           const latest = handlers.systemSettingsLatest;
 
+          const metaLatest = handlers.pettyCashMetaLatest;
+
           if (!h || !latest) return;
 
-          const merged = mergeSystemSettings(result.data as Partial<SystemSettings>);
+          const base = mergeSystemSettings(result.data as Partial<SystemSettings>);
+
+          const meta = metaLatest?.current ?? extractPettyCashMeta(base.pettyCash);
+
+          const merged = mergePettyCashMetaIntoSettings(base, meta);
 
           if (kvPayloadsEqual(latest.current, merged)) return;
 
@@ -633,6 +651,8 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
       petty_cash_transactions: reloadPettyCash,
 
+      petty_cash_week_meta: reloadPettyCashMeta,
+
       invoices: reloadInvoices,
 
       purchase_requests: reloadRequests,
@@ -688,6 +708,7 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
       void reloadTransactions();
       void reloadProviders();
       void reloadPettyCash();
+      void reloadPettyCashMeta();
       void reloadInvoices();
       void reloadRequests();
       void reloadUsers();
