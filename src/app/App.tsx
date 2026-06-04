@@ -166,6 +166,8 @@ import {
 import { clearOperationalData } from "./utils/clearOperationalData";
 import { writeAuditLog } from "./services/repository/auditLogSql";
 import { createSqlSaveQueue } from "./utils/sqlSaveQueue";
+import { processPendingSqlRetries } from "./utils/sqlRetryProcessor";
+import { getAuthUserId } from "./services/productionSqlBridge";
 
 const initialTransactions: Transaction[] = [];
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
@@ -1648,6 +1650,89 @@ export default function App() {
       hydrateFromKvRef.current = null;
     };
   }, []);
+
+  const processPendingSqlRetryQueue = useCallback(
+    async (notify?: boolean) => {
+      const anySql = PRODUCTION_USE_SQL || TRANSACTIONS_USE_SQL || FLEET_USE_SQL;
+      if (!anySql || !isDataLoaded) return;
+      const uid = await getAuthUserId();
+      const client = getSupabaseClient();
+      const appKvRunner = (kvKey: string, value: unknown) => () =>
+        saveAppKvKey(client, kvKey, value, uid);
+
+      const runners: Parameters<typeof processPendingSqlRetries>[0] = {};
+
+      if (TRANSACTIONS_USE_SQL) {
+        runners['data:transactions'] = () =>
+          transactionsSqlQueueRef.current.enqueue('retry:data:transactions', () =>
+            saveTransactionsToSql(client, transactionsKvLatestRef.current, uid)
+          );
+      }
+      if (FLEET_USE_SQL) {
+        runners['data:fleet'] = () =>
+          saveFleetToSql(client, fleetKvLatestRef.current, uid);
+      }
+      if (PRODUCTION_USE_SQL) {
+        runners['settings:config'] = appKvRunner('settings:config', configKvLatestRef.current);
+        runners['settings:system'] = appKvRunner('settings:system', systemSettingsKvLatestRef.current);
+        runners['settings:theme'] = appKvRunner('settings:theme', themeKvLatestRef.current);
+        runners['settings:alertThresholds'] = appKvRunner(
+          'settings:alertThresholds',
+          alertThresholdsKvLatestRef.current
+        );
+        runners['data:providers'] = () =>
+          saveProvidersToSql(client, providersKvLatestRef.current, uid);
+        runners['data:pettyCash'] = () =>
+          savePettyCashToSql(client, pettyCashKvLatestRef.current, uid);
+        runners['data:invoices'] = () =>
+          saveInvoicesToSql(client, invoicesKvLatestRef.current, uid);
+        runners['data:requests'] = () =>
+          savePurchaseRequestsToSql(client, requestsKvLatestRef.current, uid);
+        runners['data:users'] = () =>
+          saveAppUsersToSql(client, usersKvLatestRef.current, uid);
+        runners['data:roles'] = () => saveRolesToSql(client, rolesKvLatestRef.current, uid);
+        runners['data:feeReceipts'] = appKvRunner(
+          'data:feeReceipts',
+          feeReceiptsKvLatestRef.current
+        );
+        runners['data:products'] = appKvRunner('data:products', productsKvLatestRef.current);
+        runners['data:chartOfAccounts'] = appKvRunner(
+          'data:chartOfAccounts',
+          chartOfAccountsKvLatestRef.current
+        );
+        runners['data:treasuryInvoices'] = appKvRunner(
+          'data:treasuryInvoices',
+          treasuryInvoicesKvLatestRef.current
+        );
+        runners['data:treasuryBankBalance'] = appKvRunner(
+          'data:treasuryBankBalance',
+          treasuryBankBalanceKvLatestRef.current
+        );
+        runners['data:treasuryPaidHistory'] = appKvRunner(
+          'data:treasuryPaidHistory',
+          treasuryPaidHistoryKvLatestRef.current
+        );
+      }
+
+      await processPendingSqlRetries(runners, { notify });
+    },
+    [isDataLoaded]
+  );
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    const timer = window.setTimeout(() => {
+      void processPendingSqlRetryQueue(true);
+    }, 4000);
+    return () => window.clearTimeout(timer);
+  }, [isDataLoaded, processPendingSqlRetryQueue]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    const onOnline = () => void processPendingSqlRetryQueue(true);
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [isDataLoaded, processPendingSqlRetryQueue]);
 
   // Auto-save Effects
   useEffect(() => {

@@ -99,6 +99,7 @@ export async function backupToSqlAfterKvSave(options: {
     return false;
   } catch (e) {
     const errMsg = e instanceof Error ? e.message : String(e);
+    enqueueSqlRetry(options.storageKey);
     reportSqlBackupError(options.storageKey, message, [errMsg], options.lastSaveErrorAtRef);
     return false;
   }
