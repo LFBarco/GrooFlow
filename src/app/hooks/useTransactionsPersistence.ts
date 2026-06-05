@@ -64,7 +64,13 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
           TRANSACTIONS_USE_SQL,
           'data:transactions',
           transactions,
-          saveTransactionsToSql,
+          (client, data, uid) =>
+            saveTransactionsToSql(
+              client,
+              data,
+              uid,
+              data.length === 0 ? { allowPruneWhenEmpty: true } : undefined
+            ),
           lastSaveErrorAtRef
         );
         return;
@@ -98,10 +104,14 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
       if (TRANSACTIONS_USE_SQL) {
         const { data: sess } = await getSupabaseClient().auth.getSession();
         const uid = sess.session?.user?.id ?? null;
+        const sqlOpts = {
+          ...saveOptions,
+          ...(next.length === 0 ? { allowPruneWhenEmpty: true } : {}),
+        };
         const sqlOk = await ensureSqlSave(
           true,
           'data:transactions',
-          () => saveTransactionsToSql(getSupabaseClient(), next, uid, saveOptions),
+          () => saveTransactionsToSql(getSupabaseClient(), next, uid, sqlOpts),
           lastSaveErrorAtRef
         );
         if (!sqlOk) return false;
