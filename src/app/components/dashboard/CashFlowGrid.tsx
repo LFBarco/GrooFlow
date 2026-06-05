@@ -46,7 +46,10 @@ import { clsx } from 'clsx';
 import { Checkbox } from '../ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { labelsMatch } from '../../utils/labelMatch';
-import { formatNumberEs } from '../../utils/numberFormat';
+import { formatAxisThousandsPEN, formatCurrencyEs } from '../../utils/numberFormat';
+import { generateEntityId } from '../../utils/generateEntityId';
+import { downloadCashFlowCsv } from '../../utils/cashFlowExportCsv';
+import { goLiveIncludesTreasury } from '../../config/goLive';
 import { parseTransactionDate } from '../../utils/transactionDate';
 import type { Invoice as TreasuryInvoice } from '../treasury/types';
 import {
@@ -103,7 +106,7 @@ const MONTH_OPTIONS = [
 
 function formatMoney(amount: number, compact = false) {
   if (Math.abs(amount) < 1e-9) return '—';
-  return formatNumberEs(amount, compact ? 0 : 2);
+  return compact ? formatAxisThousandsPEN(amount) : formatCurrencyEs(amount, 2);
 }
 
 function cellClasses(
@@ -151,6 +154,7 @@ export function CashFlowGrid({
 }: CashFlowGridProps) {
   const safeCurrentDate = isValid(currentDate) ? currentDate : new Date();
   const TODAY = new Date();
+  const treasuryEnabled = goLiveIncludesTreasury();
   const dateKey = (d: Date) => String(d.getTime());
   const safeFormat = (d: Date, pattern: string) => (isValid(d) ? format(d, pattern, { locale: es }) : '—');
   /** Opciones año: debe incluir siempre `currentDate` o Radix Select revienta (pantalla en blanco en el chunk). */
@@ -414,12 +418,18 @@ export function CashFlowGrid({
       date,
       TODAY
     );
-    const draft = projectedDraftInvoicesExpense(invoices, date, safeCurrentDate);
+    const draft = treasuryEnabled
+      ? projectedDraftInvoicesExpense(invoices, date, safeCurrentDate)
+      : 0;
     return income - expense - draft;
   };
 
   const getNetPeriodTotal = (date: Date) =>
-    viewMode === 'daily' ? getNetTripleForDay(date) : getPeriodTotal('income', date) - getPeriodTotal('expense', date) - getProjectedInvoiceExpense(date);
+    viewMode === 'daily'
+      ? getNetTripleForDay(date)
+      : getPeriodTotal('income', date) -
+        getPeriodTotal('expense', date) -
+        (treasuryEnabled ? getProjectedInvoiceExpense(date) : 0);
 
   const initialBalance = useMemo(() => {
     const calculationStartDate = viewMode === 'daily' ? startDate : startYear;
@@ -507,6 +517,7 @@ export function CashFlowGrid({
     invoices,
     safeCurrentDate,
     TODAY,
+    treasuryEnabled,
   ]);
 
   const chartDataDaily = useMemo(() => {
@@ -562,7 +573,7 @@ export function CashFlowGrid({
             const date = new Date(y, m, concept.defaultDay);
             if (date.getMonth() !== m) return;
             newTxs.push({
-              id: Math.random().toString(36).substr(2, 9),
+              id: generateEntityId('tx'),
               amount: 0,
               type: catDef.type,
               category: catName as Transaction['category'],
@@ -1223,10 +1234,12 @@ export function CashFlowGrid({
     if (viewMode !== 'daily') return [];
     return columns.map((d) => {
       const { income, expense } = sumIncomeExpenseForDay(matrixDaily, visibility, config, d, TODAY);
-      const draft = projectedDraftInvoicesExpense(invoices, d, safeCurrentDate);
+      const draft = treasuryEnabled
+        ? projectedDraftInvoicesExpense(invoices, d, safeCurrentDate)
+        : 0;
       return { income, expense: expense + draft };
     });
-  }, [viewMode, columns, matrixDaily, visibility, config, TODAY, invoices, safeCurrentDate]);
+  }, [viewMode, columns, matrixDaily, visibility, config, TODAY, invoices, safeCurrentDate, treasuryEnabled]);
 
   /** Tendencias % comparando mitades del mes hasta hoy */
   const sidebarBudgetTrend = useMemo(() => {
@@ -1278,11 +1291,30 @@ export function CashFlowGrid({
             ),
           0
         ),
-      draftTotal: projectedDraftInvoicesTotal(invoices, safeCurrentDate),
+      draftTotal: treasuryEnabled ? projectedDraftInvoicesTotal(invoices, safeCurrentDate) : 0,
     });
 
   const viewIsEntirelyPastMonth =
     viewMode === 'daily' && endOfMonth(safeCurrentDate) < startOfDay(TODAY);
+
+  const handleExportCsv = () => {
+    if (viewMode !== 'daily') {
+      toast.info('Cambia a vista diaria para exportar la matriz del mes.');
+      return;
+    }
+    const monthLabel = format(safeCurrentDate, 'yyyy-MM', { locale: es });
+    downloadCashFlowCsv({
+      filename: `flujo-caja-${monthLabel}.csv`,
+      columns,
+      matrixDaily,
+      visibility,
+      config,
+      today: TODAY,
+      endBalances,
+      initialBalance,
+    });
+    toast.success('CSV exportado correctamente');
+  };
 
   return (
     <div
@@ -1290,7 +1322,7 @@ export function CashFlowGrid({
       className={clsx(
         'flex min-h-0 w-full flex-1 overflow-hidden transition-all duration-300',
         isFullscreen
-          ? 'fixed inset-0 z-[100] h-screen w-screen rounded-none flex-col lg:flex-row'
+          ? 'fixed inset-0 z-[45] h-screen w-screen rounded-none flex-col lg:flex-row max-md:inset-0 md:top-0 md:right-0 md:bottom-0 md:left-[var(--grooflow-sidebar-w,256px)] md:w-auto'
           : 'h-full max-h-full min-h-[280px] flex-col gap-4 rounded-2xl lg:flex-row lg:gap-4'
       )}
       style={{
@@ -1417,6 +1449,8 @@ export function CashFlowGrid({
 
             <button
               type="button"
+              title={isFullscreen ? 'Salir de vista ampliada' : 'Ampliar vista'}
+              aria-label={isFullscreen ? 'Salir de vista ampliada' : 'Ampliar vista'}
               onClick={() => setIsFullscreen(!isFullscreen)}
               className="h-8 w-8 flex items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10"
             >
@@ -1427,7 +1461,7 @@ export function CashFlowGrid({
               variant="outline"
               size="sm"
               className="h-8 text-xs border-violet-500/30 text-violet-200"
-              onClick={() => toast.message('Export CSV / PDF — próximamente')}
+              onClick={handleExportCsv}
             >
               <Download className="w-3.5 h-3.5 mr-1" />
               Exportar
@@ -1548,7 +1582,9 @@ export function CashFlowGrid({
                 </>
               )}
 
-              {invoices.filter((inv) => inv.status !== 'paid').length > 0 && viewMode === 'daily' && (
+              {treasuryEnabled &&
+                invoices.filter((inv) => inv.status !== 'paid').length > 0 &&
+                viewMode === 'daily' && (
                 <tbody className="border-t border-amber-500/30">
                   <tr>
                     <td colSpan={2} className="sticky left-0 z-20 p-2 border-r border-white/10 text-amber-200 text-[10px] font-bold uppercase bg-[#1e1830]">
@@ -1792,7 +1828,7 @@ export function CashFlowGrid({
                 <span>Egresos (matriz)</span>
                 <span className="text-rose-400 tabular-nums">{formatMoney(monthSummary.te, true)}</span>
               </div>
-              {monthSummary.draftTotal > 0 && (
+              {treasuryEnabled && monthSummary.draftTotal > 0 && (
                 <div className="flex justify-between text-amber-200/90">
                   <span>+ Facturas borrador</span>
                   <span className="tabular-nums">−{formatMoney(monthSummary.draftTotal, true)}</span>

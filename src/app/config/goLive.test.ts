@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { goLiveAlertSources, isGoLiveExcludedModule } from './goLive';
+import { goLiveAlertSources, goLiveIncludesTreasury, isGoLiveExcludedModule } from './goLive';
 import { roleHasModuleAccess } from '../utils/rolePermissions';
 
 describe('goLive', () => {
@@ -23,5 +23,9 @@ describe('goLive', () => {
     const sources = goLiveAlertSources();
     expect(sources.invoices).toBe(false);
     expect(sources.purchaseRequests).toBe(false);
+  });
+
+  it('oculta capa de tesorería en flujo de caja durante go-live', () => {
+    expect(goLiveIncludesTreasury()).toBe(false);
   });
 });

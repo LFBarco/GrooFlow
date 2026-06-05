@@ -26,6 +26,8 @@ const ACTION_LABELS: Record<string, string> = {
   transaction_delete: 'Eliminación',
   transaction_bulk_delete: 'Eliminación masiva',
   transaction_create: 'Creación',
+  transaction_import: 'Importación',
+  petty_cash_create: 'Alta caja chica',
   operational_reset: 'Reinicio operativo',
   invoice_delete_audit: 'Eliminación',
 };

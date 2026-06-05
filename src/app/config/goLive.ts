@@ -15,6 +15,11 @@ export function isGoLiveExcludedModule(moduleName: string): boolean {
   return (GO_LIVE_EXCLUDED_MODULES as readonly string[]).includes(moduleName);
 }
 
+/** Tesorería activa en el go-live actual (facturas proyectadas en flujo de caja, etc.). */
+export function goLiveIncludesTreasury(): boolean {
+  return !isGoLiveExcludedModule('Tesorería');
+}
+
 /** Fuentes de alertas ligadas a módulos aún no desplegados. */
 export function goLiveAlertSources(): { invoices: boolean; purchaseRequests: boolean } {
   return {

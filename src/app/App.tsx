@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense, type CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
@@ -159,6 +159,8 @@ import {
 } from "./utils/kvCrossTabSync";
 import { clearOperationalData } from "./utils/clearOperationalData";
 import { writeAuditLog } from "./services/repository/auditLogSql";
+import { generateEntityId } from "./utils/generateEntityId";
+import { useAlertReadPersistence } from "./hooks/useAlertReadPersistence";
 import { useSqlRetryProcessor } from "./hooks/useSqlRetryProcessor";
 import {
   applyPettyCashMetaRemoteUpdate,
@@ -924,6 +926,8 @@ export default function App() {
     isDataLoaded,
     getLatestSnapshot: getSqlRetryLatestSnapshot,
   });
+
+  const { applyReadState, markAlertRead, markAllAlertsRead } = useAlertReadPersistence(isDataLoaded);
 
   useConfigPersistence({
     isDataLoaded,
@@ -1705,13 +1709,7 @@ export default function App() {
         fleetDataset,
         alertSources: goLiveAlertSources(),
       });
-      setAlerts((prevAlerts) => {
-        const readMap = new Map(prevAlerts.map((a) => [a.id, a.read]));
-        return newAlerts.map((alert) => ({
-          ...alert,
-          read: readMap.get(alert.id) || false,
-        }));
-      });
+      setAlerts(applyReadState(newAlerts));
     };
     let ricId: number | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -1734,14 +1732,19 @@ export default function App() {
     alertThresholds,
     fleetDataset,
     isDataLoaded,
+    applyReadState,
   ]);
 
   const handleMarkAlertAsRead = (id: string) => {
-      setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a));
+    markAlertRead(id);
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, read: true } : a)));
   };
 
   const handleMarkAllAlertsAsRead = () => {
-      setAlerts(prev => prev.map(a => ({ ...a, read: true })));
+    setAlerts((prev) => {
+      markAllAlertsRead(prev.map((a) => a.id));
+      return prev.map((a) => ({ ...a, read: true }));
+    });
   };
 
 
@@ -1960,7 +1963,7 @@ export default function App() {
 
   const handleAddTransaction = async (data: any) => {
     const newTransaction: Transaction = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateEntityId('tx'),
       amount: Number(data.amount),
       type: data.type as TransactionType,
       category: data.category as Category,
@@ -1975,14 +1978,31 @@ export default function App() {
       providerId: data.providerId,
       location: data.location || undefined,
     };
-    await persistTransactionsNow([newTransaction, ...transactions], "Transacción guardada correctamente");
+    const ok = await persistTransactionsNow(
+      [newTransaction, ...transactions],
+      'Transacción guardada correctamente'
+    );
+    if (ok) {
+      void writeAuditLog(getSupabaseClient(), 'transaction_create', {
+        entity: 'Transacciones',
+        details: `Creó transacción ${newTransaction.type} · S/ ${newTransaction.amount}`,
+        transactionId: newTransaction.id,
+      });
+    }
   };
 
   const handleImportTransactions = async (newTransactions: Transaction[]) => {
-    await persistTransactionsNow(
+    const ok = await persistTransactionsNow(
       [...newTransactions, ...transactions],
       `${newTransactions.length} transacción(es) importada(s) y guardada(s)`
     );
+    if (ok && newTransactions.length > 0) {
+      void writeAuditLog(getSupabaseClient(), 'transaction_import', {
+        entity: 'Transacciones',
+        details: `Importó ${newTransactions.length} transacción(es)`,
+        count: newTransactions.length,
+      });
+    }
   };
 
   const handleProjectTransactions = async (projectedTxs: Transaction[]) => {
@@ -2025,21 +2045,30 @@ export default function App() {
         );
       });
       const next = [...transactions];
+      let createdId: string | null = null;
       if (idx >= 0) {
         next[idx] = { ...next[idx]!, amount: payload.amount };
       } else {
+        createdId = generateEntityId('cf');
         next.unshift({
-          id: `cf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          id: createdId,
           amount: payload.amount,
           type: payload.type,
           category: payload.category as Category,
           subcategory: payload.subcategory || undefined,
           concept: payload.concept || undefined,
-          description: "Proyección flujo (triple capa)",
+          description: 'Proyección flujo (triple capa)',
           date: startOfDay(payload.date),
         });
       }
-      await persistTransactionsNow(next, "Valor guardado en transacciones");
+      const ok = await persistTransactionsNow(next, 'Valor guardado en transacciones');
+      if (ok && createdId) {
+        void writeAuditLog(getSupabaseClient(), 'transaction_create', {
+          entity: 'Flujo de caja',
+          details: `Proyección en celda · S/ ${payload.amount}`,
+          transactionId: createdId,
+        });
+      }
     },
     [persistTransactionsNow, transactions]
   );
@@ -2707,6 +2736,13 @@ export default function App() {
 
   const handleUpdatePettyCashTransactions = useCallback(
     async (nextVisibleTransactions: PettyCashTransaction[]): Promise<boolean> => {
+      const prevVisibleIds = new Set(
+        pettyCashTransactions
+          .filter((tx) => !tx.location || canSeeSede(tx.location))
+          .map((tx) => tx.id)
+      );
+      const newMovements = nextVisibleTransactions.filter((tx) => !prevVisibleIds.has(tx.id));
+
       if (!isDataLoaded) {
         toast.error(
           'Los datos siguen cargando desde la nube. Espera el aviso «Datos sincronizados con la nube» e intenta de nuevo.'
@@ -2747,6 +2783,13 @@ export default function App() {
         }
         pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
         pettyCashHydratedFromKvRef.current = true;
+        if (newMovements.length > 0) {
+          void writeAuditLog(getSupabaseClient(), 'petty_cash_create', {
+            entity: 'Caja chica',
+            details: `Registró ${newMovements.length} movimiento(s)`,
+            count: newMovements.length,
+          });
+        }
         return true;
       } catch (e) {
         console.warn('[GrooFlow] pettyCash persist:', e);
@@ -2756,7 +2799,7 @@ export default function App() {
         skipPettyCashHydrateRef.current = false;
       }
     },
-    [canSeeSede, isDataLoaded]
+    [canSeeSede, isDataLoaded, pettyCashTransactions]
   );
 
   const filteredRequestsBySede = useMemo(
@@ -2834,7 +2877,14 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans transition-colors duration-500 relative overflow-x-hidden">
+    <div
+      className="min-h-screen bg-background text-foreground font-sans transition-colors duration-500 relative overflow-x-hidden"
+      style={
+        {
+          '--grooflow-sidebar-w': isSidebarCollapsed ? '76px' : '256px',
+        } as CSSProperties
+      }
+    >
       <AppProvider value={{ currentUser, roles, theme, toggleTheme }}>
       {/* Animated Neon Orbs */}
       <div className="orb-cyan bg-orb"></div>
@@ -3651,7 +3701,7 @@ export default function App() {
 
           {/* Edit Transaction Dialog */}
           <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="sm:max-w-[600px]">
+            <DialogContent className="sm:max-w-[680px]">
               <DialogHeader>
                 <DialogTitle>Editar Transacción</DialogTitle>
                 <DialogDescription>
@@ -3673,7 +3723,7 @@ export default function App() {
           </Dialog>
 
           <Dialog open={isTransactionImporterOpen} onOpenChange={setIsTransactionImporterOpen}>
-            <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-[840px] max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Importar transacciones desde Excel</DialogTitle>
                 <DialogDescription>
