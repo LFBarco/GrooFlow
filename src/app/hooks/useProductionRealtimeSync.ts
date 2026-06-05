@@ -323,6 +323,32 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
 
 
+    const reloadPettyCashMeta = async () => {
+
+      const h = handlers.pettyCashMeta;
+
+      const metaLatest = handlers.pettyCashMetaLatest;
+
+      const settingsLatest = handlers.systemSettingsLatest;
+
+      if (!h || !metaLatest || !settingsLatest) return;
+
+      const result = await loadPettyCashMetaFromSql(client);
+
+      if (!result.ok || !result.data || kvPayloadsEqual(metaLatest.current, result.data)) return;
+
+      const merged = mergePettyCashMetaIntoSettings(settingsLatest.current, result.data);
+
+      metaLatest.current = result.data;
+
+      settingsLatest.current = merged;
+
+      h.current?.(merged);
+
+    };
+
+
+
     const reloadInvoices = async () => {
 
       const h = handlers.invoices;
