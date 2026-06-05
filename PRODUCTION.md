@@ -31,6 +31,11 @@ npm run release:prod
 - **Super-admin:** reset operativo y stress test solo emails en `getSuperAdminEmails()` o rol `super_admin`.
 - **Auditoría:** tabla `security_audit_logs` (lectura admin; insert por actor autenticado).
 
+## Go-live por fases
+
+Módulos ocultos para usuarios normales (super-admin sigue viéndolos): Tesorería, Honorarios, Productos, Compras.
+Configuración en `src/app/config/goLive.ts`. Al activar un módulo, quítalo de `GO_LIVE_EXCLUDED_MODULES` y redespliega.
+
 ## Flags de datos
 
 - Dual-write: KV Edge + SQL.

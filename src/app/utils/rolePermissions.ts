@@ -1,4 +1,5 @@
 import type { Role } from '../components/users/types';
+import { isGoLiveExcludedModule } from '../config/goLive';
 import { VIEW_TO_PATH, VIEW_REQUIRED_MODULE, VIEW_REDIRECT_PRIORITY } from '../routes';
 
 /**
@@ -33,6 +34,7 @@ export function roleHasModuleAccess(
   permissions: Record<string, boolean> | undefined,
   moduleName: string
 ): boolean {
+  if (isGoLiveExcludedModule(moduleName)) return false;
   if (!permissions) return false;
   if (permissions[moduleName] === true) return true;
   /**

@@ -42,17 +42,26 @@ interface AlertContext {
     thresholds?: Partial<AlertThresholds>;
     /** Flota clínica — alertas SOAT, ITV, checklist, etc. */
     fleetDataset?: FleetDataset;
+    /** Desactivar reglas de módulos aún no en go-live. */
+    alertSources?: {
+        invoices?: boolean;
+        purchaseRequests?: boolean;
+    };
 }
 
 export function generateAlerts(context: AlertContext): SystemAlert[] {
     const alerts: SystemAlert[] = [];
     const today = new Date();
     const thresholds = { ...DEFAULT_THRESHOLDS, ...context.thresholds };
+    const invoiceAlertsEnabled = context.alertSources?.invoices !== false;
+    const requestAlertsEnabled = context.alertSources?.purchaseRequests !== false;
     
     // --- 1. FINANCIERO: LIQUIDEZ Y VENCIMIENTOS ---
-    const pendingInvoices = context.invoices.filter(inv => 
-        inv.status === 'approved' || inv.status === 'pending_approval'
-    );
+    const pendingInvoices = invoiceAlertsEnabled
+      ? context.invoices.filter(inv => 
+          inv.status === 'approved' || inv.status === 'pending_approval'
+        )
+      : [];
 
     let totalDueNextWeek = 0;
     const dueByDate: Record<string, number> = {};
@@ -140,7 +149,7 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
     }
 
     // B. Solicitudes Estancadas
-    context.requests.forEach(req => {
+    if (requestAlertsEnabled) context.requests.forEach(req => {
         if (req.status === 'pending') {
             const daysPending = differenceInDays(today, new Date(req.requestDate));
             if (daysPending >= thresholds.staleRequestDays) {

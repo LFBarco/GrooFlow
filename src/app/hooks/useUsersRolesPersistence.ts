@@ -13,6 +13,7 @@ import {
   persistKvDomainNow,
   type CloudSyncTracker,
 } from '../utils/kvDomainPersistence';
+import { sanitizeUsersForCloud } from '../utils/sanitizeUsersForCloud';
 
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 
@@ -69,14 +70,15 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
         return false;
       }
-      usersLatestRef.current = list;
+      const clean = sanitizeUsersForCloud(list);
+      usersLatestRef.current = clean;
 
       if (PRODUCTION_USE_SQL) {
         const { data: sess } = await getSupabaseClient().auth.getSession();
         const sqlOk = await ensureSqlSave(
           true,
           'data:users',
-          () => saveAppUsersToSql(getSupabaseClient(), list, sess.session?.user?.id ?? null),
+          () => saveAppUsersToSql(getSupabaseClient(), clean, sess.session?.user?.id ?? null),
           lastSaveErrorAtRef
         );
         if (!sqlOk) return false;
@@ -84,7 +86,7 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
 
       const ok = await persistKvDomainNow({
         kvKey: 'data:users',
-        payload: list,
+        payload: clean,
         refs: {
           hydratedFromKvRef: usersHydratedRef,
           skipHydrateRef: skipUsersHydrateRef,
@@ -102,8 +104,8 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         if ((import.meta.env.VITE_BACKEND ?? 'supabase') === 'supabase') {
           const { data: sess } = await getSupabaseClient().auth.getSession();
           const authId = sess.session?.user?.id;
-          const actor = authId ? list.find((u) => u.id === authId) : undefined;
-          void syncUserProfilesToSql(getSupabaseClient(), list, {
+          const actor = authId ? clean.find((u) => u.id === authId) : undefined;
+          void syncUserProfilesToSql(getSupabaseClient(), clean, {
             authUserId: authId,
             isAdmin: isAdminAppUser(actor),
           });
@@ -156,9 +158,10 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
 
   useEffect(() => {
     if (!isDataLoaded || !usersHydratedRef.current || !canSaveUsers) return;
+    const cleanUsers = sanitizeUsersForCloud(users);
     void autosaveKvDomain({
       kvKey: 'data:users',
-      payload: users,
+      payload: cleanUsers,
       refs: {
         chainRef: usersChainRef,
         latestRef: usersLatestRef,
@@ -173,7 +176,7 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         void backupDomainSqlAfterKvSave(
           PRODUCTION_USE_SQL,
           'data:users',
-          users,
+          cleanUsers,
           saveAppUsersToSql,
           lastSaveErrorAtRef
         );

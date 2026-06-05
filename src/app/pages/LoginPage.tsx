@@ -296,27 +296,23 @@ export function LoginPage({
     defaultValues: { remember: false },
   });
 
-  // Load remembered credentials
+  // Recordar solo email (nunca contraseña en localStorage)
   useEffect(() => {
+    localStorage.removeItem("grooflow_remember_password");
     const rememberedEmail = localStorage.getItem("grooflow_remember_email");
-    const rememberedPassword = localStorage.getItem("grooflow_remember_password");
     if (rememberedEmail) {
       setValue("email", rememberedEmail);
       setValue("remember", true);
-    }
-    if (rememberedPassword) {
-      setValue("password", rememberedPassword);
     }
   }, [setValue]);
 
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
+    localStorage.removeItem("grooflow_remember_password");
     if (data.remember) {
       localStorage.setItem("grooflow_remember_email", data.email);
-      localStorage.setItem("grooflow_remember_password", data.password);
     } else {
       localStorage.removeItem("grooflow_remember_email");
-      localStorage.removeItem("grooflow_remember_password");
     }
     try {
       const { data: authData, error } = await supabase.auth.signInWithPassword({

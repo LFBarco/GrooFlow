@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { Input } from '../ui/input';
 import { Progress } from '../ui/progress';
 import { formatCurrencyEs } from '../../utils/numberFormat';
+import { isGoLiveExcludedModule } from '../../config/goLive';
 
 interface AuditPanelProps {
   transactions: Transaction[];
@@ -47,6 +48,7 @@ export function AuditPanel({
   canViewAuditLogs = false,
   currentUserEmail,
 }: AuditPanelProps) {
+  const showInvoiceAudit = !isGoLiveExcludedModule('Tesorería');
   const [selectedTab, setSelectedTab] = useState('overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
@@ -169,14 +171,6 @@ export function AuditPanel({
                 Monitoreo continuo de integridad, duplicados y anomalías financieras.
             </p>
         </div>
-        <div className="flex gap-2">
-            <Button variant="outline">
-                <Download className="w-4 h-4 mr-2" /> Exportar Reporte
-            </Button>
-            <Button>
-                <Activity className="w-4 h-4 mr-2" /> Ejecutar Análisis
-            </Button>
-        </div>
       </div>
 
       {/* Health Score Banner */}
@@ -255,6 +249,7 @@ export function AuditPanel({
                         <p className="text-xs text-muted-foreground">+20.1% respecto al mes anterior</p>
                     </CardContent>
                 </Card>
+                {showInvoiceAudit && (
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Facturas Procesadas</CardTitle>
@@ -265,13 +260,14 @@ export function AuditPanel({
                         <p className="text-xs text-muted-foreground">Última: hace 2 horas</p>
                     </CardContent>
                 </Card>
+                )}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Errores Pendientes</CardTitle>
                         <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-red-500">{duplicateTransactions.length + duplicateInvoices.length + suspiciousTransactions.length}</div>
+                        <div className="text-2xl font-bold text-red-500">{duplicateTransactions.length + (showInvoiceAudit ? duplicateInvoices.length : 0) + suspiciousTransactions.length}</div>
                         <p className="text-xs text-muted-foreground">Requieren atención inmediata</p>
                     </CardContent>
                 </Card>
@@ -421,8 +417,8 @@ export function AuditPanel({
                 )}
             </div>
 
-            {/* Invoices Section */}
-            <div className="space-y-4 pt-4 border-t">
+            {/* Invoices Section — solo si Tesorería está en go-live */}
+            {showInvoiceAudit && <div className="space-y-4 pt-4 border-t">
                  <h3 className="text-lg font-semibold flex items-center gap-2">
                     Facturas con Numeración Conflictiva
                     <Badge variant={duplicateInvoices.length > 0 ? "destructive" : "outline"}>{duplicateInvoices.length}</Badge>
@@ -467,7 +463,7 @@ export function AuditPanel({
                         ))}
                     </div>
                 )}
-            </div>
+            </div>}
         </TabsContent>
 
         {/* --- ANOMALIES TAB --- */}

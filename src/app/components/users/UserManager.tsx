@@ -291,7 +291,7 @@ export function UserManager({
             await repository.auth.updateUserPassword(targetUser.email, resetPasswordForm.newPassword);
             const updated = uniqueUsers.find(u => u.id === resetPasswordForm.userId);
             if (updated) {
-                onUpdateUser({ ...updated, tempPassword: resetPasswordForm.newPassword });
+                onUpdateUser(updated);
             }
             toast.success(`Contraseña de "${targetUser.name}" restablecida`, {
                 description: "La contraseña se actualizó en Supabase. El usuario debe usarla en su próximo acceso."

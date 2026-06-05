@@ -88,6 +88,7 @@ import { hydrateTransactions } from "./utils/hydrateTransactions";
 import { labelsMatch } from "./utils/labelMatch";
 import { formatDateInputValue, parseTransactionDate } from "./utils/transactionDate";
 import { generateAlerts } from "./components/alerts/alertEngine";
+import { goLiveAlertSources } from "./config/goLive";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
 import {
@@ -1702,6 +1703,7 @@ export default function App() {
         users,
         thresholds: alertThresholds,
         fleetDataset,
+        alertSources: goLiveAlertSources(),
       });
       setAlerts((prevAlerts) => {
         const readMap = new Map(prevAlerts.map((a) => [a.id, a.read]));
@@ -2893,7 +2895,7 @@ export default function App() {
           )}
            <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Dashboard" />
            <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Alertas" />
-           <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Analítica" />
+           <NavButton targetView="analytics" icon={Brain} label="Analítica" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Analítica" />
            
            {canSeeFinanzasNavGroup && !isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-2.5">
