@@ -78,12 +78,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { api, setKvSessionFatalHandler } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
 import { getSupabaseClient } from "./services/repository/supabase";
-import {
-  isFleetSqlEnabled,
-  loadFleetFromSql,
-  migrateFleetKvToSql,
-  saveFleetToSql,
-} from "./services/repository/fleetSql";
+import { isFleetSqlEnabled } from "./services/repository/fleetSql";
 import {
   syncUserProfilesToSql,
   isAdminAppUser,
@@ -140,7 +135,6 @@ import { resolveAppKvFromSql, saveAppKvKey } from "./services/repository/appKvSq
 import {
   backupAppKvAfterKvSave,
   backupDomainSqlAfterKvSave,
-  backupToSqlAfterKvSave,
   ensureSqlSave,
 } from "./utils/sqlAutosaveBackup";
 import { useProductionRealtimeSync } from "./hooks/useProductionRealtimeSync";
@@ -173,6 +167,11 @@ import { useConfigPersistence } from "./hooks/useConfigPersistence";
 import { usePettyCashTransactionsPersistence } from "./hooks/usePettyCashTransactionsPersistence";
 import { useSystemSettingsPersistence } from "./hooks/useSystemSettingsPersistence";
 import { useTransactionsPersistence } from "./hooks/useTransactionsPersistence";
+import { useAppDataHydration } from "./hooks/useAppDataHydration";
+import { useProvidersPersistence } from "./hooks/useProvidersPersistence";
+import { useUsersRolesPersistence } from "./hooks/useUsersRolesPersistence";
+import { useOperationalDomainsPersistence } from "./hooks/useOperationalDomainsPersistence";
+import { useFleetPersistence } from "./hooks/useFleetPersistence";
 import {
   extractPettyCashMeta,
   mergePettyCashMetaIntoSettings,
@@ -785,917 +784,115 @@ export default function App() {
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  // --- KV + usuarios: un solo flujo (login manual, F5 y SIGNED_IN). Sin setUsers en handleLogin. ---
-  useEffect(() => {
-    let cancelled = false;
-    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-
-    const refreshSessionWithTimeout = async (ms = 2200) => {
-      return Promise.race([
-        supabase.auth.refreshSession(),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
-      ]);
-    };
-
-    const getStableSession = async () => {
-      const first = await supabase.auth.getSession();
-      if (first.data.session?.access_token) return first.data.session;
-      if (backend !== 'supabase') return first.data.session;
-      try {
-        await refreshSessionWithTimeout();
-      } catch {
-        // noop: tolerar carreras transitorias al refrescar la página.
-      }
-      const second = await supabase.auth.getSession();
-      return second.data.session;
-    };
-
-    async function hydrateFromKv() {
-      if (signingOutRef.current) {
-        pendingHydrateRef.current = false;
-        return;
-      }
-      if (hydrateRunningRef.current) {
-        pendingHydrateRef.current = true;
-        return;
-      }
-      hydrateRunningRef.current = true;
-      const shouldShowAuthChecking = !cloudDataHydratedRef.current;
-      if (shouldShowAuthChecking) setIsAuthChecking(true);
-      setCloudSyncPhase('loading');
-
-      try {
-        const session = await getStableSession();
-
-        if (backend === 'supabase') {
-          if (!session?.access_token) {
-            setIsAuthenticated(false);
-            setIsAuthChecking(false);
-            return;
-          }
-          setCanSaveUsers(false);
-        } else {
-          setCanSaveUsers(true);
-        }
-
-        let data = await api.fetchInitialData();
-        let attempt = 0;
-        while (backend === 'supabase' && data.__usersKvFetchFailed && attempt < 3) {
-          attempt += 1;
-          if (cancelled) return;
-          await new Promise((r) => setTimeout(r, 350 * attempt));
-          await refreshSessionWithTimeout();
-          data = await api.fetchInitialData();
-        }
-
-        if (cancelled || signingOutRef.current) return;
-
-        /** Sesión al momento de aplicar auth (evita carrera si el usuario cerró sesión durante el fetch). */
-        const sessionEffective = await getStableSession();
-
-        if (backend === 'supabase' && !sessionEffective?.access_token) {
-            setIsAuthenticated(false);
-            setIsAuthChecking(false);
-            return;
-        }
-
-        if (backend === 'supabase' && data.__usersKvFetchFailed) {
-          toast.error(
-            'No se pudieron leer los usuarios desde la nube. Los cambios en la lista no se guardarán hasta que recargues o vuelvas a iniciar sesión.'
-          );
-          setCanSaveUsers(false);
-        } else {
-          setCanSaveUsers(true);
-        }
-
-        resetKvSaveChains();
-
-        {
-          const allowConfigRemote =
-            !data.__configKvFetchFailed &&
-            !skipConfigHydrateRef.current &&
-            Date.now() >= configKvCooldownUntilRef.current;
-          if (data.__configKvFetchFailed) {
-            configHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudo leer la configuración de Flujo de caja desde la nube. Los cambios no se guardarán hasta recargar o volver a iniciar sesión.'
-            );
-          } else if (allowConfigRemote) {
-            const remoteConfig = data['settings:config'] as ConfigStructure | null | undefined;
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            let finalConfig = remoteConfig;
-            if (PRODUCTION_USE_SQL) {
-              finalConfig =
-                ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'settings:config',
-                  remoteConfig ?? initialStructure,
-                  sessionUserId,
-                  (v) => v == null
-                )) as ConfigStructure | null | undefined) ?? remoteConfig ?? initialStructure;
-            }
-            if (finalConfig) {
-              setConfig(finalConfig);
-              configKvLatestRef.current = finalConfig;
-            } else {
-              configKvLatestRef.current = initialStructure;
-            }
-            configHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowSystemRemote = shouldAllowKvRemoteHydrate(
-            data.__systemSettingsKvFetchFailed,
-            skipSystemSettingsHydrateRef,
-            systemSettingsKvCooldownUntilRef
-          );
-          if (data.__systemSettingsKvFetchFailed) {
-            systemSettingsHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudo leer la configuración del sistema desde la nube. Se detuvo el autoguardado.'
-            );
-          } else if (allowSystemRemote) {
-            const remote = data['settings:system'] as Partial<SystemSettings> | null | undefined;
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            let resolvedRemote = remote;
-            if (PRODUCTION_USE_SQL) {
-              resolvedRemote =
-                ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'settings:system',
-                  remote ?? initialSystemSettings,
-                  sessionUserId,
-                  (v) => v == null
-                )) as Partial<SystemSettings> | null | undefined) ?? remote;
-            }
-            const mergedBase = resolvedRemote
-              ? mergeSystemSettings(resolvedRemote)
-              : initialSystemSettings;
-            const legacyMeta = extractPettyCashMeta(mergedBase.pettyCash);
-            let remoteMeta = normalizePettyCashMeta(data[PETTY_CASH_META_KV_KEY]);
-            if (PRODUCTION_USE_SQL) {
-              const sqlMetaLoad = await loadPettyCashMetaFromSql(getSupabaseClient());
-              if (sqlMetaLoad.ok && sqlMetaLoad.data) {
-                remoteMeta = sqlMetaLoad.data;
-              }
-            }
-            const resolvedMeta = resolvePettyCashMeta(remoteMeta, legacyMeta);
-            if (
-              PRODUCTION_USE_SQL &&
-              sessionUserId &&
-              !remoteMeta.weekClosures.length &&
-              !remoteMeta.fundDeliveries.length &&
-              (legacyMeta.weekClosures.length > 0 || legacyMeta.fundDeliveries.length > 0)
-            ) {
-              void migratePettyCashMetaKvToSql(
-                getSupabaseClient(),
-                legacyMeta,
-                sessionUserId
-              );
-            }
-            const merged = mergePettyCashMetaIntoSettings(mergedBase, resolvedMeta);
-            pettyCashMetaKvLatestRef.current = resolvedMeta;
-            systemSettingsKvLatestRef.current = merged;
-            setSystemSettings(merged);
-            systemSettingsHydratedFromKvRef.current = true;
-          }
-        }
-
-        if (data.__transactionsKvFetchFailed) {
-          transactionsCloudHydrationDoneRef.current = false;
-          transactionsHydratedFromKvRef.current = false;
-          toast.error(
-            'No se pudieron leer las transacciones desde la nube. Se detuvo el autoguardado para evitar sobrescribir el histórico.'
-          );
-        } else {
-          const rawKv = data['data:transactions'];
-          const kvList = Array.isArray(rawKv) ? hydrateTransactions(rawKv) : [];
-          const kvUnique = Array.from(new Map(kvList.map((t) => [t.id, t])).values());
-          let nextTransactions = kvUnique;
-          const sessionUserId = sessionEffective?.user?.id ?? null;
-
-          if (TRANSACTIONS_USE_SQL) {
-            const sqlLoad = await loadTransactionsFromSql(getSupabaseClient());
-            if (sqlLoad.ok && sqlLoad.data && sqlLoad.data.length > 0) {
-              nextTransactions = sqlLoad.data;
-            } else if (kvUnique.length > 0) {
-              nextTransactions = kvUnique;
-              if (sessionUserId) {
-                void migrateTransactionsKvToSql(getSupabaseClient(), kvUnique, sessionUserId);
-              }
-            } else if (sqlLoad.ok && sqlLoad.data) {
-              nextTransactions = sqlLoad.data;
-            } else {
-              nextTransactions = [];
-            }
-          }
-
-          transactionsKvLatestRef.current = nextTransactions;
-          setTransactions(nextTransactions);
-          transactionsCloudHydrationDoneRef.current = true;
-          transactionsHydratedFromKvRef.current = true;
-
-          if (data['maintenance:transactionsClearedAt'] !== TRANSACTION_HISTORY_CLEAR_MARK) {
-            void api.saveKey('maintenance:transactionsClearedAt', TRANSACTION_HISTORY_CLEAR_MARK);
-          }
-        }
-
-        {
-          const allowInvoicesRemote = shouldAllowKvRemoteHydrate(
-            data.__invoicesKvFetchFailed,
-            skipInvoicesHydrateRef,
-            invoicesKvCooldownUntilRef
-          );
-          if (data.__invoicesKvFetchFailed) {
-            invoicesHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudieron leer las facturas desde la nube. Se detuvo el autoguardado para no sobrescribirlas.'
-            );
-          } else if (allowInvoicesRemote) {
-            const rawInv = data['data:invoices'];
-            const kvUnique = Array.isArray(rawInv)
-              ? (Array.from(
-                  new Map((rawInv as InvoiceDraft[]).map((i) => [i.id, i])).values()
-                ) as InvoiceDraft[])
-              : APP_BACKEND === 'local'
-                ? initialInvoices
-                : [];
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const unique = PRODUCTION_USE_SQL
-              ? await resolveListFromSql(
-                  kvUnique,
-                  () => loadInvoicesFromSql(getSupabaseClient()),
-                  migrateInvoicesKvToSql,
-                  sessionUserId
-                )
-              : kvUnique;
-            invoicesKvLatestRef.current = unique;
-            setInvoices(unique);
-            invoicesHydratedFromKvRef.current = true;
-          }
-        }
-
-        const rawPv = data['data:providers'];
-        const allowProvidersRemote =
-          !data.__providersKvFetchFailed &&
-          !skipProvidersHydrateRef.current &&
-          Date.now() >= providersKvCooldownUntilRef.current;
-        if (data.__providersKvFetchFailed) {
-          toast.error(
-            'No se pudieron leer los proveedores desde la nube. Se detuvo el autoguardado para no borrar el directorio.'
-          );
-        } else if (allowProvidersRemote) {
-          providersHydratedFromKvRef.current = true;
-          const kvList = Array.isArray(rawPv)
-            ? (Array.from(new Map(rawPv.map((p: Provider) => [p.id, p])).values()) as Provider[])
-            : [];
-          const sessionUserId = sessionEffective?.user?.id ?? null;
-          const list = PRODUCTION_USE_SQL
-            ? await resolveListFromSql(
-                kvList,
-                () => loadProvidersFromSql(getSupabaseClient()),
-                migrateProvidersKvToSql,
-                sessionUserId
-              )
-            : kvList;
-          providersKvLatestRef.current = list;
-          setProviders(list);
-        }
-
-        {
-          const allowChartRemote = shouldAllowKvRemoteHydrate(
-            data.__chartOfAccountsKvFetchFailed,
-            skipChartOfAccountsHydrateRef,
-            chartOfAccountsKvCooldownUntilRef
-          );
-          if (data.__chartOfAccountsKvFetchFailed) {
-            chartOfAccountsHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudo leer el plan de cuentas desde la nube. Se detuvo el autoguardado para no borrarlo.'
-            );
-          } else if (allowChartRemote) {
-            const raw = data['data:chartOfAccounts'] as ChartOfAccountEntry[] | null | undefined;
-            const kvList = Array.isArray(raw) ? raw : [];
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const list = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'data:chartOfAccounts',
-                  kvList,
-                  sessionUserId,
-                  (v) => !Array.isArray(v) || v.length === 0
-                )) as ChartOfAccountEntry[] | null | undefined) ?? kvList
-              : kvList;
-            chartOfAccountsKvLatestRef.current = list;
-            setChartOfAccounts(list);
-            chartOfAccountsHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowProductsRemote = shouldAllowKvRemoteHydrate(
-            data.__productsKvFetchFailed,
-            skipProductsHydrateRef,
-            productsKvCooldownUntilRef
-          );
-          if (data.__productsKvFetchFailed) {
-            productsHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudieron leer los productos desde la nube. Se detuvo el autoguardado para no borrar el catálogo.'
-            );
-          } else if (allowProductsRemote) {
-            const rawPv = data['data:products'];
-            const kvUnique = Array.isArray(rawPv)
-              ? (Array.from(
-                  new Map((rawPv as Product[]).map((p) => [p.id, p])).values()
-                ) as Product[])
-              : APP_BACKEND === 'local'
-                ? initialProducts
-                : [];
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const resolved = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'data:products',
-                  kvUnique,
-                  sessionUserId,
-                  (v) => !Array.isArray(v) || v.length === 0
-                )) as Product[] | null | undefined) ?? kvUnique
-              : kvUnique;
-            const mapped = resolved.map((p) => ({
-              ...p,
-              createdAt: p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt),
-              updatedAt: p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt),
-            }));
-            productsKvLatestRef.current = mapped;
-            setProducts(mapped);
-            productsHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowRequestsRemote = shouldAllowKvRemoteHydrate(
-            data.__requestsKvFetchFailed,
-            skipRequestsHydrateRef,
-            requestsKvCooldownUntilRef
-          );
-          if (data.__requestsKvFetchFailed) {
-            requestsHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudieron leer las solicitudes de compra desde la nube. Se detuvo el autoguardado.'
-            );
-          } else if (allowRequestsRemote) {
-            const rawReq = data['data:requests'];
-            const kvUnique = Array.isArray(rawReq)
-              ? (Array.from(
-                  new Map((rawReq as PurchaseRequest[]).map((r) => [r.id, r])).values()
-                ) as PurchaseRequest[])
-              : APP_BACKEND === 'local'
-                ? initialRequests
-                : [];
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const resolved = PRODUCTION_USE_SQL
-              ? await resolveListFromSql(
-                  kvUnique.map((r) => {
-                    const rd = r.requestDate;
-                    const asDate =
-                      rd instanceof Date && !isNaN(rd.getTime())
-                        ? rd
-                        : new Date(
-                            typeof rd === 'string' || typeof rd === 'number' ? rd : String(rd ?? '')
-                          );
-                    return {
-                      ...r,
-                      requestDate: isNaN(asDate.getTime()) ? new Date() : asDate,
-                    };
-                  }),
-                  () => loadPurchaseRequestsFromSql(getSupabaseClient()),
-                  migratePurchaseRequestsKvToSql,
-                  sessionUserId
-                )
-              : kvUnique;
-            const mapped = resolved.map((r) => {
-              const rd = r.requestDate;
-              const asDate =
-                rd instanceof Date && !isNaN(rd.getTime())
-                  ? rd
-                  : new Date(
-                      typeof rd === 'string' || typeof rd === 'number' ? rd : String(rd ?? '')
-                    );
-              return {
-                ...r,
-                requestDate: isNaN(asDate.getTime()) ? new Date() : asDate,
-              };
-            });
-            requestsKvLatestRef.current = mapped;
-            setRequests(mapped);
-            requestsHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowPettyRemote =
-            !data.__pettyCashKvFetchFailed &&
-            !skipPettyCashHydrateRef.current &&
-            Date.now() >= pettyCashKvCooldownUntilRef.current;
-          if (data.__pettyCashKvFetchFailed) {
-            pettyCashHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudo leer Caja chica desde la nube. Se detuvo el autoguardado para no perder movimientos.'
-            );
-          } else if (allowPettyRemote) {
-            const rawPc = data['data:pettyCash'];
-            const kvPtx = Array.isArray(rawPc) ? (rawPc as PettyCashTransaction[]) : [];
-            const kvMapped = kvPtx.map((t) => ({
-              ...t,
-              date: parseTransactionDate(t.date),
-              documentDate:
-                t.documentDate != null ? parseTransactionDate(t.documentDate) : undefined,
-            }));
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const mapped = PRODUCTION_USE_SQL
-              ? await resolveListFromSql(
-                  kvMapped,
-                  () => loadPettyCashFromSql(getSupabaseClient()),
-                  migratePettyCashKvToSql,
-                  sessionUserId
-                )
-              : kvMapped;
-            pettyCashKvLatestRef.current = mapped;
-            setPettyCashTransactions(mapped);
-            pettyCashHydratedFromKvRef.current = true;
-          }
-        }
-
-        let nextUsers: User[] = [];
-        const usersFromKv = data['data:users'];
-        if (Array.isArray(usersFromKv)) {
-          const byId = Array.from(
-            new Map(usersFromKv.map((u: User) => [u.id, u])).values()
-          ) as User[];
-          nextUsers = dedupeUsersByEmail(byId);
-        }
-        nextUsers = applySuperAdminRoleFromConfig(nextUsers);
-
-        if (!cancelled && sessionEffective?.user) {
-          nextUsers = mergeAuthUserIntoUsers(nextUsers, sessionEffective.user);
-          nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
-        }
-
-        const hasLocalDemoSession =
-          typeof window !== 'undefined' &&
-          window.sessionStorage.getItem('grooflow_local_session') === '1';
-
-        let sessionUserRow: User | null = null;
-
-        if (!cancelled && sessionEffective?.user?.email) {
-          if (typeof window !== 'undefined') {
-            window.sessionStorage.removeItem('grooflow_local_session');
-          }
-          const em = sessionEffective.user.email.trim().toLowerCase();
-          const row = resolveCurrentUserRow(nextUsers, em);
-          sessionUserRow = row;
-          if (!row) {
-            await supabase.auth.signOut();
-            toast.error("Acceso denegado", {
-              description:
-                "Tu correo no aparece en la lista de usuarios del sistema. Un administrador debe darte de alta en «Gestión de usuarios».",
-              duration: 10000,
-            });
-            setCurrentUser(GUEST_USER);
-            setIsAuthenticated(false);
-            setIsAuthChecking(false);
-            return;
-          }
-          if (row.status === 'inactive' && !getSuperAdminEmails().has(em)) {
-            await supabase.auth.signOut();
-            toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
-            setCurrentUser(GUEST_USER);
-            setIsAuthenticated(false);
-            setIsAuthChecking(false);
-            return;
-          }
-          if (signingOutRef.current) return;
-          const sessionLast = await getStableSession();
-          if (backend === 'supabase' && !sessionLast?.access_token) {
-            setIsAuthenticated(false);
-            setIsAuthChecking(false);
-            return;
-          }
-          setCurrentUser(row);
-          setIsAuthenticated(true);
-        } else if (backend === 'local' && hasLocalDemoSession && nextUsers.length > 0) {
-          if (!signingOutRef.current) {
-            setCurrentUser(nextUsers[0]);
-            setIsAuthenticated(true);
-          }
-        } else {
-          setIsAuthenticated(false);
-        }
-
-        /** Solo tras validar sesión + fila de usuario (o modo invitado/local); evita “hidratación fantasma” en accesos denegados */
-        cloudDataHydratedRef.current = true;
-
-        if (PRODUCTION_USE_SQL && sessionEffective?.user?.id) {
-          const sqlUsers = await resolveListFromSql(
-            nextUsers,
-            () => loadAppUsersFromSql(getSupabaseClient()),
-            migrateAppUsersKvToSql,
-            sessionEffective.user.id
-          );
-          if (sqlUsers.length > 0) {
-            nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(sqlUsers));
-            if (sessionEffective?.user) {
-              nextUsers = mergeAuthUserIntoUsers(nextUsers, sessionEffective.user);
-              nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
-            }
-          }
-        }
-
-        setUsers(nextUsers);
-        if (!data.__usersKvFetchFailed) {
-          usersKvLatestRef.current = nextUsers;
-          usersHydratedFromKvRef.current = true;
-          if (backend === 'supabase' && sessionEffective.user?.id) {
-            void syncUserProfilesToSql(getSupabaseClient(), nextUsers, {
-              authUserId: sessionEffective.user.id,
-              isAdmin: isAdminAppUser(sessionUserRow),
-            });
-          }
-        } else {
-          usersHydratedFromKvRef.current = false;
-        }
-
-        {
-          const allowRolesRemote = shouldAllowKvRemoteHydrate(
-            data.__rolesKvFetchFailed,
-            skipRolesHydrateRef,
-            rolesKvCooldownUntilRef
-          );
-          if (data.__rolesKvFetchFailed) {
-            rolesHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudieron leer los roles desde la nube. Se detuvo el autoguardado para no sobrescribirlos.'
-            );
-          } else if (allowRolesRemote) {
-            const rawRoles = data['data:roles'] as Role[] | null | undefined;
-            const kvMerged = rawRoles ? mergeRolesWithDefaults(rawRoles) : DEFAULT_ROLES;
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const merged = PRODUCTION_USE_SQL
-              ? mergeRolesWithDefaults(
-                  await resolveListFromSql(
-                    kvMerged,
-                    () => loadRolesFromSql(getSupabaseClient()),
-                    migrateRolesKvToSql,
-                    sessionUserId
-                  )
-                )
-              : kvMerged;
-            rolesKvLatestRef.current = merged;
-            setRoles(merged);
-            rolesHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowFeeReceiptsRemote = shouldAllowKvRemoteHydrate(
-            data.__feeReceiptsKvFetchFailed,
-            skipFeeReceiptsHydrateRef,
-            feeReceiptsKvCooldownUntilRef
-          );
-          if (data.__feeReceiptsKvFetchFailed) {
-            feeReceiptsHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudieron leer los honorarios desde la nube. Se detuvo el autoguardado.'
-            );
-          } else if (allowFeeReceiptsRemote) {
-            const raw = data['data:feeReceipts'];
-            const kvList = Array.isArray(raw) ? (raw as FeeReceiptGlobal[]) : [];
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const list = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'data:feeReceipts',
-                  kvList,
-                  sessionUserId,
-                  (v) => !Array.isArray(v) || v.length === 0
-                )) as FeeReceiptGlobal[] | null | undefined) ?? kvList
-              : kvList;
-            feeReceiptsKvLatestRef.current = list;
-            setFeeReceipts(list);
-            feeReceiptsHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowAlertThresholdsRemote = shouldAllowKvRemoteHydrate(
-            data.__alertThresholdsKvFetchFailed,
-            skipAlertThresholdsHydrateRef,
-            alertThresholdsKvCooldownUntilRef
-          );
-          if (data.__alertThresholdsKvFetchFailed) {
-            alertThresholdsHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudieron leer los umbrales de alertas desde la nube. Se detuvo el autoguardado.'
-            );
-          } else if (allowAlertThresholdsRemote) {
-            const remoteThresholds = data['settings:alertThresholds'] as AlertThresholds | null | undefined;
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const resolved = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'settings:alertThresholds',
-                  remoteThresholds,
-                  sessionUserId,
-                  (v) => v == null
-                )) as AlertThresholds | null | undefined) ?? remoteThresholds
-              : remoteThresholds;
-            if (resolved) {
-              alertThresholdsKvLatestRef.current = resolved;
-              setAlertThresholds(resolved);
-            }
-            alertThresholdsHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowThemeRemote = shouldAllowKvRemoteHydrate(
-            data.__themeKvFetchFailed,
-            skipThemeHydrateRef,
-            themeKvCooldownUntilRef
-          );
-          if (data.__themeKvFetchFailed) {
-            themeHydratedFromKvRef.current = false;
-            toast.error('No se pudo leer el tema desde la nube. Se detuvo el autoguardado.');
-          } else if (allowThemeRemote) {
-            const remote = data['settings:theme'];
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const resolved = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'settings:theme',
-                  remote,
-                  sessionUserId,
-                  (v) => v == null
-                )) as 'dark' | 'light' | null | undefined) ?? remote
-              : remote;
-            const next: 'dark' | 'light' = resolved === 'light' ? 'light' : 'dark';
-            themeKvLatestRef.current = next;
-            setTheme(next);
-            themeHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const treasuryFetchFailed =
-            data.__treasuryInvoicesKvFetchFailed ||
-            data.__treasuryBankBalanceKvFetchFailed ||
-            data.__treasuryPaidHistoryKvFetchFailed;
-          const allowTreasuryRemote =
-            !treasuryFetchFailed &&
-            !skipTreasuryHydrateRef.current &&
-            Date.now() >= treasuryKvCooldownUntilRef.current;
-
-          if (treasuryFetchFailed) {
-            treasuryHydratedFromKvRef.current = false;
-            treasuryBankBalanceLoadedFromKvRef.current = false;
-            toast.error(
-              'No se pudo leer Tesorería desde la nube. Se detuvo el autoguardado para no perder datos.'
-            );
-          } else if (allowTreasuryRemote) {
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const rawTi = data['data:treasuryInvoices'];
-            const kvTiList = Array.isArray(rawTi) ? rawTi : [];
-            const tiList = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'data:treasuryInvoices',
-                  kvTiList,
-                  sessionUserId,
-                  (v) => !Array.isArray(v) || v.length === 0
-                )) as unknown[] | null | undefined) ?? kvTiList
-              : kvTiList;
-            treasuryInvoicesKvLatestRef.current = tiList;
-            setTreasuryInvoices(tiList);
-
-            treasuryBankBalanceLoadedFromKvRef.current = true;
-            const kvBal =
-              data['data:treasuryBankBalance'] !== undefined && data['data:treasuryBankBalance'] !== null
-                ? Number(data['data:treasuryBankBalance'])
-                : undefined;
-            const bal = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'data:treasuryBankBalance',
-                  kvBal,
-                  sessionUserId,
-                  (v) => v === undefined
-                )) as number | null | undefined)
-              : kvBal;
-            if (bal !== undefined && bal !== null) {
-              treasuryBankBalanceKvLatestRef.current = Number(bal);
-              setTreasuryBankBalance(Number(bal));
-            } else {
-              treasuryBankBalanceKvLatestRef.current = undefined;
-              setTreasuryBankBalance(undefined);
-            }
-
-            const rawPh = data['data:treasuryPaidHistory'];
-            const kvPhList = Array.isArray(rawPh) ? rawPh : [];
-            const phList = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
-                  'data:treasuryPaidHistory',
-                  kvPhList,
-                  sessionUserId,
-                  (v) => !Array.isArray(v) || v.length === 0
-                )) as unknown[] | null | undefined) ?? kvPhList
-              : kvPhList;
-            treasuryPaidHistoryKvLatestRef.current = phList;
-            setTreasuryPaidHistory(phList);
-
-            treasuryHydratedFromKvRef.current = true;
-          }
-        }
-
-        {
-          const allowFleetRemote = shouldAllowKvRemoteHydrate(
-            data.__fleetKvFetchFailed,
-            skipFleetHydrateRef,
-            fleetKvCooldownUntilRef
-          );
-          const fleetFetchFailed = data.__fleetKvFetchFailed && !FLEET_USE_SQL;
-          if (fleetFetchFailed) {
-            fleetHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudo leer Flota clínica desde la nube. Se detuvo el autoguardado para no perder vehículos ni checklists.'
-            );
-          } else if (allowFleetRemote || FLEET_USE_SQL) {
-            let nextFleet: FleetDataset;
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-
-            if (FLEET_USE_SQL) {
-              const sqlLoad = await loadFleetFromSql(getSupabaseClient());
-              const rawFleet = data['data:fleet'];
-              /** KV es fuente de verdad; SQL solo si KV vacío (Realtime / multi-dispositivo). */
-              if (rawFleet != null) {
-                nextFleet = normalizeFleetDataset(rawFleet);
-                if (sqlLoad.ok && sessionUserId) {
-                  void migrateFleetKvToSql(getSupabaseClient(), nextFleet, sessionUserId);
-                }
-              } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
-                nextFleet = sqlLoad.data;
-              } else if (sqlLoad.ok && sqlLoad.data) {
-                nextFleet = sqlLoad.data;
-              } else if (APP_BACKEND === 'local') {
-                nextFleet = createDemoFleetDataset();
-              } else {
-                nextFleet = normalizeFleetDataset({});
-              }
-            } else {
-              const rawFleet = data['data:fleet'];
-              if (rawFleet != null) {
-                nextFleet = normalizeFleetDataset(rawFleet);
-              } else if (APP_BACKEND === 'local') {
-                nextFleet = createDemoFleetDataset();
-              } else {
-                nextFleet = normalizeFleetDataset({});
-              }
-            }
-            fleetKvLatestRef.current = nextFleet;
-            setFleetDataset(nextFleet);
-            fleetHydratedFromKvRef.current = true;
-          }
-        }
-
-        providersCloudHydrationDoneRef.current = true;
-        cloudSyncErrorRef.current = false;
-        setCloudSyncPhase('synced');
-        setIsDataLoaded(true);
-        toast.success('Datos sincronizados con la nube');
-      } finally {
-        setIsAuthChecking(false);
-        hydrateRunningRef.current = false;
-        const rerun = pendingHydrateRef.current;
-        pendingHydrateRef.current = false;
-        if (rerun && !cancelled && !signingOutRef.current) {
-          queueMicrotask(() => {
-            void hydrateFromKv();
-          });
-        }
-      }
-    }
-
-    hydrateFromKvRef.current = hydrateFromKv;
-    void hydrateFromKv();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (cancelled) return;
-      if (authNullDebounceRef.current) {
-        clearTimeout(authNullDebounceRef.current);
-        authNullDebounceRef.current = null;
-      }
-      if (event === 'TOKEN_REFRESHED') {
-        return;
-      }
-      if (session?.user) {
-        /** No hacer KV full-hydrate en USER_UPDATED: Supabase puede emitirlo tras metadatos y pisa estado local
-         *  antes del autosave (ej. proveedores recién cargados parecían «no guardarse»). */
-        const shouldHydrate =
-          event === 'SIGNED_IN' ||
-          (event === 'INITIAL_SESSION' && !cloudDataHydratedRef.current);
-        if (shouldHydrate) {
-          await hydrateFromKv();
-        }
-        return;
-      }
-      // Sesión nula: puede ser cierre real o carrera (F5, pestaña, red).
-      if (event === 'TOKEN_REFRESHED') {
-        return;
-      }
-      if (backend !== 'supabase') {
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.removeItem('grooflow_local_session');
-        }
-        setCurrentUser(GUEST_USER);
-        setIsAuthenticated(false);
-        setIsAuthChecking(false);
-        cloudDataHydratedRef.current = false;
-        transactionsCloudHydrationDoneRef.current = false;
-        transactionsHydratedFromKvRef.current = false;
-        providersCloudHydrationDoneRef.current = false;
-        providersHydratedFromKvRef.current = false;
-        pettyCashHydratedFromKvRef.current = false;
-        providersKvCooldownUntilRef.current = 0;
-        pettyCashKvCooldownUntilRef.current = 0;
-        configHydratedFromKvRef.current = false;
-        configKvCooldownUntilRef.current = 0;
-        skipProvidersHydrateRef.current = false;
-        skipPettyCashHydrateRef.current = false;
-        skipConfigHydrateRef.current = false;
-        resetAllKvDomainRefs();
-        resetKvSaveChains();
-        cloudSyncPendingRef.current = 0;
-        cloudSyncErrorRef.current = false;
-        setCloudSyncPhase('idle');
-        setCanSaveUsers(true);
-        setIsDataLoaded(false);
-        return;
-      }
-      authNullDebounceRef.current = setTimeout(async () => {
-        authNullDebounceRef.current = null;
-        if (cancelled || signingOutRef.current) return;
-        const s2 = await getStableSession();
-        if (s2?.user) {
-          /** Sesión recuperada tras un null transitorio (refresh/red): no re-hidratar KV
-           *  porque invalidaría colas de guardado y pisaría cambios locales recientes. */
-          if (!cloudDataHydratedRef.current) {
-            await hydrateFromKv();
-          }
-          return;
-        }
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.removeItem('grooflow_local_session');
-        }
-        setCurrentUser(GUEST_USER);
-        setIsAuthenticated(false);
-        setIsAuthChecking(false);
-        cloudDataHydratedRef.current = false;
-        transactionsCloudHydrationDoneRef.current = false;
-        transactionsHydratedFromKvRef.current = false;
-        providersCloudHydrationDoneRef.current = false;
-        providersHydratedFromKvRef.current = false;
-        pettyCashHydratedFromKvRef.current = false;
-        providersKvCooldownUntilRef.current = 0;
-        pettyCashKvCooldownUntilRef.current = 0;
-        configHydratedFromKvRef.current = false;
-        configKvCooldownUntilRef.current = 0;
-        skipProvidersHydrateRef.current = false;
-        skipPettyCashHydrateRef.current = false;
-        skipConfigHydrateRef.current = false;
-        resetAllKvDomainRefs();
-        resetKvSaveChains();
-        cloudSyncPendingRef.current = 0;
-        cloudSyncErrorRef.current = false;
-        setCloudSyncPhase('idle');
-        setCanSaveUsers(true);
-        setIsDataLoaded(false);
-      }, 250);
-    });
-
-    return () => {
-      cancelled = true;
-      if (authNullDebounceRef.current) {
-        clearTimeout(authNullDebounceRef.current);
-        authNullDebounceRef.current = null;
-      }
-      subscription.unsubscribe();
-      hydrateFromKvRef.current = null;
-    };
-  }, []);
+  useAppDataHydration({
+    resetAllKvDomainRefs,
+    resetKvSaveChains,
+    hydrateFromKvRef,
+    authNullDebounceRef,
+    signingOutRef,
+    pendingHydrateRef,
+    hydrateRunningRef,
+    cloudDataHydratedRef,
+    cloudSyncPendingRef,
+    cloudSyncErrorRef,
+    transactionsCloudHydrationDoneRef,
+    transactionsHydratedFromKvRef,
+    skipTransactionsHydrateRef,
+    transactionsKvCooldownUntilRef,
+    transactionsKvLatestRef,
+    providersCloudHydrationDoneRef,
+    providersHydratedFromKvRef,
+    skipProvidersHydrateRef,
+    providersKvCooldownUntilRef,
+    providersKvLatestRef,
+    pettyCashHydratedFromKvRef,
+    skipPettyCashHydrateRef,
+    pettyCashKvCooldownUntilRef,
+    pettyCashKvLatestRef,
+    pettyCashMetaKvLatestRef,
+    configHydratedFromKvRef,
+    skipConfigHydrateRef,
+    configKvCooldownUntilRef,
+    configKvLatestRef,
+    systemSettingsHydratedFromKvRef,
+    skipSystemSettingsHydrateRef,
+    systemSettingsKvCooldownUntilRef,
+    systemSettingsKvLatestRef,
+    invoicesHydratedFromKvRef,
+    skipInvoicesHydrateRef,
+    invoicesKvCooldownUntilRef,
+    invoicesKvLatestRef,
+    requestsHydratedFromKvRef,
+    skipRequestsHydrateRef,
+    requestsKvCooldownUntilRef,
+    requestsKvLatestRef,
+    chartOfAccountsHydratedFromKvRef,
+    skipChartOfAccountsHydrateRef,
+    chartOfAccountsKvCooldownUntilRef,
+    chartOfAccountsKvLatestRef,
+    productsHydratedFromKvRef,
+    skipProductsHydrateRef,
+    productsKvCooldownUntilRef,
+    productsKvLatestRef,
+    rolesHydratedFromKvRef,
+    skipRolesHydrateRef,
+    rolesKvCooldownUntilRef,
+    rolesKvLatestRef,
+    usersHydratedFromKvRef,
+    skipUsersHydrateRef,
+    usersKvCooldownUntilRef,
+    usersKvLatestRef,
+    feeReceiptsHydratedFromKvRef,
+    skipFeeReceiptsHydrateRef,
+    feeReceiptsKvCooldownUntilRef,
+    feeReceiptsKvLatestRef,
+    alertThresholdsHydratedFromKvRef,
+    skipAlertThresholdsHydrateRef,
+    alertThresholdsKvCooldownUntilRef,
+    alertThresholdsKvLatestRef,
+    themeHydratedFromKvRef,
+    skipThemeHydrateRef,
+    themeKvCooldownUntilRef,
+    themeKvLatestRef,
+    fleetHydratedFromKvRef,
+    skipFleetHydrateRef,
+    fleetKvLatestRef,
+    treasuryHydratedFromKvRef,
+    skipTreasuryHydrateRef,
+    treasuryKvCooldownUntilRef,
+    treasuryInvoicesKvLatestRef,
+    treasuryBankBalanceKvLatestRef,
+    treasuryBankBalanceLoadedFromKvRef,
+    treasuryPaidHistoryKvLatestRef,
+    setIsAuthChecking,
+    setCloudSyncPhase,
+    setCanSaveUsers,
+    setIsAuthenticated,
+    setCurrentUser,
+    setIsDataLoaded,
+    setConfig,
+    setSystemSettings,
+    setTransactions,
+    setInvoices,
+    setProviders,
+    setPettyCashTransactions,
+    setUsers,
+    setRoles,
+    setFeeReceipts,
+    setAlertThresholds,
+    setChartOfAccounts,
+    setProducts,
+    setRequests,
+    setTheme,
+    setFleetDataset,
+    setTreasuryInvoices,
+    setTreasuryBankBalance,
+    setTreasuryPaidHistory,
+    GUEST_USER,
+    initialInvoices,
+    initialProducts,
+    initialRequests,
+  });
 
   const getSqlRetryLatestSnapshot = useCallback(
     () => ({
@@ -1790,596 +987,132 @@ export default function App() {
     lastSaveErrorAtRef,
   });
 
-  useEffect(() => {
-    if (!isDataLoaded || !invoicesHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:invoices',
-      payload: invoices,
-      refs: {
-        chainRef: invoicesKvChainRef,
-        latestRef: invoicesKvLatestRef,
-        cooldownUntilRef: invoicesKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudieron guardar las facturas en la nube. Reintente en unos segundos.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupDomainSqlAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:invoices',
-          invoices,
-          saveInvoicesToSql,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [invoices, isDataLoaded]);
+  const { handleUpdateProviders } = useProvidersPersistence({
+    isDataLoaded,
+    providers,
+    setProviders,
+    cloudHydrationDoneRef: providersCloudHydrationDoneRef,
+    hydratedRef: providersHydratedFromKvRef,
+    skipHydrateRef: skipProvidersHydrateRef,
+    chainRef: providersKvChainRef,
+    latestRef: providersKvLatestRef,
+    cooldownUntilRef: providersKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+  });
 
-  useEffect(() => {
-    if (!isDataLoaded || !providersCloudHydrationDoneRef.current || !providersHydratedFromKvRef.current) return;
-    void enqueueKvSerializedSave(
-      providersKvChainRef,
-      kvApplyGenerationRef,
-      providersKvLatestRef,
-      'data:providers',
-      providers
-    ).then((result) => {
-      if (kvSaveSucceeded(result)) {
-        providersKvCooldownUntilRef.current = Date.now() + PROVIDERS_KV_COOLDOWN_MS;
-        providersHydratedFromKvRef.current = true;
-        void backupDomainSqlAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:providers',
-          providers,
-          saveProvidersToSql,
-          lastSaveErrorAtRef
-        );
-        return;
-      }
-      if (result === 'skipped') return;
-      const now = Date.now();
-      const last = lastSaveErrorAtRef.current['data:providers'] ?? 0;
-      if (now - last < 8000) return;
-      lastSaveErrorAtRef.current['data:providers'] = now;
-      toast.error(
-        'No se pudo guardar el directorio de proveedores en la nube. Revisa sesión/red y vuelve a intentar.'
-      );
-    });
-  }, [providers, isDataLoaded]);
+  const { persistUsersToCloud, handleUpdateRoles } = useUsersRolesPersistence({
+    isDataLoaded,
+    canSaveUsers,
+    users,
+    roles,
+    setUsers,
+    setRoles,
+    setCanSaveUsers,
+    usersHydratedRef: usersHydratedFromKvRef,
+    rolesHydratedRef: rolesHydratedFromKvRef,
+    skipUsersHydrateRef,
+    skipRolesHydrateRef,
+    usersChainRef: usersKvChainRef,
+    usersLatestRef: usersKvLatestRef,
+    usersCooldownRef: usersKvCooldownUntilRef,
+    rolesChainRef: rolesKvChainRef,
+    rolesLatestRef: rolesKvLatestRef,
+    rolesCooldownRef: rolesKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+    cloudSync: cloudSyncTrackerRef.current,
+  });
 
-  /**
-   * Alta/edición/import masivo desde Proveedores u Honorarios.
-   * Persiste antes de reflejar en UI (`setProviders`) si la KV falla, tabla y nube siguen alineadas.
-   */
-  const handleUpdateProviders = useCallback(async (next: Provider[]): Promise<boolean> => {
-    if (!isDataLoaded) {
-      toast.error(
-        'Los datos siguen cargando desde la nube. Espera el aviso «Datos sincronizados con la nube» y vuelve a intentar.'
-      );
-      return false;
-    }
-    let clean: Provider[];
-    try {
-      clean = JSON.parse(JSON.stringify(next)) as Provider[];
-    } catch (e) {
-      console.warn('[GrooFlow] providers serialize:', e);
-      toast.error(
-        'No se pudo preparar la lista de proveedores para guardar. Revisa datos raros/caracteres en importación.'
-      );
-      return false;
-    }
-
-    skipProvidersHydrateRef.current = true;
-    try {
-      providersKvLatestRef.current = clean;
-
-      if (PRODUCTION_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const sqlOk = await ensureSqlSave(
-          true,
-          'data:providers',
-          () => saveProvidersToSql(getSupabaseClient(), clean, sess.session?.user?.id ?? null),
-          lastSaveErrorAtRef
-        );
-        if (!sqlOk) return false;
-      }
-
-      const result = await enqueueKvSerializedSave(
-        providersKvChainRef,
-        kvApplyGenerationRef,
-        providersKvLatestRef,
-        'data:providers',
-        clean
-      );
-      if (!kvSaveSucceeded(result)) {
-        toast.error(
-          'No se guardó el directorio en la nube (red, sesión o límite de tamaño). Reintenta sin cerrar sesión.'
-        );
-        return false;
-      }
-      providersKvCooldownUntilRef.current = Date.now() + PROVIDERS_KV_COOLDOWN_MS;
-      providersHydratedFromKvRef.current = true;
-      setProviders(next);
-      return true;
-    } catch (e) {
-      console.warn('[GrooFlow] providers persist:', e);
-      toast.error(
-        'Error de red al guardar proveedores. Comprueba conexión e inténtalo de nuevo.'
-      );
-      return false;
-    } finally {
-      skipProvidersHydrateRef.current = false;
-    }
-  }, [isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !chartOfAccountsHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:chartOfAccounts',
-      payload: chartOfAccounts,
-      refs: {
-        chainRef: chartOfAccountsKvChainRef,
-        latestRef: chartOfAccountsKvLatestRef,
-        cooldownUntilRef: chartOfAccountsKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar el plan de cuentas en la nube. Reintente en unos segundos.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:chartOfAccounts',
-          chartOfAccounts,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [chartOfAccounts, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !requestsHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:requests',
-      payload: requests,
-      refs: {
-        chainRef: requestsKvChainRef,
-        latestRef: requestsKvLatestRef,
-        cooldownUntilRef: requestsKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudieron guardar las solicitudes de compra en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupDomainSqlAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:requests',
-          requests,
-          savePurchaseRequestsToSql,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [requests, isDataLoaded]);
-
-  /** Tras alta/edición/baja: guardar ya (no depender solo del efecto ni de canSaveUsers si el GET inicial falló). */
-  const persistUsersToCloud = useCallback(
-    async (list: User[]) => {
-      if (!isDataLoaded || !usersHydratedFromKvRef.current) {
-        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
-        return false;
-      }
-      usersKvLatestRef.current = list;
-
-      if (PRODUCTION_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const sqlOk = await ensureSqlSave(
-          true,
-          'data:users',
-          () => saveAppUsersToSql(getSupabaseClient(), list, sess.session?.user?.id ?? null),
-          lastSaveErrorAtRef
-        );
-        if (!sqlOk) return false;
-      }
-
-      const ok = await persistKvDomainNow({
-        kvKey: 'data:users',
-        payload: list,
-        refs: {
-          hydratedFromKvRef: usersHydratedFromKvRef,
-          skipHydrateRef: skipUsersHydrateRef,
-          cooldownUntilRef: usersKvCooldownUntilRef,
-          chainRef: usersKvChainRef,
-          latestRef: usersKvLatestRef,
-        },
-        kvApplyGenerationRef,
-        lastSaveErrorAtRef,
-        errorMessage: 'No se pudo guardar la lista de usuarios en la nube. Revisa conexión y vuelve a intentar.',
-        sync: cloudSyncTrackerRef.current,
-      });
-      if (ok) {
-        setCanSaveUsers(true);
-        if ((import.meta.env.VITE_BACKEND ?? 'supabase') === 'supabase') {
-          const { data: sess } = await getSupabaseClient().auth.getSession();
-          const authId = sess.session?.user?.id;
-          const actor = authId ? list.find((u) => u.id === authId) : undefined;
-          void syncUserProfilesToSql(getSupabaseClient(), list, {
-            authUserId: authId,
-            isAdmin: isAdminAppUser(actor),
-          });
-        }
-        return true;
-      }
-      return false;
+  useOperationalDomainsPersistence({
+    isDataLoaded,
+    cloudSync: cloudSyncTrackerRef.current,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+    invoices,
+    invoicesRefs: {
+      chainRef: invoicesKvChainRef,
+      latestRef: invoicesKvLatestRef,
+      cooldownUntilRef: invoicesKvCooldownUntilRef,
     },
-    [isDataLoaded]
-  );
-
-  /** Guarda roles de forma explícita para evitar perder cambios si falla el autosave. */
-  const handleUpdateRoles = useCallback(
-    async (nextRoles: Role[]) => {
-      setRoles(nextRoles);
-      if (!isDataLoaded || !rolesHydratedFromKvRef.current) {
-        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
-        return false;
-      }
-      rolesKvLatestRef.current = nextRoles;
-
-      if (PRODUCTION_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const sqlOk = await ensureSqlSave(
-          true,
-          'data:roles',
-          () => saveRolesToSql(getSupabaseClient(), nextRoles, sess.session?.user?.id ?? null),
-          lastSaveErrorAtRef
-        );
-        if (!sqlOk) return false;
-      }
-
-      return persistKvDomainNow({
-        kvKey: 'data:roles',
-        payload: nextRoles,
-        refs: {
-          hydratedFromKvRef: rolesHydratedFromKvRef,
-          skipHydrateRef: skipRolesHydrateRef,
-          cooldownUntilRef: rolesKvCooldownUntilRef,
-          chainRef: rolesKvChainRef,
-          latestRef: rolesKvLatestRef,
-        },
-        kvApplyGenerationRef,
-        lastSaveErrorAtRef,
-        errorMessage: 'No se pudo guardar la configuración de roles en la nube.',
-        sync: cloudSyncTrackerRef.current,
-      });
+    invoicesHydratedRef: invoicesHydratedFromKvRef,
+    requests,
+    requestsRefs: {
+      chainRef: requestsKvChainRef,
+      latestRef: requestsKvLatestRef,
+      cooldownUntilRef: requestsKvCooldownUntilRef,
     },
-    [isDataLoaded]
-  );
-
-  useEffect(() => {
-    if (!isDataLoaded || !usersHydratedFromKvRef.current || !canSaveUsers) return;
-    void autosaveKvDomain({
-      kvKey: 'data:users',
-      payload: users,
-      refs: {
-        chainRef: usersKvChainRef,
-        latestRef: usersKvLatestRef,
-        cooldownUntilRef: usersKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar la lista de usuarios en la nube. Revisa conexión y vuelve a intentar.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupDomainSqlAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:users',
-          users,
-          saveAppUsersToSql,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [users, isDataLoaded, canSaveUsers]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !rolesHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:roles',
-      payload: roles,
-      refs: {
-        chainRef: rolesKvChainRef,
-        latestRef: rolesKvLatestRef,
-        cooldownUntilRef: rolesKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar la configuración de roles en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupDomainSqlAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:roles',
-          roles,
-          saveRolesToSql,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [roles, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !feeReceiptsHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:feeReceipts',
-      payload: feeReceipts,
-      refs: {
-        chainRef: feeReceiptsKvChainRef,
-        latestRef: feeReceiptsKvLatestRef,
-        cooldownUntilRef: feeReceiptsKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudieron guardar los honorarios en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:feeReceipts',
-          feeReceipts,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [feeReceipts, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !productsHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:products',
-      payload: products,
-      refs: {
-        chainRef: productsKvChainRef,
-        latestRef: productsKvLatestRef,
-        cooldownUntilRef: productsKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar el catálogo de productos en la nube. Reintente en unos segundos.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:products',
-          products,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [products, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !alertThresholdsHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'settings:alertThresholds',
-      payload: alertThresholds,
-      refs: {
-        chainRef: alertThresholdsKvChainRef,
-        latestRef: alertThresholdsKvLatestRef,
-        cooldownUntilRef: alertThresholdsKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudieron guardar los umbrales de alertas en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'settings:alertThresholds',
-          alertThresholds,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [alertThresholds, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !themeHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'settings:theme',
-      payload: theme,
-      refs: {
-        chainRef: themeKvChainRef,
-        latestRef: themeKvLatestRef,
-        cooldownUntilRef: themeKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar el tema en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(PRODUCTION_USE_SQL, 'settings:theme', theme, lastSaveErrorAtRef);
-      }
-    });
-  }, [theme, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !treasuryHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:treasuryInvoices',
-      payload: treasuryInvoices,
-      refs: {
-        chainRef: treasuryInvoicesKvChainRef,
-        latestRef: treasuryInvoicesKvLatestRef,
-        cooldownUntilRef: treasuryKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudieron guardar las facturas de tesorería en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:treasuryInvoices',
-          treasuryInvoices,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [treasuryInvoices, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !treasuryHydratedFromKvRef.current || !treasuryBankBalanceLoadedFromKvRef.current) return;
-    if (treasuryBankBalance === undefined) return;
-    void autosaveKvDomain({
-      kvKey: 'data:treasuryBankBalance',
-      payload: treasuryBankBalance,
-      refs: {
-        chainRef: treasuryBankBalanceKvChainRef,
-        latestRef: treasuryBankBalanceKvLatestRef,
-        cooldownUntilRef: treasuryKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar el saldo bancario en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:treasuryBankBalance',
-          treasuryBankBalance,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [treasuryBankBalance, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !treasuryHydratedFromKvRef.current) return;
-    void autosaveKvDomain({
-      kvKey: 'data:treasuryPaidHistory',
-      payload: treasuryPaidHistory,
-      refs: {
-        chainRef: treasuryPaidHistoryKvChainRef,
-        latestRef: treasuryPaidHistoryKvLatestRef,
-        cooldownUntilRef: treasuryKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage: 'No se pudo guardar el historial de pagos en la nube.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((ok) => {
-      if (ok) {
-        void backupAppKvAfterKvSave(
-          PRODUCTION_USE_SQL,
-          'data:treasuryPaidHistory',
-          treasuryPaidHistory,
-          lastSaveErrorAtRef
-        );
-      }
-    });
-  }, [treasuryPaidHistory, isDataLoaded]);
-
-  useEffect(() => {
-    if (!isDataLoaded || !fleetHydratedFromKvRef.current) return;
-
-    /** Siempre KV (Edge Function probada). SQL es réplica para Realtime. */
-    void autosaveKvDomain({
-      kvKey: 'data:fleet',
-      payload: fleetDataset,
-      refs: {
-        chainRef: fleetKvChainRef,
-        latestRef: fleetKvLatestRef,
-        cooldownUntilRef: fleetKvCooldownUntilRef,
-      },
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage:
-        'No se pudo guardar Flota clínica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.',
-      sync: cloudSyncTrackerRef.current,
-    }).then((kvOk) => {
-      if (!kvOk) return;
-      void backupToSqlAfterKvSave({
-        enabled: FLEET_USE_SQL,
-        storageKey: 'data:fleet',
-        lastSaveErrorAtRef,
-        run: async () => {
-          const { data: sess } = await getSupabaseClient().auth.getSession();
-          return saveFleetToSql(getSupabaseClient(), fleetKvLatestRef.current, sess.session?.user?.id ?? null);
-        },
-      });
-    });
-  }, [fleetDataset, isDataLoaded]);
-
-  const persistFleetNow = useCallback(
-    async (next: FleetDataset, successMessage?: string): Promise<boolean> => {
-      setFleetDataset(next);
-      if (!isDataLoaded || !fleetHydratedFromKvRef.current) {
-        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
-        return false;
-      }
-      fleetKvLatestRef.current = next;
-
-      const kvOk = await persistKvDomainNow({
-        kvKey: 'data:fleet',
-        payload: next,
-        refs: {
-          hydratedFromKvRef: fleetHydratedFromKvRef,
-          skipHydrateRef: skipFleetHydrateRef,
-          cooldownUntilRef: fleetKvCooldownUntilRef,
-          chainRef: fleetKvChainRef,
-          latestRef: fleetKvLatestRef,
-        },
-        kvApplyGenerationRef,
-        lastSaveErrorAtRef,
-        errorMessage:
-          'No se pudo guardar Flota clínica en la nube. No cierres ni actualices; revisa conexión/sesión.',
-        successMessage: FLEET_USE_SQL ? undefined : successMessage,
-        sync: cloudSyncTrackerRef.current,
-      });
-
-      if (!kvOk) return false;
-
-      if (FLEET_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const uid = sess.session?.user?.id ?? null;
-        const sqlOk = await ensureSqlSave(
-          true,
-          'data:fleet',
-          () => saveFleetToSql(getSupabaseClient(), next, uid),
-          lastSaveErrorAtRef
-        );
-        if (!sqlOk) return false;
-      }
-
-      if (successMessage) toast.success(successMessage);
-      return true;
+    requestsHydratedRef: requestsHydratedFromKvRef,
+    chartOfAccounts,
+    chartRefs: {
+      chainRef: chartOfAccountsKvChainRef,
+      latestRef: chartOfAccountsKvLatestRef,
+      cooldownUntilRef: chartOfAccountsKvCooldownUntilRef,
     },
-    [isDataLoaded]
-  );
-
-  const handleFleetDatasetUpdate = useCallback(
-    (updater: FleetDataset | ((prev: FleetDataset) => FleetDataset)) => {
-      setFleetDataset((prev) => {
-        const next = typeof updater === 'function' ? updater(prev) : updater;
-        fleetKvLatestRef.current = next;
-        return next;
-      });
+    chartHydratedRef: chartOfAccountsHydratedFromKvRef,
+    products,
+    productsRefs: {
+      chainRef: productsKvChainRef,
+      latestRef: productsKvLatestRef,
+      cooldownUntilRef: productsKvCooldownUntilRef,
     },
-    []
-  );
+    productsHydratedRef: productsHydratedFromKvRef,
+    feeReceipts,
+    feeReceiptsRefs: {
+      chainRef: feeReceiptsKvChainRef,
+      latestRef: feeReceiptsKvLatestRef,
+      cooldownUntilRef: feeReceiptsKvCooldownUntilRef,
+    },
+    feeReceiptsHydratedRef: feeReceiptsHydratedFromKvRef,
+    alertThresholds,
+    alertRefs: {
+      chainRef: alertThresholdsKvChainRef,
+      latestRef: alertThresholdsKvLatestRef,
+      cooldownUntilRef: alertThresholdsKvCooldownUntilRef,
+    },
+    alertHydratedRef: alertThresholdsHydratedFromKvRef,
+    theme,
+    themeRefs: {
+      chainRef: themeKvChainRef,
+      latestRef: themeKvLatestRef,
+      cooldownUntilRef: themeKvCooldownUntilRef,
+    },
+    themeHydratedRef: themeHydratedFromKvRef,
+    treasuryInvoices,
+    treasuryInvoicesRefs: {
+      chainRef: treasuryInvoicesKvChainRef,
+      latestRef: treasuryInvoicesKvLatestRef,
+      cooldownUntilRef: treasuryKvCooldownUntilRef,
+    },
+    treasuryBankBalance,
+    treasuryBankBalanceRefs: {
+      chainRef: treasuryBankBalanceKvChainRef,
+      latestRef: treasuryBankBalanceKvLatestRef,
+      cooldownUntilRef: treasuryKvCooldownUntilRef,
+    },
+    treasuryPaidHistory,
+    treasuryPaidHistoryRefs: {
+      chainRef: treasuryPaidHistoryKvChainRef,
+      latestRef: treasuryPaidHistoryKvLatestRef,
+      cooldownUntilRef: treasuryKvCooldownUntilRef,
+    },
+    treasuryHydratedRef: treasuryHydratedFromKvRef,
+    treasuryBankBalanceLoadedRef: treasuryBankBalanceLoadedFromKvRef,
+  });
+
+  const { persistFleetNow, handleFleetDatasetUpdate } = useFleetPersistence({
+    isDataLoaded,
+    fleetDataset,
+    setFleetDataset,
+    hydratedRef: fleetHydratedFromKvRef,
+    skipHydrateRef: skipFleetHydrateRef,
+    chainRef: fleetKvChainRef,
+    latestRef: fleetKvLatestRef,
+    cooldownUntilRef: fleetKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+    cloudSync: cloudSyncTrackerRef.current,
+  });
 
   const handleProductsUpdate = useCallback((next: Product[]) => {
     productsKvLatestRef.current = next;
