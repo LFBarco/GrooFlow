@@ -86,6 +86,7 @@ const BINDINGS = [
   'themeKvLatestRef',
   'fleetHydratedFromKvRef',
   'skipFleetHydrateRef',
+  'fleetKvCooldownUntilRef',
   'fleetKvLatestRef',
   'treasuryHydratedFromKvRef',
   'skipTreasuryHydrateRef',

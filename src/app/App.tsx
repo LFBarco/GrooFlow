@@ -859,6 +859,7 @@ export default function App() {
     themeKvLatestRef,
     fleetHydratedFromKvRef,
     skipFleetHydrateRef,
+    fleetKvCooldownUntilRef,
     fleetKvLatestRef,
     treasuryHydratedFromKvRef,
     skipTreasuryHydrateRef,

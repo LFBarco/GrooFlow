@@ -838,7 +838,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           const allowFleetRemote = shouldAllowKvRemoteHydrate(
             data.__fleetKvFetchFailed,
             deps.skipFleetHydrateRef,
-            fleetKvCooldownUntilRef
+            deps.fleetKvCooldownUntilRef
           );
           const fleetFetchFailed = data.__fleetKvFetchFailed && !FLEET_USE_SQL;
           if (fleetFetchFailed) {

@@ -108,6 +108,7 @@ export type AppHydrationDeps = {
   themeKvLatestRef: MutableRefObject<'dark' | 'light'>;
   fleetHydratedFromKvRef: MutableRefObject<boolean>;
   skipFleetHydrateRef: MutableRefObject<boolean>;
+  fleetKvCooldownUntilRef: MutableRefObject<number>;
   fleetKvLatestRef: MutableRefObject<FleetDataset>;
   treasuryHydratedFromKvRef: MutableRefObject<boolean>;
   skipTreasuryHydrateRef: MutableRefObject<boolean>;
