@@ -1,26 +1,21 @@
 /**
  * Cliente y validación de la API Veterinari (desde el panel de configuración).
- * El token se guarda en settings:system — solo admins.
+ * La prueba usa proxy en Edge Function (evita CORS del navegador).
  */
 
-export const VETERINARI_AUTH_METHODS = [
-  'Authorization: Bearer',
-  'Authorization',
-  'X-Api-Key',
-  'ApiKey',
-  'query:token',
-] as const;
+import { getSupabaseClient, getSupabaseFunctionsUrl } from '../services/repository/supabase';
 
-export type VeterinariAuthMethod = (typeof VETERINARI_AUTH_METHODS)[number];
+export const VETERINARI_AUTH_BEARER = 'Authorization: Bearer' as const;
 
 export type VeterinariValidationResult = {
   ok: boolean;
   status?: number;
-  authMethod?: VeterinariAuthMethod;
+  authMethod?: string;
   message: string;
   recordHint?: string;
   durationMs: number;
   corsBlocked?: boolean;
+  viaProxy?: boolean;
 };
 
 /** Quita barra final. */
@@ -42,29 +37,38 @@ export function sanitizeVeterinariBaseUrl(raw: string): string {
   return s;
 }
 
+/** Quita prefijo Bearer si el usuario lo pegó en el campo token. */
+export function normalizeVeterinariToken(raw: string): string {
+  let t = raw.trim();
+  if (t.toLowerCase().startsWith('bearer ')) {
+    t = t.slice(7).trim();
+  }
+  return t;
+}
+
+export type BuildVeterinariUrlOptions = {
+  page?: string;
+  year?: number;
+  month?: number;
+};
+
 /** Construye URL: base + recurso + query (page=1 por defecto). */
 export function buildVeterinariUrl(
   baseUrl: string,
   resource: string,
-  extraParams?: Record<string, string>
+  options?: BuildVeterinariUrlOptions
 ): string {
   const base = sanitizeVeterinariBaseUrl(baseUrl);
   const resourceClean = resource.replace(/^\/+/, '').replace(/\?.*$/, '').trim();
   if (!base || !resourceClean) return '';
 
   const url = new URL(`${base}/${resourceClean}`);
-  url.searchParams.set('page', extraParams?.page ?? '1');
-  for (const [key, value] of Object.entries(extraParams ?? {})) {
-    if (key !== 'page' && value != null) url.searchParams.set(key, value);
-  }
+  url.searchParams.set('page', options?.page ?? '1');
   if (resourceClean === 'GetVentas') {
-    const now = new Date();
-    if (!url.searchParams.has('year')) {
-      url.searchParams.set('year', String(now.getFullYear()));
-    }
-    if (!url.searchParams.has('month')) {
-      url.searchParams.set('month', String(now.getMonth() + 1));
-    }
+    const year = options?.year ?? new Date().getFullYear();
+    const month = options?.month ?? new Date().getMonth() + 1;
+    url.searchParams.set('year', String(year));
+    url.searchParams.set('month', String(month));
   }
   return url.toString();
 }
@@ -89,49 +93,105 @@ function countRecordsHint(json: unknown): string | undefined {
   return undefined;
 }
 
-function buildAuthHeaders(
-  method: VeterinariAuthMethod,
-  token: string,
-  url: string
-): { url: string; headers: Record<string, string> } {
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  let finalUrl = url;
-  switch (method) {
-    case 'Authorization: Bearer':
-      headers.Authorization = `Bearer ${token}`;
-      break;
-    case 'Authorization':
-      headers.Authorization = token;
-      break;
-    case 'X-Api-Key':
-      headers['X-Api-Key'] = token;
-      break;
-    case 'ApiKey':
-      headers.ApiKey = token;
-      break;
-    case 'query:token':
-      const u = new URL(url);
-      u.searchParams.set('token', token);
-      finalUrl = u.toString();
-      break;
+const VALIDATE_TIMEOUT_MS = 55_000;
+
+async function validateViaServerProxy(
+  targetUrl: string,
+  apiToken: string,
+  accessToken: string
+): Promise<VeterinariValidationResult> {
+  const start = Date.now();
+  const functionsUrl = getSupabaseFunctionsUrl();
+  if (!functionsUrl) {
+    return {
+      ok: false,
+      message: 'Supabase no configurado (falta VITE_SUPABASE_URL).',
+      durationMs: Date.now() - start,
+    };
   }
-  return { url: finalUrl, headers };
+
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${functionsUrl}/veterinari/test`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey ?? '',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ targetUrl, apiToken }),
+    });
+    clearTimeout(timeoutId);
+
+    const text = await res.text();
+    let json: Record<string, unknown> | null = null;
+    try {
+      json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    } catch {
+      json = null;
+    }
+
+    if (!res.ok) {
+      const errMsg =
+        typeof json?.error === 'string'
+          ? json.error
+          : text.slice(0, 160) || `Error del servidor (${res.status})`;
+      return {
+        ok: false,
+        status: res.status,
+        message: errMsg,
+        durationMs: Date.now() - start,
+        viaProxy: true,
+      };
+    }
+
+    const ok = Boolean(json?.ok);
+    return {
+      ok,
+      status: typeof json?.status === 'number' ? json.status : undefined,
+      authMethod: typeof json?.authMethod === 'string' ? json.authMethod : VETERINARI_AUTH_BEARER,
+      message: typeof json?.message === 'string' ? json.message : ok ? 'Conexión OK.' : 'Error desconocido.',
+      recordHint: typeof json?.recordHint === 'string' ? json.recordHint : undefined,
+      durationMs: typeof json?.durationMs === 'number' ? json.durationMs : Date.now() - start,
+      viaProxy: true,
+    };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      return {
+        ok: false,
+        message: 'El servidor no respondió en el tiempo esperado.',
+        durationMs: Date.now() - start,
+        viaProxy: true,
+      };
+    }
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      message: `No se pudo contactar el proxy GrooFlow: ${msg}`,
+      durationMs: Date.now() - start,
+      viaProxy: true,
+    };
+  }
 }
 
-const VALIDATE_TIMEOUT_MS = 25_000;
-
 /**
- * Prueba la API probando varios métodos de autenticación habituales.
- * Si el navegador bloquea por CORS, devuelve corsBlocked=true.
+ * Prueba la API Veterinari vía Edge Function (Bearer) para evitar CORS.
  */
 export async function validateVeterinariConnection(input: {
   baseUrl: string;
   apiToken: string;
   testEndpoint: string;
+  testYear?: number;
+  testMonth?: number;
 }): Promise<VeterinariValidationResult> {
   const start = Date.now();
   const baseUrl = sanitizeVeterinariBaseUrl(input.baseUrl);
-  const token = input.apiToken.trim();
+  const token = normalizeVeterinariToken(input.apiToken);
   const endpoint = input.testEndpoint.trim() || 'GetClientes';
 
   if (!baseUrl) {
@@ -149,95 +209,73 @@ export async function validateVeterinariConnection(input: {
     };
   }
 
-  const targetUrl = buildVeterinariUrl(baseUrl, endpoint);
-  let corsBlocked = false;
+  const targetUrl = buildVeterinariUrl(baseUrl, endpoint, {
+    year: input.testYear,
+    month: input.testMonth,
+  });
 
-  for (const method of VETERINARI_AUTH_METHODS) {
-    const { url, headers } = buildAuthHeaders(method, token, targetUrl);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
-    try {
-      const res = await fetch(url, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      const text = await res.text();
-      let json: unknown = null;
-      try {
-        json = text ? JSON.parse(text) : null;
-      } catch {
-        json = null;
-      }
-
-      if (res.ok) {
-        const hint = countRecordsHint(json);
-        return {
-          ok: true,
-          status: res.status,
-          authMethod: method,
-          message: hint
-            ? `Conexión exitosa (${method}). ${hint}.`
-            : `Conexión exitosa (${method}). Respuesta HTTP ${res.status}.`,
-          recordHint: hint,
-          durationMs: Date.now() - start,
-        };
-      }
-
-      if (res.status === 401 || res.status === 403) {
-        continue;
-      }
-
-      const snippet = text.slice(0, 160).replace(/\s+/g, ' ');
-      const urlHint =
-        res.status === 400
-          ? ` Revisa que la URL base sea solo …/api/oapi (sin GetVentas ni ?page=). URL usada: ${targetUrl}`
-          : '';
+  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+  if (backend === 'supabase') {
+    const { data: sessionData } = await getSupabaseClient().auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
       return {
         ok: false,
-        status: res.status,
-        authMethod: method,
-        message: `HTTP ${res.status} con ${method}: ${snippet || 'sin detalle'}${urlHint}`,
+        message: 'Inicia sesión para probar la conexión.',
         durationMs: Date.now() - start,
       };
-    } catch (err) {
-      clearTimeout(timeoutId);
-      const msg = err instanceof Error ? err.message : String(err);
-      if (
-        msg.includes('Failed to fetch') ||
-        msg.includes('NetworkError') ||
-        msg.includes('CORS')
-      ) {
-        corsBlocked = true;
-        continue;
-      }
-      if (err instanceof Error && err.name === 'AbortError') {
-        return {
-          ok: false,
-          message: 'La API no respondió en el tiempo esperado (timeout).',
-          durationMs: Date.now() - start,
-          corsBlocked,
-        };
-      }
     }
+    return validateViaServerProxy(targetUrl, token, accessToken);
   }
 
-  if (corsBlocked) {
+  // Modo local: intento directo (puede fallar por CORS)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
+  try {
+    const res = await fetch(targetUrl, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const text = await res.text();
+    let json: unknown = null;
+    try {
+      json = text ? JSON.parse(text) : null;
+    } catch {
+      json = null;
+    }
+    if (res.ok) {
+      const hint = countRecordsHint(json);
+      return {
+        ok: true,
+        status: res.status,
+        authMethod: VETERINARI_AUTH_BEARER,
+        message: hint ? `Conexión exitosa. ${hint}.` : `Conexión exitosa. HTTP ${res.status}.`,
+        recordHint: hint,
+        durationMs: Date.now() - start,
+      };
+    }
     return {
       ok: false,
-      message:
-        'El navegador bloqueó la llamada (CORS). La URL parece correcta pero Veterinari debe permitir origen GrooFlow, o usar un proxy en servidor (próxima fase).',
+      status: res.status,
+      authMethod: VETERINARI_AUTH_BEARER,
+      message: `HTTP ${res.status}: ${text.slice(0, 160)}`,
       durationMs: Date.now() - start,
-      corsBlocked: true,
+    };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      message: msg.includes('Failed to fetch')
+        ? 'CORS o red bloqueada. Usa VITE_BACKEND=supabase para probar vía servidor.'
+        : msg,
+      durationMs: Date.now() - start,
+      corsBlocked: msg.includes('Failed to fetch'),
     };
   }
-
-  return {
-    ok: false,
-    message:
-      'No se obtuvo respuesta válida. Revisa URL, token y método de auth (pide a Veterinari cómo enviar el token).',
-    durationMs: Date.now() - start,
-  };
 }

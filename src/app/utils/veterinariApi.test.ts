@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildVeterinariUrl,
   normalizeVeterinariBaseUrl,
+  normalizeVeterinariToken,
   sanitizeVeterinariBaseUrl,
 } from './veterinariApi';
 
@@ -23,11 +24,18 @@ describe('veterinariApi', () => {
   });
 
   it('buildVeterinariUrl agrega year/month a GetVentas', () => {
-    const url = buildVeterinariUrl('https://host/api/oapi', 'GetVentas');
+    const url = buildVeterinariUrl('https://host/api/oapi', 'GetVentas', {
+      year: 2026,
+      month: 1,
+    });
     expect(url).toContain('GetVentas');
     expect(url).toContain('page=1');
-    expect(url).toMatch(/year=\d+/);
-    expect(url).toMatch(/month=\d+/);
+    expect(url).toContain('year=2026');
+    expect(url).toContain('month=1');
+  });
+
+  it('normalizeVeterinariToken quita Bearer', () => {
+    expect(normalizeVeterinariToken('Bearer abc-123')).toBe('abc-123');
   });
 
   it('buildVeterinariUrl no duplica path si la base tenía GetVentas', () => {

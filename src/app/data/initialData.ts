@@ -213,6 +213,8 @@ export function defaultVeterinariSettings(): VeterinariIntegrationSettings {
     baseUrl: DEFAULT_VETERINARI_BASE_URL,
     apiToken: '',
     testEndpoint: 'GetClientes',
+    testYear: new Date().getFullYear(),
+    testMonth: new Date().getMonth() + 1,
     enabled: false,
   };
 }
@@ -231,6 +233,8 @@ export function mergeVeterinariSettings(
         : base.baseUrl,
     apiToken: partial.apiToken ?? base.apiToken,
     testEndpoint: partial.testEndpoint ?? base.testEndpoint,
+    testYear: partial.testYear ?? base.testYear,
+    testMonth: partial.testMonth ?? base.testMonth,
   };
 }
 

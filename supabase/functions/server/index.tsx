@@ -181,6 +181,128 @@ async function requireAuthenticatedRequest(c: { req: { header: (name: string) =>
   return { response: null as null, user: data.user };
 }
 
+async function requireAdminRequest(c: {
+  req: { header: (name: string) => string | undefined };
+  json: (body: unknown, status?: number) => Response;
+}) {
+  const auth = await requireAuthenticatedRequest(c);
+  if (auth.response) return auth;
+  const adminClient = createClient(
+    Deno.env.get("SUPABASE_URL") || "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+  );
+  const profile = await callerRoleFromProfile(adminClient, auth.user!.id);
+  const metadataRole = getRoleFromUser(auth.user!);
+  const profileAdmin = ADMIN_ROLES.has(profile.role) && profile.status === "active";
+  const metadataAdmin = ADMIN_ROLES.has(metadataRole);
+  const isInactive = profile.source === "profile" && profile.status === "inactive";
+  const allowList = (Deno.env.get("ADMIN_CREATE_USER_EMAILS") || "")
+    .split(",")
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  const allowlisted = allowList.includes((auth.user!.email || "").toLowerCase());
+  const adminByRole = !isInactive && (profileAdmin || metadataAdmin);
+  if (!adminByRole && !allowlisted) {
+    return { response: c.json({ error: "Solo administradores pueden probar la API Veterinari." }, 403), user: null as null };
+  }
+  return { response: null as null, user: auth.user! };
+}
+
+function countVeterinariRecords(json: unknown): string | undefined {
+  if (json == null) return undefined;
+  if (Array.isArray(json)) return `${json.length} registro(s) en esta página`;
+  if (typeof json === "object") {
+    const o = json as Record<string, unknown>;
+    for (const key of ["data", "items", "results", "clientes", "records"]) {
+      if (Array.isArray(o[key])) {
+        return `${(o[key] as unknown[]).length} registro(s) en «${key}»`;
+      }
+    }
+    const keys = Object.keys(o);
+    if (keys.length > 0) {
+      return `JSON: ${keys.slice(0, 6).join(", ")}${keys.length > 6 ? "…" : ""}`;
+    }
+  }
+  return undefined;
+}
+
+function isAllowedVeterinariUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:") return false;
+    const host = u.hostname.toLowerCase();
+    return host.includes("veterinari") || host.endsWith("azurewebsites.net");
+  } catch {
+    return false;
+  }
+}
+
+for (const base of KV_PATH_BASES) {
+  app.post(`${base}/veterinari/test`, async (c) => {
+    const auth = await requireAdminRequest(c);
+    if (auth.response) return auth.response;
+    try {
+      const body = await c.req.json();
+      const targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      if (apiToken.toLowerCase().startsWith("bearer ")) {
+        apiToken = apiToken.slice(7).trim();
+      }
+      if (!targetUrl || !apiToken) {
+        return c.json({ error: "Faltan targetUrl o apiToken." }, 400);
+      }
+      if (!isAllowedVeterinariUrl(targetUrl)) {
+        return c.json({ error: "URL de destino no permitida." }, 400);
+      }
+      const started = Date.now();
+      const res = await fetch(targetUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          Accept: "application/json",
+        },
+      });
+      const text = await res.text();
+      let json: unknown = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+      const hint = countVeterinariRecords(json);
+      const durationMs = Date.now() - started;
+      if (res.ok) {
+        return c.json({
+          ok: true,
+          status: res.status,
+          authMethod: "Authorization: Bearer",
+          message: hint
+            ? `Conexión exitosa (servidor GrooFlow → Veterinari). ${hint}.`
+            : `Conexión exitosa. HTTP ${res.status}.`,
+          recordHint: hint,
+          durationMs,
+        });
+      }
+      const snippet = text.slice(0, 200).replace(/\s+/g, " ");
+      let message = `HTTP ${res.status}: ${snippet || "sin detalle"}`;
+      if (res.status === 403) {
+        message +=
+          " — Token rechazado o IP no autorizada. Confirma con Veterinari que el token está activo y permite tu servidor.";
+      }
+      return c.json({
+        ok: false,
+        status: res.status,
+        authMethod: "Authorization: Bearer",
+        message,
+        durationMs,
+      });
+    } catch (error) {
+      console.error("veterinari/test error:", error);
+      return c.json({ error: "Error al contactar Veterinari desde el servidor." }, 500);
+    }
+  });
+}
+
 for (const base of KV_PATH_BASES) {
   app.get(`${base}/kv/*`, async (c) => {
     const auth = await requireAuthenticatedRequest(c);

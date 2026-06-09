@@ -460,6 +460,9 @@ export interface VeterinariIntegrationSettings {
   apiToken?: string;
   /** Endpoint usado en «Probar conexión». */
   testEndpoint?: string;
+  /** Parámetros opcionales para probar GetVentas (ej. 2026 / 1). */
+  testYear?: number;
+  testMonth?: number;
   enabled?: boolean;
   lastValidatedAt?: string;
   lastValidationOk?: boolean;

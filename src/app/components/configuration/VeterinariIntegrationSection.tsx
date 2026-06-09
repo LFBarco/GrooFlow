@@ -68,6 +68,8 @@ export function VeterinariIntegrationSection({
         baseUrl: vet.baseUrl || DEFAULT_VETERINARI_BASE_URL,
         apiToken: vet.apiToken || '',
         testEndpoint: vet.testEndpoint || 'GetClientes',
+        testYear: vet.testYear,
+        testMonth: vet.testMonth,
       });
       const at = new Date().toISOString();
       patchVet({
@@ -95,9 +97,11 @@ export function VeterinariIntegrationSection({
     }
   };
 
+  const testEndpoint = vet.testEndpoint || 'GetClientes';
   const previewUrl = buildVeterinariUrl(
     vet.baseUrl || DEFAULT_VETERINARI_BASE_URL,
-    vet.testEndpoint || 'GetClientes'
+    testEndpoint,
+    { year: vet.testYear, month: vet.testMonth }
   );
 
   return (
@@ -191,6 +195,38 @@ export function VeterinariIntegrationSection({
           <p className="text-xs text-muted-foreground font-mono break-all">{previewUrl}</p>
         </div>
 
+        {testEndpoint === 'GetVentas' && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Año (ventas)</Label>
+              <Input
+                type="number"
+                min={2000}
+                max={2100}
+                value={vet.testYear ?? new Date().getFullYear()}
+                disabled={readOnly}
+                onChange={(e) =>
+                  patchVet({ testYear: Number(e.target.value) || new Date().getFullYear() })
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Mes (ventas)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={12}
+                value={vet.testMonth ?? new Date().getMonth() + 1}
+                disabled={readOnly}
+                onChange={(e) => {
+                  const m = Number(e.target.value);
+                  patchVet({ testMonth: m >= 1 && m <= 12 ? m : 1 });
+                }}
+              />
+            </div>
+          </div>
+        )}
+
         {!readOnly && (
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={() => void handleTest()} disabled={testing}>
@@ -237,11 +273,14 @@ export function VeterinariIntegrationSection({
         )}
 
         <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-foreground">Próximos pasos (automáticos)</p>
-          <p>Tras una conexión exitosa podremos sincronizar ventas y citas para reportes en GrooFlow.</p>
+          <p className="font-medium text-foreground">Autenticación</p>
           <p>
-            Si «Probar conexión» falla por CORS, la URL puede ser correcta; hará falta un proxy en
-            servidor (Edge Function).
+            La prueba usa <strong>Authorization: Bearer</strong> vía servidor GrooFlow (sin CORS del
+            navegador).
+          </p>
+          <p>
+            URL base: solo <span className="font-mono">…/api/oapi</span> — el endpoint y año/mes se
+            eligen abajo.
           </p>
         </div>
       </CardContent>

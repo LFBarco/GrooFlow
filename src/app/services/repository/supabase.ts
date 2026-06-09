@@ -78,6 +78,10 @@ const FUNCTIONS_URL =
   envStr('VITE_SUPABASE_FUNCTIONS_URL') ??
   (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/server/make-server-674cc941` : '');
 
+export function getSupabaseFunctionsUrl(): string {
+  return FUNCTIONS_URL;
+}
+
 /** Las claves tipo `data:users` llevan `:`; deben ir codificadas en el path o el gateway devuelve 404. */
 function kvPathSegment(key: string): string {
   return encodeURIComponent(key);
