@@ -13,9 +13,11 @@ import {
 import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
 import { PETTY_CASH_META_KV_KEY } from './pettyCashMeta';
 import { isFleetSqlEnabled, saveFleetToSql } from '../services/repository/fleetSql';
+import { isInventorySqlEnabled, saveInventoryToSql } from '../services/repository/inventorySql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import { isTransactionsSqlEnabled, saveTransactionsToSql } from '../services/repository/transactionsSql';
 import { normalizeFleetDataset } from './fleetData';
+import { normalizeInventoryDataset } from './inventoryData';
 
 const PRUNE_EMPTY = { allowPruneWhenEmpty: true };
 
@@ -27,6 +29,7 @@ export type ClearOperationalResult = {
 export async function clearOperationalData(userId: string | null): Promise<ClearOperationalResult> {
   const failed: string[] = [];
   const emptyFleet = normalizeFleetDataset({});
+  const emptyInventory = normalizeInventoryDataset({});
 
   const kvWrites: Array<[string, unknown]> = [
     ['data:transactions', []],
@@ -42,6 +45,7 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     ['data:treasuryBankBalance', null],
     ['data:treasuryPaidHistory', []],
     ['data:fleet', emptyFleet],
+    ['data:inventory', emptyInventory],
   ];
 
   for (const [key, value] of kvWrites) {
@@ -89,6 +93,12 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     sqlTasks.push({
       label: 'fleet',
       run: () => saveFleetToSql(client, emptyFleet, userId, PRUNE_EMPTY),
+    });
+  }
+  if (isInventorySqlEnabled()) {
+    sqlTasks.push({
+      label: 'inventory',
+      run: () => saveInventoryToSql(client, emptyInventory, userId, PRUNE_EMPTY),
     });
   }
 

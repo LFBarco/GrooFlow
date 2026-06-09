@@ -3,6 +3,7 @@ import { useCallback, useEffect } from 'react';
 import { getAuthUserId } from '../services/productionSqlBridge';
 import { getSupabaseClient } from '../services/repository/supabase';
 import { isFleetSqlEnabled } from '../services/repository/fleetSql';
+import { isInventorySqlEnabled } from '../services/repository/inventorySql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import { isTransactionsSqlEnabled } from '../services/repository/transactionsSql';
 import {
@@ -29,7 +30,8 @@ export function useSqlRetryProcessor(options: UseSqlRetryProcessorOptions) {
       const productionSql = isProductionSqlEnabled();
       const transactionsSql = isTransactionsSqlEnabled();
       const fleetSql = isFleetSqlEnabled();
-      if (!productionSql && !transactionsSql && !fleetSql) return;
+      const inventorySql = isInventorySqlEnabled();
+      if (!productionSql && !transactionsSql && !fleetSql && !inventorySql) return;
       if (!isDataLoaded) return;
 
       const uid = await getAuthUserId();
@@ -40,6 +42,7 @@ export function useSqlRetryProcessor(options: UseSqlRetryProcessorOptions) {
         productionSql,
         transactionsSql,
         fleetSql,
+        inventorySql,
         latest: getLatestSnapshot(),
       });
 

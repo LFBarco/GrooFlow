@@ -54,6 +54,8 @@ export const SQL_BACKUP_ERROR_MESSAGES: Record<string, string> = {
     'No se pudo guardar el historial de pagos en SQL. Revisa sesión o permisos.',
   'data:fleet':
     'No se pudo guardar Flota clínica en SQL. Revisa sesión o permisos.',
+  'data:inventory':
+    'No se pudo guardar el inventario de equipos en SQL. Revisa sesión o permisos.',
 };
 
 function reportSqlBackupError(

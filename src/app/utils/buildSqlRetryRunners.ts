@@ -14,6 +14,7 @@ import type {
 import type { ConfigStructure } from '../data/initialData';
 import type { Role } from '../components/users/types';
 import type { FleetDataset } from '../types/fleet';
+import type { InventoryDataset } from '../types/inventory';
 import { saveAppKvKey } from '../services/repository/appKvSql';
 import {
   saveAppUsersToSql,
@@ -24,6 +25,7 @@ import {
   saveRolesToSql,
 } from '../services/repository/businessDomainsSql';
 import { saveFleetToSql } from '../services/repository/fleetSql';
+import { saveInventoryToSql } from '../services/repository/inventorySql';
 import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
 import { saveTransactionsToSql } from '../services/repository/transactionsSql';
 import { PETTY_CASH_META_KV_KEY, type PettyCashWeekMetaPayload } from './pettyCashMeta';
@@ -55,6 +57,7 @@ export type SqlRetryLatestSnapshot = {
   treasuryBankBalance: number | undefined;
   treasuryPaidHistory: unknown[];
   fleet: FleetDataset;
+  inventory: InventoryDataset;
   pettyCashMeta: PettyCashWeekMetaPayload;
 };
 
@@ -64,6 +67,7 @@ export type BuildSqlRetryRunnersInput = {
   productionSql: boolean;
   transactionsSql: boolean;
   fleetSql: boolean;
+  inventorySql: boolean;
   latest: SqlRetryLatestSnapshot;
 };
 
@@ -88,6 +92,11 @@ export function buildSqlRetryRunners(input: BuildSqlRetryRunnersInput): SqlRetry
   if (input.fleetSql) {
     runners['data:fleet'] = queuedRunner('data:fleet', () =>
       saveFleetToSql(client, latest.fleet, uid)
+    );
+  }
+  if (input.inventorySql) {
+    runners['data:inventory'] = queuedRunner('data:inventory', () =>
+      saveInventoryToSql(client, latest.inventory, uid)
     );
   }
   if (!input.productionSql) return runners;

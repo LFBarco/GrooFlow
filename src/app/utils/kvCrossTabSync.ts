@@ -86,6 +86,7 @@ export function kvKeyDisplayLabel(key: string): string {
     'data:pettyCash': 'Caja chica',
     'data:pettyCashMeta': 'Caja chica (cierres y dotaciones)',
     'data:fleet': 'Flota clínica',
+    'data:inventory': 'Inventario equipos',
     'data:chartOfAccounts': 'Plan de cuentas',
     'data:products': 'Productos',
     'data:roles': 'Roles',

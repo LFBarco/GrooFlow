@@ -39,6 +39,7 @@ import {
   Landmark,
   BookOpen,
   Truck,
+  Package,
 } from "lucide-react";
 // Logo: coloque logo.png en la carpeta public/ para producción
 const logoUrl = '/logo.png';
@@ -64,6 +65,7 @@ import {
   TreasuryModule,
   UserManager,
   FleetModule,
+  InventoryModule,
 } from "./lazyRouteModules";
 import { UserMenu } from "./components/layout/UserMenu";
 import { UserProfileDialog } from "./components/users/UserProfileDialog";
@@ -79,11 +81,14 @@ import { api, setKvSessionFatalHandler } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
 import { getSupabaseClient } from "./services/repository/supabase";
 import { isFleetSqlEnabled } from "./services/repository/fleetSql";
+import { isInventorySqlEnabled } from "./services/repository/inventorySql";
 import {
   syncUserProfilesToSql,
   isAdminAppUser,
 } from "./services/repository/userProfileSync";
 import { useFleetRealtimeSync } from "./hooks/useFleetRealtimeSync";
+import { useInventoryPersistence } from "./hooks/useInventoryPersistence";
+import { useInventoryRealtimeSync } from "./hooks/useInventoryRealtimeSync";
 import { hydrateTransactions } from "./utils/hydrateTransactions";
 import { labelsMatch } from "./utils/labelMatch";
 import { formatDateInputValue, parseTransactionDate } from "./utils/transactionDate";
@@ -103,7 +108,10 @@ import { getFirstAllowedViewPath, roleRecordHasModuleAccess } from "./utils/role
 import { getSuperAdminEmails } from "./config/superAdmins";
 import { weekKeyMatches } from "./utils/pettyCashWeekKey";
 import type { FleetDataset } from "./types/fleet";
+import type { InventoryDataset } from "./types/inventory";
 import { createDemoFleetDataset, normalizeFleetDataset } from "./utils/fleetData";
+import { normalizeInventoryDataset } from "./utils/inventoryData";
+import { isInventoryDatasetEmpty } from "./utils/inventoryDatasetEmpty";
 import {
   isTransactionsSqlEnabled,
   loadTransactionsFromSql,
@@ -196,6 +204,7 @@ const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1'
 type TransactionDatePreset = 'all' | 'last7' | 'currentMonth' | 'previousMonth' | 'year' | 'custom';
 const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
 const FLEET_USE_SQL = isFleetSqlEnabled();
+const INVENTORY_USE_SQL = isInventorySqlEnabled();
 const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 const KV_CHAIN_IDLE = Promise.resolve('saved' as KvSaveResult);
@@ -480,6 +489,9 @@ export default function App() {
   const [feeReceipts, setFeeReceipts] = useState<FeeReceiptGlobal[]>([]);
 
   const [fleetDataset, setFleetDataset] = useState<FleetDataset>(() => normalizeFleetDataset({}));
+  const [inventoryDataset, setInventoryDataset] = useState<InventoryDataset>(() =>
+    normalizeInventoryDataset({})
+  );
 
   // Treasury global state (persisted)
   const [treasuryInvoices, setTreasuryInvoices] = useState<any[]>([]);
@@ -544,6 +556,11 @@ export default function App() {
   const fleetKvCooldownUntilRef = useRef(0);
   const fleetKvChainRef = useRef(Promise.resolve(true));
   const fleetKvLatestRef = useRef<FleetDataset>(normalizeFleetDataset({}));
+  const inventoryHydratedFromKvRef = useRef(false);
+  const skipInventoryHydrateRef = useRef(false);
+  const inventoryKvCooldownUntilRef = useRef(0);
+  const inventoryKvChainRef = useRef(Promise.resolve(true));
+  const inventoryKvLatestRef = useRef<InventoryDataset>(normalizeInventoryDataset({}));
   /** Umbrales de alertas (`settings:alertThresholds`). */
   const alertThresholdsHydratedFromKvRef = useRef(false);
   const skipAlertThresholdsHydrateRef = useRef(false);
@@ -658,6 +675,7 @@ export default function App() {
     transactionsKvChainRef.current = KV_CHAIN_IDLE;
     configKvChainRef.current = Promise.resolve(true);
     fleetKvChainRef.current = Promise.resolve(true);
+    inventoryKvChainRef.current = Promise.resolve(true);
     alertThresholdsKvChainRef.current = Promise.resolve(true);
     chartOfAccountsKvChainRef.current = Promise.resolve(true);
     productsKvChainRef.current = Promise.resolve(true);
@@ -680,6 +698,13 @@ export default function App() {
       cooldownUntilRef: fleetKvCooldownUntilRef,
       chainRef: fleetKvChainRef,
       latestRef: fleetKvLatestRef,
+    });
+    resetKvDomainRefs({
+      hydratedFromKvRef: inventoryHydratedFromKvRef,
+      skipHydrateRef: skipInventoryHydrateRef,
+      cooldownUntilRef: inventoryKvCooldownUntilRef,
+      chainRef: inventoryKvChainRef,
+      latestRef: inventoryKvLatestRef,
     });
     resetKvDomainRefs({
       hydratedFromKvRef: alertThresholdsHydratedFromKvRef,
@@ -862,6 +887,10 @@ export default function App() {
     skipFleetHydrateRef,
     fleetKvCooldownUntilRef,
     fleetKvLatestRef,
+    inventoryHydratedFromKvRef,
+    skipInventoryHydrateRef,
+    inventoryKvCooldownUntilRef,
+    inventoryKvLatestRef,
     treasuryHydratedFromKvRef,
     skipTreasuryHydrateRef,
     treasuryKvCooldownUntilRef,
@@ -890,6 +919,7 @@ export default function App() {
     setRequests,
     setTheme,
     setFleetDataset,
+    setInventoryDataset,
     setTreasuryInvoices,
     setTreasuryBankBalance,
     setTreasuryPaidHistory,
@@ -919,6 +949,7 @@ export default function App() {
       treasuryBankBalance: treasuryBankBalanceKvLatestRef.current,
       treasuryPaidHistory: treasuryPaidHistoryKvLatestRef.current,
       fleet: fleetKvLatestRef.current,
+      inventory: inventoryKvLatestRef.current,
       pettyCashMeta: pettyCashMetaKvLatestRef.current,
     }),
     []
@@ -1118,6 +1149,20 @@ export default function App() {
     chainRef: fleetKvChainRef,
     latestRef: fleetKvLatestRef,
     cooldownUntilRef: fleetKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
+    cloudSync: cloudSyncTrackerRef.current,
+  });
+
+  const { persistInventoryNow, handleInventoryDatasetUpdate } = useInventoryPersistence({
+    isDataLoaded,
+    inventoryDataset,
+    setInventoryDataset,
+    hydratedRef: inventoryHydratedFromKvRef,
+    skipHydrateRef: skipInventoryHydrateRef,
+    chainRef: inventoryKvChainRef,
+    latestRef: inventoryKvLatestRef,
+    cooldownUntilRef: inventoryKvCooldownUntilRef,
     kvApplyGenerationRef,
     lastSaveErrorAtRef,
     cloudSync: cloudSyncTrackerRef.current,
@@ -1454,6 +1499,16 @@ export default function App() {
         applied = true;
         break;
       }
+      case 'data:inventory': {
+        if (!inventoryHydratedFromKvRef.current) return;
+        const next = normalizeInventoryDataset(value as Partial<InventoryDataset>);
+        if (kvPayloadsEqual(inventoryKvLatestRef.current, next)) return;
+        inventoryKvLatestRef.current = next;
+        inventoryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setInventoryDataset(next);
+        applied = true;
+        break;
+      }
       case 'data:chartOfAccounts': {
         if (PRODUCTION_USE_SQL) return;
         if (!chartOfAccountsHydratedFromKvRef.current) return;
@@ -1498,6 +1553,32 @@ export default function App() {
     isAuthenticated && isDataLoaded && FLEET_USE_SQL,
     applyFleetRemoteRef,
     fleetKvLatestRef
+  );
+
+  const applyInventoryRemoteRef = useRef<((dataset: InventoryDataset) => void) | null>(null);
+  const inventoryRemoteToastLastAtRef = useRef(0);
+
+  applyInventoryRemoteRef.current = (dataset: InventoryDataset) => {
+    if (!isDataLoaded || signingOutRef.current || !inventoryHydratedFromKvRef.current) return;
+    const normalized = normalizeInventoryDataset(dataset);
+    if (kvPayloadsEqual(inventoryKvLatestRef.current, normalized)) return;
+    inventoryKvLatestRef.current = normalized;
+    markCrossTabEchoWindow('data:inventory');
+    inventoryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    setInventoryDataset(normalized);
+    const now = Date.now();
+    if (now - inventoryRemoteToastLastAtRef.current >= 4000) {
+      inventoryRemoteToastLastAtRef.current = now;
+      toast.info('Inventario actualizado desde la nube', { duration: 2500 });
+    }
+    cloudSyncErrorRef.current = false;
+    setCloudSyncPhase('synced');
+  };
+
+  useInventoryRealtimeSync(
+    isAuthenticated && isDataLoaded && INVENTORY_USE_SQL,
+    applyInventoryRemoteRef,
+    inventoryKvLatestRef
   );
 
   const applyTransactionsRemoteRef = useRef<((items: Transaction[]) => void) | null>(null);
@@ -2462,7 +2543,8 @@ export default function App() {
     hasPermission("Compras") ||
     hasPermission("Productos") ||
     hasPermission("Auditoría") ||
-    hasPermission("Gestión Vehicular");
+    hasPermission("Gestión Vehicular") ||
+    hasPermission("Gestión de Inventario");
 
   // --- SEDE FILTERING HELPERS (memoizado: menos re-renders en vistas que filtran por sede) ---
   const catalogSedes = useMemo(() => getAllSedeNames(systemSettings), [systemSettings]);
@@ -2994,6 +3076,7 @@ export default function App() {
            <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Proveedores" />
            <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Contabilidad" />
            <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Gestión Vehicular" />
+           <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Gestión de Inventario" />
            <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Productos" />
            <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
@@ -3086,6 +3169,7 @@ export default function App() {
                     <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" requiredModule="Proveedores" />
                     <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400" requiredModule="Contabilidad" />
                     <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400" requiredModule="Gestión Vehicular" />
+                    <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400" requiredModule="Gestión de Inventario" />
                     <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400" requiredModule="Productos" />
                     <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" requiredModule="Compras" />
                     <div className="pt-4 border-t border-border mt-4 space-y-2">
@@ -3569,6 +3653,27 @@ export default function App() {
                   'Principal'
                 }
               />
+            </div>
+          )}
+
+          {view === 'inventory' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <Suspense fallback={<RouteLoader />}>
+                <InventoryModule
+                  dataset={inventoryDataset}
+                  setDataset={handleInventoryDatasetUpdate}
+                  onPersistDataset={persistInventoryNow}
+                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  defaultSede={
+                    currentUser.sedes?.[0] ||
+                    currentUser.location ||
+                    visibleSedes[0] ||
+                    enabledCatalog[0] ||
+                    'Principal'
+                  }
+                  providers={providers}
+                />
+              </Suspense>
             </div>
           )}
 

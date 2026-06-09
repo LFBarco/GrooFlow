@@ -82,6 +82,7 @@ export interface InitialDataKeys {
   'data:chartOfAccounts'?: unknown;
   /** Flota clínica veterinaria (vehículos, mantenimiento, combustible). */
   'data:fleet'?: unknown;
+  'data:inventory'?: unknown;
   /** Metadato interno: el GET HTTP a `data:users` falló (no confundir con lista vacía). */
   __usersKvFetchFailed?: boolean;
   /** Metadato interno: el GET HTTP de transacciones/marca falló; no autosobrescribir con estado local. */
@@ -94,6 +95,7 @@ export interface InitialDataKeys {
   __configKvFetchFailed?: boolean;
   /** Metadato interno: GET de flota falló. */
   __fleetKvFetchFailed?: boolean;
+  __inventoryKvFetchFailed?: boolean;
   /** Metadato interno: GET de umbrales de alertas falló. */
   __alertThresholdsKvFetchFailed?: boolean;
   /** Metadato interno: GET de plan de cuentas falló. */
@@ -130,6 +132,7 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'settings:config',
   'settings:theme',
   'data:fleet',
+  'data:inventory',
   'settings:alertThresholds',
   'data:chartOfAccounts',
   'data:products',
@@ -164,6 +167,7 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'data:treasuryPaidHistory',
   'data:chartOfAccounts',
   'data:fleet',
+  'data:inventory',
 ];
 
 // ─── api object ───────────────────────────────────────────────
@@ -217,6 +221,7 @@ export const api = {
             else if (key === 'settings:config') result.__configKvFetchFailed = true;
             else if (key === 'settings:theme') result.__themeKvFetchFailed = true;
             else if (key === 'data:fleet') result.__fleetKvFetchFailed = true;
+            else if (key === 'data:inventory') result.__inventoryKvFetchFailed = true;
             else if (key === 'settings:alertThresholds') result.__alertThresholdsKvFetchFailed = true;
             else if (key === 'data:chartOfAccounts') result.__chartOfAccountsKvFetchFailed = true;
             else if (key === 'data:products') result.__productsKvFetchFailed = true;
@@ -266,6 +271,7 @@ export const api = {
       key === 'settings:system' ||
       key === 'settings:config' ||
       key === 'data:fleet' ||
+      key === 'data:inventory' ||
       key === 'data:chartOfAccounts' ||
       key === 'data:products' ||
       key === 'data:roles' ||

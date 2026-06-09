@@ -29,6 +29,11 @@ import {
   loadFleetFromSql,
   migrateFleetKvToSql,
 } from '../services/repository/fleetSql';
+import {
+  isInventorySqlEnabled,
+  loadInventoryFromSql,
+  migrateInventoryKvToSql,
+} from '../services/repository/inventorySql';
 import { resolveAppKvFromSql } from '../services/repository/appKvSql';
 import {
   loadPettyCashMetaFromSql,
@@ -57,8 +62,14 @@ import type {
   User,
 } from '../types';
 import type { FleetDataset } from '../types/fleet';
+import type { InventoryDataset } from '../types/inventory';
 import { createDemoFleetDataset, normalizeFleetDataset } from '../utils/fleetData';
 import { isFleetDatasetEmpty } from '../utils/fleetDatasetEmpty';
+import {
+  createDemoInventoryDataset,
+  normalizeInventoryDataset,
+} from '../utils/inventoryData';
+import { isInventoryDatasetEmpty } from '../utils/inventoryDatasetEmpty';
 import { hydrateTransactions } from '../utils/hydrateTransactions';
 import { shouldAllowKvRemoteHydrate } from '../utils/kvDomainPersistence';
 import { mergeRolesWithDefaults } from '../utils/mergeRolesWithDefaults';
@@ -83,6 +94,7 @@ const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 const FLEET_USE_SQL = isFleetSqlEnabled();
+const INVENTORY_USE_SQL = isInventorySqlEnabled();
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
 
 type FeeReceiptGlobal = {
@@ -906,6 +918,59 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             deps.fleetKvLatestRef.current = nextFleet;
             deps.setFleetDataset(nextFleet);
             deps.fleetHydratedFromKvRef.current = true;
+          }
+        }
+
+        {
+          const allowInventoryRemote = shouldAllowKvRemoteHydrate(
+            data.__inventoryKvFetchFailed,
+            deps.skipInventoryHydrateRef,
+            deps.inventoryKvCooldownUntilRef
+          );
+          const inventoryFetchFailed = data.__inventoryKvFetchFailed && !INVENTORY_USE_SQL;
+          if (inventoryFetchFailed) {
+            deps.inventoryHydratedFromKvRef.current = false;
+            toast.error(
+              'No se pudo leer Inventario de equipos desde la nube. Se detuvo el autoguardado.'
+            );
+          } else if (allowInventoryRemote || INVENTORY_USE_SQL) {
+            let nextInventory: InventoryDataset;
+            const sessionUserId = sessionEffective?.user?.id ?? null;
+
+            if (INVENTORY_USE_SQL) {
+              const sqlLoad = await loadInventoryFromSql(getSupabaseClient());
+              const rawInv = data['data:inventory'];
+              const kvInv = rawInv != null ? normalizeInventoryDataset(rawInv) : null;
+              const kvHasData = kvInv != null && !isInventoryDatasetEmpty(kvInv);
+              if (kvHasData) {
+                nextInventory = kvInv!;
+                if (sqlLoad.ok && sessionUserId) {
+                  void migrateInventoryKvToSql(getSupabaseClient(), nextInventory, sessionUserId);
+                }
+              } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
+                nextInventory = sqlLoad.data;
+              } else if (kvInv != null) {
+                nextInventory = kvInv;
+              } else if (sqlLoad.ok && sqlLoad.data) {
+                nextInventory = sqlLoad.data;
+              } else if (APP_BACKEND === 'local') {
+                nextInventory = createDemoInventoryDataset();
+              } else {
+                nextInventory = normalizeInventoryDataset({});
+              }
+            } else {
+              const rawInv = data['data:inventory'];
+              if (rawInv != null) {
+                nextInventory = normalizeInventoryDataset(rawInv);
+              } else if (APP_BACKEND === 'local') {
+                nextInventory = createDemoInventoryDataset();
+              } else {
+                nextInventory = normalizeInventoryDataset({});
+              }
+            }
+            deps.inventoryKvLatestRef.current = nextInventory;
+            deps.setInventoryDataset(nextInventory);
+            deps.inventoryHydratedFromKvRef.current = true;
           }
         }
 

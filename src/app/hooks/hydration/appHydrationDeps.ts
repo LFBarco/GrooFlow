@@ -15,6 +15,7 @@ import type {
   User,
 } from '../../types';
 import type { FleetDataset } from '../../types/fleet';
+import type { InventoryDataset } from '../../types/inventory';
 import type { CloudSyncPhase } from '../../utils/kvDomainPersistence';
 
 type FeeReceiptGlobal = {
@@ -110,6 +111,10 @@ export type AppHydrationDeps = {
   skipFleetHydrateRef: MutableRefObject<boolean>;
   fleetKvCooldownUntilRef: MutableRefObject<number>;
   fleetKvLatestRef: MutableRefObject<FleetDataset>;
+  inventoryHydratedFromKvRef: MutableRefObject<boolean>;
+  skipInventoryHydrateRef: MutableRefObject<boolean>;
+  inventoryKvCooldownUntilRef: MutableRefObject<number>;
+  inventoryKvLatestRef: MutableRefObject<InventoryDataset>;
   treasuryHydratedFromKvRef: MutableRefObject<boolean>;
   skipTreasuryHydrateRef: MutableRefObject<boolean>;
   treasuryKvCooldownUntilRef: MutableRefObject<number>;
@@ -138,6 +143,7 @@ export type AppHydrationDeps = {
   setRequests: Dispatch<SetStateAction<PurchaseRequest[]>>;
   setTheme: Dispatch<SetStateAction<'dark' | 'light'>>;
   setFleetDataset: Dispatch<SetStateAction<FleetDataset>>;
+  setInventoryDataset: Dispatch<SetStateAction<InventoryDataset>>;
   setTreasuryInvoices: Dispatch<SetStateAction<unknown[]>>;
   setTreasuryBankBalance: Dispatch<SetStateAction<number | undefined>>;
   setTreasuryPaidHistory: Dispatch<SetStateAction<unknown[]>>;

@@ -20,7 +20,8 @@ export type ViewType =
   | 'fees'
   | 'alerts'
   | 'products'
-  | 'fleet';
+  | 'fleet'
+  | 'inventory';
 
 /** Path por defecto (raíz) */
 export const DEFAULT_VIEW: ViewType = 'dashboard';
@@ -45,6 +46,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   users: '/usuarios',
   config: '/configuracion',
   fleet: '/flota-clinica',
+  inventory: '/inventario-equipos',
 };
 
 /** Path → vista (para leer la URL) */
@@ -84,6 +86,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   users: 'Usuarios',
   config: 'Configuración',
   fleet: 'Gestión Vehicular',
+  inventory: 'Gestión de Inventario',
 };
 
 /**
@@ -108,4 +111,5 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'users',
   'config',
   'fleet',
+  'inventory',
 ];
