@@ -15,7 +15,6 @@ import {
   Clock,
   XCircle,
   Settings2,
-  Wand2,
   QrCode,
 } from 'lucide-react';
 import {
@@ -40,8 +39,6 @@ import { toast } from 'sonner';
 import type {
   InventoryDataset,
   InventoryEquipment,
-  InventoryEquipmentKind,
-  InventoryEquipmentStatus,
   InventoryMaintenanceKind,
   InventoryMaintenanceRecord,
   InventoryMaintenanceStatus,
@@ -53,7 +50,6 @@ import {
   computeInventoryKpis,
   computeUsefulLifePercent,
   createDemoInventoryDataset,
-  formatEquipmentLocation,
   findEquipmentFromScan,
   getEquipmentById,
   maintenanceTotalCost,
@@ -62,19 +58,15 @@ import {
   upcomingMaintenance,
 } from '../../utils/inventoryData';
 import { applyInventoryDatasetChange, type InventoryPersistFn } from '../../utils/inventoryPersist';
-import {
-  generateEquipmentCode,
-  describeCodePattern,
-  parseInventoryQrScan,
-} from '../../utils/inventoryCodeGenerator';
+import { generateEquipmentCode, parseInventoryQrScan } from '../../utils/inventoryCodeGenerator';
 import {
   getActiveCategories,
   getCategoryLabel,
   getCategoryById,
   getCategoryPrefix,
 } from '../../utils/inventoryCategoryConfig';
+import { EquipmentFormDialog } from './EquipmentFormDialog';
 import { formatCurrencyEs } from '../../utils/numberFormat';
-import { EquipmentQrPanel } from './EquipmentQrPanel';
 import { InventoryCategoryConfigDialog } from './InventoryCategoryConfigDialog';
 import { InventoryQrScannerDialog } from './InventoryQrScannerDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -745,138 +737,19 @@ export function InventoryModule({
         </TabsContent>
       </Tabs>
 
-      <Dialog open={equipmentDialog != null} onOpenChange={(o) => !o && setEquipmentDialog(null)}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{isNewEquipment ? 'Nuevo equipo' : 'Editar equipo'}</DialogTitle>
-          </DialogHeader>
-          {equipmentDialog && (
-            <div className="grid gap-3 py-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">Código inventario</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      className="font-mono"
-                      value={equipmentDialog.code}
-                      onChange={(e) =>
-                        setEquipmentDialog({ ...equipmentDialog, code: e.target.value.toUpperCase() })
-                      }
-                    />
-                    <Button type="button" variant="outline" size="icon" onClick={regenerateEquipmentCode} title="Generar código">
-                      <Wand2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">
-                    {describeCodePattern(getCategoryPrefix(dataset, equipmentDialog.category))}
-                  </p>
-                </div>
-                <Field label="Nombre" value={equipmentDialog.name} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, name: v })} />
-              </div>
-
-              <EquipmentQrPanel equipment={equipmentDialog} visible={equipmentDialog.code.trim().length > 0} />
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Marca" value={equipmentDialog.brand || ''} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, brand: v })} />
-                <Field label="Modelo" value={equipmentDialog.model || ''} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, model: v })} />
-              </div>
-              <Select
-                value={equipmentDialog.sede}
-                onValueChange={(v) => {
-                  const next = { ...equipmentDialog, sede: v };
-                  setEquipmentDialog(isNewEquipment && !equipmentDialog.code ? applyGeneratedCode(next) : next);
-                }}
-              >
-                <SelectTrigger><SelectValue placeholder="Sede" /></SelectTrigger>
-                <SelectContent>
-                  {sedeOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <div className="grid grid-cols-2 gap-3">
-                <Field
-                  label="Piso"
-                  placeholder="Ej. 1, 2, PB"
-                  value={equipmentDialog.floor || ''}
-                  onChange={(v) => setEquipmentDialog({ ...equipmentDialog, floor: v })}
-                />
-                <Field
-                  label="Consultorio / sala"
-                  placeholder="Ej. 03, Cirugía A"
-                  value={equipmentDialog.room || ''}
-                  onChange={(v) => setEquipmentDialog({ ...equipmentDialog, room: v })}
-                />
-              </div>
-              <p className="text-[10px] text-muted-foreground -mt-1">
-                Ubicación: {formatEquipmentLocation(equipmentDialog)}
-              </p>
-              <div className="grid grid-cols-2 gap-3">
-                <Select
-                  value={equipmentDialog.category}
-                  onValueChange={(v) => {
-                    const cat = getCategoryById(dataset, v);
-                    const next = {
-                      ...equipmentDialog,
-                      category: v,
-                      kind: cat?.kind ?? equipmentDialog.kind,
-                    };
-                    setEquipmentDialog(isNewEquipment ? applyGeneratedCode(next) : next);
-                  }}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {activeCategories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.label} ({c.codePrefix})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select value={equipmentDialog.status} onValueChange={(v) => setEquipmentDialog({ ...equipmentDialog, status: v as InventoryEquipmentStatus })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="active">Activo</SelectItem>
-                    <SelectItem value="maintenance">En Mantenimiento</SelectItem>
-                    <SelectItem value="critical">Crítico</SelectItem>
-                    <SelectItem value="inactive">Inactivo</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Select value={equipmentDialog.kind} onValueChange={(v) => setEquipmentDialog({ ...equipmentDialog, kind: v as InventoryEquipmentKind })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="medical">Médico</SelectItem>
-                    <SelectItem value="operational">Operativo</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Field label="Serie" value={equipmentDialog.serialNumber || ''} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, serialNumber: v })} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Valor compra (S/)" type="number" value={String(equipmentDialog.purchaseValue)} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, purchaseValue: Number(v) || 0 })} />
-                <Field label="Valor actual (S/)" type="number" value={String(equipmentDialog.currentValue)} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, currentValue: Number(v) || 0 })} />
-              </div>
-              <Field label="Próx. mantenimiento" type="date" value={equipmentDialog.nextMaintenanceDate || ''} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, nextMaintenanceDate: v })} />
-              {providers.length > 0 && (
-                <Select value={equipmentDialog.providerId || 'none'} onValueChange={(v) => {
-                  const p = providers.find((x) => x.id === v);
-                  setEquipmentDialog({ ...equipmentDialog, providerId: v === 'none' ? undefined : v, providerName: p?.name });
-                }}>
-                  <SelectTrigger><SelectValue placeholder="Proveedor servicio" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin proveedor</SelectItem>
-                    {providers.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              )}
-              <Textarea placeholder="Notas" value={equipmentDialog.notes || ''} onChange={(e) => setEquipmentDialog({ ...equipmentDialog, notes: e.target.value })} rows={2} />
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEquipmentDialog(null)}>Cancelar</Button>
-            <Button onClick={() => void saveEquipment()}>Guardar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <EquipmentFormDialog
+        equipment={equipmentDialog}
+        isNew={isNewEquipment}
+        dataset={dataset}
+        sedeOptions={sedeOptions}
+        providers={providers}
+        activeCategories={activeCategories}
+        onOpenChange={(open) => !open && setEquipmentDialog(null)}
+        onChange={setEquipmentDialog}
+        onRegenerateCode={regenerateEquipmentCode}
+        onSave={() => void saveEquipment()}
+        applyGeneratedCode={applyGeneratedCode}
+      />
 
       <Dialog open={maintDialog != null} onOpenChange={(o) => !o && setMaintDialog(null)}>
         <DialogContent className="max-w-lg">
