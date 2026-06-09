@@ -93,7 +93,19 @@ function countRecordsHint(json: unknown): string | undefined {
   return undefined;
 }
 
-const VALIDATE_TIMEOUT_MS = 55_000;
+/** Cliente: proxy + auth + Veterinari (servidor corta a ~28s). */
+const VALIDATE_TIMEOUT_MS = 40_000;
+const SESSION_TIMEOUT_MS = 10_000;
+
+async function getAccessTokenWithTimeout(): Promise<string | null> {
+  const sessionPromise = getSupabaseClient()
+    .auth.getSession()
+    .then((d) => d.data.session?.access_token ?? null);
+  const timeoutPromise = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), SESSION_TIMEOUT_MS);
+  });
+  return Promise.race([sessionPromise, timeoutPromise]);
+}
 
 async function validateViaServerProxy(
   targetUrl: string,
@@ -164,7 +176,8 @@ async function validateViaServerProxy(
     if (err instanceof Error && err.name === 'AbortError') {
       return {
         ok: false,
-        message: 'El servidor no respondió en el tiempo esperado.',
+        message:
+          'Tiempo de espera agotado (40s). Veterinari puede estar lento; intenta GetClientes o más tarde.',
         durationMs: Date.now() - start,
         viaProxy: true,
       };
@@ -216,12 +229,11 @@ export async function validateVeterinariConnection(input: {
 
   const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
   if (backend === 'supabase') {
-    const { data: sessionData } = await getSupabaseClient().auth.getSession();
-    const accessToken = sessionData.session?.access_token;
+    const accessToken = await getAccessTokenWithTimeout();
     if (!accessToken) {
       return {
         ok: false,
-        message: 'Inicia sesión para probar la conexión.',
+        message: 'Inicia sesión para probar la conexión (o la sesión tardó demasiado en cargar).',
         durationMs: Date.now() - start,
       };
     }

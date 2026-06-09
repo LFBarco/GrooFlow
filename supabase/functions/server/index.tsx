@@ -255,13 +255,31 @@ for (const base of KV_PATH_BASES) {
         return c.json({ error: "URL de destino no permitida." }, 400);
       }
       const started = Date.now();
-      const res = await fetch(targetUrl, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          Accept: "application/json",
-        },
-      });
+      const vetController = new AbortController();
+      const vetTimeout = setTimeout(() => vetController.abort(), 28_000);
+      let res: Response;
+      try {
+        res = await fetch(targetUrl, {
+          method: "GET",
+          signal: vetController.signal,
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            Accept: "application/json",
+          },
+        });
+      } catch (fetchErr) {
+        clearTimeout(vetTimeout);
+        const isAbort = fetchErr instanceof Error && fetchErr.name === "AbortError";
+        return c.json({
+          ok: false,
+          authMethod: "Authorization: Bearer",
+          message: isAbort
+            ? "Veterinari no respondió en 28 segundos (servicio longrunning). Intenta de nuevo o prueba GetClientes."
+            : "No se pudo contactar Veterinari desde el servidor.",
+          durationMs: Date.now() - started,
+        });
+      }
+      clearTimeout(vetTimeout);
       const text = await res.text();
       let json: unknown = null;
       try {

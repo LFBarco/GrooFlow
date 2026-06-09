@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -53,6 +53,16 @@ export function VeterinariIntegrationSection({
   const vet = mergeVeterinariSettings(systemSettings.veterinari);
   const [showToken, setShowToken] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingSec, setTestingSec] = useState(0);
+
+  useEffect(() => {
+    if (!testing) {
+      setTestingSec(0);
+      return;
+    }
+    const id = window.setInterval(() => setTestingSec((s) => s + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [testing]);
 
   const patchVet = (partial: Partial<VeterinariIntegrationSettings>) => {
     onUpdateSystemSettings({
@@ -228,17 +238,25 @@ export function VeterinariIntegrationSection({
         )}
 
         {!readOnly && (
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => void handleTest()} disabled={testing}>
-              {testing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Probando…
-                </>
-              ) : (
-                'Probar conexión'
-              )}
-            </Button>
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => void handleTest()} disabled={testing}>
+                {testing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Probando…{testingSec > 0 ? ` (${testingSec}s)` : ''}
+                  </>
+                ) : (
+                  'Probar conexión'
+                )}
+              </Button>
+            </div>
+            {testing && (
+              <p className="text-xs text-muted-foreground">
+                Consultando Veterinari vía servidor GrooFlow. Suele tardar unos segundos; si pasa de
+                40s verás un mensaje de timeout (el API «longrunning» a veces es lento).
+              </p>
+            )}
           </div>
         )}
 
