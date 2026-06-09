@@ -18,7 +18,7 @@ import {
   mergeVeterinariSettings,
   VETERINARI_TEST_ENDPOINTS,
 } from '../../data/initialData';
-import { validateVeterinariConnection } from '../../utils/veterinariApi';
+import { buildVeterinariUrl, sanitizeVeterinariBaseUrl, validateVeterinariConnection } from '../../utils/veterinariApi';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -95,7 +95,10 @@ export function VeterinariIntegrationSection({
     }
   };
 
-  const previewUrl = `${(vet.baseUrl || DEFAULT_VETERINARI_BASE_URL).replace(/\/$/, '')}/${vet.testEndpoint || 'GetClientes'}?page=1`;
+  const previewUrl = buildVeterinariUrl(
+    vet.baseUrl || DEFAULT_VETERINARI_BASE_URL,
+    vet.testEndpoint || 'GetClientes'
+  );
 
   return (
     <Card>
@@ -132,10 +135,14 @@ export function VeterinariIntegrationSection({
             value={vet.baseUrl ?? ''}
             disabled={readOnly}
             onChange={(e) => patchVet({ baseUrl: e.target.value })}
+            onBlur={(e) => {
+              const clean = sanitizeVeterinariBaseUrl(e.target.value);
+              if (clean !== e.target.value.trim()) patchVet({ baseUrl: clean });
+            }}
           />
           <p className="text-xs text-muted-foreground flex items-center gap-1">
             <Link2 className="h-3 w-3" />
-            Sin barra final. Ejemplo: …/api/oapi
+            Solo hasta …/api/oapi — no pegues GetClientes ni ?page=1 aquí.
           </p>
         </div>
 

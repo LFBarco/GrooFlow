@@ -225,7 +225,10 @@ export function mergeVeterinariSettings(
   return {
     ...base,
     ...partial,
-    baseUrl: (partial.baseUrl ?? base.baseUrl)?.trim() || base.baseUrl,
+    baseUrl:
+      partial.baseUrl != null
+        ? partial.baseUrl.trim().replace(/\/+$/, '').replace(/\/Get[A-Za-z]+$/i, '')
+        : base.baseUrl,
     apiToken: partial.apiToken ?? base.apiToken,
     testEndpoint: partial.testEndpoint ?? base.testEndpoint,
   };

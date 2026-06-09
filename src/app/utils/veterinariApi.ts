@@ -23,8 +23,23 @@ export type VeterinariValidationResult = {
   corsBlocked?: boolean;
 };
 
+/** Quita barra final. */
 export function normalizeVeterinariBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, '');
+}
+
+/**
+ * Limpia URL pegada por el usuario: sin query, sin endpoint GetXxx al final.
+ * Ej: …/api/oapi/GetVentas?page=1 → …/api/oapi
+ */
+export function sanitizeVeterinariBaseUrl(raw: string): string {
+  let s = raw.trim();
+  if (!s) return '';
+  s = s.split('#')[0].split('?')[0].trim();
+  s = s.replace(/\/+$/, '');
+  s = s.replace(/\/Get[A-Za-z]+$/i, '');
+  s = s.replace(/\/+$/, '');
+  return s;
 }
 
 /** Construye URL: base + recurso + query (page=1 por defecto). */
@@ -33,15 +48,25 @@ export function buildVeterinariUrl(
   resource: string,
   extraParams?: Record<string, string>
 ): string {
-  const base = normalizeVeterinariBaseUrl(baseUrl);
-  const resourceClean = resource.replace(/^\/+/, '').replace(/\?.*$/, '');
-  const params = new URLSearchParams({ page: '1', ...extraParams });
+  const base = sanitizeVeterinariBaseUrl(baseUrl);
+  const resourceClean = resource.replace(/^\/+/, '').replace(/\?.*$/, '').trim();
+  if (!base || !resourceClean) return '';
+
+  const url = new URL(`${base}/${resourceClean}`);
+  url.searchParams.set('page', extraParams?.page ?? '1');
+  for (const [key, value] of Object.entries(extraParams ?? {})) {
+    if (key !== 'page' && value != null) url.searchParams.set(key, value);
+  }
   if (resourceClean === 'GetVentas') {
     const now = new Date();
-    if (!params.has('year')) params.set('year', String(now.getFullYear()));
-    if (!params.has('month')) params.set('month', String(now.getMonth() + 1));
+    if (!url.searchParams.has('year')) {
+      url.searchParams.set('year', String(now.getFullYear()));
+    }
+    if (!url.searchParams.has('month')) {
+      url.searchParams.set('month', String(now.getMonth() + 1));
+    }
   }
-  return `${base}/${resourceClean}?${params.toString()}`;
+  return url.toString();
 }
 
 function countRecordsHint(json: unknown): string | undefined {
@@ -105,7 +130,7 @@ export async function validateVeterinariConnection(input: {
   testEndpoint: string;
 }): Promise<VeterinariValidationResult> {
   const start = Date.now();
-  const baseUrl = normalizeVeterinariBaseUrl(input.baseUrl);
+  const baseUrl = sanitizeVeterinariBaseUrl(input.baseUrl);
   const token = input.apiToken.trim();
   const endpoint = input.testEndpoint.trim() || 'GetClientes';
 
@@ -165,12 +190,16 @@ export async function validateVeterinariConnection(input: {
         continue;
       }
 
-      const snippet = text.slice(0, 120).replace(/\s+/g, ' ');
+      const snippet = text.slice(0, 160).replace(/\s+/g, ' ');
+      const urlHint =
+        res.status === 400
+          ? ` Revisa que la URL base sea solo …/api/oapi (sin GetVentas ni ?page=). URL usada: ${targetUrl}`
+          : '';
       return {
         ok: false,
         status: res.status,
         authMethod: method,
-        message: `HTTP ${res.status} con ${method}: ${snippet || 'sin detalle'}`,
+        message: `HTTP ${res.status} con ${method}: ${snippet || 'sin detalle'}${urlHint}`,
         durationMs: Date.now() - start,
       };
     } catch (err) {
