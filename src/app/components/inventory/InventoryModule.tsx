@@ -16,6 +16,7 @@ import {
   XCircle,
   Settings2,
   Wand2,
+  QrCode,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -53,6 +54,7 @@ import {
   computeUsefulLifePercent,
   createDemoInventoryDataset,
   formatEquipmentLocation,
+  findEquipmentFromScan,
   getEquipmentById,
   maintenanceTotalCost,
   monthlyMaintenanceSeries,
@@ -60,7 +62,11 @@ import {
   upcomingMaintenance,
 } from '../../utils/inventoryData';
 import { applyInventoryDatasetChange, type InventoryPersistFn } from '../../utils/inventoryPersist';
-import { generateEquipmentCode, describeCodePattern } from '../../utils/inventoryCodeGenerator';
+import {
+  generateEquipmentCode,
+  describeCodePattern,
+  parseInventoryQrScan,
+} from '../../utils/inventoryCodeGenerator';
 import {
   getActiveCategories,
   getCategoryLabel,
@@ -70,6 +76,7 @@ import {
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { EquipmentQrPanel } from './EquipmentQrPanel';
 import { InventoryCategoryConfigDialog } from './InventoryCategoryConfigDialog';
+import { InventoryQrScannerDialog } from './InventoryQrScannerDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -140,6 +147,7 @@ export function InventoryModule({
   const [isNewEquipment, setIsNewEquipment] = useState(false);
   const [isNewMaint, setIsNewMaint] = useState(false);
   const [categoryConfigOpen, setCategoryConfigOpen] = useState(false);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
 
   const activeCategories = useMemo(() => getActiveCategories(dataset), [dataset]);
   const defaultCategoryId = activeCategories[0]?.id ?? 'otros';
@@ -242,6 +250,26 @@ export function InventoryModule({
     if (!equipmentDialog) return;
     setEquipmentDialog(applyGeneratedCode(equipmentDialog));
     toast.success('Código generado.');
+  };
+
+  const handleQrScan = (raw: string) => {
+    const payload = parseInventoryQrScan(raw);
+    if (!payload) {
+      toast.error('Código o QR vacío.');
+      return;
+    }
+    const eq = findEquipmentFromScan(dataset, payload);
+    if (!eq) {
+      const hint = payload.code || payload.id || raw.trim();
+      toast.error(`No se encontró equipo: ${hint}`);
+      return;
+    }
+    setQrScannerOpen(false);
+    setTab('equipment');
+    setIsNewEquipment(false);
+    setSearch(eq.code);
+    setEquipmentDialog(eq);
+    toast.success(`Equipo encontrado: ${eq.name}`);
   };
 
   const saveEquipment = async () => {
@@ -348,6 +376,10 @@ export function InventoryModule({
               ))}
             </SelectContent>
           </Select>
+          <Button variant="outline" size="sm" onClick={() => setQrScannerOpen(true)}>
+            <QrCode className="h-4 w-4 mr-1" />
+            Escanear QR
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setCategoryConfigOpen(true)}>
             <Settings2 className="h-4 w-4 mr-1" />
             Categorías
@@ -365,6 +397,12 @@ export function InventoryModule({
         onOpenChange={setCategoryConfigOpen}
         dataset={dataset}
         onSave={persist}
+      />
+
+      <InventoryQrScannerDialog
+        open={qrScannerOpen}
+        onOpenChange={setQrScannerOpen}
+        onScan={handleQrScan}
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as InventoryTab)}>
@@ -542,6 +580,10 @@ export function InventoryModule({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Buscar por nombre, código, marca, serie…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
+            <Button variant="outline" onClick={() => setQrScannerOpen(true)} title="Escanear QR">
+              <QrCode className="h-4 w-4 mr-1" />
+              Escanear
+            </Button>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[160px]"><SelectValue placeholder="Estado" /></SelectTrigger>
               <SelectContent>

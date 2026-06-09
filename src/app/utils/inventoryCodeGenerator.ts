@@ -90,3 +90,29 @@ export function buildInventoryQrPayload(eq: Pick<
 export function describeCodePattern(prefix: string): string {
   return `${prefix || 'EQP'}-SEDE-P2C03-001 (piso y consultorio opcionales)`;
 }
+
+export type InventoryQrScanPayload = {
+  id?: string;
+  code?: string;
+};
+
+/** Interpreta texto del QR (JSON GrooFlow o código plano). */
+export function parseInventoryQrScan(raw: string): InventoryQrScanPayload | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      if (parsed.app === 'grooflow' && parsed.type === 'inventory') {
+        const id = typeof parsed.id === 'string' ? parsed.id.trim() : '';
+        const code = typeof parsed.code === 'string' ? parsed.code.trim() : '';
+        if (id || code) return { id: id || undefined, code: code || undefined };
+      }
+    } catch {
+      /* texto no JSON válido */
+    }
+  }
+
+  return { code: trimmed };
+}

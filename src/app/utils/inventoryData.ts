@@ -570,6 +570,21 @@ export function getEquipmentById(ds: InventoryDataset, id: string) {
   return ds.equipment.find((e) => e.id === id);
 }
 
+export function findEquipmentFromScan(
+  ds: InventoryDataset,
+  payload: { id?: string; code?: string }
+): InventoryEquipment | undefined {
+  if (payload.id) {
+    const byId = getEquipmentById(ds, payload.id);
+    if (byId) return byId;
+  }
+  if (payload.code) {
+    const codeNorm = payload.code.trim().toUpperCase();
+    return ds.equipment.find((e) => e.code.trim().toUpperCase() === codeNorm);
+  }
+  return undefined;
+}
+
 export function maintenanceTotalCost(m: InventoryMaintenanceRecord) {
   return m.laborCost + m.partsCost;
 }
