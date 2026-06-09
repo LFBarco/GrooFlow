@@ -171,7 +171,6 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.treasuryHydratedRef,
-    when: o.treasuryBankBalanceLoadedRef.current,
     kvKey: 'data:treasuryBankBalance',
     data: o.treasuryBankBalance,
     refs: o.treasuryBankBalanceRefs,

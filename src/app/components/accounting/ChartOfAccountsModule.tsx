@@ -58,7 +58,7 @@ const STARSOFT_HEADERS = [
 
 interface ChartOfAccountsModuleProps {
   chartOfAccounts: ChartOfAccountEntry[];
-  onUpdateChart: (rows: ChartOfAccountEntry[]) => void;
+  onUpdateChart: (rows: ChartOfAccountEntry[], successMessage?: string) => Promise<boolean>;
   systemSettings: SystemSettings;
   onUpdateSystemSettings: (s: SystemSettings) => void;
 }
@@ -380,26 +380,28 @@ export function ChartOfAccountsModule({
     reader.readAsArrayBuffer(file);
   };
 
-  const applyPendingImport = () => {
+  const applyPendingImport = async () => {
     if (!pendingImport) return;
-    if (importMode === 'replace') {
-      onUpdateChart(
-        pendingImport.rows
-          .filter((r) => r.active)
-          .map((r) => ({ ...r, id: `coa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}` }))
-      );
-      toast.success('Plan de cuentas reemplazado por archivo.');
-    } else {
-      onUpdateChart(pendingImport.rows);
-      const s = pendingImport.summary;
-      toast.success(
-        `Merge aplicado. Nuevas: ${s.created}, actualizadas: ${s.updated}, inactivadas: ${s.inactivated}.`
-      );
-    }
-    setPendingImport(null);
+    const s = pendingImport.summary;
+    const ok =
+      importMode === 'replace'
+        ? await onUpdateChart(
+            pendingImport.rows
+              .filter((r) => r.active)
+              .map((r) => ({
+                ...r,
+                id: `coa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              })),
+            'Plan de cuentas reemplazado por archivo.'
+          )
+        : await onUpdateChart(
+            pendingImport.rows,
+            `Merge aplicado. Nuevas: ${s.created}, actualizadas: ${s.updated}, inactivadas: ${s.inactivated}.`
+          );
+    if (ok) setPendingImport(null);
   };
 
-  const saveEditing = () => {
+  const saveEditing = async () => {
     if (!editing) return;
     const code = normalizeAccountCode(editing.code);
     const name = (editing.name || '').trim();
@@ -424,15 +426,13 @@ export function ChartOfAccountsModule({
           }
         : r
     );
-    onUpdateChart(next);
-    setEditing(null);
-    toast.success('Cuenta actualizada.');
+    const ok = await onUpdateChart(next, 'Cuenta actualizada.');
+    if (ok) setEditing(null);
   };
 
-  const clearChart = () => {
+  const clearChart = async () => {
     if (!confirm('¿Borrar todo el plan de cuentas cargado?')) return;
-    onUpdateChart([]);
-    toast.info('Plan de cuentas vaciado');
+    await onUpdateChart([], 'Plan de cuentas vaciado.');
   };
 
   const exportChartWithStarsoftHeaders = () => {

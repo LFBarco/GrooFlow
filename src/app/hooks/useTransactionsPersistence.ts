@@ -65,12 +65,7 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
           'data:transactions',
           transactions,
           (client, data, uid) =>
-            saveTransactionsToSql(
-              client,
-              data,
-              uid,
-              data.length === 0 ? { allowPruneWhenEmpty: true } : undefined
-            ),
+            (client, data, uid) => saveTransactionsToSql(client, data, uid),
           lastSaveErrorAtRef
         );
         return;

@@ -160,6 +160,7 @@ import {
 import { clearOperationalData } from "./utils/clearOperationalData";
 import { writeAuditLog } from "./services/repository/auditLogSql";
 import { generateEntityId } from "./utils/generateEntityId";
+import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
 import { useAlertReadPersistence } from "./hooks/useAlertReadPersistence";
 import { useSqlRetryProcessor } from "./hooks/useSqlRetryProcessor";
 import {
@@ -1051,6 +1052,8 @@ export default function App() {
     requestsHydratedRef: requestsHydratedFromKvRef,
     chartOfAccounts,
     chartRefs: {
+      hydratedFromKvRef: chartOfAccountsHydratedFromKvRef,
+      skipHydrateRef: skipChartOfAccountsHydrateRef,
       chainRef: chartOfAccountsKvChainRef,
       latestRef: chartOfAccountsKvLatestRef,
       cooldownUntilRef: chartOfAccountsKvCooldownUntilRef,
@@ -1156,10 +1159,32 @@ export default function App() {
     setTreasuryPaidHistory(next);
   }, []);
 
-  const handleChartOfAccountsUpdate = useCallback((next: ChartOfAccountEntry[]) => {
-    chartOfAccountsKvLatestRef.current = next;
-    setChartOfAccounts(next);
-  }, []);
+  const handleChartOfAccountsUpdate = useCallback(
+    async (next: ChartOfAccountEntry[], successMessage?: string): Promise<boolean> => {
+      setChartOfAccounts(next);
+      chartOfAccountsKvLatestRef.current = next;
+      return persistAppKvDomainNow({
+        kvKey: 'data:chartOfAccounts',
+        payload: next,
+        refs: {
+          hydratedFromKvRef: chartOfAccountsHydratedFromKvRef,
+          skipHydrateRef: skipChartOfAccountsHydrateRef,
+          cooldownUntilRef: chartOfAccountsKvCooldownUntilRef,
+          chainRef: chartOfAccountsKvChainRef,
+          latestRef: chartOfAccountsKvLatestRef,
+        },
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        cloudSync: cloudSyncTrackerRef.current,
+        errorMessage:
+          'No se pudo guardar el plan de cuentas en la nube. Revisa sesión/red y vuelve a intentar.',
+        successMessage,
+        isDataLoaded,
+        hydratedRef: chartOfAccountsHydratedFromKvRef,
+      });
+    },
+    [isDataLoaded]
+  );
 
   const applyRemoteKvRef = useRef<((key: string, value: unknown) => void) | null>(null);
   const remoteKvToastLastAtRef = useRef(0);

@@ -58,6 +58,7 @@ import type {
 } from '../types';
 import type { FleetDataset } from '../types/fleet';
 import { createDemoFleetDataset, normalizeFleetDataset } from '../utils/fleetData';
+import { isFleetDatasetEmpty } from '../utils/fleetDatasetEmpty';
 import { hydrateTransactions } from '../utils/hydrateTransactions';
 import { shouldAllowKvRemoteHydrate } from '../utils/kvDomainPersistence';
 import { mergeRolesWithDefaults } from '../utils/mergeRolesWithDefaults';
@@ -385,10 +386,30 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             deps.chartOfAccountsKvCooldownUntilRef
           );
           if (data.__chartOfAccountsKvFetchFailed) {
-            deps.chartOfAccountsHydratedFromKvRef.current = false;
-            toast.error(
-              'No se pudo leer el plan de cuentas desde la nube. Se detuvo el autoguardado para no borrarlo.'
-            );
+            const sessionUserId = sessionEffective?.user?.id ?? null;
+            if (PRODUCTION_USE_SQL && sessionUserId) {
+              const sqlList =
+                ((await resolveAppKvFromSql(
+                  getSupabaseClient(),
+                  'data:chartOfAccounts',
+                  [],
+                  sessionUserId,
+                  (v) => !Array.isArray(v) || v.length === 0
+                )) as ChartOfAccountEntry[] | null | undefined) ?? [];
+              deps.chartOfAccountsKvLatestRef.current = sqlList;
+              deps.setChartOfAccounts(sqlList);
+              deps.chartOfAccountsHydratedFromKvRef.current = true;
+              if (sqlList.length === 0) {
+                toast.error(
+                  'No se pudo leer el plan de cuentas desde KV; SQL también está vacío. Revisa conexión antes de importar.'
+                );
+              }
+            } else {
+              deps.chartOfAccountsHydratedFromKvRef.current = false;
+              toast.error(
+                'No se pudo leer el plan de cuentas desde la nube. Se detuvo el autoguardado para no borrarlo.'
+              );
+            }
           } else if (allowChartRemote) {
             const raw = data['data:chartOfAccounts'] as ChartOfAccountEntry[] | null | undefined;
             const kvList = Array.isArray(raw) ? raw : [];
@@ -853,14 +874,18 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             if (FLEET_USE_SQL) {
               const sqlLoad = await loadFleetFromSql(getSupabaseClient());
               const rawFleet = data['data:fleet'];
-              /** KV es fuente de verdad; SQL solo si KV vacío (Realtime / multi-dispositivo). */
-              if (rawFleet != null) {
-                nextFleet = normalizeFleetDataset(rawFleet);
+              const kvFleet = rawFleet != null ? normalizeFleetDataset(rawFleet) : null;
+              const kvHasData = kvFleet != null && !isFleetDatasetEmpty(kvFleet);
+              /** KV con datos es fuente de verdad; KV vacío `{}` no pisa SQL con vehículos. */
+              if (kvHasData) {
+                nextFleet = kvFleet!;
                 if (sqlLoad.ok && sessionUserId) {
                   void migrateFleetKvToSql(getSupabaseClient(), nextFleet, sessionUserId);
                 }
               } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
                 nextFleet = sqlLoad.data;
+              } else if (kvFleet != null) {
+                nextFleet = kvFleet;
               } else if (sqlLoad.ok && sqlLoad.data) {
                 nextFleet = sqlLoad.data;
               } else if (APP_BACKEND === 'local') {
@@ -889,6 +914,13 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         deps.setCloudSyncPhase('synced');
         deps.setIsDataLoaded(true);
         toast.success('Datos sincronizados con la nube');
+      } catch (hydrateErr) {
+        console.error('[GrooFlow] hydrateFromKv:', hydrateErr);
+        deps.cloudSyncErrorRef.current = true;
+        deps.setCloudSyncPhase('error');
+        toast.error(
+          'Error al sincronizar datos desde la nube. Recarga la página o revisa tu conexión.'
+        );
       } finally {
         deps.setIsAuthChecking(false);
         deps.hydrateRunningRef.current = false;
