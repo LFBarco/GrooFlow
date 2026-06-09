@@ -49,7 +49,6 @@ import {
   categoryDistribution,
   computeInventoryKpis,
   computeUsefulLifePercent,
-  createDemoInventoryDataset,
   findEquipmentFromScan,
   getEquipmentById,
   maintenanceTotalCost,
@@ -336,12 +335,6 @@ export function InventoryModule({
     }
   };
 
-  const loadDemo = async () => {
-    if (!dataset.equipment.length && !confirm('¿Cargar datos de demostración?')) return;
-    if (dataset.equipment.length && !confirm('¿Reemplazar con datos demo?')) return;
-    await persist(createDemoInventoryDataset(), 'Datos de demostración cargados.');
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/25 bg-gradient-to-br from-slate-950/90 via-[#0f172a] to-slate-900/95 p-4 shadow-xl">
@@ -376,11 +369,6 @@ export function InventoryModule({
             <Settings2 className="h-4 w-4 mr-1" />
             Categorías
           </Button>
-          {dataset.equipment.length === 0 && (
-            <Button variant="outline" size="sm" onClick={() => void loadDemo()}>
-              Cargar demo
-            </Button>
-          )}
         </div>
       </div>
 

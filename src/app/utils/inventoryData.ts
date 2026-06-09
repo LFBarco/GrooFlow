@@ -61,12 +61,49 @@ export function computeUsefulLifePercent(eq: InventoryEquipment): number {
   return 50;
 }
 
+/** IDs del dataset de demostración retirado — se filtran al cargar datos persistidos. */
+const BUILTIN_DEMO_EQUIPMENT_IDS = new Set([
+  'inv-eq-001',
+  'inv-eq-002',
+  'inv-eq-003',
+  'inv-eq-004',
+  'inv-eq-005',
+  'inv-eq-006',
+  'inv-eq-007',
+  'inv-eq-008',
+]);
+
+const BUILTIN_DEMO_MAINTENANCE_IDS = new Set([
+  'inv-m-001',
+  'inv-m-002',
+  'inv-m-003',
+  'inv-m-004',
+  'inv-m-005',
+  'inv-m-006',
+]);
+
+export function stripBuiltinDemoInventoryData(ds: InventoryDataset): InventoryDataset {
+  const demoEqIds = new Set(
+    ds.equipment.filter((e) => BUILTIN_DEMO_EQUIPMENT_IDS.has(e.id)).map((e) => e.id)
+  );
+  if (demoEqIds.size === 0 && !ds.maintenance.some((m) => BUILTIN_DEMO_MAINTENANCE_IDS.has(m.id))) {
+    return ds;
+  }
+  return {
+    ...ds,
+    equipment: ds.equipment.filter((e) => !BUILTIN_DEMO_EQUIPMENT_IDS.has(e.id)),
+    maintenance: ds.maintenance.filter(
+      (m) => !BUILTIN_DEMO_MAINTENANCE_IDS.has(m.id) && !demoEqIds.has(m.equipmentId)
+    ),
+  };
+}
+
 export function normalizeInventoryDataset(raw: unknown): InventoryDataset {
   const obj = raw && typeof raw === 'object' ? (raw as Partial<InventoryDataset>) : {};
   const categoryConfig = normalizeCategoryConfig(obj.categoryConfig);
   const equipment = normalizeEquipmentList(obj.equipment, categoryConfig);
   const maintenance = normalizeMaintenanceList(obj.maintenance);
-  return { equipment, maintenance, categoryConfig };
+  return stripBuiltinDemoInventoryData({ equipment, maintenance, categoryConfig });
 }
 
 function normalizeEquipmentList(
@@ -174,249 +211,6 @@ function normalizeMaintenanceStatus(raw?: string): InventoryMaintenanceStatus {
   if (t.includes('venc') || t.includes('overdue')) return 'overdue';
   if (t.includes('cancel')) return 'cancelled';
   return 'scheduled';
-}
-
-export function createDemoInventoryDataset(): InventoryDataset {
-  const t = nowIso();
-  const mkEq = (
-    partial: Omit<InventoryEquipment, 'createdAt' | 'updatedAt'> &
-      Partial<Pick<InventoryEquipment, 'createdAt' | 'updatedAt'>>
-  ): InventoryEquipment => ({
-    ...partial,
-    createdAt: partial.createdAt ?? t,
-    updatedAt: partial.updatedAt ?? t,
-  });
-
-  const equipment: InventoryEquipment[] = [
-    mkEq({
-      id: 'inv-eq-001',
-      code: 'ECO-MIR-001',
-      name: 'Ecógrafo Digital Portátil',
-      brand: 'Mindray',
-      model: 'DP-50 Vet',
-      kind: 'medical',
-      category: 'imagen',
-      status: 'active',
-      sede: 'Miraflores',
-      purchaseDate: '2020-03-15',
-      purchaseValue: 28500,
-      currentValue: 21375,
-      usefulLifeYears: 8,
-      depreciationAnnualPct: 8,
-      nextMaintenanceDate: format(addMonths(new Date(), 1), 'yyyy-MM-dd'),
-      providerName: 'MedEquip Peru SAC',
-    }),
-    mkEq({
-      id: 'inv-eq-002',
-      code: 'ANE-SIS-002',
-      name: 'Estación de Anestesia WATO',
-      brand: 'Mindray',
-      model: 'WATO EX-65',
-      kind: 'medical',
-      category: 'anestesia',
-      status: 'maintenance',
-      sede: 'Sede San Isidro',
-      purchaseDate: '2019-06-01',
-      purchaseValue: 52000,
-      currentValue: 36400,
-      usefulLifeYears: 10,
-      nextMaintenanceDate: format(addMonths(new Date(), -1), 'yyyy-MM-dd'),
-      providerName: 'MedEquip Peru SAC',
-    }),
-    mkEq({
-      id: 'inv-eq-003',
-      code: 'LAB-LAU-003',
-      name: 'Analizador Hematológico',
-      brand: 'Abaxis',
-      model: 'VetScan HM5',
-      kind: 'medical',
-      category: 'laboratorio',
-      status: 'active',
-      sede: 'Miraflores',
-      purchaseValue: 18500,
-      currentValue: 12950,
-      usefulLifeYears: 7,
-      purchaseDate: '2021-01-10',
-    }),
-    mkEq({
-      id: 'inv-eq-004',
-      code: 'MON-SJL-004',
-      name: 'Monitor Multiparamétrico',
-      brand: 'Philips',
-      model: 'IntelliVue MX400',
-      kind: 'medical',
-      category: 'monitoreo',
-      status: 'active',
-      sede: 'San Juan de Lurigancho',
-      purchaseValue: 22000,
-      currentValue: 17600,
-      usefulLifeYears: 8,
-      purchaseDate: '2020-08-20',
-    }),
-    mkEq({
-      id: 'inv-eq-005',
-      code: 'CIR-MIR-005',
-      name: 'Mesa Quirúrgica Veterinaria',
-      brand: 'Shor-Line',
-      model: 'Surgery 2000',
-      kind: 'medical',
-      category: 'cirugia',
-      status: 'active',
-      sede: 'Miraflores',
-      purchaseValue: 9800,
-      currentValue: 7350,
-      usefulLifeYears: 12,
-      purchaseDate: '2018-04-05',
-    }),
-    mkEq({
-      id: 'inv-eq-006',
-      code: 'OPR-SIS-006',
-      name: 'Autoclave de Mesa',
-      brand: 'Tuttnauer',
-      model: '3870EA',
-      kind: 'operational',
-      category: 'operativo',
-      status: 'critical',
-      sede: 'Sede San Isidro',
-      purchaseValue: 12000,
-      currentValue: 6000,
-      usefulLifeYears: 10,
-      purchaseDate: '2017-11-12',
-      nextMaintenanceDate: format(addMonths(new Date(), -2), 'yyyy-MM-dd'),
-    }),
-    mkEq({
-      id: 'inv-eq-007',
-      code: 'IMG-SJL-007',
-      name: 'Rayos X Digital',
-      brand: 'Sound',
-      model: 'ExaVision DR',
-      kind: 'medical',
-      category: 'imagen',
-      status: 'active',
-      sede: 'San Juan de Lurigancho',
-      purchaseValue: 95000,
-      currentValue: 76000,
-      usefulLifeYears: 10,
-      purchaseDate: '2019-02-28',
-    }),
-    mkEq({
-      id: 'inv-eq-008',
-      code: 'OPR-MIR-008',
-      name: 'Central de Aire Medicinal',
-      brand: 'Atlas Copco',
-      model: 'MediAir',
-      kind: 'operational',
-      category: 'operativo',
-      status: 'active',
-      sede: 'Miraflores',
-      purchaseValue: 35000,
-      currentValue: 28000,
-      usefulLifeYears: 15,
-      purchaseDate: '2016-05-15',
-    }),
-  ];
-
-  const maintenance: InventoryMaintenanceRecord[] = [
-    {
-      id: 'inv-m-001',
-      equipmentId: 'inv-eq-001',
-      kind: 'preventive',
-      status: 'completed',
-      scheduledDate: '2024-10-12',
-      completedDate: '2024-10-12',
-      technicianName: 'Ing. Felipe Sotelo',
-      companyName: 'MedEquip Peru SAC',
-      sede: 'Miraflores',
-      description: 'Mantenimiento preventivo semestral — calibración y limpieza de transductor.',
-      laborCost: 350,
-      partsCost: 100,
-      parts: [{ name: 'Gel conductor', qty: 2, unitCost: 25 }],
-      resultNotes: 'Equipo en óptimas condiciones.',
-      createdAt: t,
-    },
-    {
-      id: 'inv-m-002',
-      equipmentId: 'inv-eq-002',
-      kind: 'corrective',
-      status: 'in_progress',
-      scheduledDate: format(new Date(), 'yyyy-MM-dd'),
-      technicianName: 'Ing. Felipe Sotelo',
-      companyName: 'MedEquip Peru SAC',
-      sede: 'Sede San Isidro',
-      description: 'Reemplazo módulo sensor O2 y revisión válvulas de vaporizadores.',
-      laborCost: 800,
-      partsCost: 1200,
-      parts: [{ name: 'Módulo sensor O2 WATO', qty: 1, unitCost: 1200 }],
-      resultNotes: 'Equipo fuera de servicio temporalmente hasta completar reparación.',
-      createdAt: t,
-    },
-    {
-      id: 'inv-m-003',
-      equipmentId: 'inv-eq-006',
-      kind: 'preventive',
-      status: 'overdue',
-      scheduledDate: format(addMonths(new Date(), -2), 'yyyy-MM-dd'),
-      companyName: 'SterilTech SAC',
-      sede: 'Sede San Isidro',
-      description: 'Mantenimiento preventivo anual autoclave — válvulas y sellos.',
-      laborCost: 280,
-      partsCost: 150,
-      parts: [{ name: 'Kit sellos autoclave', qty: 1, unitCost: 150 }],
-      createdAt: t,
-    },
-    {
-      id: 'inv-m-004',
-      equipmentId: 'inv-eq-003',
-      kind: 'preventive',
-      status: 'scheduled',
-      scheduledDate: format(addMonths(new Date(), 1), 'yyyy-MM-dd'),
-      technicianName: 'Téc. Ana Ríos',
-      companyName: 'LabVet Solutions',
-      sede: 'Miraflores',
-      description: 'Calibración y limpieza rutina analizador hematológico.',
-      laborCost: 200,
-      partsCost: 0,
-      parts: [],
-      createdAt: t,
-    },
-    {
-      id: 'inv-m-005',
-      equipmentId: 'inv-eq-004',
-      kind: 'preventive',
-      status: 'scheduled',
-      scheduledDate: format(addMonths(new Date(), 2), 'yyyy-MM-dd'),
-      companyName: 'MedEquip Peru SAC',
-      sede: 'San Juan de Lurigancho',
-      description: 'Revisión sensores y actualización firmware monitor.',
-      laborCost: 180,
-      partsCost: 0,
-      parts: [],
-      createdAt: t,
-    },
-    {
-      id: 'inv-m-006',
-      equipmentId: 'inv-eq-001',
-      kind: 'preventive',
-      status: 'completed',
-      scheduledDate: '2024-04-08',
-      completedDate: '2024-04-08',
-      technicianName: 'Ing. Felipe Sotelo',
-      companyName: 'MedEquip Peru SAC',
-      sede: 'Miraflores',
-      description: 'Mantenimiento preventivo semestral.',
-      laborCost: 320,
-      partsCost: 80,
-      parts: [{ name: 'Filtros de aire', qty: 1, unitCost: 80 }],
-      resultNotes: 'Sin observaciones.',
-      createdAt: t,
-    },
-  ];
-
-  return {
-    equipment,
-    maintenance,
-    categoryConfig: normalizeCategoryConfig(undefined),
-  };
 }
 
 export function computeInventoryKpis(ds: InventoryDataset): InventoryKpis {

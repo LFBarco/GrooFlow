@@ -65,10 +65,7 @@ import type { FleetDataset } from '../types/fleet';
 import type { InventoryDataset } from '../types/inventory';
 import { createDemoFleetDataset, normalizeFleetDataset } from '../utils/fleetData';
 import { isFleetDatasetEmpty } from '../utils/fleetDatasetEmpty';
-import {
-  createDemoInventoryDataset,
-  normalizeInventoryDataset,
-} from '../utils/inventoryData';
+import { normalizeInventoryDataset } from '../utils/inventoryData';
 import { isInventoryDatasetEmpty } from '../utils/inventoryDatasetEmpty';
 import { hydrateTransactions } from '../utils/hydrateTransactions';
 import { shouldAllowKvRemoteHydrate } from '../utils/kvDomainPersistence';
@@ -953,8 +950,6 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 nextInventory = kvInv;
               } else if (sqlLoad.ok && sqlLoad.data) {
                 nextInventory = sqlLoad.data;
-              } else if (APP_BACKEND === 'local') {
-                nextInventory = createDemoInventoryDataset();
               } else {
                 nextInventory = normalizeInventoryDataset({});
               }
@@ -962,8 +957,6 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               const rawInv = data['data:inventory'];
               if (rawInv != null) {
                 nextInventory = normalizeInventoryDataset(rawInv);
-              } else if (APP_BACKEND === 'local') {
-                nextInventory = createDemoInventoryDataset();
               } else {
                 nextInventory = normalizeInventoryDataset({});
               }
