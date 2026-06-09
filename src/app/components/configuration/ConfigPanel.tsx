@@ -3,7 +3,8 @@ import { getSuperAdminEmails } from '../../config/superAdmins';
 import { ConfigStructure, TransactionType, ConceptDefinition, SubcategoryDefinition, Flexibility, getSubcategories, subcategoryId } from '../../data/initialData';
 import { SystemSettings, type PettyCashRenditionPrintSettings, type BankAccountConfig, type BankCurrency } from '../../types';
 import { mergePettyCashRenditionPrint } from '../../data/initialData';
-import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon, Tags, Landmark } from 'lucide-react';
+import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon, Tags, Landmark, Plug } from 'lucide-react';
+import { VeterinariIntegrationSection } from './VeterinariIntegrationSection';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -588,6 +589,17 @@ export function ConfigPanel({
           >
             Sedes
           </TabsTrigger>
+          {isSystemAdmin && (
+            <TabsTrigger
+              value="integrations"
+              className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
+            >
+              <span className="flex items-center gap-1.5">
+                <Plug className="h-3.5 w-3.5" />
+                Integraciones
+              </span>
+            </TabsTrigger>
+          )}
           {canUseDangerZone && (
             <TabsTrigger 
               value="debug" 
@@ -1705,6 +1717,19 @@ export function ConfigPanel({
               </Card>
             </div>
           </TabsContent>
+
+          {/* TAB: INTEGRACIONES */}
+          {isSystemAdmin && (
+            <TabsContent value="integrations" className="mt-0 outline-none data-[state=inactive]:hidden">
+              <div className="grid grid-cols-1 gap-6 max-w-3xl">
+                <VeterinariIntegrationSection
+                  systemSettings={systemSettings}
+                  onUpdateSystemSettings={onUpdateSystemSettings}
+                  readOnly={!isSystemAdmin}
+                />
+              </div>
+            </TabsContent>
+          )}
 
           {/* TAB: SEGURIDAD */}
           <TabsContent value="security" className="mt-0 outline-none data-[state=inactive]:hidden">

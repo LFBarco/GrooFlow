@@ -5,6 +5,7 @@ import {
   type PettyCashPrintFormCounters,
   type PettyCashRenditionPrintSettings,
   type SmartCashFlowSettings,
+  type VeterinariIntegrationSettings,
 } from '../types';
 import {
   DEFAULT_PROVIDER_AREAS,
@@ -194,6 +195,42 @@ export const initialSystemSettings: SystemSettings = {
 };
 
 /** Valores por defecto del submódulo Smart Cash Flow (Fase 2). */
+export const DEFAULT_VETERINARI_BASE_URL =
+  'https://veterinari-longrunning.azurewebsites.net/api/oapi';
+
+export const VETERINARI_TEST_ENDPOINTS = [
+  'GetClientes',
+  'GetMascotas',
+  'GetVentas',
+  'GetCitas',
+  'GetServicios',
+  'GetProductos',
+  'GetInventario',
+] as const;
+
+export function defaultVeterinariSettings(): VeterinariIntegrationSettings {
+  return {
+    baseUrl: DEFAULT_VETERINARI_BASE_URL,
+    apiToken: '',
+    testEndpoint: 'GetClientes',
+    enabled: false,
+  };
+}
+
+export function mergeVeterinariSettings(
+  partial?: Partial<VeterinariIntegrationSettings> | null
+): VeterinariIntegrationSettings {
+  const base = defaultVeterinariSettings();
+  if (!partial || typeof partial !== 'object') return { ...base };
+  return {
+    ...base,
+    ...partial,
+    baseUrl: (partial.baseUrl ?? base.baseUrl)?.trim() || base.baseUrl,
+    apiToken: partial.apiToken ?? base.apiToken,
+    testEndpoint: partial.testEndpoint ?? base.testEndpoint,
+  };
+}
+
 export function defaultSmartCashFlowSettings(): SmartCashFlowSettings {
   return {
     scheduleLines: [],
@@ -280,5 +317,6 @@ export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | u
       ),
     },
     smartCashFlow: mergeSmartCashFlowSettings(incoming.smartCashFlow ?? base.smartCashFlow),
+    veterinari: mergeVeterinariSettings(incoming.veterinari),
   };
 }

@@ -453,6 +453,21 @@ export interface BankAccountConfig {
  * Cuentas “puente” para armar asientos: IGV compras, salida caja chica, banco.
  * Los códigos deben existir en el plan importado (validación en UI).
  */
+/** Conexión API Veterinari (reportes e integración). Token solo visible para admins. */
+export interface VeterinariIntegrationSettings {
+  /** Base sin barra final, ej. https://host/api/oapi */
+  baseUrl?: string;
+  apiToken?: string;
+  /** Endpoint usado en «Probar conexión». */
+  testEndpoint?: string;
+  enabled?: boolean;
+  lastValidatedAt?: string;
+  lastValidationOk?: boolean;
+  lastValidationMessage?: string;
+  lastValidationAuthMethod?: string;
+  lastValidationHttpStatus?: number;
+}
+
 export interface AccountingLinkSettings {
   /** IGV crédito fiscal (compras) — débito cuando el gasto lleva IGV. */
   igvPurchaseCreditAccountCode?: string;
@@ -492,6 +507,8 @@ export interface SystemSettings {
    * Persistido en KV junto al resto de `settings:system`.
    */
   smartCashFlow?: SmartCashFlowSettings;
+  /** API Veterinari — URL base y token para integración / reportes. */
+  veterinari?: VeterinariIntegrationSettings;
   /**
    * Catálogo de sedes. Formato nuevo: `{ name, enabled }[]`.
    * Legacy: `string[]` se normaliza al cargar (todas habilitadas).
