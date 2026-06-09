@@ -13,24 +13,18 @@ import type {
   InventoryComputedAlert,
   InventoryDataset,
   InventoryEquipment,
-  InventoryEquipmentCategory,
   InventoryEquipmentStatus,
   InventoryKpis,
   InventoryMaintenanceRecord,
   InventoryMaintenanceStatus,
 } from '../types/inventory';
+import {
+  getCategoryLabel,
+  normalizeCategoryConfig,
+  normalizeCategoryId,
+} from './inventoryCategoryConfig';
 
 const nowIso = () => new Date().toISOString();
-
-export const INVENTORY_CATEGORY_LABELS: Record<InventoryEquipmentCategory, string> = {
-  imagen: 'Imagen',
-  anestesia: 'Anestesia',
-  laboratorio: 'Laboratorio',
-  monitoreo: 'Monitoreo',
-  cirugia: 'Cirugía',
-  operativo: 'Operativo',
-  otros: 'Otros',
-};
 
 export const INVENTORY_STATUS_LABELS: Record<InventoryEquipmentStatus, string> = {
   active: 'Activo',
@@ -69,12 +63,16 @@ export function computeUsefulLifePercent(eq: InventoryEquipment): number {
 
 export function normalizeInventoryDataset(raw: unknown): InventoryDataset {
   const obj = raw && typeof raw === 'object' ? (raw as Partial<InventoryDataset>) : {};
-  const equipment = normalizeEquipmentList(obj.equipment);
+  const categoryConfig = normalizeCategoryConfig(obj.categoryConfig);
+  const equipment = normalizeEquipmentList(obj.equipment, categoryConfig);
   const maintenance = normalizeMaintenanceList(obj.maintenance);
-  return { equipment, maintenance };
+  return { equipment, maintenance, categoryConfig };
 }
 
-function normalizeEquipmentList(raw: unknown): InventoryEquipment[] {
+function normalizeEquipmentList(
+  raw: unknown,
+  categoryConfig = normalizeCategoryConfig(undefined)
+): InventoryEquipment[] {
   if (!Array.isArray(raw)) return [];
   const out: InventoryEquipment[] = [];
   for (const row of raw) {
@@ -90,9 +88,11 @@ function normalizeEquipmentList(raw: unknown): InventoryEquipment[] {
       model: r.model?.trim(),
       serialNumber: r.serialNumber?.trim(),
       kind: r.kind === 'operational' ? 'operational' : 'medical',
-      category: normalizeCategory(r.category),
+      category: normalizeCategoryId(r.category),
       status: normalizeEquipmentStatus(r.status),
       sede: (r.sede || '').trim() || 'Principal',
+      floor: r.floor?.trim(),
+      room: r.room?.trim(),
       locationDetail: r.locationDetail?.trim(),
       purchaseDate: r.purchaseDate,
       purchaseValue: Number(r.purchaseValue) || 0,
@@ -157,17 +157,6 @@ function normalizeMaintenanceList(raw: unknown): InventoryMaintenanceRecord[] {
     });
   }
   return out;
-}
-
-function normalizeCategory(raw?: string): InventoryEquipmentCategory {
-  const t = (raw || '').toLowerCase();
-  if (t.includes('anest')) return 'anestesia';
-  if (t.includes('lab')) return 'laboratorio';
-  if (t.includes('monit')) return 'monitoreo';
-  if (t.includes('cirug')) return 'cirugia';
-  if (t.includes('imag') || t.includes('eco')) return 'imagen';
-  if (t.includes('oper')) return 'operativo';
-  return 'otros';
 }
 
 function normalizeEquipmentStatus(raw?: string): InventoryEquipmentStatus {
@@ -423,7 +412,11 @@ export function createDemoInventoryDataset(): InventoryDataset {
     },
   ];
 
-  return { equipment, maintenance };
+  return {
+    equipment,
+    maintenance,
+    categoryConfig: normalizeCategoryConfig(undefined),
+  };
 }
 
 export function computeInventoryKpis(ds: InventoryDataset): InventoryKpis {
@@ -535,10 +528,18 @@ export function monthlyMaintenanceSeries(ds: InventoryDataset, months = 6) {
 export function categoryDistribution(ds: InventoryDataset) {
   const counts: Record<string, number> = {};
   for (const e of ds.equipment) {
-    const label = INVENTORY_CATEGORY_LABELS[e.category];
+    const label = getCategoryLabel(ds, e.category);
     counts[label] = (counts[label] || 0) + 1;
   }
   return Object.entries(counts).map(([name, value]) => ({ name, value }));
+}
+
+export function formatEquipmentLocation(eq: InventoryEquipment): string {
+  const parts = [eq.sede];
+  if (eq.floor) parts.push(`Piso ${eq.floor}`);
+  if (eq.room) parts.push(`Cons. ${eq.room}`);
+  if (eq.locationDetail) parts.push(eq.locationDetail);
+  return parts.filter(Boolean).join(' · ');
 }
 
 export function sedeSummary(ds: InventoryDataset) {

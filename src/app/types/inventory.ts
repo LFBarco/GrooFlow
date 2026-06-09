@@ -4,14 +4,18 @@
 
 export type InventoryEquipmentKind = 'medical' | 'operational';
 
-export type InventoryEquipmentCategory =
-  | 'imagen'
-  | 'anestesia'
-  | 'laboratorio'
-  | 'monitoreo'
-  | 'cirugia'
-  | 'operativo'
-  | 'otros';
+/** Id de categoría (predefinida o personalizada en `categoryConfig`). */
+export type InventoryEquipmentCategory = string;
+
+export interface InventoryCategoryDef {
+  id: string;
+  label: string;
+  /** Prefijo para código automático (ej. IMG, ANE, CONS). */
+  codePrefix: string;
+  kind: InventoryEquipmentKind;
+  active: boolean;
+  sortOrder: number;
+}
 
 export type InventoryEquipmentStatus = 'active' | 'maintenance' | 'critical' | 'inactive';
 
@@ -41,6 +45,10 @@ export interface InventoryEquipment {
   category: InventoryEquipmentCategory;
   status: InventoryEquipmentStatus;
   sede: string;
+  /** Piso dentro de la sede (ej. 1, 2, PB). */
+  floor?: string;
+  /** Consultorio / sala / área (ej. 03, Cirugía A). */
+  room?: string;
   locationDetail?: string;
   purchaseDate?: string;
   purchaseValue: number;
@@ -77,6 +85,8 @@ export interface InventoryMaintenanceRecord {
 export interface InventoryDataset {
   equipment: InventoryEquipment[];
   maintenance: InventoryMaintenanceRecord[];
+  /** Catálogo editable de categorías y prefijos de código. */
+  categoryConfig?: InventoryCategoryDef[];
 }
 
 export interface InventoryKpis {

@@ -1,24 +1,23 @@
 import type {
-  InventoryEquipmentCategory,
   InventoryEquipmentStatus,
   InventoryMaintenanceStatus,
 } from '../../types/inventory';
-import {
-  INVENTORY_CATEGORY_LABELS,
-  INVENTORY_STATUS_LABELS,
-  MAINTENANCE_STATUS_LABELS,
-} from '../../utils/inventoryData';
+import { INVENTORY_STATUS_LABELS, MAINTENANCE_STATUS_LABELS } from '../../utils/inventoryData';
 import { Badge } from '../ui/badge';
 
-const CATEGORY_STYLES: Record<InventoryEquipmentCategory, string> = {
+const CATEGORY_STYLES: Record<string, string> = {
   imagen: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
   anestesia: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
   laboratorio: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300',
   monitoreo: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
   cirugia: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
+  consultorio: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300',
   operativo: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
   otros: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
+
+const DEFAULT_CAT_STYLE =
+  'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300';
 
 const STATUS_STYLES: Record<InventoryEquipmentStatus, string> = {
   active: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300',
@@ -35,10 +34,19 @@ const MAINT_STATUS_STYLES: Record<InventoryMaintenanceStatus, string> = {
   cancelled: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
 };
 
-export function CategoryBadge({ category }: { category: InventoryEquipmentCategory }) {
+export function CategoryBadge({
+  category,
+  label,
+}: {
+  category: string;
+  label?: string;
+}) {
   return (
-    <Badge variant="outline" className={`border-0 font-medium ${CATEGORY_STYLES[category]}`}>
-      {INVENTORY_CATEGORY_LABELS[category]}
+    <Badge
+      variant="outline"
+      className={`border-0 font-medium ${CATEGORY_STYLES[category] ?? DEFAULT_CAT_STYLE}`}
+    >
+      {label ?? category}
     </Badge>
   );
 }

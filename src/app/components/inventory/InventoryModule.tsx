@@ -14,6 +14,8 @@ import {
   Box,
   Clock,
   XCircle,
+  Settings2,
+  Wand2,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,7 +39,6 @@ import { toast } from 'sonner';
 import type {
   InventoryDataset,
   InventoryEquipment,
-  InventoryEquipmentCategory,
   InventoryEquipmentKind,
   InventoryEquipmentStatus,
   InventoryMaintenanceKind,
@@ -51,15 +52,24 @@ import {
   computeInventoryKpis,
   computeUsefulLifePercent,
   createDemoInventoryDataset,
+  formatEquipmentLocation,
   getEquipmentById,
-  INVENTORY_CATEGORY_LABELS,
   maintenanceTotalCost,
   monthlyMaintenanceSeries,
   sedeSummary,
   upcomingMaintenance,
 } from '../../utils/inventoryData';
 import { applyInventoryDatasetChange, type InventoryPersistFn } from '../../utils/inventoryPersist';
+import { generateEquipmentCode, describeCodePattern } from '../../utils/inventoryCodeGenerator';
+import {
+  getActiveCategories,
+  getCategoryLabel,
+  getCategoryById,
+  getCategoryPrefix,
+} from '../../utils/inventoryCategoryConfig';
 import { formatCurrencyEs } from '../../utils/numberFormat';
+import { EquipmentQrPanel } from './EquipmentQrPanel';
+import { InventoryCategoryConfigDialog } from './InventoryCategoryConfigDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -129,6 +139,10 @@ export function InventoryModule({
   const [maintDialog, setMaintDialog] = useState<InventoryMaintenanceRecord | null>(null);
   const [isNewEquipment, setIsNewEquipment] = useState(false);
   const [isNewMaint, setIsNewMaint] = useState(false);
+  const [categoryConfigOpen, setCategoryConfigOpen] = useState(false);
+
+  const activeCategories = useMemo(() => getActiveCategories(dataset), [dataset]);
+  const defaultCategoryId = activeCategories[0]?.id ?? 'otros';
 
   const kpis = useMemo(() => computeInventoryKpis(dataset), [dataset]);
   const alerts = useMemo(() => buildInventoryAlerts(dataset), [dataset]);
@@ -162,7 +176,9 @@ export function InventoryModule({
         e.name.toLowerCase().includes(q) ||
         (e.brand || '').toLowerCase().includes(q) ||
         (e.model || '').toLowerCase().includes(q) ||
-        (e.serialNumber || '').toLowerCase().includes(q)
+        (e.serialNumber || '').toLowerCase().includes(q) ||
+        (e.floor || '').toLowerCase().includes(q) ||
+        (e.room || '').toLowerCase().includes(q)
       );
     });
   }, [dataset.equipment, search, sedeFilter, statusFilter, categoryFilter]);
@@ -189,22 +205,43 @@ export function InventoryModule({
   const persist = async (next: InventoryDataset, msg?: string) =>
     applyInventoryDatasetChange(setDataset, onPersistDataset, next, msg);
 
+  const applyGeneratedCode = (draft: InventoryEquipment): InventoryEquipment => {
+    const prefix = getCategoryPrefix(dataset, draft.category);
+    const code = generateEquipmentCode({
+      categoryPrefix: prefix,
+      sede: draft.sede,
+      floor: draft.floor,
+      room: draft.room,
+      existingEquipment: dataset.equipment,
+      excludeId: draft.id,
+    });
+    return { ...draft, code };
+  };
+
   const openNewEquipment = () => {
     const t = new Date().toISOString();
-    setIsNewEquipment(true);
-    setEquipmentDialog({
+    const cat = getCategoryById(dataset, defaultCategoryId);
+    const draft: InventoryEquipment = {
       id: newId('inv-eq'),
       code: '',
       name: '',
-      kind: 'medical',
-      category: 'imagen',
+      kind: cat?.kind ?? 'medical',
+      category: defaultCategoryId,
       status: 'active',
       sede: defaultSede,
       purchaseValue: 0,
       currentValue: 0,
       createdAt: t,
       updatedAt: t,
-    });
+    };
+    setIsNewEquipment(true);
+    setEquipmentDialog(applyGeneratedCode(draft));
+  };
+
+  const regenerateEquipmentCode = () => {
+    if (!equipmentDialog) return;
+    setEquipmentDialog(applyGeneratedCode(equipmentDialog));
+    toast.success('Código generado.');
   };
 
   const saveEquipment = async () => {
@@ -311,6 +348,10 @@ export function InventoryModule({
               ))}
             </SelectContent>
           </Select>
+          <Button variant="outline" size="sm" onClick={() => setCategoryConfigOpen(true)}>
+            <Settings2 className="h-4 w-4 mr-1" />
+            Categorías
+          </Button>
           {dataset.equipment.length === 0 && (
             <Button variant="outline" size="sm" onClick={() => void loadDemo()}>
               Cargar demo
@@ -318,6 +359,13 @@ export function InventoryModule({
           )}
         </div>
       </div>
+
+      <InventoryCategoryConfigDialog
+        open={categoryConfigOpen}
+        onOpenChange={setCategoryConfigOpen}
+        dataset={dataset}
+        onSave={persist}
+      />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as InventoryTab)}>
         <TabsList className="grid w-full max-w-lg grid-cols-3">
@@ -478,9 +526,15 @@ export function InventoryModule({
               <h3 className="text-lg font-semibold">Equipos Médicos</h3>
               <p className="text-sm text-muted-foreground">{filteredEquipment.length} de {dataset.equipment.length} equipos</p>
             </div>
-            <Button onClick={openNewEquipment}>
-              <Plus className="h-4 w-4 mr-1" /> Nuevo Equipo
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setCategoryConfigOpen(true)}>
+                <Settings2 className="h-4 w-4 mr-1" />
+                Categorías
+              </Button>
+              <Button onClick={openNewEquipment}>
+                <Plus className="h-4 w-4 mr-1" /> Nuevo Equipo
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -502,8 +556,8 @@ export function InventoryModule({
               <SelectTrigger className="w-[160px]"><SelectValue placeholder="Categoría" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas las categorías</SelectItem>
-                {(Object.keys(INVENTORY_CATEGORY_LABELS) as InventoryEquipmentCategory[]).map((c) => (
-                  <SelectItem key={c} value={c}>{INVENTORY_CATEGORY_LABELS[c]}</SelectItem>
+                {activeCategories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -532,8 +586,22 @@ export function InventoryModule({
                       <div className="font-medium">{e.name}</div>
                       <div className="text-xs text-muted-foreground">{e.brand} {e.model}</div>
                     </TableCell>
-                    <TableCell className="text-sm">{e.sede}</TableCell>
-                    <TableCell><CategoryBadge category={e.category} /></TableCell>
+                    <TableCell className="text-sm">
+                      <div>{e.sede}</div>
+                      {(e.floor || e.room) && (
+                        <div className="text-xs text-muted-foreground">
+                          {e.floor ? `Piso ${e.floor}` : ''}
+                          {e.floor && e.room ? ' · ' : ''}
+                          {e.room ? `Cons. ${e.room}` : ''}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <CategoryBadge
+                        category={e.category}
+                        label={getCategoryLabel(dataset, e.category)}
+                      />
+                    </TableCell>
                     <TableCell><EquipmentStatusBadge status={e.status} /></TableCell>
                     <TableCell>
                       <span className="flex items-center gap-1 text-sm">
@@ -636,32 +704,88 @@ export function InventoryModule({
       </Tabs>
 
       <Dialog open={equipmentDialog != null} onOpenChange={(o) => !o && setEquipmentDialog(null)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{isNewEquipment ? 'Nuevo equipo' : 'Editar equipo'}</DialogTitle>
           </DialogHeader>
           {equipmentDialog && (
             <div className="grid gap-3 py-2">
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Código" value={equipmentDialog.code} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, code: v })} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Código inventario</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      className="font-mono"
+                      value={equipmentDialog.code}
+                      onChange={(e) =>
+                        setEquipmentDialog({ ...equipmentDialog, code: e.target.value.toUpperCase() })
+                      }
+                    />
+                    <Button type="button" variant="outline" size="icon" onClick={regenerateEquipmentCode} title="Generar código">
+                      <Wand2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {describeCodePattern(getCategoryPrefix(dataset, equipmentDialog.category))}
+                  </p>
+                </div>
                 <Field label="Nombre" value={equipmentDialog.name} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, name: v })} />
               </div>
+
+              <EquipmentQrPanel equipment={equipmentDialog} visible={equipmentDialog.code.trim().length > 0} />
+
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Marca" value={equipmentDialog.brand || ''} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, brand: v })} />
                 <Field label="Modelo" value={equipmentDialog.model || ''} onChange={(v) => setEquipmentDialog({ ...equipmentDialog, model: v })} />
               </div>
-              <Select value={equipmentDialog.sede} onValueChange={(v) => setEquipmentDialog({ ...equipmentDialog, sede: v })}>
+              <Select
+                value={equipmentDialog.sede}
+                onValueChange={(v) => {
+                  const next = { ...equipmentDialog, sede: v };
+                  setEquipmentDialog(isNewEquipment && !equipmentDialog.code ? applyGeneratedCode(next) : next);
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Sede" /></SelectTrigger>
                 <SelectContent>
                   {sedeOptions.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
               <div className="grid grid-cols-2 gap-3">
-                <Select value={equipmentDialog.category} onValueChange={(v) => setEquipmentDialog({ ...equipmentDialog, category: v as InventoryEquipmentCategory })}>
+                <Field
+                  label="Piso"
+                  placeholder="Ej. 1, 2, PB"
+                  value={equipmentDialog.floor || ''}
+                  onChange={(v) => setEquipmentDialog({ ...equipmentDialog, floor: v })}
+                />
+                <Field
+                  label="Consultorio / sala"
+                  placeholder="Ej. 03, Cirugía A"
+                  value={equipmentDialog.room || ''}
+                  onChange={(v) => setEquipmentDialog({ ...equipmentDialog, room: v })}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground -mt-1">
+                Ubicación: {formatEquipmentLocation(equipmentDialog)}
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  value={equipmentDialog.category}
+                  onValueChange={(v) => {
+                    const cat = getCategoryById(dataset, v);
+                    const next = {
+                      ...equipmentDialog,
+                      category: v,
+                      kind: cat?.kind ?? equipmentDialog.kind,
+                    };
+                    setEquipmentDialog(isNewEquipment ? applyGeneratedCode(next) : next);
+                  }}
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(INVENTORY_CATEGORY_LABELS) as InventoryEquipmentCategory[]).map((c) => (
-                      <SelectItem key={c} value={c}>{INVENTORY_CATEGORY_LABELS[c]}</SelectItem>
+                    {activeCategories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.label} ({c.codePrefix})
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -858,16 +982,23 @@ function Field({
   value,
   onChange,
   type = 'text',
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <div className="space-y-1">
       <Label className="text-xs">{label}</Label>
-      <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      <Input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   );
 }
