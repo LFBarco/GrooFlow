@@ -3,7 +3,7 @@
  * La prueba usa proxy en Edge Function (evita CORS del navegador).
  */
 
-import { getSupabaseClient, getSupabaseFunctionsUrl } from '../services/repository/supabase';
+import { getEdgeFunctionAccessToken, getSupabaseFunctionsUrl } from '../services/repository/supabase';
 
 export const VETERINARI_AUTH_BEARER = 'Authorization: Bearer' as const;
 
@@ -95,17 +95,6 @@ function countRecordsHint(json: unknown): string | undefined {
 
 /** Cliente: proxy + auth + Veterinari (servidor corta a ~28s). */
 const VALIDATE_TIMEOUT_MS = 40_000;
-const SESSION_TIMEOUT_MS = 10_000;
-
-async function getAccessTokenWithTimeout(): Promise<string | null> {
-  const sessionPromise = getSupabaseClient()
-    .auth.getSession()
-    .then((d) => d.data.session?.access_token ?? null);
-  const timeoutPromise = new Promise<null>((resolve) => {
-    setTimeout(() => resolve(null), SESSION_TIMEOUT_MS);
-  });
-  return Promise.race([sessionPromise, timeoutPromise]);
-}
 
 async function validateViaServerProxy(
   targetUrl: string,
@@ -229,15 +218,20 @@ export async function validateVeterinariConnection(input: {
 
   const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
   if (backend === 'supabase') {
-    const accessToken = await getAccessTokenWithTimeout();
-    if (!accessToken) {
+    try {
+      const accessToken = await getEdgeFunctionAccessToken();
+      return validateViaServerProxy(targetUrl, token, accessToken);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       return {
         ok: false,
-        message: 'Inicia sesión para probar la conexión (o la sesión tardó demasiado en cargar).',
+        message:
+          msg.includes('Sesión') || msg.includes('sesión')
+            ? msg
+            : `No se pudo autenticar con GrooFlow: ${msg}`,
         durationMs: Date.now() - start,
       };
     }
-    return validateViaServerProxy(targetUrl, token, accessToken);
   }
 
   // Modo local: intento directo (puede fallar por CORS)

@@ -700,3 +700,8 @@ function buildSupabaseRepository(): IDataRepository {
 }
 
 export const supabaseRepository: IDataRepository = buildSupabaseRepository();
+
+/** JWT para Edge Functions (renueva sesión si el token expiró o la hidratación bloqueó getSession). */
+export async function getEdgeFunctionAccessToken(): Promise<string> {
+  return getFreshAccessTokenForEdge(getSupabaseClient());
+}
