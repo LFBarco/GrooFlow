@@ -3304,7 +3304,7 @@ export default function App() {
             </ModuleHeader>
           )}
 
-          {['analytics', 'pnl', 'reports', 'fees', 'providers', 'accounting', 'fleet', 'inventory', 'requests', 'audit', 'users', 'config'].includes(view) && (
+          {['analytics', 'pnl', 'reports', 'fees', 'accounting', 'fleet', 'inventory', 'requests', 'audit', 'users', 'config'].includes(view) && (
             <ModuleHeader
               icon={moduleIdentity.icon}
               title={moduleIdentity.title}
