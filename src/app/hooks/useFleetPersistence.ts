@@ -6,13 +6,15 @@ import { isFleetSqlEnabled, saveFleetToSql } from '../services/repository/fleetS
 import { getSupabaseClient } from '../services/repository/supabase';
 import type { FleetDataset } from '../types/fleet';
 import { backupToSqlAfterKvSave, ensureSqlSave } from '../utils/sqlAutosaveBackup';
+import { slimFleetDatasetForKv } from '../utils/fleetKvPayload';
+import { FLEET_REMOTE_COOLDOWN_MS } from '../utils/fleetRemoteSyncGuard';
+import { flushKvSaveChain } from '../utils/kvSerializedSave';
 import {
   autosaveKvDomain,
   persistKvDomainNow,
   type CloudSyncTracker,
   type KvDomainRefs,
 } from '../utils/kvDomainPersistence';
-import { FLEET_REMOTE_COOLDOWN_MS } from '../utils/fleetRemoteSyncGuard';
 
 const FLEET_USE_SQL = isFleetSqlEnabled();
 
@@ -58,25 +60,29 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
   useEffect(() => {
     if (!isDataLoaded || !hydratedRef.current) return;
 
-    /** Siempre KV (Edge Function probada). SQL es réplica para Realtime. */
+    latestRef.current = fleetDataset;
+    const kvPayload = slimFleetDatasetForKv(fleetDataset);
+
     void autosaveKvDomain({
       kvKey: 'data:fleet',
-      payload: fleetDataset,
+      payload: kvPayload,
       refs: fleetRefs,
       kvApplyGenerationRef,
       lastSaveErrorAtRef,
+      enqueueOptions: { updateLatestRef: false },
       errorMessage:
         'No se pudo guardar Flota clínica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.',
       sync: cloudSync,
     }).then((kvOk) => {
       if (!kvOk) return;
+      extendFleetCooldown(cooldownUntilRef);
       void backupToSqlAfterKvSave({
         enabled: FLEET_USE_SQL,
         storageKey: 'data:fleet',
         lastSaveErrorAtRef,
         run: async () => {
-          const { data: sess } = await getSupabaseClient().auth.getSession();
-          return saveFleetToSql(getSupabaseClient(), latestRef.current, sess.session?.user?.id ?? null);
+          const uid = await getAuthUserId();
+          return saveFleetToSql(getSupabaseClient(), latestRef.current, uid);
         },
       });
     });
@@ -90,28 +96,6 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         return false;
       }
       latestRef.current = next;
-
-      const kvOk = await persistKvDomainNow({
-        kvKey: 'data:fleet',
-        payload: next,
-        refs: {
-          hydratedFromKvRef: hydratedRef,
-          skipHydrateRef,
-          cooldownUntilRef,
-          chainRef,
-          latestRef,
-        },
-        kvApplyGenerationRef,
-        lastSaveErrorAtRef,
-        errorMessage:
-          'No se pudo guardar Flota clínica en la nube. No cierres ni actualices; revisa conexión/sesión.',
-        successMessage: FLEET_USE_SQL ? undefined : successMessage,
-        sync: cloudSync,
-      });
-
-      if (!kvOk) return false;
-
-      extendFleetCooldown(cooldownUntilRef);
 
       if (FLEET_USE_SQL) {
         const uid = await getAuthUserId();
@@ -127,11 +111,41 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         );
         if (!sqlOk) {
           toast.warning(
-            'Flota guardada en la nube (KV). La réplica SQL falló; se reintentará en segundo plano.',
+            'No se pudo replicar en SQL; se intentará guardar en KV. Revisa permisos si persiste.',
             { duration: 8000 }
           );
         }
       }
+
+      const kvPayload = slimFleetDatasetForKv(next);
+      const kvOk = await persistKvDomainNow({
+        kvKey: 'data:fleet',
+        payload: kvPayload,
+        refs: {
+          hydratedFromKvRef: hydratedRef,
+          skipHydrateRef,
+          cooldownUntilRef,
+          chainRef,
+          latestRef,
+        },
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        enqueueOptions: { updateLatestRef: false },
+        errorMessage:
+          'No se pudo guardar Flota clínica en la nube. No cierres ni actualices; revisa conexión/sesión.',
+        successMessage: FLEET_USE_SQL ? undefined : successMessage,
+        sync: cloudSync,
+      });
+
+      if (!kvOk) return false;
+
+      const flushed = await flushKvSaveChain(chainRef);
+      if (flushed !== 'saved') {
+        toast.error('El guardado de flota no terminó en la nube. Espera unos segundos y vuelve a intentar.');
+        return false;
+      }
+
+      extendFleetCooldown(cooldownUntilRef);
 
       if (successMessage) toast.success(successMessage);
       return true;

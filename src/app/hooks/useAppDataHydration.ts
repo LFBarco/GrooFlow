@@ -65,6 +65,7 @@ import type { FleetDataset } from '../types/fleet';
 import type { InventoryDataset } from '../types/inventory';
 import { createDemoFleetDataset, normalizeFleetDataset } from '../utils/fleetData';
 import { isFleetDatasetEmpty } from '../utils/fleetDatasetEmpty';
+import { mergeFleetKvAndSql } from '../utils/fleetKvPayload';
 import { normalizeInventoryDataset } from '../utils/inventoryData';
 import { isInventoryDatasetEmpty } from '../utils/inventoryDatasetEmpty';
 import { hydrateTransactions } from '../utils/hydrateTransactions';
@@ -887,7 +888,10 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               const kvHasData = kvFleet != null && !isFleetDatasetEmpty(kvFleet);
               /** KV con datos es fuente de verdad; KV vacío `{}` no pisa SQL con vehículos. */
               if (kvHasData) {
-                nextFleet = kvFleet!;
+                nextFleet =
+                  sqlLoad.ok && sqlLoad.data && !sqlLoad.empty
+                    ? mergeFleetKvAndSql(kvFleet!, sqlLoad.data)
+                    : kvFleet!;
                 if (sqlLoad.ok && sessionUserId) {
                   const migrated = await migrateFleetKvToSql(
                     getSupabaseClient(),

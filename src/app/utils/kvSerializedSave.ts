@@ -15,15 +15,20 @@ export function enqueueKvSerializedSave<T>(
   generationRef: MutableRefObject<number>,
   latestRef: MutableRefObject<T>,
   kvKey: string,
-  payload: T
+  payload: T,
+  options?: { updateLatestRef?: boolean }
 ): Promise<KvSaveResult> {
-  latestRef.current = payload;
+  if (options?.updateLatestRef !== false) {
+    latestRef.current = payload;
+  }
   const genAtEnqueue = generationRef.current;
+  const snapshot = payload;
   const next = chainRef.current.then(async (): Promise<KvSaveResult> => {
     if (generationRef.current !== genAtEnqueue) {
       return 'skipped';
     }
-    const ok = await api.saveKey(kvKey, latestRef.current as unknown);
+    const toSave = options?.updateLatestRef === false ? snapshot : latestRef.current;
+    const ok = await api.saveKey(kvKey, toSave as unknown);
     return ok ? 'saved' : 'failed';
   });
   chainRef.current = next.catch(() => 'failed' as KvSaveResult);

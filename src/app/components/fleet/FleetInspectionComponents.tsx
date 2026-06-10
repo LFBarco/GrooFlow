@@ -207,27 +207,57 @@ export function FleetChecklistConfigurator({
   onPersistDataset?: FleetPersistFn;
 }) {
   const sections = dataset.checklistSections?.length ? dataset.checklistSections : DEFAULT_FLEET_CHECKLIST;
+  const persistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistInFlightRef = useRef(false);
 
-  const persist = async (nextSections: FleetChecklistSection[]) => {
-    const next: FleetDataset = { ...dataset, checklistSections: nextSections };
-    await applyFleetDatasetChange(
-      setDataset,
-      onPersistDataset,
-      next,
-      'Plantilla de checklist actualizada.'
-    );
+  const persistNow = async (
+    nextSections: FleetChecklistSection[],
+    successMessage?: string
+  ): Promise<boolean> => {
+    let next!: FleetDataset;
+    setDataset((prev) => {
+      next = { ...prev, checklistSections: nextSections };
+      return next;
+    });
+    if (persistInFlightRef.current) {
+      await new Promise((r) => setTimeout(r, 120));
+    }
+    persistInFlightRef.current = true;
+    try {
+      return await applyFleetDatasetChange(
+        setDataset,
+        onPersistDataset,
+        next,
+        successMessage ?? 'Plantilla de checklist actualizada.'
+      );
+    } finally {
+      persistInFlightRef.current = false;
+    }
   };
+
+  const persistDebounced = (nextSections: FleetChecklistSection[]) => {
+    if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+    persistDebounceRef.current = setTimeout(() => {
+      void persistNow(nextSections);
+    }, 600);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
+    };
+  }, []);
 
   const addSection = () => {
     const id = fleetNewId('fc_sec');
-    persist([
+    void persistNow([
       ...sections.map((s, i) => ({ ...s, sortOrder: i })),
       { id, title: 'Nueva categoría', sortOrder: sections.length, items: [] },
     ]);
   };
 
   const updateSectionTitle = (id: string, title: string) => {
-    persist(sections.map((s) => (s.id === id ? { ...s, title } : s)));
+    persistDebounced(sections.map((s) => (s.id === id ? { ...s, title } : s)));
   };
 
   const moveSection = (id: string, dir: -1 | 1) => {
@@ -237,17 +267,17 @@ export function FleetChecklistConfigurator({
     const copy = [...sections];
     const [sp] = copy.splice(idx, 1);
     copy.splice(j, 0, sp);
-    persist(copy.map((s, i) => ({ ...s, sortOrder: i })));
+    void persistNow(copy.map((s, i) => ({ ...s, sortOrder: i })));
   };
 
   const removeSection = (id: string) => {
     if (!confirm('¿Eliminar esta categoría y todos sus ítems?')) return;
-    persist(sections.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i })));
+    void persistNow(sections.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i })));
   };
 
   const addItem = (sectionId: string) => {
     const itemId = fleetNewId('fc_it');
-    persist(
+    void persistNow(
       sections.map((s) => {
         if (s.id !== sectionId) return s;
         return {
@@ -262,7 +292,7 @@ export function FleetChecklistConfigurator({
   };
 
   const updateItemLabel = (sectionId: string, itemId: string, label: string) => {
-    persist(
+    persistDebounced(
       sections.map((s) => {
         if (s.id !== sectionId) return s;
         return {
@@ -274,7 +304,7 @@ export function FleetChecklistConfigurator({
   };
 
   const moveItem = (sectionId: string, itemId: string, dir: -1 | 1) => {
-    persist(
+    void persistNow(
       sections.map((s) => {
         if (s.id !== sectionId) return s;
         const idx = s.items.findIndex((i) => i.id === itemId);
@@ -289,7 +319,7 @@ export function FleetChecklistConfigurator({
   };
 
   const removeItem = (sectionId: string, itemId: string) => {
-    persist(
+    void persistNow(
       sections.map((s) => {
         if (s.id !== sectionId) return s;
         return { ...s, items: s.items.filter((it) => it.id !== itemId) };
@@ -299,7 +329,10 @@ export function FleetChecklistConfigurator({
 
   const restoreDefault = () => {
     if (!confirm('¿Restaurar plantilla estándar de movilidad canina? Se perderán los cambios actuales.')) return;
-    persist(JSON.parse(JSON.stringify(DEFAULT_FLEET_CHECKLIST)) as FleetChecklistSection[]);
+    void persistNow(
+      JSON.parse(JSON.stringify(DEFAULT_FLEET_CHECKLIST)) as FleetChecklistSection[],
+      'Plantilla estándar restaurada.'
+    );
   };
 
   return (

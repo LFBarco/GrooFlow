@@ -83,6 +83,7 @@ export async function autosaveKvDomain<T>(options: {
   lastSaveErrorAtRef: MutableRefObject<Record<string, number>>;
   errorMessage: string;
   sync?: CloudSyncTracker;
+  enqueueOptions?: { updateLatestRef?: boolean };
 }): Promise<boolean> {
   const {
     kvKey,
@@ -92,6 +93,7 @@ export async function autosaveKvDomain<T>(options: {
     lastSaveErrorAtRef,
     errorMessage,
     sync,
+    enqueueOptions,
   } = options;
 
   sync?.onStart();
@@ -100,7 +102,8 @@ export async function autosaveKvDomain<T>(options: {
     kvApplyGenerationRef,
     refs.latestRef,
     kvKey,
-    payload
+    payload,
+    enqueueOptions
   );
   const ok = kvSaveSucceeded(result);
   sync?.onEnd(ok, kvKey);
@@ -129,12 +132,15 @@ export async function persistKvDomainNow<T>(options: {
   errorMessage: string;
   successMessage?: string;
   sync?: CloudSyncTracker;
+  enqueueOptions?: { updateLatestRef?: boolean };
 }): Promise<boolean> {
-  const { refs, ...rest } = options;
-  refs.latestRef.current = rest.payload;
+  const { refs, enqueueOptions, ...rest } = options;
+  if (enqueueOptions?.updateLatestRef !== false) {
+    refs.latestRef.current = rest.payload;
+  }
   refs.skipHydrateRef.current = true;
   try {
-    const ok = await autosaveKvDomain({ ...rest, refs });
+    const ok = await autosaveKvDomain({ ...rest, refs, enqueueOptions });
     if (ok && rest.successMessage) toast.success(rest.successMessage);
     return ok;
   } finally {
