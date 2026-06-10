@@ -1539,6 +1539,7 @@ export default function App() {
   applyFleetRemoteRef.current = (dataset: FleetDataset) => {
     if (!isDataLoaded || signingOutRef.current || !fleetHydratedFromKvRef.current) return;
     const normalized = normalizeFleetDataset(dataset);
+    if (Date.now() < fleetKvCooldownUntilRef.current) return;
     if (kvPayloadsEqual(fleetKvLatestRef.current, normalized)) return;
     fleetKvLatestRef.current = normalized;
     markCrossTabEchoWindow('data:fleet');
@@ -1556,7 +1557,8 @@ export default function App() {
   useFleetRealtimeSync(
     isAuthenticated && isDataLoaded && FLEET_USE_SQL,
     applyFleetRemoteRef,
-    fleetKvLatestRef
+    fleetKvLatestRef,
+    fleetKvCooldownUntilRef
   );
 
   const applyInventoryRemoteRef = useRef<((dataset: InventoryDataset) => void) | null>(null);

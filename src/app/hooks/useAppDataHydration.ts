@@ -889,7 +889,14 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               if (kvHasData) {
                 nextFleet = kvFleet!;
                 if (sqlLoad.ok && sessionUserId) {
-                  void migrateFleetKvToSql(getSupabaseClient(), nextFleet, sessionUserId);
+                  const migrated = await migrateFleetKvToSql(
+                    getSupabaseClient(),
+                    nextFleet,
+                    sessionUserId
+                  );
+                  if (!migrated) {
+                    console.warn('[hydration] fleet KV→SQL migrate failed; datos en KV, réplica SQL pendiente');
+                  }
                 }
               } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
                 nextFleet = sqlLoad.data;

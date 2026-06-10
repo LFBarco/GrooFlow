@@ -1,6 +1,7 @@
 import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { toast } from 'sonner';
 
+import { getAuthUserId } from '../services/productionSqlBridge';
 import { isFleetSqlEnabled, saveFleetToSql } from '../services/repository/fleetSql';
 import { getSupabaseClient } from '../services/repository/supabase';
 import type { FleetDataset } from '../types/fleet';
@@ -106,8 +107,11 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
       if (!kvOk) return false;
 
       if (FLEET_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const uid = sess.session?.user?.id ?? null;
+        const uid = await getAuthUserId();
+        if (!uid) {
+          toast.error('No hay sesión activa. Inicia sesión de nuevo antes de guardar la flota.');
+          return false;
+        }
         const sqlOk = await ensureSqlSave(
           true,
           'data:fleet',
