@@ -59,7 +59,7 @@ export function CashFlowChart({ transactions, currentDate }: CashFlowChartProps)
   const neonPurple = s.chart.violet;
 
   return (
-    <div className="rounded-2xl p-5 light-chart-panel" style={{
+    <div className={`rounded-2xl p-5 ${s.isDark ? '' : 'gf-glass-card light-chart-panel'}`} style={{
       background: s.chartCard.background,
       border: s.chartCard.border,
       boxShadow: s.chartCard.boxShadow,

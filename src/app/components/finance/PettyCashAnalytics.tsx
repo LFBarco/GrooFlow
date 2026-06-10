@@ -303,7 +303,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                 ]).map((card, i) => {
                   const kpi = s.kpi[card.kind];
                   return (
-                  <div key={i} className="rounded-2xl p-4 relative overflow-hidden" style={{
+                  <div key={i} className={`rounded-2xl p-4 relative overflow-hidden ${kpi.className ?? ''}`} style={{
                     background: kpi.background,
                     border: kpi.border,
                     boxShadow: kpi.boxShadow,
@@ -323,7 +323,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
 
             {/* Charts Row 1 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="rounded-2xl p-5" style={CARD_STYLE}>
+                <div className={`rounded-2xl p-5 ${s.isDark ? '' : 'gf-glass-card'}`} style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Evolución de Gastos</p>
                       <p className="text-xs" style={{ color: s.axisTick }}>Comportamiento mensual del egreso de caja chica</p>
@@ -341,7 +341,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                     </div>
                 </div>
 
-                <div className="rounded-2xl p-5" style={CARD_STYLE}>
+                <div className={`rounded-2xl p-5 ${s.isDark ? '' : 'gf-glass-card'}`} style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Distribución por Categoría</p>
                       <p className="text-xs" style={{ color: s.axisTick }}>¿En qué se gasta más dinero?</p>
@@ -371,7 +371,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
 
              {/* Charts Row 2 */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="rounded-2xl p-5" style={CARD_STYLE}>
+                <div className={`rounded-2xl p-5 ${s.isDark ? '' : 'gf-glass-card'}`} style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Gastos por Sede</p>
                       <p className="text-xs" style={{ color: s.axisTick }}>Comparativa de consumo por ubicación</p>
@@ -390,7 +390,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                 </div>
 
                 {/* Expenses by Area */}
-                <div className="rounded-2xl p-5" style={CARD_STYLE}>
+                <div className={`rounded-2xl p-5 ${s.isDark ? '' : 'gf-glass-card'}`} style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                       <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Gastos por Área</p>
                       <p className="text-xs" style={{ color: s.axisTick }}>Distribución del fondo según área solicitante</p>

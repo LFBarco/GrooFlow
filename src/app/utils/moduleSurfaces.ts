@@ -14,6 +14,9 @@ export type KpiSurface = {
   iconBg: string;
   iconBorder: string;
   hoverShadow: string;
+  /** Clase CSS GrooFlow Light (glass KPI) */
+  className?: string;
+  accentGradient?: string;
 };
 
 export type ModuleSurfaces = {
@@ -83,84 +86,70 @@ function darkKpi(accent: string): KpiSurface {
   };
 }
 
-const LIGHT_KPI: Record<KpiSurfaceKind, KpiSurface> = {
-  income: {
-    background: 'linear-gradient(135deg, #a7f3d0 0%, #34d399 42%, #059669 100%)',
-    border: '1px solid rgba(4, 120, 87, 0.35)',
-    boxShadow: '0 18px 45px -14px rgba(5, 150, 105, 0.65), inset 0 1px 0 rgba(255,255,255,0.55)',
-    accent: '#047857',
-    labelColor: 'rgba(2, 44, 34, 0.75)',
-    valueColor: '#022c22',
-    iconBg: 'rgba(255, 255, 255, 0.55)',
-    iconBorder: 'rgba(255, 255, 255, 0.65)',
-    hoverShadow: '0 24px 50px -16px rgba(5, 150, 105, 0.75)',
-  },
-  expense: {
-    background: 'linear-gradient(135deg, #fecaca 0%, #f87171 38%, #dc2626 100%)',
-    border: '1px solid rgba(185, 28, 28, 0.35)',
-    boxShadow: '0 18px 45px -14px rgba(220, 38, 38, 0.55), inset 0 1px 0 rgba(255,255,255,0.5)',
-    accent: '#b91c1c',
-    labelColor: 'rgba(69, 10, 10, 0.75)',
-    valueColor: '#450a0a',
-    iconBg: 'rgba(255, 255, 255, 0.55)',
-    iconBorder: 'rgba(255, 255, 255, 0.65)',
-    hoverShadow: '0 24px 50px -16px rgba(220, 38, 38, 0.65)',
-  },
-  profit: {
-    background: 'linear-gradient(135deg, #c7d2fe 0%, #818cf8 40%, #4f46e5 100%)',
-    border: '1px solid rgba(67, 56, 202, 0.4)',
-    boxShadow: '0 18px 45px -14px rgba(79, 70, 229, 0.55), inset 0 1px 0 rgba(255,255,255,0.55)',
-    accent: '#4338ca',
-    labelColor: 'rgba(30, 27, 75, 0.75)',
-    valueColor: '#1e1b4b',
-    iconBg: 'rgba(255, 255, 255, 0.55)',
-    iconBorder: 'rgba(255, 255, 255, 0.65)',
-    hoverShadow: '0 24px 50px -16px rgba(79, 70, 229, 0.65)',
-  },
-  projection: {
-    background: 'linear-gradient(135deg, #7dd3fc 0%, #38bdf8 42%, #0284c7 100%)',
-    border: '1px solid rgba(3, 105, 161, 0.4)',
-    boxShadow: '0 18px 45px -14px rgba(8, 145, 178, 0.55), inset 0 1px 0 rgba(255,255,255,0.55)',
-    accent: '#0369a1',
-    labelColor: 'rgba(12, 74, 110, 0.8)',
-    valueColor: '#0c4a6e',
-    iconBg: 'rgba(255, 255, 255, 0.55)',
-    iconBorder: 'rgba(255, 255, 255, 0.65)',
-    hoverShadow: '0 24px 50px -16px rgba(8, 145, 178, 0.65)',
-  },
-  warning: {
-    background: 'linear-gradient(135deg, #fde68a 0%, #fbbf24 45%, #d97706 100%)',
-    border: '1px solid rgba(180, 83, 9, 0.4)',
-    boxShadow: '0 18px 45px -14px rgba(217, 119, 6, 0.5), inset 0 1px 0 rgba(255,255,255,0.5)',
-    accent: '#b45309',
-    labelColor: 'rgba(120, 53, 15, 0.8)',
-    valueColor: '#78350f',
-    iconBg: 'rgba(255, 255, 255, 0.55)',
-    iconBorder: 'rgba(255, 255, 255, 0.65)',
-    hoverShadow: '0 24px 50px -16px rgba(217, 119, 6, 0.55)',
-  },
-  violet: {
-    background: 'linear-gradient(135deg, #ddd6fe 0%, #a78bfa 42%, #7c3aed 100%)',
-    border: '1px solid rgba(109, 40, 217, 0.35)',
-    boxShadow: '0 18px 45px -14px rgba(124, 58, 237, 0.5), inset 0 1px 0 rgba(255,255,255,0.55)',
-    accent: '#6d28d9',
-    labelColor: 'rgba(76, 29, 149, 0.8)',
-    valueColor: '#4c1d95',
-    iconBg: 'rgba(255, 255, 255, 0.55)',
-    iconBorder: 'rgba(255, 255, 255, 0.65)',
-    hoverShadow: '0 24px 50px -16px rgba(124, 58, 237, 0.55)',
-  },
-  neutral: {
-    background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%)',
-    border: '1px solid rgba(100, 116, 139, 0.35)',
-    boxShadow: '0 16px 40px -14px rgba(15, 23, 42, 0.2), inset 0 1px 0 rgba(255,255,255,0.7)',
-    accent: '#475569',
-    labelColor: 'rgba(51, 65, 85, 0.8)',
+function lightGlassKpi(
+  accent: string,
+  glow: string,
+  className: string,
+  accentGradient: string,
+): KpiSurface {
+  return {
+    background: 'rgba(255, 255, 255, 0.52)',
+    border: '1px solid rgba(255, 255, 255, 0.72)',
+    boxShadow: `0 12px 40px -12px ${glow}, inset 0 1px 0 rgba(255,255,255,0.9)`,
+    accent,
+    labelColor: 'rgba(51, 65, 85, 0.88)',
     valueColor: '#0f172a',
     iconBg: 'rgba(255, 255, 255, 0.65)',
-    iconBorder: 'rgba(255, 255, 255, 0.75)',
-    hoverShadow: '0 22px 48px -16px rgba(15, 23, 42, 0.25)',
-  },
+    iconBorder: 'rgba(255, 255, 255, 0.85)',
+    hoverShadow: `0 22px 48px -14px ${glow}`,
+    className,
+    accentGradient,
+  };
+}
+
+const LIGHT_KPI: Record<KpiSurfaceKind, KpiSurface> = {
+  income: lightGlassKpi(
+    '#059669',
+    'rgba(5, 150, 105, 0.35)',
+    'gf-glass-kpi gf-kpi-income',
+    'linear-gradient(90deg, #059669, #22d3ee)',
+  ),
+  expense: lightGlassKpi(
+    '#dc2626',
+    'rgba(220, 38, 38, 0.32)',
+    'gf-glass-kpi gf-kpi-expense',
+    'linear-gradient(90deg, #dc2626, #e879f9)',
+  ),
+  profit: lightGlassKpi(
+    '#7c3aed',
+    'rgba(124, 58, 237, 0.32)',
+    'gf-glass-kpi gf-kpi-profit',
+    'linear-gradient(90deg, #7c3aed, #4f46e5)',
+  ),
+  projection: lightGlassKpi(
+    '#0891b2',
+    'rgba(8, 145, 178, 0.32)',
+    'gf-glass-kpi gf-kpi-projection',
+    'linear-gradient(90deg, #22d3ee, #38bdf8)',
+  ),
+  warning: lightGlassKpi(
+    '#d97706',
+    'rgba(217, 119, 6, 0.28)',
+    'gf-glass-kpi gf-kpi-warning',
+    'linear-gradient(90deg, #fbbf24, #fb923c)',
+  ),
+  violet: lightGlassKpi(
+    '#7c3aed',
+    'rgba(124, 58, 237, 0.28)',
+    'gf-glass-kpi gf-kpi-violet',
+    'linear-gradient(90deg, #a78bfa, #e879f9)',
+  ),
+  neutral: lightGlassKpi(
+    '#475569',
+    'rgba(71, 85, 105, 0.2)',
+    'gf-glass-kpi gf-kpi-neutral',
+    'linear-gradient(90deg, #94a3b8, #cbd5e1)',
+  ),
 };
 
 export function getModuleSurfaces(isDark: boolean): ModuleSurfaces {
@@ -237,35 +226,36 @@ export function getModuleSurfaces(isDark: boolean): ModuleSurfaces {
     pageTitle: '#0f172a',
     pageSubtitle: '#475569',
     accentText: '#4f46e5',
-    divider: 'rgba(148, 163, 184, 0.45)',
+    divider: 'rgba(148, 163, 184, 0.35)',
     card: {
-      background: 'linear-gradient(145deg, #ffffff 0%, #f8fafc 55%, #eef2ff 100%)',
-      border: '1px solid rgba(99, 102, 241, 0.22)',
-      boxShadow: '0 20px 50px -22px rgba(79, 70, 229, 0.45)',
-      hoverShadow: '0 28px 60px -20px rgba(79, 70, 229, 0.5)',
-      hoverBorder: 'rgba(79, 70, 229, 0.45)',
+      background: 'rgba(255, 255, 255, 0.52)',
+      border: '1px solid rgba(255, 255, 255, 0.72)',
+      boxShadow: '0 12px 40px -12px rgba(79, 70, 229, 0.18), inset 0 1px 0 rgba(255,255,255,0.9)',
+      hoverShadow: '0 22px 48px -14px rgba(79, 70, 229, 0.28)',
+      hoverBorder: 'rgba(99, 102, 241, 0.35)',
     },
     chartCard: {
-      background: 'linear-gradient(160deg, #ffffff 0%, #f0f9ff 45%, #ede9fe 100%)',
-      border: '1px solid rgba(99, 102, 241, 0.28)',
-      boxShadow: '0 24px 55px -24px rgba(79, 70, 229, 0.4), inset 0 1px 0 rgba(255,255,255,0.9)',
+      background: 'rgba(255, 255, 255, 0.55)',
+      border: '1px solid rgba(255, 255, 255, 0.75)',
+      boxShadow: '0 16px 48px -16px rgba(79, 70, 229, 0.2), inset 0 1px 0 rgba(255,255,255,0.92)',
     },
     tableHeader: '#64748b',
     tableCell: '#334155',
     tableMuted: '#64748b',
     monthPicker: {
-      background: 'linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%)',
-      border: '1px solid rgba(99, 102, 241, 0.35)',
-      text: '#1e1b4b',
-      icon: '#4f46e5',
-      hoverBg: 'rgba(99, 102, 241, 0.12)',
+      background: 'rgba(255, 255, 255, 0.55)',
+      border: '1px solid rgba(255, 255, 255, 0.72)',
+      text: '#0f172a',
+      icon: '#0891b2',
+      hoverBg: 'rgba(34, 211, 238, 0.12)',
     },
     tooltip: {
-      backgroundColor: '#ffffff',
-      border: '1px solid rgba(99, 102, 241, 0.25)',
+      backgroundColor: 'rgba(255, 255, 255, 0.92)',
+      border: '1px solid rgba(255, 255, 255, 0.85)',
       borderRadius: '14px',
-      boxShadow: '0 20px 45px -15px rgba(15, 23, 42, 0.25)',
+      boxShadow: '0 20px 45px -15px rgba(15, 23, 42, 0.15)',
       padding: '12px 16px',
+      backdropFilter: 'blur(12px)',
     },
     tooltipItem: { color: '#0f172a', fontSize: '12px', fontWeight: 600 },
     tooltipLabel: {

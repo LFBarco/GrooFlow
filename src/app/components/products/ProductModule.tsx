@@ -302,7 +302,7 @@ export function ProductModule({
         ]).map((item) => {
           const kpi = s.kpi[item.kind];
           return (
-            <div key={item.label} className="rounded-2xl p-4 relative overflow-hidden" style={{ background: kpi.background, border: kpi.border, boxShadow: kpi.boxShadow }}>
+            <div key={item.label} className={`rounded-2xl p-4 relative overflow-hidden ${kpi.className ?? ''}`} style={{ background: kpi.background, border: kpi.border, boxShadow: kpi.boxShadow }}>
               <div className="text-xs uppercase tracking-[0.18em]" style={{ color: kpi.labelColor }}>{item.label}</div>
               <div className="mt-2 flex items-center gap-2 text-2xl font-bold" style={{ color: kpi.valueColor }}>
                 <item.icon className="h-5 w-5" style={{ color: kpi.accent }} />
@@ -313,7 +313,7 @@ export function ProductModule({
         })}
       </div>
 
-      <div className="overflow-hidden rounded-2xl shadow-xl light-chart-panel" style={{ background: s.chartCard.background, border: s.chartCard.border, boxShadow: s.chartCard.boxShadow }}>
+      <div className={`overflow-hidden rounded-2xl shadow-xl ${s.isDark ? '' : 'gf-glass-card light-chart-panel'}`} style={{ background: s.chartCard.background, border: s.chartCard.border, boxShadow: s.chartCard.boxShadow }}>
         <div className="space-y-3 border-b p-4" style={{ borderColor: s.divider }}>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>

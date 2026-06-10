@@ -128,7 +128,8 @@ export function AlertsCenter({
         <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
             
             {/* 1. Header & Navigation */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl light-chart-panel"
+            <div
+              className={`flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl ${s.isDark ? '' : 'gf-glass-card gf-kpi-expense'}`}
               style={{ background: s.kpi.expense.background, border: s.kpi.expense.border, boxShadow: s.kpi.expense.boxShadow }}
             >
                 <div className="flex items-center gap-4">

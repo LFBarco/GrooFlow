@@ -159,7 +159,7 @@ export function Overview({
   }) => {
     const kpi = chartTheme.kpi[kind];
     return (
-    <div className="relative overflow-hidden rounded-2xl p-5 group cursor-default"
+    <div className={`relative overflow-hidden rounded-2xl p-5 group cursor-default ${kpi.className ?? ''}`}
       style={{
         background: kpi.background,
         border: kpi.border,
@@ -178,7 +178,9 @@ export function Overview({
       <div className="absolute top-2 right-2 opacity-[0.12]">
         <Icon className="w-20 h-20" style={{ color: kpi.accent }} />
       </div>
-      <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: gradient }} />
+      {chartTheme.isDark && (
+        <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: gradient }} />
+      )}
 
       <div className="relative z-10">
         <div className="flex items-start justify-between mb-4">
@@ -262,7 +264,7 @@ export function Overview({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* Main Chart */}
-        <div className="lg:col-span-2 rounded-2xl p-5 flex flex-col light-chart-panel"
+        <div className={`lg:col-span-2 rounded-2xl p-5 flex flex-col ${chartTheme.isDark ? '' : 'gf-glass-card light-chart-panel'}`}
           style={{
             background: chartTheme.chartCard.background,
             border: chartTheme.chartCard.border,

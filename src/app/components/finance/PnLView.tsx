@@ -208,7 +208,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                 ]).map((card, i) => {
                   const kpi = s.kpi[card.kind];
                   return (
-                  <div key={i} className="rounded-2xl p-5 group cursor-default relative overflow-hidden"
+                  <div key={i} className={`rounded-2xl p-5 group cursor-default relative overflow-hidden ${kpi.className ?? ''}`}
                     style={{
                       background: kpi.background,
                       border: kpi.border,
@@ -240,7 +240,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
 
             <div className="grid gap-5 md:grid-cols-3">
                 {/* ── Financial Statement Table ─────────────────────── */}
-                <div className="md:col-span-2 rounded-2xl overflow-hidden" style={CARD_STYLE}>
+                <div className={`md:col-span-2 rounded-2xl overflow-hidden ${s.isDark ? '' : 'gf-glass-card'}`} style={CARD_STYLE}>
                     {/* Card header */}
                     <div className="p-5 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <div className="flex items-center gap-2.5">
@@ -345,7 +345,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                 </div>
 
                 {/* ── Chart & Ratios ──────────────────────────────────── */}
-                <div className="rounded-2xl overflow-hidden" style={CARD_STYLE}>
+                <div className={`rounded-2xl overflow-hidden ${s.isDark ? '' : 'gf-glass-card'}`} style={CARD_STYLE}>
                     {/* Card header */}
                     <div className="p-5 pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                         <div className="flex items-center gap-2.5">

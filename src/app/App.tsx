@@ -113,6 +113,9 @@ import { createDemoFleetDataset, normalizeFleetDataset } from "./utils/fleetData
 import { normalizeInventoryDataset } from "./utils/inventoryData";
 import { isInventoryDatasetEmpty } from "./utils/inventoryDatasetEmpty";
 import { getModuleSurfaces } from "./utils/moduleSurfaces";
+import { getModuleIdentity } from "./utils/grooflowIdentity";
+import { AmbientBackground } from "./components/layout/AmbientBackground";
+import { ModuleHeader } from "./components/layout/ModuleHeader";
 import {
   isTransactionsSqlEnabled,
   loadTransactionsFromSql,
@@ -2985,7 +2988,9 @@ export default function App() {
     );
   };
 
-  const surfaces = getModuleSurfaces(theme === 'dark');
+  const isDarkTheme = theme === 'dark';
+  const surfaces = getModuleSurfaces(isDarkTheme);
+  const moduleIdentity = getModuleIdentity(view);
 
   return (
     <div
@@ -2997,10 +3002,15 @@ export default function App() {
       }
     >
       <AppProvider value={{ currentUser, roles, theme, toggleTheme }}>
-      <div className="orb-cyan bg-orb" />
-      <div className="orb-violet bg-orb" />
-      <div className="orb-pink bg-orb" />
-      <div className="bg-circuit fixed inset-0 z-0 pointer-events-none" style={{ opacity: theme === 'dark' ? 0.5 : 0.35 }} />
+      {isDarkTheme && (
+        <>
+          <div className="orb-cyan bg-orb" />
+          <div className="orb-violet bg-orb" />
+          <div className="orb-pink bg-orb" />
+          <div className="bg-circuit fixed inset-0 z-0 pointer-events-none" style={{ opacity: 0.5 }} />
+        </>
+      )}
+      <AmbientBackground moduleId={view} isDark={isDarkTheme} />
 
       {/* Sidebar */}
       <div 
@@ -3194,86 +3204,115 @@ export default function App() {
         <Suspense fallback={<RouteLoader />}>
           {/* Header Section for Views using Generic Wrapper */}
           {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
-          <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5 view-page-header" style={{ borderBottom: `1px solid ${surfaces.divider}` }}>
-            
-            {/* Title & Date Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="space-y-0.5">
-                    <h1 className="flex items-center gap-2.5 view-page-title" style={{ color: surfaces.pageTitle, fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
-                        {view === 'dashboard' && <LayoutDashboard className="w-7 h-7" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 8px rgba(34,211,238,0.5))' }} />}
-                        {view === 'alerts' && <ShieldAlert className="w-7 h-7" style={{ color: '#fb7185', filter: 'drop-shadow(0 0 8px rgba(251,113,133,0.5))' }} />}
-                        {view === 'transactions' && <Wallet className="w-7 h-7" style={{ color: '#34d399', filter: 'drop-shadow(0 0 8px rgba(52,211,153,0.5))' }} />}
-                        {view === 'cashflow' && <CalendarDays className="w-7 h-7" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 8px rgba(34,211,238,0.5))' }} />}
-                        {view === 'pettycash' && <Coins className="w-7 h-7" style={{ color: '#fbbf24', filter: 'drop-shadow(0 0 8px rgba(251,191,36,0.5))' }} />}
-                        {view === 'products' && <Package className="w-7 h-7" style={{ color: '#e879f9', filter: 'drop-shadow(0 0 8px rgba(232,121,249,0.5))' }} />}
-                        
-                        {view === 'dashboard' ? 'Resumen Operativo' : 
-                        view === 'alerts' ? 'Centro de Alertas' :
-                        view === 'transactions' ? 'Gestión de Transacciones' :
-                        view === 'cashflow' ? 'Flujo de Caja' : 
-                        view === 'products' ? 'Catalogo de Productos' :
-                        'Control de Caja Chica'}
-                    </h1>
-                    <p style={{ color: surfaces.pageSubtitle, fontSize: '0.875rem' }}>
-                        {view === 'dashboard' ? 'Bienvenido al panel de control financiero.' : 
-                        view === 'alerts' ? 'Notificaciones y avisos del sistema.' :
-                        view === 'transactions' ? 'Registro y control de movimientos financieros.' :
-                        view === 'cashflow' ? 'Proyección y análisis de liquidez.' : 
-                        view === 'products' ? 'Control comercial, proveedores y stock disponible.' :
-                        'Control de fondo fijo y gastos menores.'}
-                    </p>
-                </div>
-
-                {/* Date Controls for Cashflow */}
-                {view === 'cashflow' && (
-                <div className="flex items-center rounded-xl h-9 self-start sm:self-center ml-0 sm:ml-4 overflow-hidden"
+            <ModuleHeader
+              icon={moduleIdentity.icon}
+              title={moduleIdentity.title}
+              subtitle={moduleIdentity.subtitle}
+              accent={moduleIdentity.accent}
+              accentGlow={moduleIdentity.accentGlow}
+              isDark={isDarkTheme}
+              trailing={
+                currentUser.role === 'admin' ? (
+                  <div
+                    className={
+                      isDarkTheme
+                        ? 'hidden lg:flex items-center gap-2 p-1.5 rounded-xl'
+                        : 'hidden lg:flex items-center gap-2 p-1.5 rounded-xl gf-glass-card'
+                    }
+                    style={
+                      isDarkTheme
+                        ? { background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }
+                        : undefined
+                    }
+                  >
+                    <div className="px-2">
+                      <div
+                        className="text-[9px] font-bold uppercase tracking-[0.18em]"
+                        style={{ color: isDarkTheme ? 'rgba(192,132,252,0.6)' : '#6366f1' }}
+                      >
+                        Simulador
+                      </div>
+                    </div>
+                    <Select
+                      value={currentUser.id}
+                      onValueChange={(val) => {
+                        const selectedUser = users.find((u) => u.id === val);
+                        if (selectedUser) setCurrentUser(selectedUser);
+                      }}
+                    >
+                      <SelectTrigger
+                        className="w-[160px] h-8 text-xs border-0 shadow-none focus:ring-0"
+                        style={
+                          isDarkTheme
+                            ? { background: 'rgba(255,255,255,0.04)', color: '#c084fc' }
+                            : { color: '#4f46e5' }
+                        }
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {users.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            <span className="font-bold mr-1">{user.initials}</span> {user.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : undefined
+              }
+            >
+              {view === 'cashflow' && (
+                <div
+                  className={`flex items-center rounded-xl h-9 self-start sm:self-center ml-0 sm:ml-4 overflow-hidden ${!isDarkTheme ? 'gf-glass-card' : ''}`}
                   style={{ background: surfaces.monthPicker.background, border: surfaces.monthPicker.border }}
                 >
-                    <button onClick={handlePrevMonth} className="p-2 h-full flex items-center transition-colors" style={{ color: surfaces.monthPicker.icon }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = surfaces.monthPicker.hoverBg; }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
-                        <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <span className="px-3 text-sm font-medium min-w-[140px] text-center capitalize" style={{ color: surfaces.monthPicker.text }}>
-                        {format(safeCurrentDate, 'MMMM yyyy', { locale: es })}
-                    </span>
-                    <button onClick={handleNextMonth} className="p-2 h-full flex items-center transition-colors" style={{ color: surfaces.monthPicker.icon }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = surfaces.monthPicker.hoverBg; }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
-                        <ChevronRight className="h-4 w-4" />
-                    </button>
+                  <button
+                    onClick={handlePrevMonth}
+                    className="p-2 h-full flex items-center transition-colors"
+                    style={{ color: surfaces.monthPicker.icon }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = surfaces.monthPicker.hoverBg;
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    }}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <span
+                    className="px-3 text-sm font-medium min-w-[140px] text-center capitalize"
+                    style={{ color: surfaces.monthPicker.text }}
+                  >
+                    {format(safeCurrentDate, 'MMMM yyyy', { locale: es })}
+                  </span>
+                  <button
+                    onClick={handleNextMonth}
+                    className="p-2 h-full flex items-center transition-colors"
+                    style={{ color: surfaces.monthPicker.icon }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = surfaces.monthPicker.hoverBg;
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = 'transparent';
+                    }}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
                 </div>
-                )}
-            </div>
+              )}
+            </ModuleHeader>
+          )}
 
-            {/* Right Side: Admin Tools */}
-            <div className="flex items-center gap-4 self-end sm:self-auto">
-                {/* Admin User Simulator */}
-                {currentUser.role === 'admin' && (
-                    <div className="hidden lg:flex items-center gap-2 p-1.5 rounded-xl"
-                      style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)' }}
-                    >
-                        <div className="px-2">
-                            <div className="text-[9px] font-bold uppercase tracking-[0.18em]" style={{ color: 'rgba(192,132,252,0.6)' }}>Simulador</div>
-                        </div>
-                        <Select 
-                            value={currentUser.id} 
-                            onValueChange={(val) => {
-                                const selectedUser = users.find(u => u.id === val);
-                                if (selectedUser) setCurrentUser(selectedUser);
-                            }}
-                        >
-                            <SelectTrigger className="w-[160px] h-8 text-xs border-0 shadow-none focus:ring-0" style={{ background: 'rgba(255,255,255,0.04)', color: '#c084fc' }}>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {users.map(user => (
-                                    <SelectItem key={user.id} value={user.id}>
-                                        <span className="font-bold mr-1">{user.initials}</span> {user.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                )}
-            </div>
-          </div>
+          {['analytics', 'pnl', 'reports', 'fees', 'providers', 'accounting', 'fleet', 'inventory', 'requests', 'audit', 'users', 'config'].includes(view) && (
+            <ModuleHeader
+              icon={moduleIdentity.icon}
+              title={moduleIdentity.title}
+              subtitle={moduleIdentity.subtitle}
+              accent={moduleIdentity.accent}
+              accentGlow={moduleIdentity.accentGlow}
+              isDark={isDarkTheme}
+            />
           )}
 
           {view === 'treasury' && (
@@ -3376,7 +3415,7 @@ export default function App() {
             {view === 'transactions' && (
             <div className="grid gap-6 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="lg:col-span-4 xl:col-span-3 space-y-5">
-                <div className="rounded-2xl p-5" style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
+                <div className={`rounded-2xl p-5 ${!isDarkTheme ? 'gf-glass-card' : ''}`} style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
                   <h3 className="mb-5 flex items-center gap-2" style={{ color: surfaces.pageTitle, fontWeight: 700 }}>
                     <PlusCircle className="h-5 w-5" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.5))' }} />
                     Nueva Transacción
@@ -3392,7 +3431,7 @@ export default function App() {
               </div>
               
               <div className="lg:col-span-8 xl:col-span-9">
-                <div className="rounded-2xl p-5" style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
+                <div className={`rounded-2xl p-5 ${!isDarkTheme ? 'gf-glass-card' : ''}`} style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
                   <div className="flex flex-col space-y-4 mb-5">
                     <div className="flex items-center justify-between pb-4" style={{ borderBottom: `1px solid ${surfaces.divider}` }}>
                       <h3 style={{ color: surfaces.pageTitle, fontWeight: 700 }}>Historial de Transacciones</h3>

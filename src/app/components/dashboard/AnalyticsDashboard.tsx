@@ -35,7 +35,7 @@ export function AnalyticsDashboard({
 
   const NeonCard = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
     <div
-      className={`rounded-2xl p-5 light-chart-panel ${className}`}
+      className={`rounded-2xl p-5 ${chartTheme.isDark ? '' : 'gf-glass-card light-chart-panel'} ${className}`}
       style={{
         background: chartTheme.chartCard.background,
         border: chartTheme.chartCard.border,
@@ -188,32 +188,18 @@ export function AnalyticsDashboard({
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="pb-4" style={{ borderBottom: `1px solid ${chartTheme.divider}` }}>
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl" style={{ background: `${chartTheme.PROFIT}15`, border: `1px solid ${chartTheme.PROFIT}30` }}>
-            <Brain className="w-6 h-6" style={{ color: chartTheme.PROFIT, filter: chartTheme.isDark ? `drop-shadow(0 0 8px ${chartTheme.PROFIT}80)` : undefined }} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold" style={{ color: chartTheme.title }}>Inteligencia Financiera</h2>
-            <p className="text-sm" style={{ color: chartTheme.subtitle }}>
-              Análisis profundo y KPIs impulsados por datos históricos
-              {!seesAllSedesCatalog && visibleSedes.length > 0 ? (
-                <span className="block mt-1 text-xs text-cyan-400/90">
-                  Alcance: sedes asignadas ({visibleSedes.join(', ')}).
-                </span>
-              ) : null}
-            </p>
-          </div>
-        </div>
-      </div>
+      {!seesAllSedesCatalog && visibleSedes.length > 0 && (
+        <p className="text-xs mb-2" style={{ color: chartTheme.isDark ? '#22d3ee' : '#0891b2' }}>
+          Alcance: sedes asignadas ({visibleSedes.join(', ')}).
+        </p>
+      )}
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiCards.map((card, i) => {
           const kpi = chartTheme.kpi[card.kind];
           return (
-          <div key={i} className="rounded-2xl p-5 group cursor-default relative overflow-hidden"
+          <div key={i} className={`rounded-2xl p-5 group cursor-default relative overflow-hidden ${kpi.className ?? ''}`}
             style={{
               background: kpi.background,
               border: kpi.border,

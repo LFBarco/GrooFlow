@@ -34,10 +34,12 @@
   --semantic-profit: #4F46E5;
   --semantic-projection: #0891B2;
   --shadow-glow: 0 10px 25px -5px rgba(79, 70, 229, 0.12);
-  --glass-border: 1px solid #CBD5E1;
-  --glass-bg: rgba(255, 255, 255, 0.96);
-  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.72);
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --card-shadow: 0 12px 40px -12px rgba(79, 70, 229, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   --sidebar-hybrid: #0B0F19;
+  --gf-glass-blur: 16px;
+  --gf-transition-module: 400ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dark {
@@ -113,12 +115,12 @@
 
 /* ─── MODO CLARO: layout app y utilidades ─── */
 html.light {
-  background:
-    radial-gradient(ellipse 80% 55% at 8% 12%, rgba(99, 102, 241, 0.22) 0%, transparent 55%),
-    radial-gradient(ellipse 65% 50% at 92% 8%, rgba(16, 185, 129, 0.18) 0%, transparent 52%),
-    radial-gradient(ellipse 70% 55% at 75% 88%, rgba(236, 72, 153, 0.14) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 45% at 15% 85%, rgba(6, 182, 212, 0.16) 0%, transparent 50%),
-    linear-gradient(165deg, #eef2ff 0%, #e8eef8 35%, #f0fdf4 70%, #fdf4ff 100%);
+  background: #f8fafc;
+}
+
+html.light .bg-orb,
+html.light .bg-circuit {
+  display: none !important;
 }
 
 html.light .orb-cyan {
@@ -199,8 +201,8 @@ html.light ::-webkit-scrollbar-thumb:hover {
 html.light input:focus,
 html.light select:focus,
 html.light textarea:focus {
-  border-color: #4F46E5;
-  box-shadow: 0 0 0 1px #4F46E5, 0 0 12px rgba(79, 70, 229, 0.12);
+  border-color: #22d3ee;
+  box-shadow: 0 0 0 1px #22d3ee, 0 0 16px rgba(34, 211, 238, 0.2);
 }
 
 @theme inline {
@@ -718,5 +720,132 @@ html.light textarea:focus {
   @keyframes btnHoverGlow {
     0%   { box-shadow: 0 0 20px rgba(34, 211, 238, 0.15); }
     100% { box-shadow: 0 0 35px rgba(34, 211, 238, 0.3), 0 0 60px rgba(34, 211, 238, 0.1); }
+  }
+
+  /* ═══════════════════════════════════════════════
+     GROOFLOW LIGHT — Glassmorphism Premium
+     (Dark mode unchanged — these apply only in .light)
+     ═══════════════════════════════════════════════ */
+
+  html.light .gf-ambient-layer {
+    transition: background var(--gf-transition-module);
+  }
+
+  html.light .gf-glass-card {
+    background: rgba(255, 255, 255, 0.52);
+    backdrop-filter: blur(var(--gf-glass-blur));
+    -webkit-backdrop-filter: blur(var(--gf-glass-blur));
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    box-shadow: var(--card-shadow);
+    transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 300ms ease,
+                border-color 300ms ease;
+  }
+
+  html.light .gf-glass-card-hover:hover {
+    transform: translateY(-4px);
+    border-color: rgba(99, 102, 241, 0.35);
+    box-shadow: 0 22px 48px -14px rgba(79, 70, 229, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  }
+
+  html.light .gf-glass-icon-wrap {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    box-shadow: 0 8px 24px -8px rgba(79, 70, 229, 0.15);
+  }
+
+  html.light .gf-module-header {
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  }
+
+  html.light .gf-glass-kpi {
+    position: relative;
+    overflow: hidden;
+    backdrop-filter: blur(var(--gf-glass-blur));
+    -webkit-backdrop-filter: blur(var(--gf-glass-blur));
+    transition: transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 300ms ease;
+  }
+
+  html.light .gf-glass-kpi::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 0 0 16px 16px;
+  }
+
+  html.light .gf-kpi-income::after { background: linear-gradient(90deg, #059669, #22d3ee); box-shadow: 0 0 12px rgba(5, 150, 105, 0.4); }
+  html.light .gf-kpi-expense::after { background: linear-gradient(90deg, #dc2626, #e879f9); box-shadow: 0 0 12px rgba(220, 38, 38, 0.35); }
+  html.light .gf-kpi-profit::after { background: linear-gradient(90deg, #7c3aed, #4f46e5); box-shadow: 0 0 12px rgba(124, 58, 237, 0.35); }
+  html.light .gf-kpi-projection::after { background: linear-gradient(90deg, #22d3ee, #38bdf8); box-shadow: 0 0 12px rgba(34, 211, 238, 0.35); }
+  html.light .gf-kpi-warning::after { background: linear-gradient(90deg, #fbbf24, #fb923c); }
+  html.light .gf-kpi-violet::after { background: linear-gradient(90deg, #a78bfa, #e879f9); }
+  html.light .gf-kpi-neutral::after { background: linear-gradient(90deg, #94a3b8, #cbd5e1); }
+
+  html.light .light-chart-panel {
+    backdrop-filter: blur(var(--gf-glass-blur));
+    -webkit-backdrop-filter: blur(var(--gf-glass-blur));
+  }
+
+  html.light [data-slot="card"] {
+    background: rgba(255, 255, 255, 0.52);
+    backdrop-filter: blur(var(--gf-glass-blur));
+    -webkit-backdrop-filter: blur(var(--gf-glass-blur));
+    border-color: rgba(255, 255, 255, 0.72);
+    box-shadow: var(--card-shadow);
+  }
+
+  html.light button[class*="bg-primary"],
+  html.light .gf-glass-btn {
+    background: rgba(255, 255, 255, 0.65) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    color: #0f172a !important;
+    box-shadow: 0 4px 20px -6px rgba(34, 211, 238, 0.25);
+    transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  html.light button[class*="bg-primary"]:hover,
+  html.light .gf-glass-btn:hover {
+    box-shadow: 0 8px 28px -6px rgba(34, 211, 238, 0.4), 0 0 20px rgba(34, 211, 238, 0.15);
+    transform: translateY(-2px);
+    border-color: rgba(34, 211, 238, 0.5);
+  }
+
+  html.light input,
+  html.light textarea,
+  html.light [data-slot="select-trigger"] {
+    background: rgba(255, 255, 255, 0.65) !important;
+    backdrop-filter: blur(8px);
+    border-color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  html.light input::placeholder,
+  html.light textarea::placeholder {
+    color: #94a3b8;
+  }
+
+  html.light table thead {
+    background: rgba(255, 255, 255, 0.45);
+    backdrop-filter: blur(8px);
+  }
+
+  html.light table tbody tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  html.light table tbody tr:hover {
+    background: rgba(34, 211, 238, 0.08);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html.light .gf-ambient-layer,
+    html.light .gf-glass-card,
+    html.light .gf-glass-kpi {
+      transition: none;
+    }
   }
 }
