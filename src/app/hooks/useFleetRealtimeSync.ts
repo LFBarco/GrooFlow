@@ -21,7 +21,6 @@ export function useFleetRealtimeSync(
 
     const client = getSupabaseClient();
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
     let reloadInFlight = false;
 
@@ -75,14 +74,9 @@ export function useFleetRealtimeSync(
         }
       });
 
-    pollTimer = setInterval(() => {
-      void reload('poll');
-    }, 45_000);
-
     return () => {
       cancelled = true;
       if (debounceTimer) clearTimeout(debounceTimer);
-      if (pollTimer) clearInterval(pollTimer);
       void client.removeChannel(channel);
     };
   }, [enabled, applyRef, latestRef, cooldownUntilRef]);

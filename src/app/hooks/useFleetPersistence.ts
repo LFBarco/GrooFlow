@@ -12,8 +12,13 @@ import {
   type CloudSyncTracker,
   type KvDomainRefs,
 } from '../utils/kvDomainPersistence';
+import { FLEET_REMOTE_COOLDOWN_MS } from '../utils/fleetRemoteSyncGuard';
 
 const FLEET_USE_SQL = isFleetSqlEnabled();
+
+function extendFleetCooldown(cooldownUntilRef: MutableRefObject<number>) {
+  cooldownUntilRef.current = Date.now() + FLEET_REMOTE_COOLDOWN_MS;
+}
 
 export type UseFleetPersistenceOptions = {
   isDataLoaded: boolean;
@@ -106,6 +111,8 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
 
       if (!kvOk) return false;
 
+      extendFleetCooldown(cooldownUntilRef);
+
       if (FLEET_USE_SQL) {
         const uid = await getAuthUserId();
         if (!uid) {
@@ -118,7 +125,12 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
           () => saveFleetToSql(getSupabaseClient(), next, uid),
           lastSaveErrorAtRef
         );
-        if (!sqlOk) return false;
+        if (!sqlOk) {
+          toast.warning(
+            'Flota guardada en la nube (KV). La réplica SQL falló; se reintentará en segundo plano.',
+            { duration: 8000 }
+          );
+        }
       }
 
       if (successMessage) toast.success(successMessage);

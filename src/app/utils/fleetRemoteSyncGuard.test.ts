@@ -1,23 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import type { FleetDataset } from '../types/fleet';
 import { normalizeFleetDataset } from './fleetData';
-import { shouldApplyFleetRemoteSnapshot } from './fleetRemoteSyncGuard';
+import {
+  fleetLocalAheadOfRemote,
+  shouldApplyFleetRemoteSnapshot,
+} from './fleetRemoteSyncGuard';
+
+const vehicle = (
+  id: string,
+  plate: string,
+  updatedAt: string
+): FleetDataset['vehicles'][number] => ({
+  id,
+  plate,
+  brand: 'Toyota',
+  model: 'Hilux',
+  year: 2024,
+  fuelType: 'gasoline',
+  status: 'available',
+  currentOdometerKm: 0,
+  createdAt: updatedAt,
+  updatedAt,
+});
 
 const withVehicle: FleetDataset = normalizeFleetDataset({
-  vehicles: [
-    {
-      id: 'fv1',
-      plate: 'ABC-123',
-      brand: 'Toyota',
-      model: 'Hilux',
-      year: 2024,
-      fuelType: 'gasoline',
-      status: 'available',
-      currentOdometerKm: 0,
-      createdAt: '2026-01-01T00:00:00.000Z',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    },
-  ],
+  vehicles: [vehicle('fv1', 'ABC-123', '2026-01-01T00:00:00.000Z')],
 });
 
 describe('shouldApplyFleetRemoteSnapshot', () => {
@@ -33,21 +40,25 @@ describe('shouldApplyFleetRemoteSnapshot', () => {
     ).toBe(false);
   });
 
-  it('acepta snapshot remoto distinto con datos', () => {
+  it('rechaza SQL con menos vehículos que local (réplica vieja)', () => {
+    const local = normalizeFleetDataset({
+      vehicles: [
+        vehicle('fv1', 'A', '2026-06-10T12:00:00.000Z'),
+        vehicle('fv2', 'B', '2026-06-10T12:00:00.000Z'),
+      ],
+    });
+    const remote = normalizeFleetDataset({
+      vehicles: [vehicle('fv1', 'A', '2026-01-01T00:00:00.000Z')],
+    });
+    expect(fleetLocalAheadOfRemote(local, remote)).toBe(true);
+    expect(shouldApplyFleetRemoteSnapshot(local, remote, 0)).toBe(false);
+  });
+
+  it('acepta snapshot remoto con más datos que local', () => {
     const remote = normalizeFleetDataset({
       vehicles: [
-        {
-          id: 'fv2',
-          plate: 'XYZ-999',
-          brand: 'Nissan',
-          model: 'Navara',
-          year: 2023,
-          fuelType: 'diesel',
-          status: 'available',
-          currentOdometerKm: 100,
-          createdAt: '2026-01-02T00:00:00.000Z',
-          updatedAt: '2026-01-02T00:00:00.000Z',
-        },
+        vehicle('fv2', 'XYZ-999', '2026-06-11T00:00:00.000Z'),
+        vehicle('fv3', 'ZZZ-001', '2026-06-11T00:00:00.000Z'),
       ],
     });
     expect(shouldApplyFleetRemoteSnapshot(withVehicle, remote, 0)).toBe(true);

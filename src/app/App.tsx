@@ -170,6 +170,10 @@ import {
   broadcastKvUpdate,
 } from "./utils/kvCrossTabSync";
 import { clearOperationalData } from "./utils/clearOperationalData";
+import {
+  FLEET_REMOTE_COOLDOWN_MS,
+  shouldApplyFleetRemoteSnapshot,
+} from "./utils/fleetRemoteSyncGuard";
 import { writeAuditLog } from "./services/repository/auditLogSql";
 import { generateEntityId } from "./utils/generateEntityId";
 import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
@@ -558,7 +562,9 @@ export default function App() {
   const fleetHydratedFromKvRef = useRef(false);
   const skipFleetHydrateRef = useRef(false);
   const fleetKvCooldownUntilRef = useRef(0);
-  const fleetKvChainRef = useRef(Promise.resolve(true));
+  const fleetKvChainRef = useRef(
+    Promise.resolve('saved' as import('./utils/kvSerializedSave').KvSaveResult)
+  );
   const fleetKvLatestRef = useRef<FleetDataset>(normalizeFleetDataset({}));
   const inventoryHydratedFromKvRef = useRef(false);
   const skipInventoryHydrateRef = useRef(false);
@@ -678,7 +684,7 @@ export default function App() {
     pettyCashKvChainRef.current = Promise.resolve(true);
     transactionsKvChainRef.current = KV_CHAIN_IDLE;
     configKvChainRef.current = Promise.resolve(true);
-    fleetKvChainRef.current = Promise.resolve(true);
+    fleetKvChainRef.current = Promise.resolve('saved');
     inventoryKvChainRef.current = Promise.resolve(true);
     alertThresholdsKvChainRef.current = Promise.resolve(true);
     chartOfAccountsKvChainRef.current = Promise.resolve(true);
@@ -1539,11 +1545,19 @@ export default function App() {
   applyFleetRemoteRef.current = (dataset: FleetDataset) => {
     if (!isDataLoaded || signingOutRef.current || !fleetHydratedFromKvRef.current) return;
     const normalized = normalizeFleetDataset(dataset);
-    if (Date.now() < fleetKvCooldownUntilRef.current) return;
+    if (
+      !shouldApplyFleetRemoteSnapshot(
+        fleetKvLatestRef.current,
+        normalized,
+        fleetKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     if (kvPayloadsEqual(fleetKvLatestRef.current, normalized)) return;
     fleetKvLatestRef.current = normalized;
     markCrossTabEchoWindow('data:fleet');
-    fleetKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    fleetKvCooldownUntilRef.current = Date.now() + FLEET_REMOTE_COOLDOWN_MS;
     setFleetDataset(normalized);
     const now = Date.now();
     if (now - fleetRemoteToastLastAtRef.current >= 4000) {

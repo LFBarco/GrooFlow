@@ -900,6 +900,12 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 }
               } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
                 nextFleet = sqlLoad.data;
+                /** SQL con datos pero KV vacío: subir a KV para que persista al recargar. */
+                void api.saveKey('data:fleet', nextFleet).then((ok) => {
+                  if (!ok) {
+                    console.warn('[hydration] fleet SQL→KV backup failed');
+                  }
+                });
               } else if (kvFleet != null) {
                 nextFleet = kvFleet;
               } else if (sqlLoad.ok && sqlLoad.data) {
