@@ -161,6 +161,8 @@ export interface User {
   lastLogin?: string; // ISO timestamp del último acceso
   tempPassword?: string; // Contraseña temporal asignada por el super admin
   status?: 'active' | 'inactive'; // Estado del usuario
+  /** Foto de perfil (data URL JPEG optimizado). */
+  avatarUrl?: string;
 }
 
 export interface PurchaseRequest {

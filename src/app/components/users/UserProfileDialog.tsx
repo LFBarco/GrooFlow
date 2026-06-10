@@ -9,8 +9,9 @@ import {
 } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Label } from "../ui/label";
-import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { useApp } from '../../context/AppContext';
+import type { User } from '../../types';
+import { ProfilePhotoPicker } from './ProfilePhotoPicker';
 import { LogOut, Moon, Sun, Mail, KeyRound, User as UserIcon, Lock } from 'lucide-react';
 import { Badge } from "../ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
@@ -20,12 +21,14 @@ interface UserProfileDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onLogout: () => void;
+    onUpdateUser?: (user: User) => void;
 }
 
 export function UserProfileDialog({ 
     open, 
     onOpenChange, 
-    onLogout
+    onLogout,
+    onUpdateUser,
 }: UserProfileDialogProps) {
     const { currentUser: user, roles = [], theme: currentTheme, toggleTheme: onToggleTheme } = useApp();
     const roleLabel = roles.find((r) => r.id === user.role)?.name || user.role.replace(/_/g, ' ');
@@ -35,16 +38,17 @@ export function UserProfileDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px] z-[100] glass-panel border-white/10">
                 <DialogHeader className="flex flex-col items-center text-center pb-4 border-b border-white/10">
-                    <div className="relative mb-4">
-                        <Avatar className="h-24 w-24 ring-4 ring-background border-2 border-border shadow-xl">
-                            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} />
-                            <AvatarFallback className="text-2xl bg-primary/10 text-primary font-bold">
-                                {user.initials}
-                            </AvatarFallback>
-                        </Avatar>
-                    </div>
+                    <ProfilePhotoPicker
+                        user={user}
+                        size="lg"
+                        disabled={!onUpdateUser}
+                        onAvatarChange={(avatarUrl) => {
+                            if (!onUpdateUser) return;
+                            onUpdateUser({ ...user, avatarUrl });
+                        }}
+                    />
 
-                    <DialogTitle className="text-2xl font-bold">{user.name}</DialogTitle>
+                    <DialogTitle className="text-2xl font-bold mt-2">{user.name}</DialogTitle>
                     <DialogDescription className="flex items-center gap-2 mt-1 justify-center">
                         <Badge variant="outline" className="capitalize border-primary/20 bg-primary/5 text-primary">
                             {roleLabel}

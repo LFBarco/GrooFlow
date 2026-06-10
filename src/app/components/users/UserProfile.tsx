@@ -3,13 +3,13 @@ import { User } from '../../types';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Switch } from '../ui/switch';
 import { toast } from 'sonner';
-import { User as UserIcon, Mail, Shield, Moon, Sun, LogOut, Camera } from 'lucide-react';
+import { User as UserIcon, Mail, Shield, Moon, Sun, LogOut } from 'lucide-react';
 import { DEFAULT_ROLES } from './types';
+import { ProfilePhotoPicker } from './ProfilePhotoPicker';
 
 interface UserProfileProps {
     user: User;
@@ -56,14 +56,14 @@ export function UserProfile({ user, onUpdateUser, currentTheme, onToggleTheme, o
                 <div className="space-y-6">
                     <Card>
                         <CardContent className="pt-6 flex flex-col items-center text-center">
-                            <div className="relative mb-4 group cursor-pointer">
-                                <Avatar className="h-32 w-32 border-4 border-background shadow-xl">
-                                    <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} />
-                                    <AvatarFallback className="text-4xl">{user.initials}</AvatarFallback>
-                                </Avatar>
-                                <div className="absolute inset-0 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <Camera className="w-8 h-8 text-white" />
-                                </div>
+                            <div className="mb-4">
+                                <ProfilePhotoPicker
+                                    user={user}
+                                    size="lg"
+                                    onAvatarChange={(avatarUrl) =>
+                                        onUpdateUser({ ...user, avatarUrl })
+                                    }
+                                />
                             </div>
                             <h3 className="text-xl font-bold">{user.name}</h3>
                             <p className="text-sm text-muted-foreground mb-4">{user.email}</p>

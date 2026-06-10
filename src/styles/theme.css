@@ -2,36 +2,42 @@
 
 :root {
   --font-size: 16px;
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: rgba(255, 255, 255, 0.9);
-  --card-foreground: #0f172a;
-  --popover: rgba(255, 255, 255, 0.95);
-  --popover-foreground: #0f172a;
-  --primary: #6d28d9;
-  --primary-foreground: #ffffff;
-  --secondary: #e0e7ff;
-  --secondary-foreground: #4338ca;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
-  --accent: #ede9fe;
-  --accent-foreground: #5b21b6;
-  --destructive: #fee2e2;
-  --destructive-foreground: #ef4444;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --input-background: rgba(255, 255, 255, 0.6);
-  --ring: #6d28d9;
+  /* ─── TEMA CLARO — panel blanco vibrante ─── */
+  --background: #F1F5F9;
+  --foreground: #020617;
+  --card: #FFFFFF;
+  --card-foreground: #020617;
+  --popover: #FFFFFF;
+  --popover-foreground: #020617;
+  --primary: #4F46E5;
+  --primary-foreground: #FFFFFF;
+  --secondary: #EEF2FF;
+  --secondary-foreground: #4F46E5;
+  --muted: #F1F5F9;
+  --muted-foreground: #64748B;
+  --accent: #EEF2FF;
+  --accent-foreground: #4F46E5;
+  --destructive: #FEE2E2;
+  --destructive-foreground: #DC2626;
+  --border: #CBD5E1;
+  --input: #CBD5E1;
+  --input-background: #FFFFFF;
+  --ring: #4F46E5;
   --radius: 0.875rem;
-  --chart-1: #06b6d4;
-  --chart-2: #10b981;
-  --chart-3: #facc15;
-  --chart-4: #f43f5e;
-  --chart-5: #a855f7;
-  --shadow-glow: 0 0 0 0 transparent;
-  --glass-border: 1px solid rgba(255, 255, 255, 0.5);
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --card-shadow: 0 10px 40px -10px rgba(148, 163, 184, 0.2);
+  --chart-1: #059669;
+  --chart-2: #4F46E5;
+  --chart-3: #0891B2;
+  --chart-4: #DC2626;
+  --chart-5: #7C3AED;
+  --semantic-income: #059669;
+  --semantic-expense: #DC2626;
+  --semantic-profit: #4F46E5;
+  --semantic-projection: #0891B2;
+  --shadow-glow: 0 10px 25px -5px rgba(79, 70, 229, 0.12);
+  --glass-border: 1px solid #CBD5E1;
+  --glass-bg: rgba(255, 255, 255, 0.96);
+  --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  --sidebar-hybrid: #0B0F19;
 }
 
 .dark {
@@ -103,6 +109,68 @@
   /* ─── SIDEBAR ──────────────────────────────── */
   --sidebar: #130F24;           /* Even darker than card */
   --sidebar-border: #22203A;
+}
+
+/* ─── MODO CLARO: layout app y utilidades ─── */
+html.light .bg-orb,
+html.light .bg-circuit {
+  display: none !important;
+}
+
+html.light .gradient-text-cyber {
+  background: linear-gradient(135deg, #4F46E5 0%, #0891B2 45%, #059669 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+html.light .card-premium {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+  box-shadow: var(--card-shadow);
+}
+
+html.light .card-premium:hover {
+  transform: translateY(-3px);
+  border-color: rgba(79, 70, 229, 0.25);
+  box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(79, 70, 229, 0.06);
+}
+
+html.light .glass-panel {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  box-shadow: var(--card-shadow);
+  backdrop-filter: none;
+}
+
+html.light .view-page-header {
+  border-bottom-color: #CBD5E1 !important;
+}
+
+html.light .view-page-title {
+  color: #020617 !important;
+}
+
+html.light .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12) !important;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #4F46E5 0%, #0891B2 100%);
+}
+
+html.light input:focus,
+html.light select:focus,
+html.light textarea:focus {
+  border-color: #4F46E5;
+  box-shadow: 0 0 0 1px #4F46E5, 0 0 12px rgba(79, 70, 229, 0.12);
 }
 
 @theme inline {
@@ -250,6 +318,11 @@
   .border-glow-violet {
     border-color: rgba(192, 132, 252, 0.4) !important;
     box-shadow: 0 0 16px rgba(192, 132, 252, 0.15), inset 0 0 16px rgba(192, 132, 252, 0.03);
+  }
+
+  /* ─── SIDEBAR HÍBRIDO (oscuro en modo claro y oscuro) ─── */
+  .sidebar-hybrid {
+    background: linear-gradient(180deg, #0B0F19 0%, #070a12 50%, #0B0F19 100%) !important;
   }
 
   /* ─── SIDEBAR STYLE ───────────────────────── */

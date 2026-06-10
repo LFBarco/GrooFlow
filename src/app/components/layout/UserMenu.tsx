@@ -11,6 +11,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { useApp } from "../../context/AppContext";
+import { getUserAvatarSrc } from "../../utils/userAvatar";
 import { LogOut, User as UserIcon, Settings, Shield, Moon, Sun, ChevronsUpDown } from "lucide-react";
 
 interface UserMenuProps {
@@ -36,7 +37,7 @@ export function UserMenu({
                 {showDetails ? (
                     <Button variant="ghost" className="relative w-full h-12 justify-start px-2 rounded-xl border border-transparent hover:border-white/8 transition-all group overflow-hidden" style={{ background: 'transparent' }}>
                         <Avatar className="h-8 w-8 mr-2.5 shrink-0" style={{ ring: '1px solid rgba(34,211,238,0.3)' }}>
-                            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} alt={user.name} />
+                            <AvatarImage src={getUserAvatarSrc(user)} alt={user.name} />
                             <AvatarFallback className="text-xs font-bold" style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}>{user.initials}</AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col items-start text-left flex-1 min-w-0">
@@ -48,7 +49,7 @@ export function UserMenu({
                 ) : (
                     <Button variant="ghost" className="relative h-9 w-9 rounded-full transition-all hover:scale-105 active:scale-95" style={{ border: '1px solid rgba(139,92,246,0.2)' }}>
                         <Avatar className="h-8 w-8">
-                            <AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.email}`} alt={user.name} />
+                            <AvatarImage src={getUserAvatarSrc(user)} alt={user.name} />
                             <AvatarFallback className="text-xs font-bold" style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}>{user.initials}</AvatarFallback>
                         </Avatar>
                     </Button>

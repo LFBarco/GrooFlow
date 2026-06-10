@@ -2994,21 +2994,23 @@ export default function App() {
       }
     >
       <AppProvider value={{ currentUser, roles, theme, toggleTheme }}>
-      {/* Animated Neon Orbs */}
-      <div className="orb-cyan bg-orb"></div>
-      <div className="orb-violet bg-orb"></div>
-      <div className="orb-pink bg-orb"></div>
-      {/* Circuit Grid */}
-      <div className="bg-circuit fixed inset-0 z-0 pointer-events-none" style={{ opacity: 0.5 }} />
+      {theme === 'dark' && (
+        <>
+          <div className="orb-cyan bg-orb" />
+          <div className="orb-violet bg-orb" />
+          <div className="orb-pink bg-orb" />
+          <div className="bg-circuit fixed inset-0 z-0 pointer-events-none" style={{ opacity: 0.5 }} />
+        </>
+      )}
 
       {/* Sidebar */}
       <div 
-        className={`${isSidebarCollapsed ? 'w-[76px]' : 'w-[256px]'} fixed inset-y-0 left-0 z-50 flex flex-col`}
+        className={`sidebar-hybrid ${isSidebarCollapsed ? 'w-[76px]' : 'w-[256px]'} fixed inset-y-0 left-0 z-50 flex flex-col`}
         style={{
           transition: 'width 500ms cubic-bezier(0.2, 0, 0, 1)',
-          background: 'linear-gradient(180deg, #0D0B1E 0%, #090718 50%, #0D0B1E 100%)',
+          background: 'linear-gradient(180deg, #0B0F19 0%, #070a12 50%, #0B0F19 100%)',
           borderRight: '1px solid rgba(139,92,246,0.12)',
-          boxShadow: '4px 0 40px rgba(0,0,0,0.6)'
+          boxShadow: theme === 'light' ? '4px 0 32px rgba(15,23,42,0.18)' : '4px 0 40px rgba(0,0,0,0.6)',
         }}
       >
         {/* Cyber border glow line */}
@@ -3117,7 +3119,11 @@ export default function App() {
 
       {/* Mobile Header */}
       <div className="md:hidden h-14 flex items-center px-4 justify-between sticky top-0 z-40 shadow-lg"
-        style={{ background: 'rgba(13,11,30,0.95)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(139,92,246,0.15)' }}
+        style={
+          theme === 'light'
+            ? { background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(16px)', borderBottom: '1px solid #CBD5E1', boxShadow: '0 4px 20px -6px rgba(15,23,42,0.08)' }
+            : { background: 'rgba(13,11,30,0.95)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(139,92,246,0.15)' }
+        }
       >
         <div className="flex items-center">
              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mr-3 p-2 rounded-xl hover:bg-white/8 active:scale-95 transition-all">
@@ -3189,12 +3195,12 @@ export default function App() {
         <Suspense fallback={<RouteLoader />}>
           {/* Header Section for Views using Generic Wrapper */}
           {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
-          <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5" style={{ borderBottom: '1px solid rgba(139,92,246,0.15)' }}>
+          <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5 view-page-header" style={{ borderBottom: theme === 'light' ? '1px solid #CBD5E1' : '1px solid rgba(139,92,246,0.15)' }}>
             
             {/* Title & Date Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="space-y-0.5">
-                    <h1 className="flex items-center gap-2.5" style={{ color: '#F0EEFF', fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                    <h1 className="flex items-center gap-2.5 view-page-title" style={{ color: theme === 'light' ? '#020617' : '#F0EEFF', fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
                         {view === 'dashboard' && <LayoutDashboard className="w-7 h-7" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 8px rgba(34,211,238,0.5))' }} />}
                         {view === 'alerts' && <ShieldAlert className="w-7 h-7" style={{ color: '#fb7185', filter: 'drop-shadow(0 0 8px rgba(251,113,133,0.5))' }} />}
                         {view === 'transactions' && <Wallet className="w-7 h-7" style={{ color: '#34d399', filter: 'drop-shadow(0 0 8px rgba(52,211,153,0.5))' }} />}
@@ -3826,6 +3832,14 @@ export default function App() {
             open={isProfileOpen} 
             onOpenChange={setIsProfileOpen} 
             onLogout={handleLogout}
+            onUpdateUser={(updatedUser) => {
+              setUsers((prev) => {
+                const next = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+                void persistUsersToCloud(next);
+                return next;
+              });
+              setCurrentUser(updatedUser);
+            }}
           />
 
           {/* Alert View - now integrated as a main view */}

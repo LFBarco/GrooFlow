@@ -756,6 +756,10 @@ function userExtra(u: User): Record<string, unknown> {
 
   if (u.pettyCashOpeningCarryConsumedAt) extra.pettyCashOpeningCarryConsumedAt = u.pettyCashOpeningCarryConsumedAt;
 
+  if (u.tempPassword) extra.tempPassword = u.tempPassword;
+
+  if (u.avatarUrl) extra.avatarUrl = u.avatarUrl;
+
   return extra;
 
 }
@@ -797,6 +801,8 @@ function rowToAppUser(row: Record<string, unknown>): User {
     pettyCashOpeningCarryConsumedAt: extra.pettyCashOpeningCarryConsumedAt as string | undefined,
 
     tempPassword: extra.tempPassword as string | undefined,
+
+    avatarUrl: extra.avatarUrl as string | undefined,
 
   };
 
