@@ -237,6 +237,26 @@ function isAllowedVeterinariUrl(raw: string): boolean {
   }
 }
 
+async function detectOutboundIp(): Promise<string | undefined> {
+  try {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 5000);
+    const r = await fetch("https://api.ipify.org?format=json", { signal: controller.signal });
+    clearTimeout(t);
+    if (!r.ok) return undefined;
+    const j = await r.json() as { ip?: string };
+    return typeof j?.ip === "string" ? j.ip : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractVeterinariTraceId(json: unknown): string | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  const traceId = (json as Record<string, unknown>).traceId;
+  return typeof traceId === "string" ? traceId : undefined;
+}
+
 for (const base of KV_PATH_BASES) {
   app.post(`${base}/veterinari/test`, async (c) => {
     const auth = await requireAdminRequest(c);
@@ -303,15 +323,30 @@ for (const base of KV_PATH_BASES) {
       }
       const snippet = text.slice(0, 200).replace(/\s+/g, " ");
       let message = `HTTP ${res.status}: ${snippet || "sin detalle"}`;
+      const traceId = extractVeterinariTraceId(json);
+      let outboundIp: string | undefined;
       if (res.status === 403) {
+        outboundIp = await detectOutboundIp();
+        message =
+          "HTTP 403 Forbidden — Veterinari rechazó la petición desde el servidor GrooFlow (Supabase).";
+        if (traceId) {
+          message += ` traceId para soporte Veterinari: ${traceId}.`;
+        }
         message +=
-          " — Token rechazado o IP no autorizada. Confirma con Veterinari que el token está activo y permite tu servidor.";
+          " Lo más habitual es lista blanca de IP: la API puede funcionar en su oficina pero bloquear llamadas desde la nube.";
+        if (outboundIp) {
+          message += ` IP de salida detectada ahora: ${outboundIp} (Supabase no garantiza IP fija; puede cambiar).`;
+        }
+        message +=
+          " Pide a Veterinari: (1) desactivar filtro IP para tokens API, o (2) autorizar llamadas desde servidores en la nube. Rota el token si se filtró.";
       }
       return c.json({
         ok: false,
         status: res.status,
         authMethod: "Authorization: Bearer",
         message,
+        traceId,
+        outboundIp,
         durationMs,
       });
     } catch (error) {

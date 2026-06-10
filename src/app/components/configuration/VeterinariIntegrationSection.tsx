@@ -291,10 +291,16 @@ export function VeterinariIntegrationSection({
         )}
 
         <div className="rounded-lg border border-dashed p-3 text-xs text-muted-foreground space-y-1">
-          <p className="font-medium text-foreground">Autenticación</p>
+          <p className="font-medium text-foreground">Autenticación y red</p>
           <p>
-            La prueba usa <strong>Authorization: Bearer</strong> vía servidor GrooFlow (sin CORS del
-            navegador).
+            La prueba usa <strong>Authorization: Bearer</strong> vía servidor GrooFlow en Supabase
+            (no desde tu PC).
+          </p>
+          <p>
+            Si ves <strong>HTTP 403</strong> con JSON <span className="font-mono">Forbidden</span>,
+            GrooFlow sí llegó a Veterinari; el bloqueo es de su API (token o, muy frecuente, IP no
+            autorizada). Copia el <span className="font-mono">traceId</span> del mensaje y envíalo a
+            soporte Veterinari.
           </p>
           <p>
             URL base: solo <span className="font-mono">…/api/oapi</span> — el endpoint y año/mes se
