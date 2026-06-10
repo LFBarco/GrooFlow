@@ -11,6 +11,7 @@ import { format, subMonths, startOfMonth, endOfMonth, addMonths } from 'date-fns
 import { es } from 'date-fns/locale';
 import { ArrowUpRight, TrendingUp, DollarSign, PieChart as PieIcon } from 'lucide-react';
 import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
+import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 
 interface PettyCashAnalyticsProps {
     transactions: PettyCashTransaction[];
@@ -18,16 +19,10 @@ interface PettyCashAnalyticsProps {
     visibleSedes?: string[];
 }
 
-const COLORS = ['#22d3ee', '#34d399', '#fbbf24', '#fb7185', '#c084fc', '#f472b6', '#818cf8'];
-const AXIS_COLOR   = '#6b5fa5';
-const GRID_COLOR   = 'rgba(139,92,246,0.1)';
-const TOOLTIP_STYLE = {
-  backgroundColor: '#22203A', border: '1px solid #3D3B5C',
-  borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', padding: '12px 16px',
-};
-const TOOLTIP_ITEM = { color: '#E4E0FF', fontSize: '12px' };
-
 export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnalyticsProps) {
+    const s = useModuleSurfaces();
+    const COLORS = s.chart.colors;
+    const CARD_STYLE = { background: s.chartCard.background, border: s.chartCard.border, boxShadow: s.chartCard.boxShadow };
     const now = useMemo(() => new Date(), []);
     const [dateFrom, setDateFrom] = useState<string>(format(startOfMonth(subMonths(now, 5)), 'yyyy-MM-dd'));
     const [dateTo, setDateTo] = useState<string>(format(now, 'yyyy-MM-dd'));
@@ -300,53 +295,56 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                {[
-                  { label: 'Gasto Total', value: formatCurrencyEs(totalExpense), sub: 'En el periodo', icon: DollarSign, color: '#fb7185' },
-                  { label: 'Promedio Mensual', value: formatCurrencyEs(monthlyAverage), sub: 'Gasto medio', icon: TrendingUp, color: '#22d3ee' },
-                  { label: 'Reposiciones', value: formatCurrencyEs(totalIncome), sub: 'Ingresos al fondo', icon: ArrowUpRight, color: '#34d399' },
-                  { label: 'Top Categoría', value: expensesByCategory[0]?.name || '-', sub: expensesByCategory[0] ? formatCurrencyEs(expensesByCategory[0].value) : 'Sin datos', icon: PieIcon, color: '#c084fc' },
-                ].map((card, i) => (
-                  <div key={i} className="rounded-2xl p-4" style={{
-                    background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                {([
+                  { kind: 'expense' as const, label: 'Gasto Total', value: formatCurrencyEs(totalExpense), sub: 'En el periodo', icon: DollarSign },
+                  { kind: 'projection' as const, label: 'Promedio Mensual', value: formatCurrencyEs(monthlyAverage), sub: 'Gasto medio', icon: TrendingUp },
+                  { kind: 'income' as const, label: 'Reposiciones', value: formatCurrencyEs(totalIncome), sub: 'Ingresos al fondo', icon: ArrowUpRight },
+                  { kind: 'violet' as const, label: 'Top Categoría', value: expensesByCategory[0]?.name || '-', sub: expensesByCategory[0] ? formatCurrencyEs(expensesByCategory[0].value) : 'Sin datos', icon: PieIcon },
+                ]).map((card, i) => {
+                  const kpi = s.kpi[card.kind];
+                  return (
+                  <div key={i} className="rounded-2xl p-4 relative overflow-hidden" style={{
+                    background: kpi.background,
+                    border: kpi.border,
+                    boxShadow: kpi.boxShadow,
                   }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}>{card.label}</p>
-                      <div className="p-1.5 rounded-lg" style={{ background: `${card.color}15`, border: `1px solid ${card.color}25` }}>
-                        <card.icon className="w-3.5 h-3.5" style={{ color: card.color }} />
+                    <div className="flex items-center justify-between mb-3 relative z-10">
+                      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: kpi.labelColor, letterSpacing: '0.1em' }}>{card.label}</p>
+                      <div className="p-1.5 rounded-lg" style={{ background: kpi.iconBg, border: `1px solid ${kpi.iconBorder}` }}>
+                        <card.icon className="w-3.5 h-3.5" style={{ color: kpi.accent }} />
                       </div>
                     </div>
-                    <p className="text-xl font-bold truncate mb-1" style={{ color: '#F0EEFF', fontFamily: "'JetBrains Mono', monospace" }} title={card.value}>{card.value}</p>
-                    <p className="text-xs" style={{ color: AXIS_COLOR }}>{card.sub}</p>
+                    <p className="text-xl font-bold truncate mb-1 relative z-10" style={{ color: kpi.valueColor, fontFamily: "'JetBrains Mono', monospace" }} title={card.value}>{card.value}</p>
+                    <p className="text-xs relative z-10" style={{ color: s.axisTick }}>{card.sub}</p>
                   </div>
-                ))}
+                  );
+                })}
             </div>
 
             {/* Charts Row 1 */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                <div className="rounded-2xl p-5" style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <p className="font-bold text-sm" style={{ color: '#F0EEFF' }}>Evolución de Gastos</p>
-                      <p className="text-xs" style={{ color: AXIS_COLOR }}>Comportamiento mensual del egreso de caja chica</p>
+                      <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Evolución de Gastos</p>
+                      <p className="text-xs" style={{ color: s.axisTick }}>Comportamiento mensual del egreso de caja chica</p>
                     </div>
                     <div style={{ height: '260px' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={expensesByMonth} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 6" vertical={false} stroke={GRID_COLOR} />
-                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} dy={6} />
-                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} tickFormatter={(v) => `S/${v}`} width={44} />
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
+                                <CartesianGrid strokeDasharray="3 6" vertical={false} stroke={s.gridStroke} />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: s.axisTick }} dy={6} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: s.axisTick }} tickFormatter={(v) => `S/${v}`} width={44} />
+                                <Tooltip contentStyle={s.tooltip} itemStyle={s.tooltipItem} formatter={(value: number) => [formatCurrencyEs(value), 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
                                 <Bar dataKey="value" fill="#22d3ee" radius={[4, 4, 0, 0]} opacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
                 </div>
 
-                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                <div className="rounded-2xl p-5" style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <p className="font-bold text-sm" style={{ color: '#F0EEFF' }}>Distribución por Categoría</p>
-                      <p className="text-xs" style={{ color: AXIS_COLOR }}>¿En qué se gasta más dinero?</p>
+                      <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Distribución por Categoría</p>
+                      <p className="text-xs" style={{ color: s.axisTick }}>¿En qué se gasta más dinero?</p>
                     </div>
                     <div style={{ height: '260px' }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -358,13 +356,13 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                                     outerRadius={100}
                                     dataKey="value"
                                     label={({ name, percent }) => `${name} ${formatNumberEs(percent * 100, 0)}%`}
-                                    style={{ fontSize: '10px', fill: AXIS_COLOR }}
+                                    style={{ fontSize: '10px', fill: s.axisTick }}
                                 >
                                     {expensesByCategory.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} opacity={0.9} />
                                     ))}
                                 </Pie>
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Monto']} />
+                                <Tooltip contentStyle={s.tooltip} itemStyle={s.tooltipItem} formatter={(value: number) => [formatCurrencyEs(value), 'Monto']} />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
@@ -373,18 +371,18 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
 
              {/* Charts Row 2 */}
              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                <div className="rounded-2xl p-5" style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <p className="font-bold text-sm" style={{ color: '#F0EEFF' }}>Gastos por Sede</p>
-                      <p className="text-xs" style={{ color: AXIS_COLOR }}>Comparativa de consumo por ubicación</p>
+                      <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Gastos por Sede</p>
+                      <p className="text-xs" style={{ color: s.axisTick }}>Comparativa de consumo por ubicación</p>
                     </div>
                     <div style={{ height: '260px' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={expensesByLocation} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={GRID_COLOR} />
-                                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} tickFormatter={(v) => `S/${v}`} />
-                                <YAxis dataKey="name" type="category" width={90} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} />
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
+                                <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={s.gridStroke} />
+                                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: s.axisTick }} tickFormatter={(v) => `S/${v}`} />
+                                <YAxis dataKey="name" type="category" width={90} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: s.axisTick }} />
+                                <Tooltip contentStyle={s.tooltip} itemStyle={s.tooltipItem} formatter={(value: number) => [formatCurrencyEs(value), 'Gasto']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
                                 <Bar dataKey="value" fill="#c084fc" radius={[0, 4, 4, 0]} barSize={28} opacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>
@@ -392,18 +390,18 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                 </div>
 
                 {/* Expenses by Area */}
-                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                <div className="rounded-2xl p-5" style={CARD_STYLE}>
                     <div className="mb-4 pb-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <p className="font-bold text-sm" style={{ color: '#F0EEFF' }}>Gastos por Área</p>
-                      <p className="text-xs" style={{ color: AXIS_COLOR }}>Distribución del fondo según área solicitante</p>
+                      <p className="font-bold text-sm" style={{ color: s.pageTitle }}>Gastos por Área</p>
+                      <p className="text-xs" style={{ color: s.axisTick }}>Distribución del fondo según área solicitante</p>
                     </div>
                     <div style={{ height: '260px' }}>
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={expensesByArea.slice(0, 8)} layout="vertical" margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={GRID_COLOR} />
-                                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} tickFormatter={(v) => `S/${v}`} />
-                                <YAxis dataKey="name" type="category" width={110} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: AXIS_COLOR }} />
-                                <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM} formatter={(value: number) => [formatCurrencyEs(value), 'Área']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
+                                <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={s.gridStroke} />
+                                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: s.axisTick }} tickFormatter={(v) => `S/${v}`} />
+                                <YAxis dataKey="name" type="category" width={110} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: s.axisTick }} />
+                                <Tooltip contentStyle={s.tooltip} itemStyle={s.tooltipItem} formatter={(value: number) => [formatCurrencyEs(value), 'Área']} cursor={{ fill: 'rgba(139,92,246,0.06)' }} />
                                 <Bar dataKey="value" fill="#34d399" radius={[0, 4, 4, 0]} barSize={24} opacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>

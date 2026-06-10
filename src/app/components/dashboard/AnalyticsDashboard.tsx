@@ -14,6 +14,7 @@ import {
   formatAxisThousandsPEN,
 } from '../../utils/numberFormat';
 import { useDashboardChartTheme } from '../../utils/dashboardChartTheme';
+import type { KpiSurfaceKind } from '../../utils/moduleSurfaces';
 
 interface AnalyticsDashboardProps {
   transactions: Transaction[];
@@ -34,11 +35,11 @@ export function AnalyticsDashboard({
 
   const NeonCard = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
     <div
-      className={`rounded-2xl p-5 ${className}`}
+      className={`rounded-2xl p-5 light-chart-panel ${className}`}
       style={{
-        background: chartTheme.card.background,
-        border: chartTheme.card.border,
-        boxShadow: chartTheme.card.boxShadow,
+        background: chartTheme.chartCard.background,
+        border: chartTheme.chartCard.border,
+        boxShadow: chartTheme.chartCard.boxShadow,
       }}
     >
       {children}
@@ -170,11 +171,19 @@ export function AnalyticsDashboard({
 
   const formatMoney = (val: number) => formatCurrencyEs(val);
 
-  const kpiCards = [
-    { label: 'Ingreso Mensual', value: formatMoney(currIncome), sub: `${incomeGrowth >= 0 ? '+' : ''}${formatNumberEs(incomeGrowth, 1)}% vs mes ant.`, subColor: incomeGrowth >= 0 ? chartTheme.INCOME : chartTheme.EXPENSE, icon: TrendingUp, accent: chartTheme.INCOME },
-    { label: 'Gasto Mensual', value: formatMoney(currExpense), sub: `Burn rate: ${formatMoney(burnRate)}/mes`, subColor: chartTheme.subtitle, icon: TrendingDown, accent: chartTheme.EXPENSE },
-    { label: 'Margen Operativo', value: `${currIncome > 0 ? formatPercentEs(((currIncome - currExpense) / currIncome) * 100, 1) : '0%'}`, sub: 'Objetivo ideal: > 20%', subColor: chartTheme.subtitle, icon: Wallet, accent: chartTheme.PROFIT },
-    { label: 'Proyección Fin Mes', value: formatMoney(currIncome * 1.1), sub: 'Basado en tendencia', subColor: chartTheme.subtitle, icon: Brain, accent: chartTheme.PROJECTION },
+  const kpiCards: Array<{
+    kind: KpiSurfaceKind;
+    label: string;
+    value: string;
+    sub: string;
+    subColor: string;
+    icon: typeof TrendingUp;
+    accent: string;
+  }> = [
+    { kind: 'income', label: 'Ingreso Mensual', value: formatMoney(currIncome), sub: `${incomeGrowth >= 0 ? '+' : ''}${formatNumberEs(incomeGrowth, 1)}% vs mes ant.`, subColor: incomeGrowth >= 0 ? chartTheme.INCOME : chartTheme.EXPENSE, icon: TrendingUp, accent: chartTheme.INCOME },
+    { kind: 'expense', label: 'Gasto Mensual', value: formatMoney(currExpense), sub: `Burn rate: ${formatMoney(burnRate)}/mes`, subColor: chartTheme.subtitle, icon: TrendingDown, accent: chartTheme.EXPENSE },
+    { kind: 'profit', label: 'Margen Operativo', value: `${currIncome > 0 ? formatPercentEs(((currIncome - currExpense) / currIncome) * 100, 1) : '0%'}`, sub: 'Objetivo ideal: > 20%', subColor: chartTheme.subtitle, icon: Wallet, accent: chartTheme.PROFIT },
+    { kind: 'projection', label: 'Proyección Fin Mes', value: formatMoney(currIncome * 1.1), sub: 'Basado en tendencia', subColor: chartTheme.subtitle, icon: Brain, accent: chartTheme.PROJECTION },
   ];
 
   return (
@@ -201,35 +210,39 @@ export function AnalyticsDashboard({
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpiCards.map((card, i) => (
-          <div key={i} className="rounded-2xl p-5 group cursor-default"
+        {kpiCards.map((card, i) => {
+          const kpi = chartTheme.kpi[card.kind];
+          return (
+          <div key={i} className="rounded-2xl p-5 group cursor-default relative overflow-hidden"
             style={{
-              background: chartTheme.card.background,
-              border: chartTheme.card.border,
-              boxShadow: chartTheme.card.boxShadow,
-              transition: 'transform 300ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 300ms ease, border-color 300ms ease',
+              background: kpi.background,
+              border: kpi.border,
+              boxShadow: kpi.boxShadow,
+              transition: 'transform 300ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 300ms ease',
             }}
             onMouseEnter={e => {
-              (e.currentTarget as HTMLElement).style.transform = 'translateY(-3px)';
-              (e.currentTarget as HTMLElement).style.borderColor = chartTheme.isDark ? `${card.accent}30` : chartTheme.card.hoverBorder;
-              (e.currentTarget as HTMLElement).style.boxShadow = chartTheme.isDark ? chartTheme.card.boxShadow : chartTheme.card.hoverShadow;
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(-6px) scale(1.01)';
+              (e.currentTarget as HTMLElement).style.boxShadow = kpi.hoverShadow;
             }}
             onMouseLeave={e => {
-              (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-              (e.currentTarget as HTMLElement).style.borderColor = chartTheme.isDark ? 'rgba(255,255,255,0.06)' : '#CBD5E1';
-              (e.currentTarget as HTMLElement).style.boxShadow = chartTheme.card.boxShadow;
+              (e.currentTarget as HTMLElement).style.transform = 'translateY(0) scale(1)';
+              (e.currentTarget as HTMLElement).style.boxShadow = kpi.boxShadow;
             }}
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-xl" style={{ background: `${card.accent}15`, border: `1px solid ${card.accent}25` }}>
-                <card.icon className="w-4 h-4" style={{ color: card.accent, filter: `drop-shadow(0 0 5px ${card.accent}70)` }} />
+            <div className="absolute top-2 right-2 opacity-[0.1]">
+              <card.icon className="w-16 h-16" style={{ color: kpi.accent }} />
+            </div>
+            <div className="flex items-center justify-between mb-3 relative z-10">
+              <div className="p-2 rounded-xl" style={{ background: kpi.iconBg, border: `1px solid ${kpi.iconBorder}` }}>
+                <card.icon className="w-4 h-4" style={{ color: kpi.accent, filter: chartTheme.isDark ? `drop-shadow(0 0 5px ${card.accent}70)` : undefined }} />
               </div>
             </div>
-            <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: chartTheme.labelMuted, letterSpacing: '0.1em' }}>{card.label}</p>
-            <p className="text-xl font-bold mb-1" style={{ color: chartTheme.value, fontFamily: "'JetBrains Mono', monospace" }}>{card.value}</p>
-            <p className="text-xs" style={{ color: card.subColor }}>{card.sub}</p>
+            <p className="text-xs font-bold uppercase tracking-wider mb-1 relative z-10" style={{ color: kpi.labelColor, letterSpacing: '0.1em' }}>{card.label}</p>
+            <p className="text-xl font-bold mb-1 relative z-10" style={{ color: kpi.valueColor, fontFamily: "'JetBrains Mono', monospace" }}>{card.value}</p>
+            <p className="text-xs relative z-10" style={{ color: card.subColor }}>{card.sub}</p>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Charts + AI Insights */}

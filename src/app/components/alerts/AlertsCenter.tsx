@@ -43,6 +43,7 @@ import {
     ResponsiveContainer,
     Cell
 } from 'recharts';
+import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 
 interface AlertsCenterProps {
     alerts: SystemAlert[];
@@ -61,6 +62,7 @@ export function AlertsCenter({
     thresholds,
     onUpdateThresholds
 }: AlertsCenterProps) {
+    const s = useModuleSurfaces();
     const [viewMode, setViewMode] = useState<'dashboard' | 'list' | 'settings'>('dashboard');
     const [filterSeverity, setFilterSeverity] = useState<AlertSeverity | 'all'>('all');
     const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -126,20 +128,20 @@ export function AlertsCenter({
         <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
             
             {/* 1. Header & Navigation */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl"
-              style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(251,113,133,0.15)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-2xl light-chart-panel"
+              style={{ background: s.kpi.expense.background, border: s.kpi.expense.border, boxShadow: s.kpi.expense.boxShadow }}
             >
                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-xl" style={{ background: 'rgba(251,113,133,0.1)', border: '1px solid rgba(251,113,133,0.2)' }}>
-                        <Shield className="h-8 w-8" style={{ color: '#fb7185', filter: 'drop-shadow(0 0 8px rgba(251,113,133,0.5))' }} />
+                    <div className="p-3 rounded-xl" style={{ background: s.kpi.expense.iconBg, border: `1px solid ${s.kpi.expense.iconBorder}` }}>
+                        <Shield className="h-8 w-8" style={{ color: s.kpi.expense.accent, filter: s.isDark ? 'drop-shadow(0 0 8px rgba(251,113,133,0.5))' : undefined }} />
                     </div>
                     <div>
-                        <h2 className="font-bold tracking-tight" style={{ color: '#F0EEFF', fontSize: '1.4rem' }}>Centro de Control</h2>
-                        <p className="text-sm" style={{ color: '#6b5fa5' }}>Monitorización inteligente de riesgos y anomalías</p>
+                        <h2 className="font-bold tracking-tight" style={{ color: s.kpi.expense.valueColor, fontSize: '1.4rem' }}>Centro de Control</h2>
+                        <p className="text-sm" style={{ color: s.kpi.expense.labelColor }}>Monitorización inteligente de riesgos y anomalías</p>
                     </div>
                 </div>
                 
-                <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="flex items-center gap-1 p-1 rounded-lg" style={{ background: s.isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.45)', border: s.isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(255,255,255,0.55)' }}>
                     {([
                       { mode: 'dashboard', icon: LayoutDashboard, label: 'Resumen' },
                       { mode: 'list', icon: List, label: 'Listado' },
@@ -150,7 +152,7 @@ export function AlertsCenter({
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200"
                         style={{
                           background: viewMode === mode ? 'rgba(251,113,133,0.12)' : 'transparent',
-                          color: viewMode === mode ? '#fb7185' : '#6b5fa5',
+                          color: viewMode === mode ? s.chart.expense : s.axisTick,
                           border: viewMode === mode ? '1px solid rgba(251,113,133,0.22)' : '1px solid transparent',
                         }}
                       >
@@ -229,13 +231,13 @@ export function AlertsCenter({
                             <CardContent className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={metrics.bySeverity} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="rgba(139,92,246,0.1)" />
-                                        <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} tick={{ fill: '#6b5fa5' }} dy={6} />
-                                        <YAxis fontSize={10} tickLine={false} axisLine={false} tick={{ fill: '#6b5fa5' }} width={24} />
+                                        <CartesianGrid strokeDasharray="3 6" vertical={false} stroke={s.gridStroke} />
+                                        <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} tick={{ fill: s.axisTick }} dy={6} />
+                                        <YAxis fontSize={10} tickLine={false} axisLine={false} tick={{ fill: s.axisTick }} width={24} />
                                         <Tooltip 
-                                            cursor={{ fill: 'rgba(139,92,246,0.06)' }}
-                                            contentStyle={{ backgroundColor: '#22203A', border: '1px solid #3D3B5C', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', color: '#E4E0FF' }}
-                                            itemStyle={{ color: '#E4E0FF', fontSize: '12px' }}
+                                            cursor={{ fill: s.isDark ? 'rgba(139,92,246,0.06)' : 'rgba(79,70,229,0.08)' }}
+                                            contentStyle={s.tooltip}
+                                            itemStyle={s.tooltipItem}
                                         />
                                         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                                             {metrics.bySeverity.map((entry, index) => (
@@ -255,15 +257,15 @@ export function AlertsCenter({
                              <CardContent className="h-[300px]">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={metrics.byCategory} layout="vertical" margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke="rgba(139,92,246,0.1)" />
-                                        <XAxis type="number" fontSize={10} tickLine={false} axisLine={false} tick={{ fill: '#6b5fa5' }} />
-                                        <YAxis dataKey="name" type="category" width={90} fontSize={10} tickLine={false} axisLine={false} tick={{ fill: '#6b5fa5' }} />
+                                        <CartesianGrid strokeDasharray="3 6" horizontal={false} stroke={s.gridStroke} />
+                                        <XAxis type="number" fontSize={10} tickLine={false} axisLine={false} tick={{ fill: s.axisTick }} />
+                                        <YAxis dataKey="name" type="category" width={90} fontSize={10} tickLine={false} axisLine={false} tick={{ fill: s.axisTick }} />
                                         <Tooltip 
-                                            cursor={{ fill: 'rgba(139,92,246,0.06)' }}
-                                            contentStyle={{ backgroundColor: '#22203A', border: '1px solid #3D3B5C', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', color: '#E4E0FF' }}
-                                            itemStyle={{ color: '#E4E0FF', fontSize: '12px' }}
+                                            cursor={{ fill: s.isDark ? 'rgba(139,92,246,0.06)' : 'rgba(79,70,229,0.08)' }}
+                                            contentStyle={s.tooltip}
+                                            itemStyle={s.tooltipItem}
                                         />
-                                        <Bar dataKey="value" fill="#c084fc" radius={[0, 4, 4, 0]} barSize={20} opacity={0.85} />
+                                        <Bar dataKey="value" fill={s.chart.violet} radius={[0, 4, 4, 0]} barSize={20} opacity={0.85} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </CardContent>

@@ -112,6 +112,7 @@ import type { InventoryDataset } from "./types/inventory";
 import { createDemoFleetDataset, normalizeFleetDataset } from "./utils/fleetData";
 import { normalizeInventoryDataset } from "./utils/inventoryData";
 import { isInventoryDatasetEmpty } from "./utils/inventoryDatasetEmpty";
+import { getModuleSurfaces } from "./utils/moduleSurfaces";
 import {
   isTransactionsSqlEnabled,
   loadTransactionsFromSql,
@@ -2984,6 +2985,8 @@ export default function App() {
     );
   };
 
+  const surfaces = getModuleSurfaces(theme === 'dark');
+
   return (
     <div
       className="min-h-screen bg-background text-foreground font-sans transition-colors duration-500 relative overflow-x-hidden"
@@ -2994,14 +2997,10 @@ export default function App() {
       }
     >
       <AppProvider value={{ currentUser, roles, theme, toggleTheme }}>
-      {theme === 'dark' && (
-        <>
-          <div className="orb-cyan bg-orb" />
-          <div className="orb-violet bg-orb" />
-          <div className="orb-pink bg-orb" />
-          <div className="bg-circuit fixed inset-0 z-0 pointer-events-none" style={{ opacity: 0.5 }} />
-        </>
-      )}
+      <div className="orb-cyan bg-orb" />
+      <div className="orb-violet bg-orb" />
+      <div className="orb-pink bg-orb" />
+      <div className="bg-circuit fixed inset-0 z-0 pointer-events-none" style={{ opacity: theme === 'dark' ? 0.5 : 0.35 }} />
 
       {/* Sidebar */}
       <div 
@@ -3195,12 +3194,12 @@ export default function App() {
         <Suspense fallback={<RouteLoader />}>
           {/* Header Section for Views using Generic Wrapper */}
           {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
-          <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5 view-page-header" style={{ borderBottom: theme === 'light' ? '1px solid #CBD5E1' : '1px solid rgba(139,92,246,0.15)' }}>
+          <div className="mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5 view-page-header" style={{ borderBottom: `1px solid ${surfaces.divider}` }}>
             
             {/* Title & Date Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="space-y-0.5">
-                    <h1 className="flex items-center gap-2.5 view-page-title" style={{ color: theme === 'light' ? '#020617' : '#F0EEFF', fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
+                    <h1 className="flex items-center gap-2.5 view-page-title" style={{ color: surfaces.pageTitle, fontSize: '1.75rem', fontWeight: 800, letterSpacing: '-0.02em' }}>
                         {view === 'dashboard' && <LayoutDashboard className="w-7 h-7" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 8px rgba(34,211,238,0.5))' }} />}
                         {view === 'alerts' && <ShieldAlert className="w-7 h-7" style={{ color: '#fb7185', filter: 'drop-shadow(0 0 8px rgba(251,113,133,0.5))' }} />}
                         {view === 'transactions' && <Wallet className="w-7 h-7" style={{ color: '#34d399', filter: 'drop-shadow(0 0 8px rgba(52,211,153,0.5))' }} />}
@@ -3215,7 +3214,7 @@ export default function App() {
                         view === 'products' ? 'Catalogo de Productos' :
                         'Control de Caja Chica'}
                     </h1>
-                    <p style={{ color: '#6b5fa5', fontSize: '0.875rem' }}>
+                    <p style={{ color: surfaces.pageSubtitle, fontSize: '0.875rem' }}>
                         {view === 'dashboard' ? 'Bienvenido al panel de control financiero.' : 
                         view === 'alerts' ? 'Notificaciones y avisos del sistema.' :
                         view === 'transactions' ? 'Registro y control de movimientos financieros.' :
@@ -3228,15 +3227,15 @@ export default function App() {
                 {/* Date Controls for Cashflow */}
                 {view === 'cashflow' && (
                 <div className="flex items-center rounded-xl h-9 self-start sm:self-center ml-0 sm:ml-4 overflow-hidden"
-                  style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.18)' }}
+                  style={{ background: surfaces.monthPicker.background, border: surfaces.monthPicker.border }}
                 >
-                    <button onClick={handlePrevMonth} className="p-2 h-full flex items-center transition-colors hover:bg-white/5" style={{ color: '#8b7cf8' }}>
+                    <button onClick={handlePrevMonth} className="p-2 h-full flex items-center transition-colors" style={{ color: surfaces.monthPicker.icon }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = surfaces.monthPicker.hoverBg; }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
                         <ChevronLeft className="h-4 w-4" />
                     </button>
-                    <span className="px-3 text-sm font-medium min-w-[140px] text-center capitalize" style={{ color: '#F0EEFF' }}>
+                    <span className="px-3 text-sm font-medium min-w-[140px] text-center capitalize" style={{ color: surfaces.monthPicker.text }}>
                         {format(safeCurrentDate, 'MMMM yyyy', { locale: es })}
                     </span>
-                    <button onClick={handleNextMonth} className="p-2 h-full flex items-center transition-colors hover:bg-white/5" style={{ color: '#8b7cf8' }}>
+                    <button onClick={handleNextMonth} className="p-2 h-full flex items-center transition-colors" style={{ color: surfaces.monthPicker.icon }} onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = surfaces.monthPicker.hoverBg; }} onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
                         <ChevronRight className="h-4 w-4" />
                     </button>
                 </div>
@@ -3377,8 +3376,8 @@ export default function App() {
             {view === 'transactions' && (
             <div className="grid gap-6 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="lg:col-span-4 xl:col-span-3 space-y-5">
-                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
-                  <h3 className="mb-5 flex items-center gap-2" style={{ color: '#F0EEFF', fontWeight: 700 }}>
+                <div className="rounded-2xl p-5" style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
+                  <h3 className="mb-5 flex items-center gap-2" style={{ color: surfaces.pageTitle, fontWeight: 700 }}>
                     <PlusCircle className="h-5 w-5" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.5))' }} />
                     Nueva Transacción
                   </h3>
@@ -3393,10 +3392,10 @@ export default function App() {
               </div>
               
               <div className="lg:col-span-8 xl:col-span-9">
-                <div className="rounded-2xl p-5" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
+                <div className="rounded-2xl p-5" style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
                   <div className="flex flex-col space-y-4 mb-5">
-                    <div className="flex items-center justify-between pb-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <h3 style={{ color: '#F0EEFF', fontWeight: 700 }}>Historial de Transacciones</h3>
+                    <div className="flex items-center justify-between pb-4" style={{ borderBottom: `1px solid ${surfaces.divider}` }}>
+                      <h3 style={{ color: surfaces.pageTitle, fontWeight: 700 }}>Historial de Transacciones</h3>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"

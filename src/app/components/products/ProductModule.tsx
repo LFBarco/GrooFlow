@@ -38,6 +38,7 @@ import {
 import { PRODUCT_CATEGORIES, PRODUCT_LINES } from './productCatalogConstants';
 import { cloneProduct, createDraftProduct, normalizeProductForWorkspace } from './productDraftUtils';
 import { ProductWorkspace } from './ProductWorkspace';
+import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 
 const PAGE_SIZE = 10;
 
@@ -84,6 +85,7 @@ export function ProductModule({
   visibleSedes,
   currentUserName,
 }: ProductModuleProps) {
+  const s = useModuleSurfaces();
   const nextSystemCode = useMemo(
     () => Math.max(0, ...products.map((product) => product.systemCode || 0)) + 1,
     [products],
@@ -292,50 +294,34 @@ export function ProductModule({
       )}
 
       <div className="grid gap-3 md:grid-cols-4">
-        <Card className="border-white/5 bg-[#1A1826]">
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Productos</div>
-            <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-slate-100">
-              <Package className="h-5 w-5 text-cyan-300" />
-              {products.length}
+        {([
+          { kind: 'projection' as const, label: 'Productos', value: String(products.length), icon: Package },
+          { kind: 'warning' as const, label: 'Stock bajo', value: String(lowStockCount), icon: AlertTriangle },
+          { kind: 'expense' as const, label: 'Sin stock', value: String(outOfStockCount), icon: Archive },
+          { kind: 'income' as const, label: 'Valor inventario', value: formatCurrencyEs(inventoryValue), icon: Package },
+        ]).map((item) => {
+          const kpi = s.kpi[item.kind];
+          return (
+            <div key={item.label} className="rounded-2xl p-4 relative overflow-hidden" style={{ background: kpi.background, border: kpi.border, boxShadow: kpi.boxShadow }}>
+              <div className="text-xs uppercase tracking-[0.18em]" style={{ color: kpi.labelColor }}>{item.label}</div>
+              <div className="mt-2 flex items-center gap-2 text-2xl font-bold" style={{ color: kpi.valueColor }}>
+                <item.icon className="h-5 w-5" style={{ color: kpi.accent }} />
+                {item.value}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-        <Card className="border-white/5 bg-[#1A1826]">
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Stock bajo</div>
-            <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-amber-300">
-              <AlertTriangle className="h-5 w-5" />
-              {lowStockCount}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-white/5 bg-[#1A1826]">
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Sin stock</div>
-            <div className="mt-2 flex items-center gap-2 text-2xl font-bold text-red-300">
-              <Archive className="h-5 w-5" />
-              {outOfStockCount}
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-white/5 bg-[#1A1826]">
-          <CardContent className="p-4">
-            <div className="text-xs uppercase tracking-[0.18em] text-slate-500">Valor inventario</div>
-            <div className="mt-2 text-2xl font-bold text-emerald-300">{formatCurrencyEs(inventoryValue)}</div>
-          </CardContent>
-        </Card>
+          );
+        })}
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#1A1826] shadow-xl">
-        <div className="space-y-3 border-b border-white/5 p-4">
+      <div className="overflow-hidden rounded-2xl shadow-xl light-chart-panel" style={{ background: s.chartCard.background, border: s.chartCard.border, boxShadow: s.chartCard.boxShadow }}>
+        <div className="space-y-3 border-b p-4" style={{ borderColor: s.divider }}>
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h2 className="flex items-center gap-2 text-xl font-bold text-slate-100">
-                <Package className="h-5 w-5 text-cyan-300" />
+              <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: s.pageTitle }}>
+                <Package className="h-5 w-5" style={{ color: s.chart.projection }} />
                 Productos
               </h2>
-              <p className="text-xs text-slate-500">Pulsa una fila para abrir la ficha (pestañas Editar, Precios, etc.).</p>
+              <p className="text-xs" style={{ color: s.pageSubtitle }}>Pulsa una fila para abrir la ficha (pestañas Editar, Precios, etc.).</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" className="border-white/10 bg-transparent text-slate-300 hover:bg-white/5" onClick={handleExportCsv}>

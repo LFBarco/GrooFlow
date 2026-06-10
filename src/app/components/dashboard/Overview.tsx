@@ -36,6 +36,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../ui
 import { Button } from "../ui/button";
 import { formatAxisThousandsPEN, formatCurrencyEs, formatNumberEs } from "../../utils/numberFormat";
 import { useDashboardChartTheme } from "../../utils/dashboardChartTheme";
+import type { KpiSurfaceKind } from "../../utils/moduleSurfaces";
 
 interface OverviewProps {
   transactions?: Transaction[];
@@ -138,46 +139,51 @@ export function Overview({
 
   // KPI card factory
   const KpiCard = ({
-    label, value, badge, badgePositive, icon: Icon, gradient, accentColor
+    kind,
+    label,
+    value,
+    badge,
+    badgePositive,
+    icon: Icon,
+    gradient,
+    accentColor,
   }: {
-    label: string; value: string; badge?: string; badgePositive?: boolean;
-    icon: any; gradient: string; accentColor: string;
-  }) => (
+    kind: KpiSurfaceKind;
+    label: string;
+    value: string;
+    badge?: string;
+    badgePositive?: boolean;
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+    gradient: string;
+    accentColor: string;
+  }) => {
+    const kpi = chartTheme.kpi[kind];
+    return (
     <div className="relative overflow-hidden rounded-2xl p-5 group cursor-default"
       style={{
-        background: chartTheme.card.background,
-        border: chartTheme.card.border,
-        boxShadow: chartTheme.card.boxShadow,
+        background: kpi.background,
+        border: kpi.border,
+        boxShadow: kpi.boxShadow,
         transition: 'transform 300ms cubic-bezier(0.34,1.56,0.64,1), box-shadow 300ms ease, border-color 300ms ease',
       }}
       onMouseEnter={e => {
-        (e.currentTarget as HTMLElement).style.transform = 'translateY(-4px)';
-        (e.currentTarget as HTMLElement).style.boxShadow = chartTheme.isDark
-          ? `0 12px 40px rgba(0,0,0,0.5), 0 0 20px ${accentColor}22`
-          : chartTheme.card.hoverShadow;
-        (e.currentTarget as HTMLElement).style.borderColor = chartTheme.isDark
-          ? `${accentColor}30`
-          : chartTheme.card.hoverBorder;
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(-6px) scale(1.01)';
+        (e.currentTarget as HTMLElement).style.boxShadow = kpi.hoverShadow;
       }}
       onMouseLeave={e => {
-        (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
-        (e.currentTarget as HTMLElement).style.boxShadow = chartTheme.card.boxShadow;
-        (e.currentTarget as HTMLElement).style.borderColor = chartTheme.isDark
-          ? 'rgba(255,255,255,0.06)'
-          : '#CBD5E1';
+        (e.currentTarget as HTMLElement).style.transform = 'translateY(0) scale(1)';
+        (e.currentTarget as HTMLElement).style.boxShadow = kpi.boxShadow;
       }}
     >
-      {/* Background icon watermark */}
-      <div className="absolute top-2 right-2 opacity-[0.04]">
-        <Icon className="w-20 h-20" style={{ color: accentColor }} />
+      <div className="absolute top-2 right-2 opacity-[0.12]">
+        <Icon className="w-20 h-20" style={{ color: kpi.accent }} />
       </div>
-      {/* Bottom accent bar */}
-      <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ background: gradient }} />
+      <div className="absolute bottom-0 left-0 right-0 h-1" style={{ background: gradient }} />
 
       <div className="relative z-10">
         <div className="flex items-start justify-between mb-4">
-          <div className="p-2.5 rounded-xl" style={{ background: `${accentColor}18`, border: `1px solid ${accentColor}25` }}>
-            <Icon className="w-5 h-5" style={{ color: accentColor, filter: `drop-shadow(0 0 6px ${accentColor}80)` }} />
+          <div className="p-2.5 rounded-xl" style={{ background: kpi.iconBg, border: `1px solid ${kpi.iconBorder}` }}>
+            <Icon className="w-5 h-5" style={{ color: kpi.accent, filter: chartTheme.isDark ? `drop-shadow(0 0 6px ${accentColor}80)` : undefined }} />
           </div>
           {badge && (
             <div className="px-2.5 py-1 rounded-full flex items-center gap-1"
@@ -194,12 +200,13 @@ export function Overview({
           )}
         </div>
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: chartTheme.labelMuted, letterSpacing: '0.12em' }}>{label}</p>
-          <p className="text-2xl font-bold tracking-tight" style={{ color: chartTheme.value, fontFamily: "'JetBrains Mono', monospace" }}>{value}</p>
+          <p className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: kpi.labelColor, letterSpacing: '0.12em' }}>{label}</p>
+          <p className="text-2xl font-bold tracking-tight" style={{ color: kpi.valueColor, fontFamily: "'JetBrains Mono', monospace" }}>{value}</p>
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -210,6 +217,7 @@ export function Overview({
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         <KpiCard
+          kind="income"
           label="Ingresos del Mes"
           value={formatMoney(currentMonthStats.income)}
           badge={formatPercent(currentMonthStats.incomeGrowth)}
@@ -219,6 +227,7 @@ export function Overview({
           gradient={`linear-gradient(90deg, ${chartTheme.INCOME}, ${chartTheme.BLUE})`}
         />
         <KpiCard
+          kind="expense"
           label="Gastos del Mes"
           value={formatMoney(currentMonthStats.expense)}
           badge={formatPercent(currentMonthStats.expenseGrowth)}
@@ -228,6 +237,7 @@ export function Overview({
           gradient={`linear-gradient(90deg, ${chartTheme.EXPENSE}, #f43f5e)`}
         />
         <KpiCard
+          kind="profit"
           label="Utilidad Neta"
           value={formatMoney(currentMonthStats.net)}
           badge={`${formatNumberEs(currentMonthStats.margin, 1)}% Margen`}
@@ -237,6 +247,7 @@ export function Overview({
           gradient={`linear-gradient(90deg, ${chartTheme.PROFIT}, ${chartTheme.INCOME})`}
         />
         <KpiCard
+          kind="projection"
           label="Proyección Cierre"
           value={formatMoney(currentMonthStats.income * 1.1)}
           badge="+10% Est."
@@ -251,11 +262,11 @@ export function Overview({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         
         {/* Main Chart */}
-        <div className="lg:col-span-2 rounded-2xl p-5 flex flex-col"
+        <div className="lg:col-span-2 rounded-2xl p-5 flex flex-col light-chart-panel"
           style={{
-            background: chartTheme.card.background,
-            border: chartTheme.card.border,
-            boxShadow: chartTheme.card.boxShadow,
+            background: chartTheme.chartCard.background,
+            border: chartTheme.chartCard.border,
+            boxShadow: chartTheme.chartCard.boxShadow,
           }}
         >
           <div className="flex items-center justify-between mb-5 pb-4" style={{ borderBottom: `1px solid ${chartTheme.divider}` }}>
@@ -361,9 +372,9 @@ export function Overview({
           
           {/* Pie Chart Card */}
           <div className="rounded-2xl p-4" style={{
-            background: chartTheme.card.background,
-            border: chartTheme.card.border,
-            boxShadow: chartTheme.card.boxShadow,
+            background: chartTheme.chartCard.background,
+            border: chartTheme.chartCard.border,
+            boxShadow: chartTheme.chartCard.boxShadow,
           }}>
             <div className="flex items-center gap-2 mb-3 pb-3" style={{ borderBottom: `1px solid ${chartTheme.divider}` }}>
               <div className="p-1.5 rounded-lg" style={{ background: `${chartTheme.EXPENSE}15`, border: `1px solid ${chartTheme.EXPENSE}30` }}>

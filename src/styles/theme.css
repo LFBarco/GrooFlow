@@ -3,7 +3,7 @@
 :root {
   --font-size: 16px;
   /* ─── TEMA CLARO — panel blanco vibrante ─── */
-  --background: #F1F5F9;
+  --background: #e8eef8;
   --foreground: #020617;
   --card: #FFFFFF;
   --card-foreground: #020617;
@@ -112,9 +112,39 @@
 }
 
 /* ─── MODO CLARO: layout app y utilidades ─── */
-html.light .bg-orb,
+html.light {
+  background:
+    radial-gradient(ellipse 80% 55% at 8% 12%, rgba(99, 102, 241, 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse 65% 50% at 92% 8%, rgba(16, 185, 129, 0.18) 0%, transparent 52%),
+    radial-gradient(ellipse 70% 55% at 75% 88%, rgba(236, 72, 153, 0.14) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 45% at 15% 85%, rgba(6, 182, 212, 0.16) 0%, transparent 50%),
+    linear-gradient(165deg, #eef2ff 0%, #e8eef8 35%, #f0fdf4 70%, #fdf4ff 100%);
+}
+
+html.light .orb-cyan {
+  background: radial-gradient(circle, rgba(79, 70, 229, 0.22) 0%, transparent 68%);
+  filter: blur(90px);
+}
+
+html.light .orb-violet {
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.18) 0%, transparent 68%);
+  filter: blur(100px);
+}
+
+html.light .orb-pink {
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.14) 0%, transparent 68%);
+  filter: blur(80px);
+}
+
 html.light .bg-circuit {
-  display: none !important;
+  opacity: 0.35 !important;
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+}
+
+html.light .light-chart-panel {
+  backdrop-filter: blur(8px);
 }
 
 html.light .gradient-text-cyber {
@@ -125,22 +155,22 @@ html.light .gradient-text-cyber {
 }
 
 html.light .card-premium {
-  background: #FFFFFF;
-  border-color: #CBD5E1;
-  box-shadow: var(--card-shadow);
+  background: linear-gradient(145deg, #ffffff 0%, #f8fafc 55%, #eef2ff 100%);
+  border-color: rgba(99, 102, 241, 0.28);
+  box-shadow: 0 20px 50px -22px rgba(79, 70, 229, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 html.light .card-premium:hover {
-  transform: translateY(-3px);
-  border-color: rgba(79, 70, 229, 0.25);
-  box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(79, 70, 229, 0.06);
+  transform: translateY(-4px);
+  border-color: rgba(79, 70, 229, 0.45);
+  box-shadow: 0 28px 60px -20px rgba(79, 70, 229, 0.45);
 }
 
 html.light .glass-panel {
-  background: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  box-shadow: var(--card-shadow);
-  backdrop-filter: none;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92) 0%, rgba(240, 249, 255, 0.88) 50%, rgba(237, 233, 254, 0.9) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  box-shadow: 0 20px 50px -22px rgba(79, 70, 229, 0.3);
+  backdrop-filter: blur(12px);
 }
 
 html.light .view-page-header {
