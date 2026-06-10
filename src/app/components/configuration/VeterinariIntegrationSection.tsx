@@ -74,25 +74,34 @@ export function VeterinariIntegrationSection({
   const handleTest = async () => {
     setTesting(true);
     try {
+      const selectedEndpoint = vet.testEndpoint || 'GetClientes';
       const result = await validateVeterinariConnection({
         baseUrl: vet.baseUrl || DEFAULT_VETERINARI_BASE_URL,
         apiToken: vet.apiToken || '',
-        testEndpoint: vet.testEndpoint || 'GetClientes',
+        testEndpoint: selectedEndpoint,
         testYear: vet.testYear,
         testMonth: vet.testMonth,
+        connectionProbeOnly: true,
       });
+      const displayResult =
+        result.ok && selectedEndpoint !== 'GetClientes'
+          ? {
+              ...result,
+              message: `${result.message} Prueba con GetClientes; en sincronización usarás ${selectedEndpoint}.`,
+            }
+          : result;
       const at = new Date().toISOString();
       patchVet({
         lastValidatedAt: at,
-        lastValidationOk: result.ok,
-        lastValidationMessage: result.message,
-        lastValidationAuthMethod: result.authMethod,
-        lastValidationHttpStatus: result.status,
+        lastValidationOk: displayResult.ok,
+        lastValidationMessage: displayResult.message,
+        lastValidationAuthMethod: displayResult.authMethod,
+        lastValidationHttpStatus: displayResult.status,
       });
-      if (result.ok) {
+      if (displayResult.ok) {
         toast.success('Conexión con Veterinari verificada.');
       } else {
-        toast.error(result.message);
+        toast.error(displayResult.message);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error al probar la conexión.';
@@ -253,8 +262,8 @@ export function VeterinariIntegrationSection({
             </div>
             {testing && (
               <p className="text-xs text-muted-foreground">
-                Consultando Veterinari vía servidor GrooFlow. Suele tardar unos segundos; si pasa de
-                40s verás un mensaje de timeout (el API «longrunning» a veces es lento).
+                Consultando GetClientes vía servidor GrooFlow (prueba liviana). Azure «longrunning»
+                puede tardar hasta ~90s en el primer arranque; se reintenta automáticamente.
               </p>
             )}
           </div>

@@ -93,8 +93,8 @@ function countRecordsHint(json: unknown): string | undefined {
   return undefined;
 }
 
-/** Cliente: proxy + auth + Veterinari (servidor corta a ~28s). */
-const VALIDATE_TIMEOUT_MS = 40_000;
+/** Cliente: proxy + 2 intentos × 45s en Edge Function + margen. */
+const VALIDATE_TIMEOUT_MS = 110_000;
 
 async function validateViaServerProxy(
   targetUrl: string,
@@ -190,11 +190,14 @@ export async function validateVeterinariConnection(input: {
   testEndpoint: string;
   testYear?: number;
   testMonth?: number;
+  /** Si true, prueba siempre GetClientes (liviano) aunque el selector sea otro endpoint. */
+  connectionProbeOnly?: boolean;
 }): Promise<VeterinariValidationResult> {
   const start = Date.now();
   const baseUrl = sanitizeVeterinariBaseUrl(input.baseUrl);
   const token = normalizeVeterinariToken(input.apiToken);
-  const endpoint = input.testEndpoint.trim() || 'GetClientes';
+  const requestedEndpoint = input.testEndpoint.trim() || 'GetClientes';
+  const endpoint = input.connectionProbeOnly ? 'GetClientes' : requestedEndpoint;
 
   if (!baseUrl) {
     return {

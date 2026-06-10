@@ -257,6 +257,52 @@ function extractVeterinariTraceId(json: unknown): string | undefined {
   return typeof traceId === "string" ? traceId : undefined;
 }
 
+/** Azure «longrunning» puede tardar >28s en frío; 2 intentos con ventana amplia. */
+const VETERINARI_FETCH_TIMEOUT_MS = 45_000;
+const VETERINARI_FETCH_MAX_ATTEMPTS = 2;
+
+async function fetchVeterinariWithRetry(
+  targetUrl: string,
+  apiToken: string,
+): Promise<{ res?: Response; errorMessage?: string; attempts: number; durationMs: number }> {
+  const started = Date.now();
+  for (let attempt = 1; attempt <= VETERINARI_FETCH_MAX_ATTEMPTS; attempt++) {
+    const vetController = new AbortController();
+    const vetTimeout = setTimeout(() => vetController.abort(), VETERINARI_FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetch(targetUrl, {
+        method: "GET",
+        signal: vetController.signal,
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          Accept: "application/json",
+        },
+      });
+      clearTimeout(vetTimeout);
+      return { res, attempts: attempt, durationMs: Date.now() - started };
+    } catch (fetchErr) {
+      clearTimeout(vetTimeout);
+      const isAbort = fetchErr instanceof Error && fetchErr.name === "AbortError";
+      if (isAbort && attempt < VETERINARI_FETCH_MAX_ATTEMPTS) {
+        continue;
+      }
+      const sec = VETERINARI_FETCH_TIMEOUT_MS / 1000;
+      return {
+        errorMessage: isAbort
+          ? `Veterinari no respondió en ${sec}s tras ${attempt} intento(s). Azure «longrunning» suele despertar en el segundo intento; vuelve a probar en unos segundos.`
+          : "No se pudo contactar Veterinari desde el servidor GrooFlow.",
+        attempts: attempt,
+        durationMs: Date.now() - started,
+      };
+    }
+  }
+  return {
+    errorMessage: "No se pudo contactar Veterinari desde el servidor.",
+    attempts: VETERINARI_FETCH_MAX_ATTEMPTS,
+    durationMs: Date.now() - started,
+  };
+}
+
 for (const base of KV_PATH_BASES) {
   app.post(`${base}/veterinari/test`, async (c) => {
     const auth = await requireAdminRequest(c);
@@ -275,31 +321,17 @@ for (const base of KV_PATH_BASES) {
         return c.json({ error: "URL de destino no permitida." }, 400);
       }
       const started = Date.now();
-      const vetController = new AbortController();
-      const vetTimeout = setTimeout(() => vetController.abort(), 28_000);
-      let res: Response;
-      try {
-        res = await fetch(targetUrl, {
-          method: "GET",
-          signal: vetController.signal,
-          headers: {
-            Authorization: `Bearer ${apiToken}`,
-            Accept: "application/json",
-          },
-        });
-      } catch (fetchErr) {
-        clearTimeout(vetTimeout);
-        const isAbort = fetchErr instanceof Error && fetchErr.name === "AbortError";
+      const fetchResult = await fetchVeterinariWithRetry(targetUrl, apiToken);
+      if (!fetchResult.res) {
         return c.json({
           ok: false,
           authMethod: "Authorization: Bearer",
-          message: isAbort
-            ? "Veterinari no respondió en 28 segundos (servicio longrunning). Intenta de nuevo o prueba GetClientes."
-            : "No se pudo contactar Veterinari desde el servidor.",
-          durationMs: Date.now() - started,
+          message: fetchResult.errorMessage ?? "No se pudo contactar Veterinari.",
+          durationMs: fetchResult.durationMs,
+          attempts: fetchResult.attempts,
         });
       }
-      clearTimeout(vetTimeout);
+      const res = fetchResult.res;
       const text = await res.text();
       let json: unknown = null;
       try {
@@ -309,16 +341,21 @@ for (const base of KV_PATH_BASES) {
       }
       const hint = countVeterinariRecords(json);
       const durationMs = Date.now() - started;
+      const retryNote =
+        fetchResult.attempts > 1
+          ? ` (intento ${fetchResult.attempts} — arranque en frío Azure)`
+          : "";
       if (res.ok) {
         return c.json({
           ok: true,
           status: res.status,
           authMethod: "Authorization: Bearer",
           message: hint
-            ? `Conexión exitosa (servidor GrooFlow → Veterinari). ${hint}.`
-            : `Conexión exitosa. HTTP ${res.status}.`,
+            ? `Conexión exitosa (servidor GrooFlow → Veterinari). ${hint}.${retryNote}`
+            : `Conexión exitosa. HTTP ${res.status}.${retryNote}`,
           recordHint: hint,
           durationMs,
+          attempts: fetchResult.attempts,
         });
       }
       const snippet = text.slice(0, 200).replace(/\s+/g, " ");
