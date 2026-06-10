@@ -642,16 +642,16 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
   };
 
   return (
-    <div className="space-y-6 p-6 animate-in fade-in duration-500">
+    <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Briefcase className="w-8 h-8 text-violet-500" />
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Briefcase className="w-7 h-7 text-violet-500 shrink-0" />
             Honorarios Profesionales
           </h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-0.5">
             Gestión de Recibos por Honorarios (RxH) y pagos a terceros.
           </p>
         </div>

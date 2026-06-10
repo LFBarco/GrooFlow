@@ -3203,7 +3203,7 @@ export default function App() {
         <div className={`w-full ${view !== 'treasury' ? 'px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 lg:py-8' : ''}`}>
         <Suspense fallback={<RouteLoader />}>
           {/* Header Section for Views using Generic Wrapper */}
-          {['dashboard', 'alerts', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
+          {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
             <ModuleHeader
               icon={moduleIdentity.icon}
               title={moduleIdentity.title}
@@ -3302,17 +3302,6 @@ export default function App() {
                 </div>
               )}
             </ModuleHeader>
-          )}
-
-          {['analytics', 'pnl', 'reports', 'fees', 'accounting', 'fleet', 'inventory', 'requests', 'audit', 'users', 'config'].includes(view) && (
-            <ModuleHeader
-              icon={moduleIdentity.icon}
-              title={moduleIdentity.title}
-              subtitle={moduleIdentity.subtitle}
-              accent={moduleIdentity.accent}
-              accentGlow={moduleIdentity.accentGlow}
-              isDark={isDarkTheme}
-            />
           )}
 
           {view === 'treasury' && (

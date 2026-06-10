@@ -542,13 +542,13 @@ export function ConfigPanel({
   };
 
   return (
-    <div className="space-y-6 h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-500">
-      <div className="flex flex-col gap-2 border-b pb-4">
-        <h2 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Settings className="w-8 h-8 text-orange-500" />
+    <div className="space-y-4 h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-500 -mt-2">
+      <div className="flex flex-col gap-0.5 border-b border-border/60 pb-3">
+        <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Settings className="w-7 h-7 text-orange-500 shrink-0" />
             Configuración del Sistema
         </h2>
-        <p className="text-muted-foreground">Administra la configuración general de tu negocio</p>
+        <p className="text-sm text-muted-foreground">Administra la configuración general de tu negocio</p>
       </div>
 
       <Tabs defaultValue="business" className="flex-1 flex flex-col min-h-0 overflow-hidden">

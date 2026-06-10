@@ -336,8 +336,8 @@ export function InventoryModule({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/25 bg-gradient-to-br from-slate-950/90 via-[#0f172a] to-slate-900/95 p-4 shadow-xl">
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/25 bg-gradient-to-br from-slate-950/90 via-[#0f172a] to-slate-900/95 p-3 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-sky-500/15 p-2.5 border border-sky-500/30">
             <Package className="h-8 w-8 text-sky-400" />

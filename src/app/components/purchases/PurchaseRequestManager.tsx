@@ -231,15 +231,15 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
-                <div className="space-y-1">
-                    <h2 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                        <ShoppingCart className="w-8 h-8 text-orange-500" />
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3">
+                <div className="space-y-0.5 min-w-0">
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                        <ShoppingCart className="w-7 h-7 text-orange-500 shrink-0" />
                         Solicitudes de Compra
                     </h2>
-                    <p className="text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                         Gestiona requerimientos y autorizaciones de gastos antes de que ocurran.
                     </p>
                 </div>

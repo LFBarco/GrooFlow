@@ -160,14 +160,14 @@ export function AuditPanel({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 p-1">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-4">
-        <div className="space-y-1">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <ShieldAlert className="w-8 h-8 text-primary" />
+    <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3">
+        <div className="space-y-0.5 min-w-0">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+                <ShieldAlert className="w-7 h-7 text-primary shrink-0" />
                 Auditoría y Calidad de Datos
             </h2>
-            <p className="text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
                 Monitoreo continuo de integridad, duplicados y anomalías financieras.
             </p>
         </div>

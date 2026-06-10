@@ -464,13 +464,13 @@ export function ChartOfAccountsModule({
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div className="border-b pb-4">
+    <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
+      <div className="border-b border-border/60 pb-3">
         <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <BookOpen className="h-7 w-7 text-primary" />
+          <BookOpen className="h-7 w-7 text-primary shrink-0" />
           Contabilidad — Plan de cuentas
         </h2>
-        <p className="text-muted-foreground mt-1 max-w-3xl">
+        <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
           Importa tu plan contable (Excel). Configura cuentas de IGV y salida de caja para que los
           asientos de caja chica se generen correctamente (la vista previa está en el módulo{' '}
           <strong>Caja chica</strong>).
