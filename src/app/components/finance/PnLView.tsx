@@ -363,7 +363,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                         <div className="h-[300px] w-full">
                             <ResponsiveContainer width="100%" height="100%" minWidth={100} minHeight={100}>
                                 <BarChart data={waterfallData} margin={{ top: 10, right: 10, left: -5, bottom: 0 }}>
-                                    <CartesianGrid strokeDasharray="3 6" vertical={false} stroke={GRID_COLOR} />
+                                    <CartesianGrid strokeDasharray="3 6" vertical={false} stroke={s.gridStroke} />
                                     <XAxis
                                         dataKey="name"
                                         axisLine={false} tickLine={false}
@@ -394,9 +394,27 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                         {/* Ratios */}
                         <div className="mt-4 space-y-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '16px' }}>
                             {[
-                              { label: 'Rentabilidad Operativa', value: formatPercentEs((report.netOperatingIncome / report.revenue.total) * 100, 1), color: s.chart.profit },
-                              { label: 'Ratio Costos Directos', value: formatPercentEs((report.cogs.total / report.revenue.total) * 100, 1), color: s.chart.expense },
-                              { label: 'Ratio Gastos Operativos', value: formatPercentEs((report.expenses.total / report.revenue.total) * 100, 1), color: '#fbbf24' },
+                              {
+                                label: 'Rentabilidad Operativa',
+                                value: report.revenue.total
+                                  ? formatPercentEs((report.netOperatingIncome / report.revenue.total) * 100, 1)
+                                  : '0%',
+                                color: s.chart.profit,
+                              },
+                              {
+                                label: 'Ratio Costos Directos',
+                                value: report.revenue.total
+                                  ? formatPercentEs((report.cogs.total / report.revenue.total) * 100, 1)
+                                  : '0%',
+                                color: s.chart.expense,
+                              },
+                              {
+                                label: 'Ratio Gastos Operativos',
+                                value: report.revenue.total
+                                  ? formatPercentEs((report.expenses.total / report.revenue.total) * 100, 1)
+                                  : '0%',
+                                color: '#fbbf24',
+                              },
                             ].map(({ label, value, color }) => (
                               <div key={label} className="flex justify-between items-center py-2"
                                 style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
