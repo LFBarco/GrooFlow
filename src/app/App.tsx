@@ -142,6 +142,7 @@ import {
   loadRolesFromSql,
   migrateRolesKvToSql,
   saveRolesToSql,
+  savePettyCashToSql,
 } from "./services/repository/businessDomainsSql";
 import { isProductionSqlEnabled } from "./services/repository/sqlDomainUtils";
 import { resolveAppKvFromSql, saveAppKvKey } from "./services/repository/appKvSql";
@@ -151,7 +152,7 @@ import {
   ensureSqlSave,
 } from "./utils/sqlAutosaveBackup";
 import { useProductionRealtimeSync } from "./hooks/useProductionRealtimeSync";
-import { enqueueKvSerializedSave, flushKvSaveChains, kvSaveSucceeded, type KvSaveResult } from "./utils/kvSerializedSave";
+import { enqueueKvSerializedSave, flushKvSaveChains, KV_CHAIN_IDLE, kvSaveSucceeded, type KvSaveResult } from "./utils/kvSerializedSave";
 import {
   autosaveKvDomain,
   createCloudSyncTracker,
@@ -174,6 +175,20 @@ import {
   FLEET_REMOTE_COOLDOWN_MS,
   shouldApplyFleetRemoteSnapshot,
 } from "./utils/fleetRemoteSyncGuard";
+import {
+  INVENTORY_REMOTE_COOLDOWN_MS,
+  shouldApplyInventoryRemoteSnapshot,
+} from "./utils/inventoryRemoteSyncGuard";
+import {
+  TRANSACTIONS_REMOTE_COOLDOWN_MS,
+  shouldApplyTransactionsRemoteSnapshot,
+} from "./utils/transactionsRemoteSyncGuard";
+import {
+  PRODUCTION_REMOTE_COOLDOWN_MS,
+  shouldApplyListRemoteSnapshot,
+  shouldApplyObjectRemoteSnapshot,
+  shouldApplyValueRemoteSnapshot,
+} from "./utils/listRemoteSyncGuard";
 import { writeAuditLog } from "./services/repository/auditLogSql";
 import { generateEntityId } from "./utils/generateEntityId";
 import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
@@ -215,8 +230,6 @@ const FLEET_USE_SQL = isFleetSqlEnabled();
 const INVENTORY_USE_SQL = isInventorySqlEnabled();
 const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
-const KV_CHAIN_IDLE = Promise.resolve('saved' as KvSaveResult);
-
 const initialInvoices: InvoiceDraft[] = [
     {
         id: "mock-1",
@@ -562,20 +575,18 @@ export default function App() {
   const fleetHydratedFromKvRef = useRef(false);
   const skipFleetHydrateRef = useRef(false);
   const fleetKvCooldownUntilRef = useRef(0);
-  const fleetKvChainRef = useRef(
-    Promise.resolve('saved' as import('./utils/kvSerializedSave').KvSaveResult)
-  );
+  const fleetKvChainRef = useRef(KV_CHAIN_IDLE);
   const fleetKvLatestRef = useRef<FleetDataset>(normalizeFleetDataset({}));
   const inventoryHydratedFromKvRef = useRef(false);
   const skipInventoryHydrateRef = useRef(false);
   const inventoryKvCooldownUntilRef = useRef(0);
-  const inventoryKvChainRef = useRef(Promise.resolve(true));
+  const inventoryKvChainRef = useRef(KV_CHAIN_IDLE);
   const inventoryKvLatestRef = useRef<InventoryDataset>(normalizeInventoryDataset({}));
   /** Umbrales de alertas (`settings:alertThresholds`). */
   const alertThresholdsHydratedFromKvRef = useRef(false);
   const skipAlertThresholdsHydrateRef = useRef(false);
   const alertThresholdsKvCooldownUntilRef = useRef(0);
-  const alertThresholdsKvChainRef = useRef(Promise.resolve(true));
+  const alertThresholdsKvChainRef = useRef(KV_CHAIN_IDLE);
   const alertThresholdsKvLatestRef = useRef<AlertThresholds>({
     liquidityMinDays: 3,
     invoiceDueDays: 7,
@@ -587,53 +598,53 @@ export default function App() {
   const chartOfAccountsHydratedFromKvRef = useRef(false);
   const skipChartOfAccountsHydrateRef = useRef(false);
   const chartOfAccountsKvCooldownUntilRef = useRef(0);
-  const chartOfAccountsKvChainRef = useRef(Promise.resolve(true));
+  const chartOfAccountsKvChainRef = useRef(KV_CHAIN_IDLE);
   const chartOfAccountsKvLatestRef = useRef<ChartOfAccountEntry[]>([]);
   /** Catálogo de productos. */
   const productsHydratedFromKvRef = useRef(false);
   const skipProductsHydrateRef = useRef(false);
   const productsKvCooldownUntilRef = useRef(0);
-  const productsKvChainRef = useRef(Promise.resolve(true));
+  const productsKvChainRef = useRef(KV_CHAIN_IDLE);
   const productsKvLatestRef = useRef<Product[]>([]);
   /** Roles RBAC. */
   const rolesHydratedFromKvRef = useRef(false);
   const skipRolesHydrateRef = useRef(false);
   const rolesKvCooldownUntilRef = useRef(0);
-  const rolesKvChainRef = useRef(Promise.resolve(true));
+  const rolesKvChainRef = useRef(KV_CHAIN_IDLE);
   const rolesKvLatestRef = useRef<Role[]>(DEFAULT_ROLES);
   /** Facturas (módulo tesorería / borradores). */
   const invoicesHydratedFromKvRef = useRef(false);
   const skipInvoicesHydrateRef = useRef(false);
   const invoicesKvCooldownUntilRef = useRef(0);
-  const invoicesKvChainRef = useRef(Promise.resolve(true));
+  const invoicesKvChainRef = useRef(KV_CHAIN_IDLE);
   const invoicesKvLatestRef = useRef<InvoiceDraft[]>([]);
   /** Solicitudes de compra. */
   const requestsHydratedFromKvRef = useRef(false);
   const skipRequestsHydrateRef = useRef(false);
   const requestsKvCooldownUntilRef = useRef(0);
-  const requestsKvChainRef = useRef(Promise.resolve(true));
+  const requestsKvChainRef = useRef(KV_CHAIN_IDLE);
   const requestsKvLatestRef = useRef<PurchaseRequest[]>([]);
   /** Honorarios profesionales. */
   const feeReceiptsHydratedFromKvRef = useRef(false);
   const skipFeeReceiptsHydrateRef = useRef(false);
   const feeReceiptsKvCooldownUntilRef = useRef(0);
-  const feeReceiptsKvChainRef = useRef(Promise.resolve(true));
+  const feeReceiptsKvChainRef = useRef(KV_CHAIN_IDLE);
   const feeReceiptsKvLatestRef = useRef<FeeReceiptGlobal[]>([]);
   /** Configuración global del sistema (sedes, caja chica, contabilidad). */
   const systemSettingsHydratedFromKvRef = useRef(false);
   const skipSystemSettingsHydrateRef = useRef(false);
   const systemSettingsKvCooldownUntilRef = useRef(0);
-  const systemSettingsKvChainRef = useRef(Promise.resolve(true));
+  const systemSettingsKvChainRef = useRef(KV_CHAIN_IDLE);
   const systemSettingsKvLatestRef = useRef<SystemSettings>(initialSystemSettings);
   /** Tesorería — tres claves KV relacionadas. */
   const treasuryHydratedFromKvRef = useRef(false);
   const skipTreasuryHydrateRef = useRef(false);
   const treasuryKvCooldownUntilRef = useRef(0);
-  const treasuryInvoicesKvChainRef = useRef(Promise.resolve(true));
+  const treasuryInvoicesKvChainRef = useRef(KV_CHAIN_IDLE);
   const treasuryInvoicesKvLatestRef = useRef<any[]>([]);
-  const treasuryBankBalanceKvChainRef = useRef(Promise.resolve(true));
+  const treasuryBankBalanceKvChainRef = useRef(KV_CHAIN_IDLE);
   const treasuryBankBalanceKvLatestRef = useRef<number | undefined>(undefined);
-  const treasuryPaidHistoryKvChainRef = useRef(Promise.resolve(true));
+  const treasuryPaidHistoryKvChainRef = useRef(KV_CHAIN_IDLE);
   const treasuryPaidHistoryKvLatestRef = useRef<any[]>([]);
   /** True tras leer saldo bancario del KV (aunque sea null). */
   const treasuryBankBalanceLoadedFromKvRef = useRef(false);
@@ -641,30 +652,30 @@ export default function App() {
   const themeHydratedFromKvRef = useRef(false);
   const skipThemeHydrateRef = useRef(false);
   const themeKvCooldownUntilRef = useRef(0);
-  const themeKvChainRef = useRef(Promise.resolve(true));
+  const themeKvChainRef = useRef(KV_CHAIN_IDLE);
   const themeKvLatestRef = useRef<'dark' | 'light'>('dark');
   /** Lista de usuarios (data:users). */
   const usersHydratedFromKvRef = useRef(false);
   const skipUsersHydrateRef = useRef(false);
   const usersKvCooldownUntilRef = useRef(0);
-  const usersKvChainRef = useRef(Promise.resolve(true));
+  const usersKvChainRef = useRef(KV_CHAIN_IDLE);
   const usersKvLatestRef = useRef<User[]>([]);
 
   /** Invalida escrituras KV encoladas antes de aplicar datos remotos o al cerrar sesión. */
   const kvApplyGenerationRef = useRef(0);
 
-  const providersKvChainRef = useRef(Promise.resolve(true));
+  const providersKvChainRef = useRef(KV_CHAIN_IDLE);
   const providersKvLatestRef = useRef<Provider[]>([]);
 
-  const pettyCashKvChainRef = useRef(Promise.resolve(true));
+  const pettyCashKvChainRef = useRef(KV_CHAIN_IDLE);
   const pettyCashKvLatestRef = useRef<PettyCashTransaction[]>([]);
   const pettyCashMetaKvLatestRef = useRef(extractPettyCashMeta(initialSystemSettings.pettyCash));
-  const pettyCashMetaKvChainRef = useRef(Promise.resolve(true));
+  const pettyCashMetaKvChainRef = useRef(KV_CHAIN_IDLE);
 
   const transactionsKvChainRef = useRef(KV_CHAIN_IDLE);
   const transactionsKvLatestRef = useRef<Transaction[]>(initialTransactions);
 
-  const configKvChainRef = useRef(Promise.resolve(true));
+  const configKvChainRef = useRef(KV_CHAIN_IDLE);
   const configKvLatestRef = useRef<ConfigStructure>(initialStructure);
 
   const [cloudSyncPhase, setCloudSyncPhase] = useState<CloudSyncPhase>('idle');
@@ -680,25 +691,26 @@ export default function App() {
 
   const resetKvSaveChains = () => {
     kvApplyGenerationRef.current += 1;
-    providersKvChainRef.current = Promise.resolve(true);
-    pettyCashKvChainRef.current = Promise.resolve(true);
+    providersKvChainRef.current = KV_CHAIN_IDLE;
+    pettyCashKvChainRef.current = KV_CHAIN_IDLE;
+    pettyCashMetaKvChainRef.current = KV_CHAIN_IDLE;
     transactionsKvChainRef.current = KV_CHAIN_IDLE;
-    configKvChainRef.current = Promise.resolve(true);
-    fleetKvChainRef.current = Promise.resolve('saved');
-    inventoryKvChainRef.current = Promise.resolve(true);
-    alertThresholdsKvChainRef.current = Promise.resolve(true);
-    chartOfAccountsKvChainRef.current = Promise.resolve(true);
-    productsKvChainRef.current = Promise.resolve(true);
-    rolesKvChainRef.current = Promise.resolve(true);
-    invoicesKvChainRef.current = Promise.resolve(true);
-    requestsKvChainRef.current = Promise.resolve(true);
-    feeReceiptsKvChainRef.current = Promise.resolve(true);
-    systemSettingsKvChainRef.current = Promise.resolve(true);
-    treasuryInvoicesKvChainRef.current = Promise.resolve(true);
-    treasuryBankBalanceKvChainRef.current = Promise.resolve(true);
-    treasuryPaidHistoryKvChainRef.current = Promise.resolve(true);
-    themeKvChainRef.current = Promise.resolve(true);
-    usersKvChainRef.current = Promise.resolve(true);
+    configKvChainRef.current = KV_CHAIN_IDLE;
+    fleetKvChainRef.current = KV_CHAIN_IDLE;
+    inventoryKvChainRef.current = KV_CHAIN_IDLE;
+    alertThresholdsKvChainRef.current = KV_CHAIN_IDLE;
+    chartOfAccountsKvChainRef.current = KV_CHAIN_IDLE;
+    productsKvChainRef.current = KV_CHAIN_IDLE;
+    rolesKvChainRef.current = KV_CHAIN_IDLE;
+    invoicesKvChainRef.current = KV_CHAIN_IDLE;
+    requestsKvChainRef.current = KV_CHAIN_IDLE;
+    feeReceiptsKvChainRef.current = KV_CHAIN_IDLE;
+    systemSettingsKvChainRef.current = KV_CHAIN_IDLE;
+    treasuryInvoicesKvChainRef.current = KV_CHAIN_IDLE;
+    treasuryBankBalanceKvChainRef.current = KV_CHAIN_IDLE;
+    treasuryPaidHistoryKvChainRef.current = KV_CHAIN_IDLE;
+    themeKvChainRef.current = KV_CHAIN_IDLE;
+    usersKvChainRef.current = KV_CHAIN_IDLE;
   };
 
   const resetAllKvDomainRefs = () => {
@@ -1150,7 +1162,7 @@ export default function App() {
     treasuryBankBalanceLoadedRef: treasuryBankBalanceLoadedFromKvRef,
   });
 
-  const { persistFleetNow, handleFleetDatasetUpdate } = useFleetPersistence({
+  const { persistFleetNow, persistFleetChecklistNow, handleFleetDatasetUpdate } = useFleetPersistence({
     isDataLoaded,
     fleetDataset,
     setFleetDataset,
@@ -1581,10 +1593,19 @@ export default function App() {
   applyInventoryRemoteRef.current = (dataset: InventoryDataset) => {
     if (!isDataLoaded || signingOutRef.current || !inventoryHydratedFromKvRef.current) return;
     const normalized = normalizeInventoryDataset(dataset);
+    if (
+      !shouldApplyInventoryRemoteSnapshot(
+        inventoryKvLatestRef.current,
+        normalized,
+        inventoryKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     if (kvPayloadsEqual(inventoryKvLatestRef.current, normalized)) return;
     inventoryKvLatestRef.current = normalized;
     markCrossTabEchoWindow('data:inventory');
-    inventoryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    inventoryKvCooldownUntilRef.current = Date.now() + INVENTORY_REMOTE_COOLDOWN_MS;
     setInventoryDataset(normalized);
     const now = Date.now();
     if (now - inventoryRemoteToastLastAtRef.current >= 4000) {
@@ -1598,16 +1619,26 @@ export default function App() {
   useInventoryRealtimeSync(
     isAuthenticated && isDataLoaded && INVENTORY_USE_SQL,
     applyInventoryRemoteRef,
-    inventoryKvLatestRef
+    inventoryKvLatestRef,
+    inventoryKvCooldownUntilRef
   );
 
   const applyTransactionsRemoteRef = useRef<((items: Transaction[]) => void) | null>(null);
   applyTransactionsRemoteRef.current = (items: Transaction[]) => {
     if (!isDataLoaded || signingOutRef.current || !transactionsCloudHydrationDoneRef.current) return;
     const unique = Array.from(new Map(items.map((t) => [t.id, t])).values());
+    if (
+      !shouldApplyTransactionsRemoteSnapshot(
+        transactionsKvLatestRef.current,
+        unique,
+        transactionsKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     if (kvPayloadsEqual(transactionsKvLatestRef.current, unique)) return;
     transactionsKvLatestRef.current = unique;
-    transactionsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    transactionsKvCooldownUntilRef.current = Date.now() + TRANSACTIONS_REMOTE_COOLDOWN_MS;
     setTransactions(unique);
     cloudSyncErrorRef.current = false;
     setCloudSyncPhase('synced');
@@ -1616,106 +1647,195 @@ export default function App() {
   useTransactionsRealtimeSync(
     isAuthenticated && isDataLoaded && TRANSACTIONS_USE_SQL,
     applyTransactionsRemoteRef,
-    transactionsKvLatestRef
+    transactionsKvLatestRef,
+    transactionsKvCooldownUntilRef
   );
 
   const applyProvidersRemoteRef = useRef<((items: Provider[]) => void) | null>(null);
   applyProvidersRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !providersHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(providersKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        providersKvLatestRef.current,
+        items,
+        providersKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     providersKvLatestRef.current = items;
-    providersKvCooldownUntilRef.current = Date.now() + PROVIDERS_KV_COOLDOWN_MS;
+    providersKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setProviders(items);
   };
 
   const applyPettyCashRemoteRef = useRef<((items: PettyCashTransaction[]) => void) | null>(null);
   applyPettyCashRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !pettyCashHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(pettyCashKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        pettyCashKvLatestRef.current,
+        items,
+        pettyCashKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     pettyCashKvLatestRef.current = items;
-    pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
+    pettyCashKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setPettyCashTransactions(items);
   };
 
   const applyInvoicesRemoteRef = useRef<((items: InvoiceDraft[]) => void) | null>(null);
   applyInvoicesRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !invoicesHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(invoicesKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        invoicesKvLatestRef.current,
+        items,
+        invoicesKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     invoicesKvLatestRef.current = items;
-    invoicesKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    invoicesKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setInvoices(items);
   };
 
   const applyRequestsRemoteRef = useRef<((items: PurchaseRequest[]) => void) | null>(null);
   applyRequestsRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !requestsHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(requestsKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        requestsKvLatestRef.current,
+        items,
+        requestsKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     requestsKvLatestRef.current = items;
-    requestsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    requestsKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setRequests(items);
   };
 
   const applyUsersRemoteRef = useRef<((items: User[]) => void) | null>(null);
   applyUsersRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !usersHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(usersKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        usersKvLatestRef.current,
+        items,
+        usersKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     usersKvLatestRef.current = items;
-    usersKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    usersKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setUsers(items);
   };
 
   const applyRolesRemoteRef = useRef<((items: Role[]) => void) | null>(null);
   applyRolesRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !rolesHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(rolesKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        rolesKvLatestRef.current,
+        items,
+        rolesKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     rolesKvLatestRef.current = items;
-    rolesKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    rolesKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setRoles(items);
   };
 
   const applyProductsRemoteRef = useRef<((items: Product[]) => void) | null>(null);
   applyProductsRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !productsHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(productsKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        productsKvLatestRef.current,
+        items,
+        productsKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     productsKvLatestRef.current = items;
-    productsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    productsKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setProducts(items);
   };
 
   const applyFeeReceiptsRemoteRef = useRef<((items: FeeReceiptGlobal[]) => void) | null>(null);
   applyFeeReceiptsRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !feeReceiptsHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(feeReceiptsKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        feeReceiptsKvLatestRef.current,
+        items,
+        feeReceiptsKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     feeReceiptsKvLatestRef.current = items;
-    feeReceiptsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    feeReceiptsKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setFeeReceipts(items);
   };
 
   const applyChartRemoteRef = useRef<((items: ChartOfAccountEntry[]) => void) | null>(null);
   applyChartRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !chartOfAccountsHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(chartOfAccountsKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyListRemoteSnapshot(
+        chartOfAccountsKvLatestRef.current,
+        items,
+        chartOfAccountsKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     chartOfAccountsKvLatestRef.current = items;
-    chartOfAccountsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    chartOfAccountsKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setChartOfAccounts(items);
   };
 
   const applyConfigRemoteRef = useRef<((items: ConfigStructure) => void) | null>(null);
   applyConfigRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !configHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(configKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyObjectRemoteSnapshot(
+        configKvLatestRef.current,
+        items,
+        configKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     configKvLatestRef.current = items;
-    configKvCooldownUntilRef.current = Date.now() + CONFIG_KV_COOLDOWN_MS;
+    configKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setConfig(items);
   };
 
   const applySystemSettingsRemoteRef = useRef<((items: SystemSettings) => void) | null>(null);
   applySystemSettingsRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !systemSettingsHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(systemSettingsKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyObjectRemoteSnapshot(
+        systemSettingsKvLatestRef.current,
+        items,
+        systemSettingsKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     systemSettingsKvLatestRef.current = items;
     pettyCashMetaKvLatestRef.current = extractPettyCashMeta(items.pettyCash);
-    systemSettingsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    systemSettingsKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setSystemSettings(items);
   };
 
@@ -1727,47 +1847,87 @@ export default function App() {
   const applyAlertThresholdsRemoteRef = useRef<((items: AlertThresholds) => void) | null>(null);
   applyAlertThresholdsRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !alertThresholdsHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(alertThresholdsKvLatestRef.current, items)) return;
+    if (
+      !shouldApplyObjectRemoteSnapshot(
+        alertThresholdsKvLatestRef.current,
+        items,
+        alertThresholdsKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     alertThresholdsKvLatestRef.current = items;
-    alertThresholdsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    alertThresholdsKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setAlertThresholds(items);
   };
 
   const applyThemeRemoteRef = useRef<((t: 'dark' | 'light') => void) | null>(null);
   applyThemeRemoteRef.current = (t) => {
     if (!isDataLoaded || signingOutRef.current || !themeHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(themeKvLatestRef.current, t)) return;
+    if (
+      !shouldApplyValueRemoteSnapshot(themeKvLatestRef.current, t, themeKvCooldownUntilRef.current)
+    ) {
+      return;
+    }
     themeKvLatestRef.current = t;
-    themeKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    themeKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setTheme(t);
   };
 
   const applyTreasuryInvoicesRemoteRef = useRef<((items: unknown[]) => void) | null>(null);
   applyTreasuryInvoicesRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !treasuryHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(treasuryInvoicesKvLatestRef.current, items)) return;
-    treasuryInvoicesKvLatestRef.current = items;
-    treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
-    setTreasuryInvoices(items);
+    const local = treasuryInvoicesKvLatestRef.current;
+    const remote = Array.isArray(items) ? items : [];
+    if (
+      !shouldApplyListRemoteSnapshot(
+        Array.isArray(local) ? local : [],
+        remote,
+        treasuryKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
+    treasuryInvoicesKvLatestRef.current = remote;
+    treasuryKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+    setTreasuryInvoices(remote);
   };
 
   const applyTreasuryBankBalanceRemoteRef = useRef<((v: number | undefined) => void) | null>(null);
   applyTreasuryBankBalanceRemoteRef.current = (v) => {
     if (!isDataLoaded || signingOutRef.current || !treasuryHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(treasuryBankBalanceKvLatestRef.current, v)) return;
+    if (
+      !shouldApplyValueRemoteSnapshot(
+        treasuryBankBalanceKvLatestRef.current,
+        v,
+        treasuryKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
     treasuryBankBalanceKvLatestRef.current = v;
     treasuryBankBalanceLoadedFromKvRef.current = true;
-    treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+    treasuryKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setTreasuryBankBalance(v);
   };
 
   const applyTreasuryPaidHistoryRemoteRef = useRef<((items: unknown[]) => void) | null>(null);
   applyTreasuryPaidHistoryRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !treasuryHydratedFromKvRef.current) return;
-    if (kvPayloadsEqual(treasuryPaidHistoryKvLatestRef.current, items)) return;
-    treasuryPaidHistoryKvLatestRef.current = items;
-    treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
-    setTreasuryPaidHistory(items);
+    const local = treasuryPaidHistoryKvLatestRef.current;
+    const remote = Array.isArray(items) ? items : [];
+    if (
+      !shouldApplyListRemoteSnapshot(
+        Array.isArray(local) ? local : [],
+        remote,
+        treasuryKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
+    treasuryPaidHistoryKvLatestRef.current = remote;
+    treasuryKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+    setTreasuryPaidHistory(remote);
   };
 
   const productionRealtimeHandlers = useMemo(
@@ -1892,10 +2052,11 @@ export default function App() {
     setCurrentDate((prev) => addMonths(isValid(prev) ? prev : new Date(), 1));
 
   /**
-   * Tras signIn en LoginPage: recargar KV + usuarios (la lista solo se muta aquí y en UserManager).
-   * Los argumentos se ignoran; la sesión real viene de Supabase.
+   * Tras signIn en LoginPage: SIGNED_IN ya dispara hydrateFromKv en Supabase.
+   * Solo se usa en modo local/demo.
    */
   const handleLogin = () => {
+    if ((import.meta.env.VITE_BACKEND ?? 'supabase') === 'supabase') return;
     void hydrateFromKvRef.current?.();
   };
 
@@ -2911,6 +3072,15 @@ export default function App() {
         }
         pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
         pettyCashHydratedFromKvRef.current = true;
+        if (PRODUCTION_USE_SQL) {
+          void backupDomainSqlAfterKvSave(
+            true,
+            'data:pettyCash',
+            merged,
+            savePettyCashToSql,
+            lastSaveErrorAtRef
+          );
+        }
         if (newMovements.length > 0) {
           void writeAuditLog(getSupabaseClient(), 'petty_cash_create', {
             entity: 'Caja chica',
@@ -3693,6 +3863,8 @@ export default function App() {
                 dataset={fleetDataset}
                 setDataset={handleFleetDatasetUpdate}
                 onPersistDataset={persistFleetNow}
+                onPersistChecklist={persistFleetChecklistNow}
+                persistenceReady={isDataLoaded}
                 visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                 defaultHomeBase={
                   currentUser.sedes?.[0] ||

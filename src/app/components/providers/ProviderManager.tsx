@@ -20,7 +20,7 @@ import {
     Plus, Search, Edit2, Trash2, Building2, Phone, Mail, Clock, Save, 
     X, CreditCard, User, Upload, FileDown, CheckCircle2, XCircle, 
     Landmark, Settings, List, Wallet, Users, Info, ShoppingCart, FileText,
-    ChevronLeft, ChevronRight,
+    ChevronLeft, ChevronRight, Loader2,
 } from 'lucide-react';
 import { Checkbox } from '../ui/checkbox';
 import { getProviderDocumentLabel, mergeProviderUsageContexts } from '../../utils/providerAccounting';
@@ -268,6 +268,7 @@ export function ProviderManager({
     const [providerTablePage, setProviderTablePage] = useState(1);
     const [providerTablePageSize, setProviderTablePageSize] = useState<number>(25);
     const [isEditing, setIsEditing] = useState(false);
+    const [isSavingProvider, setIsSavingProvider] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [currentProvider, setCurrentProvider] = useState<Partial<Provider>>({});
     const [isImportOpen, setIsImportOpen] = useState(false);
@@ -954,6 +955,7 @@ export function ProviderManager({
     };
 
     const handleSave = async () => {
+        if (isSavingProvider) return;
         if (!currentProvider.name || !currentProvider.ruc) {
             toast.error('El nombre y el número de documento son obligatorios');
             return;
@@ -1020,63 +1022,66 @@ export function ProviderManager({
         }
 
         const categoryStored = (currentProvider.category ?? '').trim();
-        if (currentProvider.id) {
-            // Edit
-            const updated = providers.map((p) =>
-                p.id === currentProvider.id
-                    ? ({
-                          ...p,
-                          ...currentProvider,
-                          ruc: rucNorm,
-                          docIdentityType: docT,
-                          category: categoryStored,
-                          area: currentProvider.area?.trim() || undefined,
-                          pettyExpenseLines: pl,
-                          usageContexts: uc,
-                          defaultPurchaseAccount: undefined,
-                          defaultProfessionalFeeAccount: undefined,
-                      } as Provider)
-                    : p
-            );
-            const saved = await Promise.resolve(onUpdateProviders(updated));
-            if (saved === false) return;
-            toast.success('Proveedor actualizado');
-        } else {
-            // Create
-            if (providers.some((p) => providerDocDigitsEqual(p.ruc, rucNorm))) {
-                toast.error('Ya existe un proveedor con este número de documento');
-                return;
-            }
+        setIsSavingProvider(true);
+        try {
+            if (currentProvider.id) {
+                const updated = providers.map((p) =>
+                    p.id === currentProvider.id
+                        ? ({
+                              ...p,
+                              ...currentProvider,
+                              ruc: rucNorm,
+                              docIdentityType: docT,
+                              category: categoryStored,
+                              area: currentProvider.area?.trim() || undefined,
+                              pettyExpenseLines: pl,
+                              usageContexts: uc,
+                              defaultPurchaseAccount: undefined,
+                              defaultProfessionalFeeAccount: undefined,
+                          } as Provider)
+                        : p
+                );
+                const saved = await Promise.resolve(onUpdateProviders(updated));
+                if (saved === false) return;
+                toast.success('Proveedor actualizado');
+            } else {
+                if (providers.some((p) => providerDocDigitsEqual(p.ruc, rucNorm))) {
+                    toast.error('Ya existe un proveedor con este número de documento');
+                    return;
+                }
 
-            const newProvider: Provider = {
-                id: `prov-${Date.now()}`,
-                name: currentProvider.name!,
-                ruc: rucNorm,
-                docIdentityType: docT,
-                type: currentProvider.type || 'Mercaderia',
-                specialty: currentProvider.specialty || '',
-                category: categoryStored || 'Otros',
-                area: currentProvider.area?.trim() || undefined,
-                defaultExpenseCategory: currentProvider.defaultExpenseCategory || 'Otros',
-                defaultCreditDays: Number(currentProvider.defaultCreditDays) || 0,
-                email: currentProvider.email || '',
-                phone: currentProvider.phone || '',
-                contactName: currentProvider.contactName || '',
-                bankName: currentProvider.bankName || '',
-                bankAccount: currentProvider.bankAccount || '',
-                totalPurchased: 0,
-                accountingAccount: currentProvider.accountingAccount?.trim() || undefined,
-                pettyExpenseLines: pl,
-                usageContexts: uc,
-                defaultPurchaseAccount: undefined,
-                defaultProfessionalFeeAccount: undefined,
-            };
-            const savedCreate = await Promise.resolve(onUpdateProviders([...providers, newProvider]));
-            if (savedCreate === false) return;
-            toast.success('Proveedor registrado');
+                const newProvider: Provider = {
+                    id: `prov-${Date.now()}`,
+                    name: currentProvider.name!,
+                    ruc: rucNorm,
+                    docIdentityType: docT,
+                    type: currentProvider.type || 'Mercaderia',
+                    specialty: currentProvider.specialty || '',
+                    category: categoryStored || 'Otros',
+                    area: currentProvider.area?.trim() || undefined,
+                    defaultExpenseCategory: currentProvider.defaultExpenseCategory || 'Otros',
+                    defaultCreditDays: Number(currentProvider.defaultCreditDays) || 0,
+                    email: currentProvider.email || '',
+                    phone: currentProvider.phone || '',
+                    contactName: currentProvider.contactName || '',
+                    bankName: currentProvider.bankName || '',
+                    bankAccount: currentProvider.bankAccount || '',
+                    totalPurchased: 0,
+                    accountingAccount: currentProvider.accountingAccount?.trim() || undefined,
+                    pettyExpenseLines: pl,
+                    usageContexts: uc,
+                    defaultPurchaseAccount: undefined,
+                    defaultProfessionalFeeAccount: undefined,
+                };
+                const savedCreate = await Promise.resolve(onUpdateProviders([...providers, newProvider]));
+                if (savedCreate === false) return;
+                toast.success('Proveedor registrado');
+            }
+            setIsEditing(false);
+            setCurrentProvider({});
+        } finally {
+            setIsSavingProvider(false);
         }
-        setIsEditing(false);
-        setCurrentProvider({});
     };
 
     const handleDelete = async (id: string) => {
@@ -2154,14 +2159,23 @@ export function ProviderManager({
                     </div>
 
                     <DialogFooter className="gap-2 sm:gap-0">
-                        <Button variant="outline" onClick={() => setIsEditing(false)} className="h-11">
+                        <Button variant="outline" onClick={() => setIsEditing(false)} className="h-11" disabled={isSavingProvider}>
                             Cancelar
                         </Button>
                         <Button
                             onClick={handleSave}
+                            disabled={isSavingProvider}
                             className="h-11 min-w-[200px] font-semibold bg-primary text-primary-foreground"
                         >
-                            <Save className="w-4 h-4 mr-2" /> Guardar proveedor
+                            {isSavingProvider ? (
+                                <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Guardando…
+                                </>
+                            ) : (
+                                <>
+                                    <Save className="w-4 h-4 mr-2" /> Guardar proveedor
+                                </>
+                            )}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

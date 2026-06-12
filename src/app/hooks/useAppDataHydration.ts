@@ -66,10 +66,12 @@ import type { InventoryDataset } from '../types/inventory';
 import { createDemoFleetDataset, normalizeFleetDataset } from '../utils/fleetData';
 import { isFleetDatasetEmpty } from '../utils/fleetDatasetEmpty';
 import { mergeFleetKvAndSql } from '../utils/fleetKvPayload';
+import { mergeInventoryKvAndSql } from '../utils/inventoryKvPayload';
 import { normalizeInventoryDataset } from '../utils/inventoryData';
 import { isInventoryDatasetEmpty } from '../utils/inventoryDatasetEmpty';
 import { hydrateTransactions } from '../utils/hydrateTransactions';
 import { shouldAllowKvRemoteHydrate } from '../utils/kvDomainPersistence';
+import { isAccessTokenExpired } from '../utils/accessToken';
 import { mergeRolesWithDefaults } from '../utils/mergeRolesWithDefaults';
 import {
   extractPettyCashMeta,
@@ -125,8 +127,10 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
 
     const getStableSession = async () => {
       const first = await supabase.auth.getSession();
-      if (first.data.session?.access_token) return first.data.session;
+      const token = first.data.session?.access_token;
+      if (token && !isAccessTokenExpired(token)) return first.data.session;
       if (backend !== 'supabase') return first.data.session;
+      if (!first.data.session?.user) return first.data.session;
       try {
         await refreshSessionWithTimeout();
       } catch {
@@ -195,6 +199,72 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         }
 
         deps.resetKvSaveChains();
+
+        let nextUsers: User[] = [];
+        const usersFromKv = data['data:users'];
+        if (Array.isArray(usersFromKv)) {
+          const byId = Array.from(
+            new Map(usersFromKv.map((u: User) => [u.id, u])).values()
+          ) as User[];
+          nextUsers = dedupeUsersByEmail(byId);
+        }
+        nextUsers = applySuperAdminRoleFromConfig(nextUsers);
+
+        if (!cancelled && sessionEffective?.user) {
+          nextUsers = mergeAuthUserIntoUsers(nextUsers, sessionEffective.user);
+          nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
+        }
+
+        const hasLocalDemoSession =
+          typeof window !== 'undefined' &&
+          window.sessionStorage.getItem('grooflow_local_session') === '1';
+
+        let sessionUserRow: User | null = null;
+
+        if (!cancelled && sessionEffective?.user?.email) {
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.removeItem('grooflow_local_session');
+          }
+          const em = sessionEffective.user.email.trim().toLowerCase();
+          const row = resolveCurrentUserRow(nextUsers, em);
+          sessionUserRow = row;
+          if (!row) {
+            await supabase.auth.signOut();
+            toast.error("Acceso denegado", {
+              description:
+                "Tu correo no aparece en la lista de usuarios del sistema. Un administrador debe darte de alta en «Gestión de usuarios».",
+              duration: 10000,
+            });
+            deps.setCurrentUser(deps.GUEST_USER);
+            deps.setIsAuthenticated(false);
+            deps.setIsAuthChecking(false);
+            return;
+          }
+          if (row.status === 'inactive' && !getSuperAdminEmails().has(em)) {
+            await supabase.auth.signOut();
+            toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
+            deps.setCurrentUser(deps.GUEST_USER);
+            deps.setIsAuthenticated(false);
+            deps.setIsAuthChecking(false);
+            return;
+          }
+          if (deps.signingOutRef.current) return;
+          deps.setCurrentUser(row);
+          deps.setIsAuthenticated(true);
+          if (shouldShowAuthChecking) deps.setIsAuthChecking(false);
+        } else if (backend === 'local' && hasLocalDemoSession && nextUsers.length > 0) {
+          if (!deps.signingOutRef.current) {
+            deps.setCurrentUser(nextUsers[0]);
+            deps.setIsAuthenticated(true);
+            if (shouldShowAuthChecking) deps.setIsAuthChecking(false);
+          }
+        } else {
+          deps.setIsAuthenticated(false);
+          deps.setIsAuthChecking(false);
+        }
+
+        /** Solo tras validar sesión + fila de usuario (o modo invitado/local); evita “hidratación fantasma” en accesos denegados */
+        deps.cloudDataHydratedRef.current = true;
 
         {
           const allowConfigRemote =
@@ -302,19 +372,12 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           const sessionUserId = sessionEffective?.user?.id ?? null;
 
           if (TRANSACTIONS_USE_SQL) {
-            const sqlLoad = await loadTransactionsFromSql(getSupabaseClient());
-            if (sqlLoad.ok && sqlLoad.data && sqlLoad.data.length > 0) {
-              nextTransactions = sqlLoad.data;
-            } else if (kvUnique.length > 0) {
-              nextTransactions = kvUnique;
-              if (sessionUserId) {
-                void migrateTransactionsKvToSql(getSupabaseClient(), kvUnique, sessionUserId);
-              }
-            } else if (sqlLoad.ok && sqlLoad.data) {
-              nextTransactions = sqlLoad.data;
-            } else {
-              nextTransactions = [];
-            }
+            nextTransactions = await resolveListFromSql(
+              kvUnique,
+              () => loadTransactionsFromSql(getSupabaseClient()),
+              (list, uid) => migrateTransactionsKvToSql(getSupabaseClient(), list, uid),
+              sessionUserId
+            );
           }
 
           deps.transactionsKvLatestRef.current = nextTransactions;
@@ -574,75 +637,6 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           }
         }
 
-        let nextUsers: User[] = [];
-        const usersFromKv = data['data:users'];
-        if (Array.isArray(usersFromKv)) {
-          const byId = Array.from(
-            new Map(usersFromKv.map((u: User) => [u.id, u])).values()
-          ) as User[];
-          nextUsers = dedupeUsersByEmail(byId);
-        }
-        nextUsers = applySuperAdminRoleFromConfig(nextUsers);
-
-        if (!cancelled && sessionEffective?.user) {
-          nextUsers = mergeAuthUserIntoUsers(nextUsers, sessionEffective.user);
-          nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
-        }
-
-        const hasLocalDemoSession =
-          typeof window !== 'undefined' &&
-          window.sessionStorage.getItem('grooflow_local_session') === '1';
-
-        let sessionUserRow: User | null = null;
-
-        if (!cancelled && sessionEffective?.user?.email) {
-          if (typeof window !== 'undefined') {
-            window.sessionStorage.removeItem('grooflow_local_session');
-          }
-          const em = sessionEffective.user.email.trim().toLowerCase();
-          const row = resolveCurrentUserRow(nextUsers, em);
-          sessionUserRow = row;
-          if (!row) {
-            await supabase.auth.signOut();
-            toast.error("Acceso denegado", {
-              description:
-                "Tu correo no aparece en la lista de usuarios del sistema. Un administrador debe darte de alta en «Gestión de usuarios».",
-              duration: 10000,
-            });
-            deps.setCurrentUser(deps.GUEST_USER);
-            deps.setIsAuthenticated(false);
-            deps.setIsAuthChecking(false);
-            return;
-          }
-          if (row.status === 'inactive' && !getSuperAdminEmails().has(em)) {
-            await supabase.auth.signOut();
-            toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
-            deps.setCurrentUser(deps.GUEST_USER);
-            deps.setIsAuthenticated(false);
-            deps.setIsAuthChecking(false);
-            return;
-          }
-          if (deps.signingOutRef.current) return;
-          const sessionLast = await getStableSession();
-          if (backend === 'supabase' && !sessionLast?.access_token) {
-            deps.setIsAuthenticated(false);
-            deps.setIsAuthChecking(false);
-            return;
-          }
-          deps.setCurrentUser(row);
-          deps.setIsAuthenticated(true);
-        } else if (backend === 'local' && hasLocalDemoSession && nextUsers.length > 0) {
-          if (!deps.signingOutRef.current) {
-            deps.setCurrentUser(nextUsers[0]);
-            deps.setIsAuthenticated(true);
-          }
-        } else {
-          deps.setIsAuthenticated(false);
-        }
-
-        /** Solo tras validar sesión + fila de usuario (o modo invitado/local); evita “hidratación fantasma” en accesos denegados */
-        deps.cloudDataHydratedRef.current = true;
-
         if (PRODUCTION_USE_SQL && sessionEffective?.user?.id) {
           const sqlUsers = await resolveListFromSql(
             nextUsers,
@@ -886,30 +880,22 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               const rawFleet = data['data:fleet'];
               const kvFleet = rawFleet != null ? normalizeFleetDataset(rawFleet) : null;
               const kvHasData = kvFleet != null && !isFleetDatasetEmpty(kvFleet);
-              /** KV con datos es fuente de verdad; KV vacío `{}` no pisa SQL con vehículos. */
-              if (kvHasData) {
-                nextFleet =
-                  sqlLoad.ok && sqlLoad.data && !sqlLoad.empty
-                    ? mergeFleetKvAndSql(kvFleet!, sqlLoad.data)
-                    : kvFleet!;
-                if (sqlLoad.ok && sessionUserId) {
-                  const migrated = await migrateFleetKvToSql(
-                    getSupabaseClient(),
-                    nextFleet,
-                    sessionUserId
-                  );
-                  if (!migrated) {
-                    console.warn('[hydration] fleet KV→SQL migrate failed; datos en KV, réplica SQL pendiente');
-                  }
-                }
-              } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
-                nextFleet = sqlLoad.data;
-                /** SQL con datos pero KV vacío: subir a KV para que persista al recargar. */
+
+              if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
+                nextFleet = kvHasData
+                  ? mergeFleetKvAndSql(kvFleet!, sqlLoad.data)
+                  : sqlLoad.data;
                 void api.saveKey('data:fleet', nextFleet).then((ok) => {
-                  if (!ok) {
-                    console.warn('[hydration] fleet SQL→KV backup failed');
-                  }
+                  if (!ok) console.warn('[hydration] fleet SQL→KV backup failed');
                 });
+              } else if (sqlLoad.ok && sqlLoad.data && sqlLoad.empty) {
+                nextFleet = sqlLoad.data;
+                void api.saveKey('data:fleet', nextFleet).catch(() => undefined);
+              } else if (kvHasData) {
+                nextFleet = kvFleet!;
+                if (sessionUserId) {
+                  void migrateFleetKvToSql(getSupabaseClient(), nextFleet, sessionUserId);
+                }
               } else if (kvFleet != null) {
                 nextFleet = kvFleet;
               } else if (sqlLoad.ok && sqlLoad.data) {
@@ -956,13 +942,33 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               const rawInv = data['data:inventory'];
               const kvInv = rawInv != null ? normalizeInventoryDataset(rawInv) : null;
               const kvHasData = kvInv != null && !isInventoryDatasetEmpty(kvInv);
+
               if (kvHasData) {
-                nextInventory = kvInv!;
-                if (sqlLoad.ok && sessionUserId) {
+                if (sqlLoad.ok && sqlLoad.data) {
+                  if (sqlLoad.empty) {
+                    /** SQL vacío = borrado en producción; no restaurar equipos desde KV obsoleto. */
+                    nextInventory = sqlLoad.data;
+                  } else {
+                    nextInventory = mergeInventoryKvAndSql(kvInv!, sqlLoad.data);
+                  }
+                } else {
+                  nextInventory = kvInv!;
+                }
+                void api.saveKey('data:inventory', nextInventory).then((ok) => {
+                  if (!ok) {
+                    console.warn('[hydration] inventory merge→KV backup failed');
+                  }
+                });
+                if (sqlLoad.ok && sessionUserId && sqlLoad.data && !sqlLoad.empty) {
                   void migrateInventoryKvToSql(getSupabaseClient(), nextInventory, sessionUserId);
                 }
               } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
                 nextInventory = sqlLoad.data;
+                void api.saveKey('data:inventory', nextInventory).then((ok) => {
+                  if (!ok) {
+                    console.warn('[hydration] inventory SQL→KV backup failed');
+                  }
+                });
               } else if (kvInv != null) {
                 nextInventory = kvInv;
               } else if (sqlLoad.ok && sqlLoad.data) {
@@ -988,7 +994,6 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         deps.cloudSyncErrorRef.current = false;
         deps.setCloudSyncPhase('synced');
         deps.setIsDataLoaded(true);
-        toast.success('Datos sincronizados con la nube');
       } catch (hydrateErr) {
         console.error('[GrooFlow] hydrateFromKv:', hydrateErr);
         deps.cloudSyncErrorRef.current = true;
@@ -1030,6 +1035,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           event === 'SIGNED_IN' ||
           (event === 'INITIAL_SESSION' && !deps.cloudDataHydratedRef.current);
         if (shouldHydrate) {
+          if (event === 'SIGNED_IN' && deps.hydrateRunningRef.current) return;
           await hydrateFromKv();
         }
         return;

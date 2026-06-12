@@ -382,3 +382,92 @@ export function findEquipmentFromScan(
 export function maintenanceTotalCost(m: InventoryMaintenanceRecord) {
   return m.laborCost + m.partsCost;
 }
+
+/** Id estable del mantenimiento generado desde la ficha del equipo. */
+export const AUTO_MAINTENANCE_ID_PREFIX = 'inv-m-auto-';
+
+export function autoMaintenanceIdForEquipment(equipmentId: string): string {
+  return `${AUTO_MAINTENANCE_ID_PREFIX}${equipmentId}`;
+}
+
+export function isAutoScheduledMaintenance(m: InventoryMaintenanceRecord): boolean {
+  return m.id.startsWith(AUTO_MAINTENANCE_ID_PREFIX);
+}
+
+export function maintenanceStatusForScheduledDate(scheduledDate: string): InventoryMaintenanceStatus {
+  const d = safeParseDate(scheduledDate);
+  if (!d) return 'scheduled';
+  return differenceInDays(d, new Date()) < 0 ? 'overdue' : 'scheduled';
+}
+
+/**
+ * Crea o actualiza el mantenimiento preventivo programado a partir de `nextMaintenanceDate`.
+ * Si la fecha se borra, elimina el registro auto-vinculado (solo si aún está programado/vencido).
+ */
+export function syncEquipmentMaintenanceInDataset(
+  dataset: InventoryDataset,
+  equipment: InventoryEquipment
+): InventoryMaintenanceRecord[] {
+  const autoId = autoMaintenanceIdForEquipment(equipment.id);
+  const existing = dataset.maintenance.find((m) => m.id === autoId);
+  const others = dataset.maintenance.filter((m) => m.id !== autoId);
+  const nextDate = equipment.nextMaintenanceDate?.trim();
+
+  if (!nextDate) {
+    if (existing && (existing.status === 'scheduled' || existing.status === 'overdue')) {
+      return others;
+    }
+    return dataset.maintenance;
+  }
+
+  if (existing?.status === 'in_progress') {
+    return dataset.maintenance;
+  }
+
+  const t = nowIso();
+  const record: InventoryMaintenanceRecord = {
+    id: autoId,
+    equipmentId: equipment.id,
+    kind: existing?.kind ?? 'preventive',
+    status: maintenanceStatusForScheduledDate(nextDate),
+    scheduledDate: nextDate,
+    completedDate: existing?.status === 'completed' || existing?.status === 'cancelled' ? undefined : existing?.completedDate,
+    description:
+      existing?.description?.trim() && !existing.description.startsWith('Mantenimiento preventivo —')
+        ? existing.description
+        : `Mantenimiento preventivo — ${equipment.name}`,
+    laborCost: existing?.laborCost ?? 0,
+    partsCost: existing?.partsCost ?? 0,
+    parts: existing?.parts ?? [],
+    sede: equipment.sede,
+    technicianName: existing?.technicianName,
+    companyName: existing?.companyName ?? equipment.providerName,
+    resultNotes: existing?.resultNotes,
+    createdAt: existing?.createdAt ?? t,
+  };
+
+  return [...others, record];
+}
+
+export function applyEquipmentMaintenanceSync(
+  dataset: InventoryDataset,
+  equipment: InventoryEquipment
+): InventoryDataset {
+  return {
+    ...dataset,
+    maintenance: syncEquipmentMaintenanceInDataset(dataset, equipment),
+  };
+}
+
+export function equipmentMaintenanceWasSynced(
+  before: InventoryDataset,
+  after: InventoryDataset,
+  equipmentId: string
+): boolean {
+  const autoId = autoMaintenanceIdForEquipment(equipmentId);
+  const prev = before.maintenance.find((m) => m.id === autoId);
+  const next = after.maintenance.find((m) => m.id === autoId);
+  if (next && !prev) return true;
+  if (next && prev && (next.scheduledDate !== prev.scheduledDate || next.status !== prev.status)) return true;
+  return false;
+}

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import type { FleetInspectionRecord } from '../types/fleet';
 import { normalizeFleetDataset } from './fleetData';
 import { mergeFleetKvAndSql, slimFleetDatasetForKv } from './fleetKvPayload';
 
@@ -32,6 +31,17 @@ describe('fleetKvPayload', () => {
     const slim = slimFleetDatasetForKv(dataset);
     expect(slim.inspections[0]?.driverSignatureDataUrl).toBe('sql');
     expect(slim.inspections[0]?.attachments[0]?.dataUrl).toBe('');
+  });
+
+  it('mergeFleetKvAndSql prefiere SQL si misma cantidad de secciones pero distinto contenido', () => {
+    const kv = normalizeFleetDataset({
+      checklistSections: [{ id: 's1', title: 'KV reciente', sortOrder: 0, items: [] }],
+    });
+    const sql = normalizeFleetDataset({
+      checklistSections: [{ id: 's1', title: 'Guardado en SQL', sortOrder: 0, items: [] }],
+    });
+    const merged = mergeFleetKvAndSql(kv, sql);
+    expect(merged.checklistSections[0]?.title).toBe('Guardado en SQL');
   });
 
   it('mergeFleetKvAndSql prefiere inspección con firmas en SQL', () => {

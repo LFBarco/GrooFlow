@@ -3,6 +3,9 @@ import { api } from '../services/api';
 
 export type KvSaveResult = 'saved' | 'skipped' | 'failed';
 
+/** Promesa inicial de cadenas KV (no usar `true` — rompe kvSaveSucceeded). */
+export const KV_CHAIN_IDLE: Promise<KvSaveResult> = Promise.resolve('saved');
+
 /**
  * Encadena `saveKey` por clave KV: cada POST espera al anterior y envía
  * siempre el último snapshot en `latestRef`.

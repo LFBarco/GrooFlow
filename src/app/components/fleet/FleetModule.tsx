@@ -95,6 +95,10 @@ export interface FleetModuleProps {
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
   /** Guardado inmediato en nube (KV + SQL). Si falta, solo actualiza state local. */
   onPersistDataset?: FleetPersistFn;
+  /** Guardado dedicado de la plantilla del checklist (SQL + KV). */
+  onPersistChecklist?: import('../../utils/fleetPersist').FleetChecklistPersistFn;
+  /** Hidratación lista — permite guardar plantilla del checklist en nube. */
+  persistenceReady?: boolean;
   /** Sedes habilitadas / visibles según configuración del sistema y permisos del usuario. */
   visibleSedes?: string[];
   /** Sede predeterminada al registrar un vehículo nuevo. */
@@ -110,7 +114,7 @@ type FleetTab =
   | 'reports'
   | 'inspections';
 
-export function FleetModule({ dataset, setDataset, onPersistDataset, visibleSedes, defaultHomeBase }: FleetModuleProps) {
+export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistChecklist, persistenceReady, visibleSedes, defaultHomeBase }: FleetModuleProps) {
   const [fleetTab, setFleetTab] = useState<FleetTab>('dashboard');
   const kpis = useMemo(() => computeFleetKpis(dataset), [dataset]);
   const alerts = useMemo(() => buildFleetAlerts(dataset), [dataset]);
@@ -352,7 +356,8 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, visibleSede
               <FleetChecklistConfigurator
                 dataset={dataset}
                 setDataset={setDataset}
-                onPersistDataset={onPersistDataset}
+                onPersistChecklist={onPersistChecklist}
+                persistenceReady={persistenceReady}
               />
             </TabsContent>
             <TabsContent value="inspection-global-hist" className="focus-visible:outline-none">

@@ -74,6 +74,19 @@ export const DEFAULT_FLEET_CHECKLIST: FleetChecklistSection[] = [
   },
 ];
 
+export function fleetChecklistSignature(sections: FleetChecklistSection[]): string {
+  try {
+    return JSON.stringify(sections);
+  } catch {
+    return '';
+  }
+}
+
+/** True si las secciones coinciden con la plantilla estándar sin personalizar. */
+export function isDefaultFleetChecklist(sections: FleetChecklistSection[]): boolean {
+  return fleetChecklistSignature(sections) === fleetChecklistSignature(DEFAULT_FLEET_CHECKLIST);
+}
+
 export function getAllChecklistItemIds(sections: FleetChecklistSection[]): string[] {
   const ids: string[] = [];
   for (const s of [...sections].sort((a, b) => a.sortOrder - b.sortOrder)) {

@@ -17,6 +17,7 @@
 
 import { repository, KV_KEYS } from './repository';
 import { getSupabaseClient, isSupabaseKvFatalAuthError } from './repository/supabase';
+import { isAccessTokenExpired } from '../utils/accessToken';
 import { broadcastKvUpdate, shouldBroadcastKvUpdate } from '../utils/kvCrossTabSync';
 import { toast } from 'sonner';
 
@@ -181,11 +182,12 @@ export const api = {
     const result: InitialDataKeys = {};
     const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
 
-    // Refrescar si hay usuario persistido — no basarse en session.refresh_token (el SDK puede no exponerlo).
+    // Solo renovar si el JWT expiró; tras signIn el token ya es válido (evita ~2.5s de espera).
     if (backend === 'supabase') {
       try {
         const { data } = await getSupabaseClient().auth.getSession();
-        if (data.session?.user) {
+        const token = data.session?.access_token;
+        if (data.session?.user && (!token || isAccessTokenExpired(token))) {
           await Promise.race([
             getSupabaseClient().auth.refreshSession(),
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),

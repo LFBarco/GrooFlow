@@ -6,7 +6,7 @@ import {
   loadTransactionsFromSql,
 } from '../services/repository/transactionsSql';
 import type { Transaction } from '../types';
-import { kvPayloadsEqual } from '../utils/kvCrossTabSync';
+import { shouldApplyTransactionsRemoteSnapshot } from '../utils/transactionsRemoteSyncGuard';
 
 /**
  * Realtime multi-dispositivo sobre `public.transactions`.
@@ -14,7 +14,8 @@ import { kvPayloadsEqual } from '../utils/kvCrossTabSync';
 export function useTransactionsRealtimeSync(
   enabled: boolean,
   applyRef: MutableRefObject<((items: Transaction[]) => void) | null>,
-  latestRef: MutableRefObject<Transaction[]>
+  latestRef: MutableRefObject<Transaction[]>,
+  cooldownUntilRef: MutableRefObject<number>
 ): void {
   useEffect(() => {
     if (!enabled || !isTransactionsSqlEnabled()) return;
@@ -36,9 +37,18 @@ export function useTransactionsRealtimeSync(
           }
           return;
         }
-        if (kvPayloadsEqual(latestRef.current, result.data)) return;
-        latestRef.current = result.data;
-        applyRef.current?.(result.data);
+        const remote = result.data;
+        if (
+          !shouldApplyTransactionsRemoteSnapshot(
+            latestRef.current,
+            remote,
+            cooldownUntilRef.current
+          )
+        ) {
+          return;
+        }
+        latestRef.current = remote;
+        applyRef.current?.(remote);
       } finally {
         reloadInFlight = false;
       }
@@ -70,5 +80,5 @@ export function useTransactionsRealtimeSync(
       if (pollTimer) clearInterval(pollTimer);
       void client.removeChannel(channel);
     };
-  }, [enabled, applyRef, latestRef]);
+  }, [enabled, applyRef, latestRef, cooldownUntilRef]);
 }

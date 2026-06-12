@@ -63,4 +63,23 @@ describe('shouldApplyFleetRemoteSnapshot', () => {
     });
     expect(shouldApplyFleetRemoteSnapshot(withVehicle, remote, 0)).toBe(true);
   });
+
+  it('rechaza SQL con checklist distinto al local personalizado', () => {
+    const local = normalizeFleetDataset({
+      checklistSections: [{ id: 's1', title: 'Editado', sortOrder: 0, items: [] }],
+    });
+    const remote = normalizeFleetDataset({
+      checklistSections: [{ id: 's1', title: 'Original', sortOrder: 0, items: [] }],
+    });
+    expect(fleetLocalAheadOfRemote(local, remote)).toBe(true);
+    expect(shouldApplyFleetRemoteSnapshot(local, remote, 0)).toBe(false);
+  });
+
+  it('no trata plantilla por defecto local como más reciente que SQL', () => {
+    const local = normalizeFleetDataset({});
+    const remote = normalizeFleetDataset({
+      checklistSections: [{ id: 's1', title: 'REVISION DE', sortOrder: 0, items: [] }],
+    });
+    expect(fleetLocalAheadOfRemote(local, remote)).toBe(false);
+  });
 });

@@ -1,6 +1,5 @@
-import type { FleetDataset, FleetInspectionRecord } from '../types/fleet';
-import { normalizeFleetDataset } from './fleetData';
-
+import type { FleetDataset, FleetInspectionRecord, FleetChecklistSection } from '../types/fleet';
+import { isDefaultFleetChecklist, normalizeFleetDataset } from './fleetData';
 const KV_TARGET_MAX_BYTES = 3_500_000;
 
 export function estimateFleetDatasetBytes(dataset: FleetDataset): number {
@@ -62,16 +61,33 @@ export function mergeFleetKvAndSql(kv: FleetDataset, sql: FleetDataset): FleetDa
     inspMap.set(ins.id, prev ? pickRicherInspection(prev, ins) : ins);
   }
 
-  const pickLonger = <T>(a: T[], b: T[]) => (a.length >= b.length ? a : b);
+  /** SQL es fuente de verdad para listas operativas (vehículos, mantenimiento, combustible). */
+  const pickOperational = <T>(_kvList: T[], sqlList: T[]) => sqlList;
 
+  const pickChecklist = (
+    kvSections: FleetChecklistSection[],
+    sqlSections: FleetChecklistSection[]
+  ): FleetChecklistSection[] => {
+    const kvSig = JSON.stringify(kvSections);
+    const sqlSig = JSON.stringify(sqlSections);
+    if (kvSig === sqlSig) return kvSections;
+    if (kvSections.length === 0) return sqlSections;
+    if (sqlSections.length === 0) return kvSections;
+    const kvDefault = isDefaultFleetChecklist(kvSections);
+    const sqlDefault = isDefaultFleetChecklist(sqlSections);
+    if (kvDefault && !sqlDefault) return sqlSections;
+    if (sqlDefault && !kvDefault) return kvSections;
+    if (kvSections.length !== sqlSections.length) {
+      return sqlSections;
+    }
+    /** Misma cantidad pero contenido distinto: SQL (tabla fleet_checklist). */
+    return sqlSections;
+  };
   return normalizeFleetDataset({
-    vehicles: pickLonger(nk.vehicles, ns.vehicles),
-    maintenance: pickLonger(nk.maintenance, ns.maintenance),
-    fuelEntries: pickLonger(nk.fuelEntries, ns.fuelEntries),
+    vehicles: pickOperational(nk.vehicles, ns.vehicles),
+    maintenance: pickOperational(nk.maintenance, ns.maintenance),
+    fuelEntries: pickOperational(nk.fuelEntries, ns.fuelEntries),
     inspections: [...inspMap.values()],
-    checklistSections:
-      nk.checklistSections.length >= ns.checklistSections.length
-        ? nk.checklistSections
-        : ns.checklistSections,
+    checklistSections: pickChecklist(nk.checklistSections, ns.checklistSections),
   });
 }

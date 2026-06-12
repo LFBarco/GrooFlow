@@ -1,7 +1,7 @@
 /**
  * Checklist de inspección vehicular (movilidad canina) — configuración, firmas, adjuntos e historial.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ClipboardCheck,
   History,
@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
   User,
   Shield,
+  Loader2,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -28,9 +29,10 @@ import type {
 import {
   computeInspectionCompliance,
   DEFAULT_FLEET_CHECKLIST,
+  fleetChecklistSignature,
   getAllChecklistItemIds,
 } from '../../utils/fleetData';
-import { applyFleetDatasetChange, type FleetPersistFn } from '../../utils/fleetPersist';
+import { applyFleetDatasetChange, type FleetChecklistPersistFn, type FleetPersistFn } from '../../utils/fleetPersist';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -199,87 +201,150 @@ export function SignaturePad({
 
 export function FleetChecklistConfigurator({
   dataset,
-  setDataset,
-  onPersistDataset,
+  onPersistChecklist,
+  persistenceReady = false,
 }: {
   dataset: FleetDataset;
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
-  onPersistDataset?: FleetPersistFn;
+  onPersistChecklist?: FleetChecklistPersistFn;
+  /** True cuando la hidratación terminó y el autoguardado está activo. */
+  persistenceReady?: boolean;
 }) {
-  const sections = dataset.checklistSections?.length ? dataset.checklistSections : DEFAULT_FLEET_CHECKLIST;
-  const persistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistInFlightRef = useRef(false);
+  const propSections = useMemo(
+    () => (dataset.checklistSections?.length ? dataset.checklistSections : DEFAULT_FLEET_CHECKLIST),
+    [dataset.checklistSections]
+  );
 
-  const persistNow = async (
-    nextSections: FleetChecklistSection[],
-    successMessage?: string
-  ): Promise<boolean> => {
-    let next!: FleetDataset;
-    setDataset((prev) => {
-      next = { ...prev, checklistSections: nextSections };
-      return next;
-    });
-    if (persistInFlightRef.current) {
-      await new Promise((r) => setTimeout(r, 120));
-    }
-    persistInFlightRef.current = true;
-    try {
-      return await applyFleetDatasetChange(
-        setDataset,
-        onPersistDataset,
-        next,
-        successMessage ?? 'Plantilla de checklist actualizada.'
-      );
-    } finally {
-      persistInFlightRef.current = false;
-    }
-  };
+  const [localSections, setLocalSections] = useState(propSections);
+  const [saveState, setSaveState] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
 
-  const persistDebounced = (nextSections: FleetChecklistSection[]) => {
-    if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
-    persistDebounceRef.current = setTimeout(() => {
-      void persistNow(nextSections);
-    }, 600);
-  };
+  const localSigRef = useRef(fleetChecklistSignature(propSections));
+  const isSavingRef = useRef(false);
+  const persistRef = useRef(onPersistChecklist);
+  const readyRef = useRef(persistenceReady);
+  persistRef.current = onPersistChecklist;
+  readyRef.current = persistenceReady;
 
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSectionsRef = useRef<FleetChecklistSection[] | null>(null);
+
+  /** Sincroniza desde nube/recarga sin pisar edición en curso. */
   useEffect(() => {
-    return () => {
-      if (persistDebounceRef.current) clearTimeout(persistDebounceRef.current);
-    };
+    if (isSavingRef.current || saveState === 'pending' || saveState === 'saving') return;
+    const propSig = fleetChecklistSignature(propSections);
+    if (propSig !== localSigRef.current) {
+      localSigRef.current = propSig;
+      setLocalSections(propSections);
+      setSaveState('idle');
+    }
+  }, [propSections, saveState]);
+
+  const flushPersist = useCallback(async () => {
+    const persist = persistRef.current;
+    if (!persist || !readyRef.current || !pendingSectionsRef.current) return;
+    const toSave = pendingSectionsRef.current;
+    pendingSectionsRef.current = null;
+    isSavingRef.current = true;
+    setSaveState('saving');
+    const ok = await persist(toSave, { silent: true });
+    isSavingRef.current = false;
+    if (ok) {
+      localSigRef.current = fleetChecklistSignature(toSave);
+      setSaveState('saved');
+      if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+      savedFadeTimerRef.current = setTimeout(() => setSaveState('idle'), 2500);
+    } else {
+      setSaveState('error');
+      toast.error('No se pudo guardar la plantilla. Revisa conexión e intenta de nuevo.');
+    }
   }, []);
 
+  const schedulePersist = useCallback(
+    (persistNow?: boolean) => {
+      if (!persistRef.current) return;
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      if (persistNow && readyRef.current) {
+        persistTimerRef.current = null;
+        void flushPersist();
+        return;
+      }
+      setSaveState('pending');
+      persistTimerRef.current = setTimeout(() => {
+        persistTimerRef.current = null;
+        void flushPersist();
+      }, 450);
+    },
+    [flushPersist]
+  );
+
+  useEffect(() => {
+    if (!persistenceReady) return;
+    if (pendingSectionsRef.current) {
+      void flushPersist();
+    }
+  }, [persistenceReady, flushPersist]);
+
+  useEffect(
+    () => () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+      if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+      if (pendingSectionsRef.current && persistRef.current && readyRef.current) {
+        void persistRef.current(pendingSectionsRef.current, { silent: true });
+      }
+    },
+    []
+  );
+
+  const withSections = (
+    updater: (current: FleetChecklistSection[]) => FleetChecklistSection[],
+    options?: { persistNow?: boolean }
+  ) => {
+    setLocalSections((prev) => {
+      const current = prev.length ? prev : DEFAULT_FLEET_CHECKLIST;
+      const nextSections = updater(current);
+      pendingSectionsRef.current = nextSections;
+      schedulePersist(options?.persistNow);
+      return nextSections;
+    });
+  };
+
   const addSection = () => {
-    const id = fleetNewId('fc_sec');
-    void persistNow([
-      ...sections.map((s, i) => ({ ...s, sortOrder: i })),
-      { id, title: 'Nueva categoría', sortOrder: sections.length, items: [] },
-    ]);
+    withSections((current) => {
+      const id = fleetNewId('fc_sec');
+      return [
+        ...current.map((s, i) => ({ ...s, sortOrder: i })),
+        { id, title: 'Nueva categoría', sortOrder: current.length, items: [] },
+      ];
+    }, { persistNow: true });
   };
 
   const updateSectionTitle = (id: string, title: string) => {
-    persistDebounced(sections.map((s) => (s.id === id ? { ...s, title } : s)));
+    withSections((current) => current.map((s) => (s.id === id ? { ...s, title } : s)));
   };
 
   const moveSection = (id: string, dir: -1 | 1) => {
-    const idx = sections.findIndex((s) => s.id === id);
-    const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= sections.length) return;
-    const copy = [...sections];
-    const [sp] = copy.splice(idx, 1);
-    copy.splice(j, 0, sp);
-    void persistNow(copy.map((s, i) => ({ ...s, sortOrder: i })));
+    withSections((current) => {
+      const idx = current.findIndex((s) => s.id === id);
+      const j = idx + dir;
+      if (idx < 0 || j < 0 || j >= current.length) return current;
+      const copy = [...current];
+      const [sp] = copy.splice(idx, 1);
+      copy.splice(j, 0, sp);
+      return copy.map((s, i) => ({ ...s, sortOrder: i }));
+    });
   };
 
   const removeSection = (id: string) => {
     if (!confirm('¿Eliminar esta categoría y todos sus ítems?')) return;
-    void persistNow(sections.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i })));
+    withSections((current) => current.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i })));
   };
 
   const addItem = (sectionId: string) => {
-    const itemId = fleetNewId('fc_it');
-    void persistNow(
-      sections.map((s) => {
+    withSections((current) =>
+      current.map((s) => {
         if (s.id !== sectionId) return s;
+        const itemId = fleetNewId('fc_it');
         return {
           ...s,
           items: [
@@ -292,8 +357,8 @@ export function FleetChecklistConfigurator({
   };
 
   const updateItemLabel = (sectionId: string, itemId: string, label: string) => {
-    persistDebounced(
-      sections.map((s) => {
+    withSections((current) =>
+      current.map((s) => {
         if (s.id !== sectionId) return s;
         return {
           ...s,
@@ -304,8 +369,8 @@ export function FleetChecklistConfigurator({
   };
 
   const moveItem = (sectionId: string, itemId: string, dir: -1 | 1) => {
-    void persistNow(
-      sections.map((s) => {
+    withSections((current) =>
+      current.map((s) => {
         if (s.id !== sectionId) return s;
         const idx = s.items.findIndex((i) => i.id === itemId);
         const j = idx + dir;
@@ -319,8 +384,8 @@ export function FleetChecklistConfigurator({
   };
 
   const removeItem = (sectionId: string, itemId: string) => {
-    void persistNow(
-      sections.map((s) => {
+    withSections((current) =>
+      current.map((s) => {
         if (s.id !== sectionId) return s;
         return { ...s, items: s.items.filter((it) => it.id !== itemId) };
       })
@@ -329,11 +394,29 @@ export function FleetChecklistConfigurator({
 
   const restoreDefault = () => {
     if (!confirm('¿Restaurar plantilla estándar de movilidad canina? Se perderán los cambios actuales.')) return;
-    void persistNow(
-      JSON.parse(JSON.stringify(DEFAULT_FLEET_CHECKLIST)) as FleetChecklistSection[],
-      'Plantilla estándar restaurada.'
+    withSections(
+      () => JSON.parse(JSON.stringify(DEFAULT_FLEET_CHECKLIST)) as FleetChecklistSection[],
+      { persistNow: true }
     );
   };
+
+  const saveStatusLabel =
+    !persistenceReady
+      ? 'Cargando plantilla…'
+      : saveState === 'pending'
+        ? 'Autoguardado…'
+        : saveState === 'saving'
+          ? 'Guardando…'
+          : saveState === 'saved'
+            ? 'Guardado'
+            : saveState === 'error'
+              ? 'Error al guardar — reintenta editando'
+              : onPersistChecklist
+                ? 'Autoguardado activo'
+                : null;
+
+  const showSpinner =
+    !persistenceReady || saveState === 'pending' || saveState === 'saving';
 
   return (
     <div className="space-y-4">
@@ -341,7 +424,23 @@ export function FleetChecklistConfigurator({
         <p className="text-sm text-slate-400 max-w-2xl">
           Defina categorías e ítems. Cada inspección evaluará <strong className="text-white">Cumple / No cumple</strong> y calculará el % de cumplimiento vinculado al conductor.
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {saveStatusLabel && (
+            <span
+              className={`inline-flex items-center text-xs ${
+                saveState === 'error'
+                  ? 'text-red-400'
+                  : saveState === 'saved'
+                    ? 'text-emerald-400'
+                    : showSpinner
+                      ? 'text-slate-400'
+                      : 'text-slate-500'
+              }`}
+            >
+              {showSpinner && <Loader2 className="h-3 w-3 mr-1 animate-spin shrink-0" />}
+              {saveStatusLabel}
+            </span>
+          )}
           <Button variant="outline" size="sm" className="border-white/15" onClick={restoreDefault}>
             Restaurar plantilla
           </Button>
@@ -353,7 +452,7 @@ export function FleetChecklistConfigurator({
       </div>
 
       <div className="grid gap-4">
-        {sections.map((sec) => (
+        {localSections.map((sec) => (
           <Card key={sec.id} className="border-white/10 bg-slate-950/70 text-white">
             <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
               <div className="flex-1 space-y-2">

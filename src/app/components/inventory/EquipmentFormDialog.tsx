@@ -58,6 +58,7 @@ type EquipmentFormDialogProps = {
   onChange: (equipment: InventoryEquipment) => void;
   onRegenerateCode: () => void;
   onSave: () => void;
+  onDelete?: () => void;
   applyGeneratedCode: (draft: InventoryEquipment) => InventoryEquipment;
 };
 
@@ -72,6 +73,7 @@ export function EquipmentFormDialog({
   onChange,
   onRegenerateCode,
   onSave,
+  onDelete,
   applyGeneratedCode,
 }: EquipmentFormDialogProps) {
   if (!equipment) return null;
@@ -351,7 +353,7 @@ export function EquipmentFormDialog({
               description="Programación y proveedor de servicio"
             >
               <div className="grid sm:grid-cols-2 gap-4">
-                <FormField label="Próximo mantenimiento">
+                <FormField label="Próximo mantenimiento" hint="Al guardar, se crea o actualiza un registro en Mantenimientos.">
                   <Input
                     type="date"
                     value={equipment.nextMaintenanceDate || ''}
@@ -438,13 +440,22 @@ export function EquipmentFormDialog({
           </aside>
         </div>
 
-        <DialogFooter className="px-6 py-4 border-t bg-muted/10 gap-2 sm:gap-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={onSave}>
-            {isNew ? 'Registrar equipo' : 'Guardar cambios'}
-          </Button>
+        <DialogFooter className="px-6 py-4 border-t bg-muted/10 gap-2 sm:justify-between">
+          <div>
+            {onDelete && (
+              <Button type="button" variant="destructive" onClick={onDelete}>
+                Eliminar equipo
+              </Button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={onSave}>
+              {isNew ? 'Registrar equipo' : 'Guardar cambios'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

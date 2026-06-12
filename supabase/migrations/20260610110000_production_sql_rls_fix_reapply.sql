@@ -10,6 +10,10 @@ DROP POLICY IF EXISTS purchaserequests_select_collaborative ON public.purchase_r
 DROP POLICY IF EXISTS purchaserequests_insert_collaborative ON public.purchase_requests;
 DROP POLICY IF EXISTS purchaserequests_update_collaborative ON public.purchase_requests;
 DROP POLICY IF EXISTS purchaserequests_delete_collaborative ON public.purchase_requests;
+DROP POLICY IF EXISTS pr_select_collaborative ON public.purchase_requests;
+DROP POLICY IF EXISTS pr_insert_collaborative ON public.purchase_requests;
+DROP POLICY IF EXISTS pr_update_collaborative ON public.purchase_requests;
+DROP POLICY IF EXISTS pr_delete_collaborative ON public.purchase_requests;
 
 CREATE POLICY pr_select_collaborative ON public.purchase_requests
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
@@ -29,6 +33,10 @@ DROP POLICY IF EXISTS invoices_select_collaborative ON public.invoices;
 DROP POLICY IF EXISTS invoices_insert_collaborative ON public.invoices;
 DROP POLICY IF EXISTS invoices_update_collaborative ON public.invoices;
 DROP POLICY IF EXISTS invoices_delete_collaborative ON public.invoices;
+DROP POLICY IF EXISTS inv_select_collaborative ON public.invoices;
+DROP POLICY IF EXISTS inv_insert_collaborative ON public.invoices;
+DROP POLICY IF EXISTS inv_update_collaborative ON public.invoices;
+DROP POLICY IF EXISTS inv_delete_collaborative ON public.invoices;
 
 CREATE POLICY inv_select_collaborative ON public.invoices
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
@@ -48,6 +56,10 @@ DROP POLICY IF EXISTS pettycashtransactions_select_collaborative ON public.petty
 DROP POLICY IF EXISTS pettycashtransactions_insert_collaborative ON public.petty_cash_transactions;
 DROP POLICY IF EXISTS pettycashtransactions_update_collaborative ON public.petty_cash_transactions;
 DROP POLICY IF EXISTS pettycashtransactions_delete_collaborative ON public.petty_cash_transactions;
+DROP POLICY IF EXISTS pc_select_collaborative ON public.petty_cash_transactions;
+DROP POLICY IF EXISTS pc_insert_collaborative ON public.petty_cash_transactions;
+DROP POLICY IF EXISTS pc_update_collaborative ON public.petty_cash_transactions;
+DROP POLICY IF EXISTS pc_delete_collaborative ON public.petty_cash_transactions;
 
 CREATE POLICY pc_select_collaborative ON public.petty_cash_transactions
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
@@ -67,6 +79,10 @@ DROP POLICY IF EXISTS providers_select_collaborative ON public.providers;
 DROP POLICY IF EXISTS providers_insert_collaborative ON public.providers;
 DROP POLICY IF EXISTS providers_update_collaborative ON public.providers;
 DROP POLICY IF EXISTS providers_delete_collaborative ON public.providers;
+DROP POLICY IF EXISTS prov_select_collaborative ON public.providers;
+DROP POLICY IF EXISTS prov_insert_collaborative ON public.providers;
+DROP POLICY IF EXISTS prov_update_collaborative ON public.providers;
+DROP POLICY IF EXISTS prov_delete_collaborative ON public.providers;
 
 CREATE POLICY prov_select_collaborative ON public.providers
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
@@ -87,6 +103,10 @@ DROP POLICY IF EXISTS appusers_select_collaborative ON public.app_users;
 DROP POLICY IF EXISTS appusers_insert_collaborative ON public.app_users;
 DROP POLICY IF EXISTS appusers_update_collaborative ON public.app_users;
 DROP POLICY IF EXISTS appusers_delete_collaborative ON public.app_users;
+DROP POLICY IF EXISTS au_select_collaborative ON public.app_users;
+DROP POLICY IF EXISTS au_insert_collaborative ON public.app_users;
+DROP POLICY IF EXISTS au_update_collaborative ON public.app_users;
+DROP POLICY IF EXISTS au_delete_collaborative ON public.app_users;
 
 CREATE POLICY au_select_collaborative ON public.app_users
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);
@@ -108,6 +128,10 @@ DROP POLICY IF EXISTS roles_select_collaborative ON public.roles;
 DROP POLICY IF EXISTS roles_insert_collaborative ON public.roles;
 DROP POLICY IF EXISTS roles_update_collaborative ON public.roles;
 DROP POLICY IF EXISTS roles_delete_collaborative ON public.roles;
+DROP POLICY IF EXISTS role_select_collaborative ON public.roles;
+DROP POLICY IF EXISTS role_insert_collaborative ON public.roles;
+DROP POLICY IF EXISTS role_update_collaborative ON public.roles;
+DROP POLICY IF EXISTS role_delete_collaborative ON public.roles;
 
 CREATE POLICY role_select_collaborative ON public.roles
   FOR SELECT TO authenticated USING (auth.uid() IS NOT NULL);

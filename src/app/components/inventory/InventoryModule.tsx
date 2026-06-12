@@ -16,6 +16,7 @@ import {
   XCircle,
   Settings2,
   QrCode,
+  Trash2,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -49,6 +50,8 @@ import {
   categoryDistribution,
   computeInventoryKpis,
   computeUsefulLifePercent,
+  applyEquipmentMaintenanceSync,
+  equipmentMaintenanceWasSynced,
   findEquipmentFromScan,
   getEquipmentById,
   maintenanceTotalCost,
@@ -279,16 +282,49 @@ export function InventoryModule({
       updatedAt: t,
       createdAt: equipmentDialog.createdAt || t,
     };
-    const next = isNewEquipment
+    const nextBase = isNewEquipment
       ? { ...dataset, equipment: [...dataset.equipment, row] }
       : {
           ...dataset,
           equipment: dataset.equipment.map((e) => (e.id === row.id ? row : e)),
         };
-    const ok = await persist(next, isNewEquipment ? 'Equipo registrado.' : 'Equipo actualizado.');
+    const next = applyEquipmentMaintenanceSync(nextBase, row);
+    const maintSynced = equipmentMaintenanceWasSynced(dataset, next, row.id);
+    const ok = await persist(
+      next,
+      isNewEquipment
+        ? maintSynced
+          ? 'Equipo registrado. Mantenimiento programado en el calendario.'
+          : 'Equipo registrado.'
+        : maintSynced
+          ? 'Equipo actualizado. Mantenimiento sincronizado en Mantenimientos.'
+          : 'Equipo actualizado.'
+    );
     if (ok) {
       setEquipmentDialog(null);
       setIsNewEquipment(false);
+    }
+  };
+
+  const deleteEquipment = async (target: InventoryEquipment) => {
+    const maintCount = dataset.maintenance.filter((m) => m.equipmentId === target.id).length;
+    const msg =
+      maintCount > 0
+        ? `¿Eliminar "${target.name}" (${target.code})? También se quitarán ${maintCount} mantenimiento(s) vinculado(s). Esta acción no se puede deshacer.`
+        : `¿Eliminar "${target.name}" (${target.code})? Esta acción no se puede deshacer.`;
+    if (!confirm(msg)) return;
+
+    const next: InventoryDataset = {
+      ...dataset,
+      equipment: dataset.equipment.filter((e) => e.id !== target.id),
+      maintenance: dataset.maintenance.filter((m) => m.equipmentId !== target.id),
+    };
+    const ok = await persist(next, 'Equipo eliminado.');
+    if (ok) {
+      if (equipmentDialog?.id === target.id) {
+        setEquipmentDialog(null);
+        setIsNewEquipment(false);
+      }
     }
   };
 
@@ -364,10 +400,6 @@ export function InventoryModule({
           <Button variant="outline" size="sm" onClick={() => setQrScannerOpen(true)}>
             <QrCode className="h-4 w-4 mr-1" />
             Escanear QR
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setCategoryConfigOpen(true)}>
-            <Settings2 className="h-4 w-4 mr-1" />
-            Categorías
           </Button>
         </div>
       </div>
@@ -633,7 +665,25 @@ export function InventoryModule({
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{formatCurrencyEs(e.currentValue)}</TableCell>
                     <TableCell><UsefulLifeBar percent={computeUsefulLifePercent(e)} /></TableCell>
-                    <TableCell><ChevronRight className="h-4 w-4 text-muted-foreground" /></TableCell>
+                    <TableCell>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                          title="Eliminar equipo"
+                          aria-label={`Eliminar ${e.name}`}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            void deleteEquipment(e);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -736,6 +786,7 @@ export function InventoryModule({
         onChange={setEquipmentDialog}
         onRegenerateCode={regenerateEquipmentCode}
         onSave={() => void saveEquipment()}
+        onDelete={!isNewEquipment && equipmentDialog ? () => void deleteEquipment(equipmentDialog) : undefined}
         applyGeneratedCode={applyGeneratedCode}
       />
 

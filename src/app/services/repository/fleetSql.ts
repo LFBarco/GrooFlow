@@ -166,6 +166,26 @@ export type FleetSqlSaveResult = {
   errors: string[];
 };
 
+/** Guarda solo la plantilla del checklist (tabla fleet_checklist). */
+export async function saveFleetChecklistToSql(
+  client: SupabaseClient,
+  sections: FleetChecklistSection[]
+): Promise<FleetSqlSaveResult> {
+  const { error } = await client.from('fleet_checklist').upsert(
+    {
+      id: 'default',
+      sections,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  );
+  if (error) {
+    console.warn('[fleetSql] upsert fleet_checklist', error);
+    return { ok: false, errors: [`fleet_checklist: ${error.message}`] };
+  }
+  return { ok: true, errors: [] };
+}
+
 export async function saveFleetToSql(
   client: SupabaseClient,
   dataset: FleetDataset,

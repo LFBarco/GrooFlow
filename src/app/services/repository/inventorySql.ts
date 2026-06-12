@@ -116,13 +116,19 @@ export async function saveInventoryToSql(
 
   const prune = async (table: string, keepIds: Set<string>) => {
     const { ids: existing, errors: listErrors } = await fetchAllRowIds(client, table);
-    if (listErrors.length > 0) return;
+    if (listErrors.length > 0) {
+      errors.push(...listErrors.map((e) => `${table} list: ${e}`));
+      return false;
+    }
     const toDelete = existing.filter((id) => !keepIds.has(id));
-    if (toDelete.length === 0) return;
+    if (toDelete.length === 0) return true;
     const deleteErrors = await deleteRowsByIdBatched(client, table, toDelete);
     if (deleteErrors.length > 0) {
       console.warn(`[inventorySql] prune delete ${table}`, deleteErrors);
+      errors.push(...deleteErrors.map((e) => `${table} delete: ${e}`));
+      return false;
     }
+    return true;
   };
 
   const results = await Promise.all([
@@ -133,10 +139,13 @@ export async function saveInventoryToSql(
   if (results.every(Boolean)) {
     const isEmpty = dataset.equipment.length === 0 && dataset.maintenance.length === 0;
     if (!isEmpty || options?.allowPruneWhenEmpty) {
-      await Promise.all([
+      const pruneResults = await Promise.all([
         prune('inventory_equipment', new Set(dataset.equipment.map((e) => e.id))),
         prune('inventory_maintenance', new Set(dataset.maintenance.map((m) => m.id))),
       ]);
+      if (!pruneResults.every(Boolean)) {
+        return { ok: false, errors };
+      }
     }
   }
 

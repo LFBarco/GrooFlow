@@ -1,13 +1,10 @@
-import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { toast } from 'sonner';
 
-import {
-  saveProvidersToSql,
-} from '../services/repository/businessDomainsSql';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { saveProvidersToSql } from '../services/repository/businessDomainsSql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import type { Provider } from '../types';
-import { backupDomainSqlAfterKvSave, ensureSqlSave } from '../utils/sqlAutosaveBackup';
+import { backupDomainSqlAfterKvSave } from '../utils/sqlAutosaveBackup';
 import { DOMAIN_KV_COOLDOWN_MS } from './persistence/domainKvCooldown';
 import {
   enqueueKvSerializedSave,
@@ -16,6 +13,16 @@ import {
 } from '../utils/kvSerializedSave';
 
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
+const PROVIDERS_KV_SAVE_TIMEOUT_MS = 45_000;
+
+function withKvSaveTimeout(promise: Promise<KvSaveResult>): Promise<KvSaveResult> {
+  return Promise.race([
+    promise,
+    new Promise<KvSaveResult>((resolve) => {
+      setTimeout(() => resolve('failed'), PROVIDERS_KV_SAVE_TIMEOUT_MS);
+    }),
+  ]);
+}
 
 export type UseProvidersPersistenceOptions = {
   isDataLoaded: boolean;
@@ -46,8 +53,12 @@ export function useProvidersPersistence(options: UseProvidersPersistenceOptions)
     lastSaveErrorAtRef,
   } = options;
 
+  /** Evita que el autosave compita con guardado explícito (formulario proveedores). */
+  const skipExplicitAutosaveRef = useRef(false);
+
   useEffect(() => {
     if (!isDataLoaded || !cloudHydrationDoneRef.current || !hydratedRef.current) return;
+    if (skipExplicitAutosaveRef.current) return;
     void enqueueKvSerializedSave(
       chainRef,
       kvApplyGenerationRef,
@@ -80,9 +91,9 @@ export function useProvidersPersistence(options: UseProvidersPersistenceOptions)
 
   const handleUpdateProviders = useCallback(
     async (next: Provider[]): Promise<boolean> => {
-      if (!isDataLoaded) {
+      if (!isDataLoaded || !hydratedRef.current) {
         toast.error(
-          'Los datos siguen cargando desde la nube. Espera el aviso «Datos sincronizados con la nube» y vuelve a intentar.'
+          'Los datos siguen cargando desde la nube. Espera unos segundos e intenta de nuevo.'
         );
         return false;
       }
@@ -97,37 +108,47 @@ export function useProvidersPersistence(options: UseProvidersPersistenceOptions)
         return false;
       }
 
+      skipExplicitAutosaveRef.current = true;
       skipHydrateRef.current = true;
       try {
         latestRef.current = clean;
+        setProviders(next);
 
-        if (PRODUCTION_USE_SQL) {
-          const { data: sess } = await getSupabaseClient().auth.getSession();
-          const sqlOk = await ensureSqlSave(
-            true,
+        const result = await withKvSaveTimeout(
+          enqueueKvSerializedSave(
+            chainRef,
+            kvApplyGenerationRef,
+            latestRef,
             'data:providers',
-            () => saveProvidersToSql(getSupabaseClient(), clean, sess.session?.user?.id ?? null),
-            lastSaveErrorAtRef
-          );
-          if (!sqlOk) return false;
-        }
-
-        const result = await enqueueKvSerializedSave(
-          chainRef,
-          kvApplyGenerationRef,
-          latestRef,
-          'data:providers',
-          clean
+            clean
+          )
         );
+
+        if (result === 'skipped') {
+          toast.error('Guardado interrumpido (recarga de sesión). Intenta de nuevo.');
+          return false;
+        }
         if (!kvSaveSucceeded(result)) {
           toast.error(
-            'No se guardó el directorio en la nube (red, sesión o límite de tamaño). Reintenta sin cerrar sesión.'
+            result === 'failed'
+              ? 'Tiempo agotado o error al guardar proveedores en la nube. Revisa conexión e intenta de nuevo.'
+              : 'No se guardó el directorio en la nube. Reintenta sin cerrar sesión.'
           );
           return false;
         }
+
         cooldownUntilRef.current = Date.now() + DOMAIN_KV_COOLDOWN_MS;
         hydratedRef.current = true;
-        setProviders(next);
+
+        if (PRODUCTION_USE_SQL) {
+          void backupDomainSqlAfterKvSave(
+            true,
+            'data:providers',
+            clean,
+            saveProvidersToSql,
+            lastSaveErrorAtRef
+          );
+        }
         return true;
       } catch (e) {
         console.warn('[GrooFlow] providers persist:', e);
@@ -135,6 +156,7 @@ export function useProvidersPersistence(options: UseProvidersPersistenceOptions)
         return false;
       } finally {
         skipHydrateRef.current = false;
+        skipExplicitAutosaveRef.current = false;
       }
     },
     [isDataLoaded, setProviders]

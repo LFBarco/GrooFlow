@@ -96,13 +96,16 @@ export async function resolveAppKvFromSql<T>(
   }
 
   if (sqlLoad.ok && sqlLoad.data != null && !isEmpty(sqlLoad.data)) {
-    if (
-      Array.isArray(sqlLoad.data) &&
-      Array.isArray(kvValue) &&
-      kvValue.length > sqlLoad.data.length
-    ) {
-      if (userId) await migrateAppKvKey(client, key, kvValue, userId);
-      return kvValue;
+    if (Array.isArray(sqlLoad.data) && Array.isArray(kvValue)) {
+      const sqlArr = sqlLoad.data as { id: string }[];
+      const kvArr = kvValue as { id: string }[];
+      const sqlIds = new Set(sqlArr.map((r) => r.id));
+      const kvOnly = kvArr.filter((r) => !sqlIds.has(r.id));
+      if (kvOnly.length > 0) {
+        const merged = [...sqlArr, ...kvOnly] as T;
+        if (userId) await migrateAppKvKey(client, key, merged, userId);
+        return merged;
+      }
     }
     return sqlLoad.data;
   }

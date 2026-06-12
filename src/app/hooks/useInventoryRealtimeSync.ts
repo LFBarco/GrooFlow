@@ -3,13 +3,14 @@ import { useEffect, type MutableRefObject } from 'react';
 import { getSupabaseClient } from '../services/repository/supabase';
 import { isInventorySqlEnabled, loadInventoryFromSql } from '../services/repository/inventorySql';
 import { normalizeInventoryDataset } from '../utils/inventoryData';
-import { kvPayloadsEqual } from '../utils/kvCrossTabSync';
+import { shouldApplyInventoryRemoteSnapshot } from '../utils/inventoryRemoteSyncGuard';
 import type { InventoryDataset } from '../types/inventory';
 
 export function useInventoryRealtimeSync(
   enabled: boolean,
   applyRef: MutableRefObject<((dataset: InventoryDataset) => void) | null>,
-  latestRef: MutableRefObject<InventoryDataset>
+  latestRef: MutableRefObject<InventoryDataset>,
+  cooldownUntilRef: MutableRefObject<number>
 ): void {
   useEffect(() => {
     if (!enabled || !isInventorySqlEnabled()) return;
@@ -31,9 +32,18 @@ export function useInventoryRealtimeSync(
           }
           return;
         }
-        if (kvPayloadsEqual(latestRef.current, result.data)) return;
-        latestRef.current = result.data;
-        applyRef.current?.(normalizeInventoryDataset(result.data));
+        const remote = normalizeInventoryDataset(result.data);
+        if (
+          !shouldApplyInventoryRemoteSnapshot(
+            latestRef.current,
+            remote,
+            cooldownUntilRef.current
+          )
+        ) {
+          return;
+        }
+        latestRef.current = remote;
+        applyRef.current?.(remote);
       } finally {
         reloadInFlight = false;
       }
@@ -62,5 +72,5 @@ export function useInventoryRealtimeSync(
       if (pollTimer) clearInterval(pollTimer);
       void client.removeChannel(channel);
     };
-  }, [enabled, applyRef, latestRef]);
+  }, [enabled, applyRef, latestRef, cooldownUntilRef]);
 }

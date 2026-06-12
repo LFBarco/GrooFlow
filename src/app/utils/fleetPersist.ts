@@ -1,8 +1,13 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { toast } from 'sonner';
-import type { FleetDataset } from '../types/fleet';
+import type { FleetChecklistSection, FleetDataset } from '../types/fleet';
 
 export type FleetPersistFn = (next: FleetDataset, successMessage?: string) => Promise<boolean>;
+
+export type FleetChecklistPersistFn = (
+  sections: FleetChecklistSection[],
+  options?: { silent?: boolean }
+) => Promise<boolean>;
 
 /** Aplica cambio local o persistencia inmediata en nube si está disponible. */
 export async function applyFleetDatasetChange(

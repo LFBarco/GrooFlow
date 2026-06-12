@@ -1,7 +1,6 @@
 import type { FleetDataset } from '../types/fleet';
-import { normalizeFleetDataset } from './fleetData';
+import { isDefaultFleetChecklist, normalizeFleetDataset } from './fleetData';
 import { kvPayloadsEqual } from './kvCrossTabSync';
-
 export function fleetOperationalCounts(dataset: FleetDataset) {
   return {
     vehicles: dataset.vehicles.length,
@@ -14,6 +13,14 @@ export function fleetOperationalCounts(dataset: FleetDataset) {
 function hasFleetOperationalData(dataset: FleetDataset): boolean {
   const c = fleetOperationalCounts(dataset);
   return c.vehicles > 0 || c.maintenance > 0 || c.fuelEntries > 0 || c.inspections > 0;
+}
+
+export function checklistSectionsSignature(dataset: FleetDataset): string {
+  try {
+    return JSON.stringify(normalizeFleetDataset(dataset).checklistSections);
+  } catch {
+    return '';
+  }
 }
 
 /** Marca de tiempo más reciente en el dataset (vehículos, mantenimiento, etc.). */
@@ -36,15 +43,22 @@ export function maxFleetDatasetTimestamp(dataset: FleetDataset): number {
 
 /** Local tiene más registros o timestamps más recientes que SQL desactualizado. */
 export function fleetLocalAheadOfRemote(local: FleetDataset, remote: FleetDataset): boolean {
-  const lc = fleetOperationalCounts(local);
+  const normalizedLocal = normalizeFleetDataset(local);
+  const lc = fleetOperationalCounts(normalizedLocal);
   const rc = fleetOperationalCounts(remote);
   if (lc.vehicles > rc.vehicles) return true;
   if (lc.maintenance > rc.maintenance) return true;
   if (lc.fuelEntries > rc.fuelEntries) return true;
   if (lc.inspections > rc.inspections) return true;
-  const localTs = maxFleetDatasetTimestamp(local);
+  const localTs = maxFleetDatasetTimestamp(normalizedLocal);
   const remoteTs = maxFleetDatasetTimestamp(remote);
   if (localTs > remoteTs + 1000) return true;
+  if (
+    checklistSectionsSignature(normalizedLocal) !== checklistSectionsSignature(remote) &&
+    !isDefaultFleetChecklist(normalizedLocal.checklistSections)
+  ) {
+    return true;
+  }
   return false;
 }
 

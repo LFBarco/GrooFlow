@@ -64,8 +64,7 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
           TRANSACTIONS_USE_SQL,
           'data:transactions',
           transactions,
-          (client, data, uid) =>
-            (client, data, uid) => saveTransactionsToSql(client, data, uid),
+          (client, data, uid) => saveTransactionsToSql(client, data, uid),
           lastSaveErrorAtRef
         );
         return;

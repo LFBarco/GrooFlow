@@ -1028,9 +1028,12 @@ export async function resolveListFromSql<T extends { id: string }>(
   const sqlData = sqlLoad.data ?? [];
 
   if (sqlData.length > 0) {
-    if (kvList.length > sqlData.length) {
-      if (userId) await migrate(kvList, userId);
-      return kvList;
+    const sqlIds = new Set(sqlData.map((r) => r.id));
+    const kvOnly = kvList.filter((r) => !sqlIds.has(r.id));
+    if (kvOnly.length > 0) {
+      const merged = [...sqlData, ...kvOnly];
+      if (userId) await migrate(merged, userId);
+      return merged;
     }
     return sqlData;
   }
