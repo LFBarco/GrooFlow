@@ -44,6 +44,20 @@ describe('fleetKvPayload', () => {
     expect(merged.checklistSections[0]?.title).toBe('Guardado en SQL');
   });
 
+  it('mergeFleetKvAndSql respeta borrado en KV cuando SQL aún tiene el vehículo', () => {
+    const kv = normalizeFleetDataset({
+      vehicles: [{ id: 'v1', plate: 'ABC-123', status: 'active', createdAt: '2026-06-10T10:00:00.000Z' }],
+    });
+    const sql = normalizeFleetDataset({
+      vehicles: [
+        { id: 'v1', plate: 'ABC-123', status: 'active', createdAt: '2026-06-10T10:00:00.000Z' },
+        { id: 'v2', plate: 'XYZ-999', status: 'active', createdAt: '2026-06-10T10:00:00.000Z' },
+      ],
+    });
+    const merged = mergeFleetKvAndSql(kv, sql);
+    expect(merged.vehicles.map((v) => v.id)).toEqual(['v1']);
+  });
+
   it('mergeFleetKvAndSql prefiere inspección con firmas en SQL', () => {
     const kv = normalizeFleetDataset({
       inspections: [

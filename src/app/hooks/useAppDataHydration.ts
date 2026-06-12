@@ -65,7 +65,7 @@ import type { FleetDataset } from '../types/fleet';
 import type { InventoryDataset } from '../types/inventory';
 import { createDemoFleetDataset, normalizeFleetDataset } from '../utils/fleetData';
 import { isFleetDatasetEmpty } from '../utils/fleetDatasetEmpty';
-import { mergeFleetKvAndSql } from '../utils/fleetKvPayload';
+import { mergeFleetKvAndSql, slimFleetDatasetForKv } from '../utils/fleetKvPayload';
 import { mergeInventoryKvAndSql } from '../utils/inventoryKvPayload';
 import { normalizeInventoryDataset } from '../utils/inventoryData';
 import { isInventoryDatasetEmpty } from '../utils/inventoryDatasetEmpty';
@@ -885,12 +885,14 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 nextFleet = kvHasData
                   ? mergeFleetKvAndSql(kvFleet!, sqlLoad.data)
                   : sqlLoad.data;
-                void api.saveKey('data:fleet', nextFleet).then((ok) => {
+                void api.saveKey('data:fleet', slimFleetDatasetForKv(nextFleet)).then((ok) => {
                   if (!ok) console.warn('[hydration] fleet SQL→KV backup failed');
                 });
               } else if (sqlLoad.ok && sqlLoad.data && sqlLoad.empty) {
                 nextFleet = sqlLoad.data;
-                void api.saveKey('data:fleet', nextFleet).catch(() => undefined);
+                void api.saveKey('data:fleet', normalizeFleetDataset({})).catch(() => undefined);
+              } else if (kvHasData && sqlLoad.ok && sqlLoad.data) {
+                nextFleet = mergeFleetKvAndSql(kvFleet!, sqlLoad.data);
               } else if (kvHasData) {
                 nextFleet = kvFleet!;
                 if (sessionUserId) {

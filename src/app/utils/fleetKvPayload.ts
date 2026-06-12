@@ -61,8 +61,22 @@ export function mergeFleetKvAndSql(kv: FleetDataset, sql: FleetDataset): FleetDa
     inspMap.set(ins.id, prev ? pickRicherInspection(prev, ins) : ins);
   }
 
-  /** SQL es fuente de verdad para listas operativas (vehículos, mantenimiento, combustible). */
-  const pickOperational = <T>(_kvList: T[], sqlList: T[]) => sqlList;
+  /** Combina listas operativas; respeta borrados en KV cuando SQL aún no hizo prune. */
+  const pickOperational = <T extends { id: string }>(kvList: T[], sqlList: T[]) => {
+    const kvIds = new Set(kvList.map((r) => r.id));
+    const sqlIds = new Set(sqlList.map((r) => r.id));
+    const kvOnly = [...kvIds].filter((id) => !sqlIds.has(id));
+    const sqlOnly = [...sqlIds].filter((id) => !kvIds.has(id));
+    if (kvOnly.length === 0 && sqlOnly.length > 0) return kvList;
+    if (sqlOnly.length === 0 && kvOnly.length > 0) return sqlList;
+    if (kvOnly.length > 0 && sqlOnly.length > 0) {
+      const merged = new Map<string, T>();
+      for (const row of sqlList) merged.set(row.id, row);
+      for (const row of kvList) merged.set(row.id, row);
+      return [...merged.values()];
+    }
+    return sqlList;
+  };
 
   const pickChecklist = (
     kvSections: FleetChecklistSection[],

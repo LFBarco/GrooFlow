@@ -16,7 +16,6 @@ import {
 } from '../utils/kvSerializedSave';
 import {
   autosaveKvDomain,
-  persistKvDomainNow,
   type CloudSyncTracker,
   type KvDomainRefs,
 } from '../utils/kvDomainPersistence';
@@ -213,67 +212,66 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         return false;
       }
 
+      let clean: FleetDataset;
+      try {
+        clean = JSON.parse(JSON.stringify(next)) as FleetDataset;
+      } catch (e) {
+        console.warn('[GrooFlow] fleet serialize:', e);
+        toast.error('No se pudo preparar la flota para guardar.');
+        return false;
+      }
+
       skipExplicitAutosaveRef.current = true;
       skipHydrateRef.current = true;
       try {
-        latestRef.current = next;
-        setFleetDataset(next);
+        latestRef.current = clean;
+        setFleetDataset(clean);
+
+        const kvPayload = slimFleetDatasetForKv(clean);
+        const kvResult = await withKvSaveTimeout(
+          enqueueKvSerializedSave(
+            chainRef,
+            kvApplyGenerationRef,
+            latestRef,
+            'data:fleet',
+            kvPayload,
+            { updateLatestRef: false }
+          )
+        );
+
+        if (kvResult === 'skipped') {
+          toast.error('Guardado interrumpido (recarga de sesión). Intenta de nuevo.');
+          return false;
+        }
+        if (!kvSaveSucceeded(kvResult)) {
+          toast.error(
+            'No se guardó la flota en la nube. Revisa conexión e intenta de nuevo sin cerrar sesión.'
+          );
+          return false;
+        }
+
+        extendFleetCooldown(cooldownUntilRef);
+        hydratedRef.current = true;
 
         if (FLEET_USE_SQL) {
-          const checklistOk = await ensureSqlSave(
-            true,
-            'data:fleet',
-            () => saveFleetChecklistToSql(getSupabaseClient(), next.checklistSections),
-            lastSaveErrorAtRef,
-            'No se pudo guardar la plantilla del checklist en SQL. Revisa sesión o permisos.'
-          );
-          if (!checklistOk) {
-            toast.warning(
-              'No se pudo guardar la plantilla en SQL; se intentará guardar en KV.',
-              { duration: 8000 }
-            );
-          }
-
           const uid = await getAuthUserId();
           if (uid) {
             const sqlOk = await ensureSqlSave(
               true,
               'data:fleet',
-              () => saveFleetToSql(getSupabaseClient(), next, uid),
-              lastSaveErrorAtRef
+              () =>
+                saveFleetToSql(getSupabaseClient(), clean, uid, { allowPruneWhenEmpty: true }),
+              lastSaveErrorAtRef,
+              'No se pudo guardar la flota en SQL. Revisa sesión o permisos.'
             );
             if (!sqlOk) {
               toast.warning(
-                'No se pudo replicar en SQL; se intentará guardar en KV. Revisa permisos si persiste.',
+                'Flota guardada en KV; la réplica SQL falló. Revisa permisos si el problema persiste.',
                 { duration: 8000 }
               );
             }
           }
         }
-
-        const kvPayload = slimFleetDatasetForKv(next);
-        const kvOk = await persistKvDomainNow({
-          kvKey: 'data:fleet',
-          payload: kvPayload,
-          refs: {
-            hydratedFromKvRef: hydratedRef,
-            skipHydrateRef,
-            cooldownUntilRef,
-            chainRef,
-            latestRef,
-          },
-          kvApplyGenerationRef,
-          lastSaveErrorAtRef,
-          enqueueOptions: { updateLatestRef: false },
-          errorMessage:
-            'No se pudo guardar Flota clínica en la nube. No cierres ni actualices; revisa conexión/sesión.',
-          successMessage: FLEET_USE_SQL ? undefined : successMessage,
-          sync: cloudSync,
-        });
-
-        if (!kvOk) return false;
-
-        extendFleetCooldown(cooldownUntilRef);
 
         if (successMessage) toast.success(successMessage);
         return true;
@@ -282,7 +280,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         skipExplicitAutosaveRef.current = false;
       }
     },
-    [isDataLoaded, setFleetDataset, cloudSync]
+    [isDataLoaded, setFleetDataset]
   );
 
   const handleFleetDatasetUpdate = useCallback(

@@ -238,7 +238,7 @@ export async function saveFleetToSql(
     inspections: new Set(dataset.inspections.map((i) => i.id)),
   };
 
-  const results = await Promise.all([
+  const [vehiclesOk, maintOk, fuelOk, inspOk, checklistOk] = await Promise.all([
     upsert('fleet_vehicles', vehicleRows),
     upsert('fleet_maintenance', maintRows),
     upsert('fleet_fuel_entries', fuelRows),
@@ -263,23 +263,24 @@ export async function saveFleetToSql(
       }),
   ]);
 
-  if (results.every(Boolean)) {
-    const isEmpty =
-      dataset.vehicles.length === 0 &&
-      dataset.maintenance.length === 0 &&
-      dataset.fuelEntries.length === 0 &&
-      dataset.inspections.length === 0;
-    if (!isEmpty || options?.allowPruneWhenEmpty) {
-      await Promise.all([
-        prune('fleet_vehicles', ids.vehicles),
-        prune('fleet_maintenance', ids.maintenance),
-        prune('fleet_fuel_entries', ids.fuel),
-        prune('fleet_inspections', ids.inspections),
-      ]);
-    }
+  const isEmpty =
+    dataset.vehicles.length === 0 &&
+    dataset.maintenance.length === 0 &&
+    dataset.fuelEntries.length === 0 &&
+    dataset.inspections.length === 0;
+  const shouldPrune = !isEmpty || options?.allowPruneWhenEmpty;
+
+  if (shouldPrune) {
+    const pruneTasks: Promise<void>[] = [];
+    if (vehiclesOk) pruneTasks.push(prune('fleet_vehicles', ids.vehicles));
+    if (maintOk) pruneTasks.push(prune('fleet_maintenance', ids.maintenance));
+    if (fuelOk) pruneTasks.push(prune('fleet_fuel_entries', ids.fuel));
+    if (inspOk) pruneTasks.push(prune('fleet_inspections', ids.inspections));
+    await Promise.all(pruneTasks);
   }
 
-  return { ok: results.every(Boolean) && errors.length === 0, errors };
+  const operationalOk = vehiclesOk && maintOk && fuelOk && inspOk;
+  return { ok: operationalOk && checklistOk && errors.length === 0, errors };
 }
 
 /** Migra blob KV → SQL (one-shot). */
