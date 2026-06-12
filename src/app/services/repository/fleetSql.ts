@@ -234,13 +234,31 @@ export type FleetSqlSaveResult = {
 /** Guarda solo la plantilla del checklist (tabla fleet_checklist). */
 export async function saveFleetChecklistToSql(
   client: SupabaseClient,
-  sections: FleetChecklistSection[]
+  sections: FleetChecklistSection[],
+  options?: { knownTimestamps?: FleetSqlTimestamps; skipOptimisticLock?: boolean }
 ): Promise<FleetSqlSaveResult> {
+  const checklistKey = fleetRowKey('fleet_checklist', 'default');
+
+  if (!options?.skipOptimisticLock && options?.knownTimestamps) {
+    const live = await loadFleetTimestampsFromSql(client);
+    const conflicts = detectFleetSqlConflicts(options.knownTimestamps, live, [checklistKey]);
+    if (conflicts.length > 0) {
+      return {
+        ok: false,
+        conflict: true,
+        errors: [
+          'Otro usuario modificó la plantilla del checklist. Recarga la flota e intenta de nuevo.',
+        ],
+      };
+    }
+  }
+
+  const updatedAt = new Date().toISOString();
   const { error } = await client.from('fleet_checklist').upsert(
     {
       id: 'default',
       sections,
-      updated_at: new Date().toISOString(),
+      updated_at: updatedAt,
     },
     { onConflict: 'id' }
   );
@@ -259,6 +277,8 @@ export async function saveFleetToSql(
     allowPruneWhenEmpty?: boolean;
     knownTimestamps?: FleetSqlTimestamps;
     skipOptimisticLock?: boolean;
+    /** Solo migración KV→SQL; el autosave operativo no debe pisar checklist ajeno. */
+    includeChecklist?: boolean;
   }
 ): Promise<FleetSqlSaveResult> {
   const errors: string[] = [];
@@ -271,8 +291,10 @@ export async function saveFleetToSql(
     ...dataset.maintenance.map((m) => fleetRowKey('fleet_maintenance', m.id)),
     ...dataset.fuelEntries.map((f) => fleetRowKey('fleet_fuel_entries', f.id)),
     ...dataset.inspections.map((i) => fleetRowKey('fleet_inspections', i.id)),
-    fleetRowKey('fleet_checklist', 'default'),
   ];
+  if (options?.includeChecklist) {
+    upsertKeys.push(fleetRowKey('fleet_checklist', 'default'));
+  }
 
   if (!options?.skipOptimisticLock && options?.knownTimestamps) {
     const live = await loadFleetTimestampsFromSql(client);
@@ -333,30 +355,27 @@ export async function saveFleetToSql(
     inspections: new Set(dataset.inspections.map((i) => i.id)),
   };
 
-  const [vehiclesOk, maintOk, fuelOk, inspOk, checklistOk] = await Promise.all([
+  const [vehiclesOk, maintOk, fuelOk, inspOk] = await Promise.all([
     upsert('fleet_vehicles', vehicleRows),
     upsert('fleet_maintenance', maintRows),
     upsert('fleet_fuel_entries', fuelRows),
     upsert('fleet_inspections', inspRows),
-    client
-      .from('fleet_checklist')
-      .upsert(
-        {
-          id: 'default',
-          sections: dataset.checklistSections,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'id' }
-      )
-      .then(({ error }) => {
-        if (error) {
-          errors.push(`fleet_checklist: ${error.message}`);
-          console.warn('[fleetSql] upsert fleet_checklist', error);
-          return false;
-        }
-        return true;
-      }),
   ]);
+
+  let checklistOk = true;
+  if (options?.includeChecklist) {
+    const clResult = await saveFleetChecklistToSql(client, dataset.checklistSections, {
+      knownTimestamps: options.knownTimestamps,
+      skipOptimisticLock: options.skipOptimisticLock,
+    });
+    checklistOk = clResult.ok;
+    if (!clResult.ok) {
+      if (clResult.conflict) {
+        return clResult;
+      }
+      errors.push(...clResult.errors);
+    }
+  }
 
   const isEmpty =
     dataset.vehicles.length === 0 &&
@@ -388,7 +407,10 @@ export async function migrateFleetKvToSql(
   userId: string | null
 ): Promise<boolean> {
   const normalized = normalizeFleetDataset(kvDataset);
-  const result = await saveFleetToSql(client, normalized, userId);
+  const result = await saveFleetToSql(client, normalized, userId, {
+    skipOptimisticLock: true,
+    includeChecklist: true,
+  });
   return result.ok;
 }
 

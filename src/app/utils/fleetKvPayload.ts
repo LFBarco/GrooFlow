@@ -127,9 +127,6 @@ export function mergeFleetKvAndSql(kv: FleetDataset, sql: FleetDataset): FleetDa
     const sqlDefault = isDefaultFleetChecklist(sqlSections);
     if (kvDefault && !sqlDefault) return sqlSections;
     if (sqlDefault && !kvDefault) return kvSections;
-    if (kvSections.length !== sqlSections.length) {
-      return sqlSections;
-    }
     return sqlSections;
   };
 

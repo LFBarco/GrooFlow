@@ -21,7 +21,6 @@ import type { FleetChecklistSection, FleetDataset } from '../types/fleet';
 import { fleetChecklistSignature } from '../utils/fleetData';
 import { FLEET_REMOTE_COOLDOWN_MS } from '../utils/fleetRemoteSyncGuard';
 import { slimFleetDatasetForKv } from '../utils/fleetKvPayload';
-import { backupToSqlAfterKvSave, ensureSqlSave } from '../utils/sqlAutosaveBackup';
 import {
   enqueueKvSerializedSave,
   kvSaveSucceeded,
@@ -214,21 +213,39 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         setFleetDataset(next);
 
         if (FLEET_USE_SQL) {
-          const checklistOk = await ensureSqlSave(
-            true,
-            'data:fleet',
-            () => saveFleetChecklistToSql(getSupabaseClient(), cleanSections),
-            lastSaveErrorAtRef,
-            'No se pudo guardar la plantilla del checklist en SQL. Revisa sesión o permisos.'
-          );
-          if (!checklistOk) {
+          const clResult = await saveFleetChecklistToSql(getSupabaseClient(), cleanSections, {
+            knownTimestamps: sqlTimestampsRef.current,
+          });
+          if (clResult.conflict) {
+            await reloadFleetFromSql();
             if (!options?.silent) {
-              toast.error('No se pudo guardar la plantilla del checklist en SQL.');
+              toast.warning(
+                'Otro usuario modificó la plantilla del checklist. Se recargó la versión más reciente.',
+                { duration: 8000 }
+              );
+            }
+            return false;
+          }
+          if (!clResult.ok) {
+            const now = Date.now();
+            const last = lastSaveErrorAtRef.current['data:fleet'] ?? 0;
+            if (now - last >= 8000) {
+              lastSaveErrorAtRef.current['data:fleet'] = now;
+              if (!options?.silent) {
+                toast.error(
+                  clResult.errors[0] ??
+                    'No se pudo guardar la plantilla del checklist en SQL. Revisa sesión o permisos.'
+                );
+              }
             }
             return false;
           }
           const refreshed = await loadFleetFromSql(getSupabaseClient());
-          if (refreshed.timestamps) sqlTimestampsRef.current = refreshed.timestamps;
+          if (refreshed.ok && refreshed.data) {
+            latestRef.current = refreshed.data;
+            setFleetDataset(refreshed.data);
+            if (refreshed.timestamps) sqlTimestampsRef.current = refreshed.timestamps;
+          }
           extendFleetCooldown(cooldownUntilRef);
           hydratedRef.current = true;
           if (!options?.silent) toast.success('Plantilla del checklist guardada.');

@@ -20,13 +20,16 @@ export function detectFleetSqlConflicts(
   current: FleetSqlTimestamps,
   upsertKeys: string[]
 ): string[] {
-  if (!known || known.size === 0) return [];
+  if (!known) return [];
   const conflicts: string[] = [];
   for (const key of upsertKeys) {
     const expected = known.get(key);
-    if (!expected) continue;
     const live = current.get(key);
-    if (live && live !== expected) conflicts.push(key);
+    if (!expected) {
+      if (live) conflicts.push(key);
+      continue;
+    }
+    if (!live || live !== expected) conflicts.push(key);
   }
   return conflicts;
 }
