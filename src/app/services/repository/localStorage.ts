@@ -77,6 +77,10 @@ class LocalAuthRepository implements IAuthRepository {
     // no-op for local adapter
   }
 
+  async setUserAuthEnabled(_userIdOrEmail: string, _enabled: boolean): Promise<void> {
+    // no-op for local adapter
+  }
+
   onAuthStateChange(_callback: (user: AuthUser | null) => void): () => void {
     // Local adapter has no real-time events
     return () => {};

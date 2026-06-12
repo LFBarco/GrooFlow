@@ -127,7 +127,6 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
 
   const handleUpdateRoles = useCallback(
     async (nextRoles: Role[]) => {
-      setRoles(nextRoles);
       if (!isDataLoaded || !rolesHydratedRef.current) {
         toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
         return false;
@@ -136,7 +135,6 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         toast.error('Solo un administrador puede modificar la configuración de roles.');
         return false;
       }
-      rolesLatestRef.current = nextRoles;
 
       if (PRODUCTION_USE_SQL) {
         const { data: sess } = await getSupabaseClient().auth.getSession();
@@ -149,7 +147,7 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         if (!sqlOk) return false;
       }
 
-      return persistKvDomainNow({
+      const ok = await persistKvDomainNow({
         kvKey: 'data:roles',
         payload: nextRoles,
         refs: {
@@ -164,6 +162,11 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         errorMessage: 'No se pudo guardar la configuración de roles en la nube.',
         sync: cloudSync,
       });
+      if (!ok) return false;
+
+      rolesLatestRef.current = nextRoles;
+      setRoles(nextRoles);
+      return true;
     },
     [isDataLoaded, setRoles, cloudSync, canWriteUsersRoles]
   );

@@ -17,6 +17,7 @@ import {
     DropdownMenuTrigger 
 } from "../ui/dropdown-menu";
 import { toast } from 'sonner';
+import { validatePasswordClient } from '../../utils/userSessionGuard';
 import { 
     Users, 
     Settings, 
@@ -66,7 +67,8 @@ interface UserManagerProps {
     onUpdateRoles: (roles: Role[]) => Promise<boolean> | boolean | void;
     onUpdateUser: (user: User) => void;
     onAddUser: (user: User) => void;
-    onDeleteUser: (userId: string) => void;
+    onDeleteUser: (userId: string) => void | Promise<void>;
+    onRefreshUsers?: () => void | Promise<void>;
 }
 
 export function UserManager({
@@ -80,10 +82,12 @@ export function UserManager({
     onUpdateUser,
     onAddUser,
     onDeleteUser,
+    onRefreshUsers,
 }: UserManagerProps) {
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [isRefreshing, setIsRefreshing] = useState(false);
 
     const uniqueUsers = users.filter((user, index, self) => 
         index === self.findIndex((u) => u.id === user.id)
@@ -171,8 +175,9 @@ export function UserManager({
             toast.error("Complete todos los campos obligatorios (Nombre, Email y Rol)");
             return;
         }
-        if (!currentUserForm.password || currentUserForm.password.length < 6) {
-            toast.error("La contraseña debe tener al menos 6 caracteres");
+        const pwdErr = validatePasswordClient(currentUserForm.password || '');
+        if (pwdErr) {
+            toast.error(pwdErr);
             return;
         }
         if (currentUserForm.password !== currentUserForm.confirmPassword) {
@@ -209,33 +214,18 @@ export function UserManager({
             onAddUser(user);
             setIsNewUserOpen(false);
             const sedeInfo = user.allSedes ? 'todas las sedes' : (user.sedes?.join(', ') || 'sin sede');
-            toast.success(`Usuario "${user.name}" creado exitosamente`, {
-                description: `Correo: ${user.email} | Acceso: ${sedeInfo}`
-            });
-        } catch (error: unknown) {
-            console.error('Error creating user:', error);
-            const rawMsg = error instanceof Error ? error.message : '';
-            if (rawMsg.includes('already registered') || rawMsg.includes('already been registered')) {
-                const initials = currentUserForm.initials || autoGenerateInitials(currentUserForm.name!);
-                const user: User = {
-                    id: `usr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                    name: currentUserForm.name!,
-                    role: currentUserForm.role as User['role'],
-                    initials: initials.toUpperCase(),
-                    email: currentUserForm.email!,
-                    status: 'active',
-                    allSedes: currentUserForm.allSedes ?? true,
-                    sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),
-                    pettyCashFundEnabled: false,
-                };
-                onAddUser(user);
-                setIsNewUserOpen(false);
-                toast.info(`Usuario "${user.name}" registrado`, {
-                    description: `El correo ya existía en Auth. Usuario añadido al sistema.`
+            if (authUser.existing) {
+                toast.info(`Usuario "${user.name}" vinculado al sistema`, {
+                    description: `El correo ya existía en Auth. Se usó su cuenta (${user.email}). ${sedeInfo}`,
                 });
             } else {
-                toast.error('Error al crear el usuario: ' + describeAuthOrNetworkError(error));
+                toast.success(`Usuario "${user.name}" creado exitosamente`, {
+                    description: `Correo: ${user.email} | Acceso: ${sedeInfo}`,
+                });
             }
+        } catch (error: unknown) {
+            console.error('Error creating user:', error);
+            toast.error('Error al crear el usuario: ' + describeAuthOrNetworkError(error));
         } finally {
             setIsCreating(false);
         }
@@ -266,12 +256,12 @@ export function UserManager({
 
         onUpdateUser(user);
         setIsEditUserOpen(false);
-        toast.success("Usuario actualizado exitosamente");
     };
 
     const handleResetPassword = async () => {
-        if (!resetPasswordForm.newPassword || resetPasswordForm.newPassword.length < 6) {
-            toast.error("La nueva contraseña debe tener al menos 6 caracteres");
+        const pwdErr = validatePasswordClient(resetPasswordForm.newPassword || '');
+        if (pwdErr) {
+            toast.error(pwdErr);
             return;
         }
         if (resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword) {
@@ -289,10 +279,6 @@ export function UserManager({
 
         try {
             await repository.auth.updateUserPassword(targetUser.email, resetPasswordForm.newPassword);
-            const updated = uniqueUsers.find(u => u.id === resetPasswordForm.userId);
-            if (updated) {
-                onUpdateUser(updated);
-            }
             toast.success(`Contraseña de "${targetUser.name}" restablecida`, {
                 description: "La contraseña se actualizó en Supabase. El usuario debe usarla en su próximo acceso."
             });
@@ -306,13 +292,29 @@ export function UserManager({
     const handleToggleStatus = (user: User) => {
         const newStatus: 'active' | 'inactive' = user.status === 'inactive' ? 'active' : 'inactive';
         onUpdateUser({ ...user, status: newStatus });
-        toast.success(`Usuario ${newStatus === 'active' ? 'activado' : 'desactivado'}: ${user.name}`);
     };
 
-    const confirmDeleteUser = (userId: string, userName: string) => {
-        if (confirm(`¿Está seguro de que desea eliminar al usuario "${userName}"? Esta acción no se puede deshacer.`)) {
-            onDeleteUser(userId);
-            toast.success("Usuario eliminado");
+    const handleRefreshUsers = async () => {
+        if (!onRefreshUsers) return;
+        setIsRefreshing(true);
+        try {
+            await onRefreshUsers();
+            toast.success('Lista de usuarios actualizada');
+        } catch {
+            toast.error('No se pudo actualizar la lista de usuarios');
+        } finally {
+            setIsRefreshing(false);
+        }
+    };
+
+    const confirmDeleteUser = async (userId: string, userName: string) => {
+        if (confirm(`¿Está seguro de que desea eliminar al usuario "${userName}"? Se desactivará su acceso y se quitará del sistema.`)) {
+            try {
+                await onDeleteUser(userId);
+                toast.success("Usuario eliminado");
+            } catch (err) {
+                toast.error(err instanceof Error ? err.message : "No se pudo eliminar el usuario");
+            }
         }
     };
 
@@ -350,7 +352,7 @@ export function UserManager({
     return (
         <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3" data-testid="user-manager-header">
                 <div className="space-y-0.5 min-w-0">
                     <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                         <Users className="w-7 h-7 text-orange-500 shrink-0" />
@@ -362,9 +364,19 @@ export function UserManager({
                         <span className="text-green-600 font-medium">{activeCount} activos</span>
                         <span>•</span>
                         <span className="text-slate-500">{inactiveCount} inactivos</span>
-                        <Button variant="ghost" size="icon" className="h-5 w-5 ml-1">
-                            <RefreshCw className="w-3 h-3" />
-                        </Button>
+                        {onRefreshUsers ? (
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 ml-1"
+                                title="Actualizar lista"
+                                disabled={isRefreshing}
+                                onClick={() => void handleRefreshUsers()}
+                                data-testid="user-manager-refresh"
+                            >
+                                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                            </Button>
+                        ) : null}
                     </div>
                 </div>
                 <div className="flex gap-2 flex-wrap">
@@ -767,7 +779,7 @@ export function UserManager({
                                 <div className="relative">
                                     <Input 
                                         type={showPassword ? "text" : "password"}
-                                        placeholder="Mínimo 6 caracteres" 
+                                        placeholder="Mínimo 8 caracteres, letra y número" 
                                         value={currentUserForm.password}
                                         onChange={(e) => setCurrentUserForm({...currentUserForm, password: e.target.value})}
                                         className="pr-10"
@@ -1017,7 +1029,7 @@ export function UserManager({
                             <Label>Nueva Contraseña</Label>
                             <Input
                                 type="password"
-                                placeholder="Mínimo 6 caracteres"
+                                placeholder="Mínimo 8 caracteres, letra y número"
                                 value={resetPasswordForm.newPassword}
                                 onChange={(e) => setResetPasswordForm({...resetPasswordForm, newPassword: e.target.value})}
                             />

@@ -18,6 +18,12 @@ verify_jwt = false
 import_map = "./functions/admin-update-password/deno.json"
 entrypoint = "./functions/admin-update-password/index.ts"
 
+[functions.admin-set-user-auth]
+enabled = true
+verify_jwt = false
+import_map = "./functions/admin-set-user-auth/deno.json"
+entrypoint = "./functions/admin-set-user-auth/index.ts"
+
 [functions.server]
 enabled = true
 verify_jwt = false

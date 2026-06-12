@@ -76,7 +76,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./components/ui/dialog";
-import { api, setKvSessionFatalHandler } from "./services/api";
+import { api, setKvSessionFatalHandler, repository } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
 import { getSupabaseClient } from "./services/repository/supabase";
 import { isFleetSqlEnabled, type FleetSqlTimestamps } from "./services/repository/fleetSql";
@@ -105,6 +105,7 @@ import { mergePettyCashFilterCatalog } from "./utils/providerCatalog";
 import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
 import { getFirstAllowedViewPath, roleRecordHasModuleAccess } from "./utils/rolePermissions";
 import { getSuperAdminEmails } from "./config/superAdmins";
+import { isUserSessionBlocked } from "./utils/userSessionGuard";
 import { weekKeyMatches } from "./utils/pettyCashWeekKey";
 import type { FleetDataset } from "./types/fleet";
 import type { InventoryDataset } from "./types/inventory";
@@ -661,6 +662,8 @@ export default function App() {
   const usersKvCooldownUntilRef = useRef(0);
   const usersKvChainRef = useRef(KV_CHAIN_IDLE);
   const usersKvLatestRef = useRef<User[]>([]);
+  const usersAdminReloadRef = useRef(false);
+  const authUserIdRef = useRef<string | null>(null);
 
   /** Invalida escrituras KV encoladas antes de aplicar datos remotos o al cerrar sesión. */
   const kvApplyGenerationRef = useRef(0);
@@ -1443,7 +1446,7 @@ export default function App() {
         break;
       }
       case 'data:users': {
-        if (PRODUCTION_USE_SQL) return;
+        if (PRODUCTION_USE_SQL && !usersAdminReloadRef.current) return;
         if (!canSaveUsers || !usersHydratedFromKvRef.current || !Array.isArray(value)) return;
         let list = dedupeUsersByEmail(value as User[]);
         list = applySuperAdminRoleFromConfig(list);
@@ -1460,7 +1463,7 @@ export default function App() {
         break;
       }
       case 'data:roles': {
-        if (PRODUCTION_USE_SQL) return;
+        if (PRODUCTION_USE_SQL && !usersAdminReloadRef.current) return;
         if (!rolesHydratedFromKvRef.current) return;
         const merged = mergeRolesWithDefaults(Array.isArray(value) ? (value as Role[]) : []);
         if (kvPayloadsEqual(rolesKvLatestRef.current, merged)) return;
@@ -1952,6 +1955,8 @@ export default function App() {
       requestsLatest: requestsKvLatestRef,
       users: applyUsersRemoteRef,
       usersLatest: usersKvLatestRef,
+      usersAdminReload: usersAdminReloadRef,
+      authUserId: authUserIdRef,
       roles: applyRolesRemoteRef,
       rolesLatest: rolesKvLatestRef,
       products: applyProductsRemoteRef,
@@ -1977,6 +1982,9 @@ export default function App() {
     }),
     []
   );
+
+  usersAdminReloadRef.current = isAdminAppUser(currentUser);
+  authUserIdRef.current = currentUser.id !== 'guest' ? currentUser.id : null;
 
   useProductionRealtimeSync(
     isAuthenticated && isDataLoaded && PRODUCTION_USE_SQL,
@@ -2138,6 +2146,34 @@ export default function App() {
 
   const handleLogoutRef = useRef(handleLogout);
   handleLogoutRef.current = handleLogout;
+
+  const syncUserAuthAccess = useCallback(async (user: User, enabled: boolean) => {
+    if ((import.meta.env.VITE_BACKEND ?? 'supabase') !== 'supabase') return true;
+    const key = user.email?.trim() || user.id;
+    if (!key || key === 'guest') return true;
+    try {
+      await repository.auth.setUserAuthEnabled(key, enabled);
+      return true;
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo actualizar el acceso en Auth');
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || currentUser.id === 'guest') return;
+    const row =
+      users.find((u) => u.id === currentUser.id) ??
+      users.find(
+        (u) =>
+          currentUser.email &&
+          (u.email || '').trim().toLowerCase() === currentUser.email!.trim().toLowerCase()
+      );
+    const blocked = isUserSessionBlocked(row ?? currentUser);
+    if (!blocked) return;
+    toast.error('Tu cuenta fue desactivada. Contacta al Administrador.');
+    void handleLogoutRef.current();
+  }, [isAuthenticated, currentUser, users]);
 
   useEffect(() => {
     setKvSessionFatalHandler(() => {
@@ -3950,13 +3986,31 @@ export default function App() {
                     sedesCatalogEntries={sedesEntriesForDialog}
                     onSaveSedesCatalog={handleSaveSedesCatalog}
                     onUpdateRoles={handleUpdateRoles}
-                    onUpdateUser={(updatedUser) => {
-                        setUsers(prev => {
-                          const next = prev.map(u => u.id === updatedUser.id ? updatedUser : u);
+                    onUpdateUser={async (updatedUser) => {
+                        const prev = users.find((u) => u.id === updatedUser.id);
+                        if (prev?.status !== updatedUser.status) {
+                          const ok = await syncUserAuthAccess(
+                            updatedUser,
+                            updatedUser.status !== 'inactive'
+                          );
+                          if (!ok) return;
+                        }
+                        setUsers((prevList) => {
+                          const next = prevList.map((u) =>
+                            u.id === updatedUser.id ? updatedUser : u
+                          );
                           void persistUsersToCloud(next);
                           return next;
                         });
-                        toast.success("Usuario actualizado correctamente");
+                        if (prev?.status !== updatedUser.status) {
+                          toast.success(
+                            updatedUser.status === 'inactive'
+                              ? `Usuario desactivado: ${updatedUser.name}`
+                              : `Usuario activado: ${updatedUser.name}`
+                          );
+                        } else {
+                          toast.success('Usuario actualizado correctamente');
+                        }
                     }}
                     onAddUser={(newUser) => {
                         setUsers(prev => {
@@ -3967,13 +4021,19 @@ export default function App() {
                             return next;
                         });
                     }}
-                    onDeleteUser={(userId) => {
-                        setUsers(prev => {
-                          const next = prev.filter(u => u.id !== userId);
+                    onDeleteUser={async (userId) => {
+                        const target = users.find((u) => u.id === userId);
+                        if (target) {
+                          const ok = await syncUserAuthAccess(target, false);
+                          if (!ok) return;
+                        }
+                        setUsers((prev) => {
+                          const next = prev.filter((u) => u.id !== userId);
                           void persistUsersToCloud(next);
                           return next;
                         });
                     }}
+                    onRefreshUsers={() => hydrateFromKvRef.current?.()}
                 />
              </div>
           )}

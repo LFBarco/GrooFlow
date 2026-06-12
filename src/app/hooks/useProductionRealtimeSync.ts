@@ -26,9 +26,11 @@ import { loadInvoicesFromSql } from '../services/repository/businessDomainsSql';
 
 import { loadPurchaseRequestsFromSql } from '../services/repository/businessDomainsSql';
 
-import { loadAppUsersFromSql } from '../services/repository/businessDomainsSql';
-
-import { loadRolesFromSql } from '../services/repository/businessDomainsSql';
+import {
+  loadAppUsersFromSql,
+  loadRolesFromSql,
+  resolveUsersFromSql,
+} from '../services/repository/businessDomainsSql';
 
 import { loadTransactionsFromSql } from '../services/repository/transactionsSql';
 
@@ -129,6 +131,11 @@ export type ProductionRealtimeHandlers = {
   users?: MutableRefObject<((items: User[]) => void) | null>;
 
   usersLatest?: MutableRefObject<User[]>;
+
+  /** Si true, Realtime recarga lista completa desde SQL (solo admin). */
+  usersAdminReload?: MutableRefObject<boolean>;
+
+  authUserId?: MutableRefObject<string | null>;
 
   roles?: MutableRefObject<((items: Role[]) => void) | null>;
 
@@ -399,11 +406,27 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
       const result = await loadAppUsersFromSql(client);
 
-      if (!result.ok || !result.data || kvPayloadsEqual(latest.current, result.data)) return;
+      if (!result.ok || !result.data) return;
 
-      latest.current = result.data;
+      const isAdmin = handlers.usersAdminReload?.current === true;
 
-      h.current?.(result.data);
+      let next: User[];
+
+      if (isAdmin) {
+        next = result.data;
+        if (kvPayloadsEqual(latest.current, next)) return;
+      } else {
+        const authUserId = handlers.authUserId?.current ?? null;
+        const self = authUserId ? result.data.find((u) => u.id === authUserId) : undefined;
+        if (!self || latest.current.length === 0) return;
+        next = latest.current.map((u) => (u.id === self.id ? { ...u, ...self } : u));
+        if (!next.some((u) => u.id === self.id)) next.push(self);
+        if (kvPayloadsEqual(latest.current, next)) return;
+      }
+
+      latest.current = next;
+
+      h.current?.(next);
 
     };
 

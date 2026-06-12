@@ -407,11 +407,21 @@ class SupabaseAuthRepository implements IAuthRepository {
     const raw = result.json;
     const payload =
       raw && typeof raw === 'object'
-        ? (raw as { user?: { id: string; email?: string }; error?: string; message?: string })
+        ? (raw as {
+            user?: { id: string; email?: string };
+            existing?: boolean;
+            error?: string;
+            message?: string;
+          })
         : null;
 
     if (result.ok && payload?.user?.id) {
-      return { id: payload.user.id, email: payload.user.email ?? email, name };
+      return {
+        id: payload.user.id,
+        email: payload.user.email ?? email,
+        name,
+        existing: payload.existing === true,
+      };
     }
 
     const apiMsg = typeof payload?.message === 'string' ? payload.message : '';
@@ -452,6 +462,27 @@ class SupabaseAuthRepository implements IAuthRepository {
     const detail =
       fnErr.trim() || apiMsg.trim() || (typeof result.text === 'string' ? result.text.trim() : '') || `HTTP ${result.status}`;
     throw new Error(detail || 'No se pudo actualizar la contraseña');
+  }
+
+  async setUserAuthEnabled(userIdOrEmail: string, enabled: boolean): Promise<void> {
+    const accessToken = await getFreshAccessTokenForEdge(this.sb);
+    assertAccessTokenMatchesProject(accessToken, SUPABASE_URL);
+    const body = userIdOrEmail.includes('@')
+      ? { email: userIdOrEmail, enabled }
+      : { userId: userIdOrEmail, enabled };
+    const result = await postEdgeFunctionJson('admin-set-user-auth', body, accessToken);
+    if (result.ok) return;
+
+    const raw = result.json;
+    const payload =
+      raw && typeof raw === 'object'
+        ? (raw as { error?: string; message?: string })
+        : null;
+    const apiMsg = typeof payload?.message === 'string' ? payload.message : '';
+    const fnErr = typeof payload?.error === 'string' ? payload.error : '';
+    const detail =
+      fnErr.trim() || apiMsg.trim() || (typeof result.text === 'string' ? result.text.trim() : '') || `HTTP ${result.status}`;
+    throw new Error(detail || 'No se pudo actualizar el acceso del usuario');
   }
 
   onAuthStateChange(callback: (user: AuthUser | null) => void): () => void {

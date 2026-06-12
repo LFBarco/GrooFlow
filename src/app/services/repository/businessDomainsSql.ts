@@ -756,8 +756,6 @@ function userExtra(u: User): Record<string, unknown> {
 
   if (u.pettyCashOpeningCarryConsumedAt) extra.pettyCashOpeningCarryConsumedAt = u.pettyCashOpeningCarryConsumedAt;
 
-  if (u.tempPassword) extra.tempPassword = u.tempPassword;
-
   if (u.avatarUrl) extra.avatarUrl = u.avatarUrl;
 
   return extra;
@@ -799,8 +797,6 @@ function rowToAppUser(row: Record<string, unknown>): User {
     pettyCashOpeningCarrySuggested: extra.pettyCashOpeningCarrySuggested as number | undefined,
 
     pettyCashOpeningCarryConsumedAt: extra.pettyCashOpeningCarryConsumedAt as string | undefined,
-
-    tempPassword: extra.tempPassword as string | undefined,
 
     avatarUrl: extra.avatarUrl as string | undefined,
 
@@ -1046,4 +1042,39 @@ export async function resolveListFromSql<T extends { id: string }>(
   return [];
 }
 
+
+
+/** Resuelve usuarios: admin usa SQL completo; no-admin conserva snapshot KV y solo actualiza su fila. */
+export async function resolveUsersFromSql(
+  kvList: User[],
+  loadSql: () => Promise<SqlLoadResult<User>>,
+  migrate: (list: User[], userId: string | null) => Promise<boolean>,
+  userId: string | null,
+  isAdmin: boolean
+): Promise<User[]> {
+  if (!isProductionSqlEnabled()) return kvList;
+
+  const sqlLoad = await loadSql();
+  if (!sqlLoad.ok) return kvList;
+
+  const sqlData = sqlLoad.data ?? [];
+
+  if (isAdmin) {
+    return resolveListFromSql(kvList, () => Promise.resolve(sqlLoad), migrate, userId);
+  }
+
+  if (sqlData.length === 0) {
+    return kvList;
+  }
+
+  if (!userId) return kvList.length > 0 ? kvList : sqlData;
+
+  const selfFromSql = sqlData.find((u) => u.id === userId);
+  if (!selfFromSql) return kvList;
+
+  const base = kvList.length > 0 ? kvList : [selfFromSql];
+  const merged = base.map((u) => (u.id === userId ? { ...u, ...selfFromSql } : u));
+  if (!merged.some((u) => u.id === userId)) merged.push(selfFromSql);
+  return merged;
+}
 

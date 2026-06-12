@@ -20,9 +20,13 @@ function pickBetterRow(a: User, b: User): User {
  */
 export function dedupeUsersByEmail(users: User[]): User[] {
   const map = new Map<string, User>();
+  const withoutEmail: User[] = [];
   for (const u of users) {
     const key = (u.email || '').trim().toLowerCase();
-    if (!key) continue;
+    if (!key) {
+      if (!withoutEmail.some((x) => x.id === u.id)) withoutEmail.push(u);
+      continue;
+    }
     const prev = map.get(key);
     if (!prev) {
       map.set(key, u);
@@ -30,7 +34,7 @@ export function dedupeUsersByEmail(users: User[]): User[] {
     }
     map.set(key, pickBetterRow(prev, u));
   }
-  return Array.from(map.values());
+  return [...Array.from(map.values()), ...withoutEmail];
 }
 
 export function applySuperAdminRoleFromConfig(users: User[]): User[] {
@@ -68,6 +72,7 @@ export function mergeAuthUserIntoUsers(
             ...u,
             email: emailRaw || u.email,
             name: u.name || authUser.user_metadata?.name || u.name,
+            lastLogin: new Date().toISOString(),
             ...(isPrivileged
               ? { role: 'super_admin' as const, allSedes: true, status: 'active' as const }
               : {}),
@@ -85,6 +90,7 @@ export function mergeAuthUserIntoUsers(
             id: authUser.id,
             email: emailRaw || u.email,
             name: u.name || authUser.user_metadata?.name || u.name,
+            lastLogin: new Date().toISOString(),
             ...(isPrivileged
               ? { role: 'super_admin' as const, allSedes: true, status: 'active' as const }
               : {}),

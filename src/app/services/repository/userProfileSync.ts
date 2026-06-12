@@ -4,8 +4,16 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { User } from '../../types';
+import { getSuperAdminEmails } from '../../config/superAdmins';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type AppUserProfileRow = {
+  role: string;
+  status: string;
+  sedes?: string[];
+  all_sedes?: boolean;
+};
 
 /** Roles de la app → roles permitidos en app_user_profiles SQL. */
 export function mapAppRoleToSqlRole(role: string | undefined): string {
@@ -16,9 +24,62 @@ export function mapAppRoleToSqlRole(role: string | undefined): string {
   return 'manager';
 }
 
-export function isAdminAppUser(user: User | null | undefined): boolean {
-  const r = (user?.role || '').trim().toLowerCase();
-  return r === 'admin' || r === 'super_admin';
+/** SQL → rol de la app (conserva auditoria/groomer si venían del KV). */
+export function mapSqlRoleToAppRole(
+  sqlRole: string | undefined,
+  fallback?: User['role']
+): User['role'] {
+  const r = (sqlRole || '').trim().toLowerCase();
+  if (r === 'super_admin') return 'super_admin';
+  if (r === 'admin') return 'admin';
+  if (r === 'analyst') {
+    const fb = (fallback || '').trim().toLowerCase();
+    if (fb === 'auditoria' || fb === 'groomer') return fb as User['role'];
+    return 'analyst';
+  }
+  if (r === 'manager') return 'manager';
+  return fallback ?? 'manager';
+}
+
+export function isAdminAppUser(
+  user: User | null | undefined,
+  sqlProfile?: AppUserProfileRow | null
+): boolean {
+  const fromProfile = sqlProfile?.role?.trim().toLowerCase();
+  const r = (fromProfile || user?.role || '').trim().toLowerCase();
+  if (r === 'admin' || r === 'super_admin') return true;
+  const email = user?.email?.trim().toLowerCase();
+  return !!(email && getSuperAdminEmails().has(email));
+}
+
+export async function loadSelfAppUserProfile(
+  client: SupabaseClient,
+  authUserId: string
+): Promise<AppUserProfileRow | null> {
+  if (!UUID_RE.test(authUserId)) return null;
+  const { data, error } = await client
+    .from('app_user_profiles')
+    .select('role, status, sedes, all_sedes')
+    .eq('user_id', authUserId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    role: typeof data.role === 'string' ? data.role : 'manager',
+    status: typeof data.status === 'string' ? data.status : 'active',
+    sedes: Array.isArray(data.sedes) ? data.sedes : [],
+    all_sedes: data.all_sedes === true,
+  };
+}
+
+export function mergeUserWithSqlProfile(user: User, profile: AppUserProfileRow | null): User {
+  if (!profile) return user;
+  return {
+    ...user,
+    role: mapSqlRoleToAppRole(profile.role, user.role),
+    status: profile.status === 'inactive' ? 'inactive' : user.status ?? 'active',
+    sedes: profile.sedes?.length ? profile.sedes : user.sedes,
+    allSedes: profile.all_sedes === true ? true : user.allSedes,
+  };
 }
 
 export function userRowToProfileRow(u: User) {
@@ -100,5 +161,13 @@ export async function syncCurrentUserProfileToSql(
   const { error } = await client.from('app_user_profiles').upsert(row, { onConflict: 'user_id' });
   if (error) {
     console.warn('[userProfileSync] sync self failed', error.message);
+  }
+}
+
+/** Registra último acceso en SQL (RLS: self via SECURITY DEFINER). */
+export async function touchOwnLastLogin(client: SupabaseClient): Promise<void> {
+  const { error } = await client.rpc('touch_own_app_user_last_login');
+  if (error && error.code !== 'PGRST202' && !error.message?.includes('touch_own_app_user_last_login')) {
+    console.warn('[userProfileSync] touch last login failed', error.message);
   }
 }

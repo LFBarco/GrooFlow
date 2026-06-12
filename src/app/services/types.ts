@@ -41,6 +41,8 @@ export interface AuthUser {
   id: string;
   email: string;
   name?: string;
+  /** true si el correo ya existía en Auth y se devolvió el UUID real */
+  existing?: boolean;
 }
 
 export interface IAuthRepository {
@@ -58,6 +60,9 @@ export interface IAuthRepository {
 
   /** Update password for a user (admin only — requires service_role key on server) */
   updateUserPassword(userId: string, newPassword: string): Promise<void>;
+
+  /** Habilita o deshabilita login Auth (admin only — ban/unban) */
+  setUserAuthEnabled(userIdOrEmail: string, enabled: boolean): Promise<void>;
 
   /**
    * Subscribe to auth state changes.

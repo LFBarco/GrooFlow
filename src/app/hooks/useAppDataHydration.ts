@@ -23,6 +23,7 @@ import {
   migratePurchaseRequestsKvToSql,
   migrateRolesKvToSql,
   resolveListFromSql,
+  resolveUsersFromSql,
 } from '../services/repository/businessDomainsSql';
 import {
   isFleetSqlEnabled,
@@ -46,7 +47,7 @@ import {
   isTransactionsSqlEnabled,
 } from '../services/repository/transactionsSql';
 import { getSupabaseClient } from '../services/repository/supabase';
-import { isAdminAppUser, syncUserProfilesToSql } from '../services/repository/userProfileSync';
+import { isAdminAppUser, syncUserProfilesToSql, loadSelfAppUserProfile, mergeUserWithSqlProfile, touchOwnLastLogin } from '../services/repository/userProfileSync';
 import type { Role } from '../components/users/types';
 import type {
   AlertThresholds,
@@ -86,6 +87,7 @@ import {
   mergeAuthUserIntoUsers,
   resolveCurrentUserRow,
 } from '../utils/userListMerge';
+import { isUserSessionBlocked, stampLastLoginInList } from '../utils/userSessionGuard';
 import { supabase } from '../../../utils/supabase/client';
 import type { AppHydrationDeps } from './hydration/appHydrationDeps';
 
@@ -239,7 +241,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             deps.setIsAuthChecking(false);
             return;
           }
-          if (row.status === 'inactive' && !getSuperAdminEmails().has(em)) {
+          if (isUserSessionBlocked(row)) {
             await supabase.auth.signOut();
             toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
             deps.setCurrentUser(deps.GUEST_USER);
@@ -637,11 +639,12 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         }
 
         if (PRODUCTION_USE_SQL && sessionEffective?.user?.id) {
-          const sqlUsers = await resolveListFromSql(
+          const sqlUsers = await resolveUsersFromSql(
             nextUsers,
             () => loadAppUsersFromSql(getSupabaseClient()),
             migrateAppUsersKvToSql,
-            sessionEffective.user.id
+            sessionEffective.user.id,
+            isAdminAppUser(sessionUserRow)
           );
           if (sqlUsers.length > 0) {
             nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(sqlUsers));
@@ -650,6 +653,36 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
             }
           }
+          if (sessionEffective.user.email) {
+            const em = sessionEffective.user.email.trim().toLowerCase();
+            const refreshedRow = resolveCurrentUserRow(nextUsers, em);
+            if (refreshedRow) {
+              const profile = await loadSelfAppUserProfile(
+                getSupabaseClient(),
+                sessionEffective.user.id
+              );
+              const merged = mergeUserWithSqlProfile(refreshedRow, profile);
+              if (isUserSessionBlocked(merged)) {
+                await supabase.auth.signOut();
+                toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
+                deps.setCurrentUser(deps.GUEST_USER);
+                deps.setIsAuthenticated(false);
+                deps.setIsAuthChecking(false);
+                return;
+              }
+              deps.setCurrentUser(merged);
+              sessionUserRow = merged;
+            }
+          }
+        }
+
+        if (sessionEffective?.user?.id && sessionUserRow && !isUserSessionBlocked(sessionUserRow)) {
+          const loginAt = new Date().toISOString();
+          nextUsers = stampLastLoginInList(nextUsers, sessionEffective.user.id, loginAt);
+          deps.setCurrentUser((prev) =>
+            prev.id === sessionEffective.user!.id ? { ...prev, lastLogin: loginAt } : prev
+          );
+          void touchOwnLastLogin(getSupabaseClient());
         }
 
         deps.setUsers(nextUsers);

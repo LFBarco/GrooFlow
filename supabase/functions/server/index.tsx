@@ -181,10 +181,13 @@ async function requireAuthenticatedRequest(c: { req: { header: (name: string) =>
   return { response: null as null, user: data.user };
 }
 
-async function requireAdminRequest(c: {
-  req: { header: (name: string) => string | undefined };
-  json: (body: unknown, status?: number) => Response;
-}) {
+async function requireAdminRequest(
+  c: {
+    req: { header: (name: string) => string | undefined };
+    json: (body: unknown, status?: number) => Response;
+  },
+  forbiddenMessage = "Solo administradores pueden realizar esta acción.",
+) {
   const auth = await requireAuthenticatedRequest(c);
   if (auth.response) return auth;
   const adminClient = createClient(
@@ -203,9 +206,16 @@ async function requireAdminRequest(c: {
   const allowlisted = allowList.includes((auth.user!.email || "").toLowerCase());
   const adminByRole = !isInactive && (profileAdmin || metadataAdmin);
   if (!adminByRole && !allowlisted) {
-    return { response: c.json({ error: "Solo administradores pueden probar la API Veterinari." }, 403), user: null as null };
+    return { response: c.json({ error: forbiddenMessage }, 403), user: null as null };
   }
   return { response: null as null, user: auth.user! };
+}
+
+/** Claves KV cuya escritura puede escalar privilegios o borrar identidades. */
+const KV_ADMIN_WRITE_KEYS = new Set(["data:users", "data:roles"]);
+
+function kvRequiresAdminWrite(key: string): boolean {
+  return KV_ADMIN_WRITE_KEYS.has(key);
 }
 
 function countVeterinariRecords(json: unknown): string | undefined {
@@ -305,7 +315,10 @@ async function fetchVeterinariWithRetry(
 
 for (const base of KV_PATH_BASES) {
   app.post(`${base}/veterinari/test`, async (c) => {
-    const auth = await requireAdminRequest(c);
+    const auth = await requireAdminRequest(
+      c,
+      "Solo administradores pueden probar la API Veterinari.",
+    );
     if (auth.response) return auth.response;
     try {
       const body = await c.req.json();
@@ -411,11 +424,19 @@ for (const base of KV_PATH_BASES) {
   });
 
   app.post(`${base}/kv/*`, async (c) => {
-    const auth = await requireAuthenticatedRequest(c);
-    if (auth.response) return auth.response;
     const key = kvKeyFromUrl(c);
     if (key == null || key === "") {
       return c.json({ error: "Missing key" }, 400);
+    }
+    if (kvRequiresAdminWrite(key)) {
+      const admin = await requireAdminRequest(
+        c,
+        "Solo administradores pueden modificar usuarios o roles.",
+      );
+      if (admin.response) return admin.response;
+    } else {
+      const auth = await requireAuthenticatedRequest(c);
+      if (auth.response) return auth.response;
     }
     try {
       const body = await c.req.json();
