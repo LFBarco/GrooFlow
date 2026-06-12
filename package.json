@@ -15,10 +15,10 @@
     "deploy:prod": "npx vercel --prod --yes",
     "release:preview": "npm run build && npm run deploy:preview",
     "release:prod": "npm run build && npm run deploy:prod",
-    "supabase:db:push": "npx supabase db push --yes",
+    "supabase:db:push": "npx supabase db push --yes --include-all --linked",
     "supabase:deploy:server": "npx supabase functions deploy server --project-ref ywizhgnmgnaksqperxai",
-    "supabase:deploy:admin": "npx supabase functions deploy admin-create-user --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-update-password --project-ref ywizhgnmgnaksqperxai",
-    "supabase:deploy:all": "npx supabase functions deploy admin-create-user --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-update-password --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy server --project-ref ywizhgnmgnaksqperxai",
+    "supabase:deploy:admin": "npx supabase functions deploy admin-create-user --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-update-password --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-set-user-auth --project-ref ywizhgnmgnaksqperxai",
+    "supabase:deploy:all": "npx supabase functions deploy admin-create-user --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-update-password --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy admin-set-user-auth --project-ref ywizhgnmgnaksqperxai && npx supabase functions deploy server --project-ref ywizhgnmgnaksqperxai",
     "supabase:secrets:allowed-origins": "node scripts/set-allowed-origins.mjs"
   },
   "dependencies": {
