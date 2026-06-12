@@ -17,13 +17,15 @@ const HYDRATE_RETRY_DELAY_MS = 4000;
 export type UseSqlRetryProcessorOptions = {
   isDataLoaded: boolean;
   getLatestSnapshot: () => SqlRetryLatestSnapshot;
+  /** app_users / roles: escritura SQL solo admin (RLS). */
+  canWriteUsersRoles?: boolean;
 };
 
 /**
  * Reintenta saves SQL pendientes tras hidratación y al recuperar conexión.
  */
 export function useSqlRetryProcessor(options: UseSqlRetryProcessorOptions) {
-  const { isDataLoaded, getLatestSnapshot } = options;
+  const { isDataLoaded, getLatestSnapshot, canWriteUsersRoles = false } = options;
 
   const processPendingSqlRetryQueue = useCallback(
     async (notify?: boolean) => {
@@ -43,12 +45,13 @@ export function useSqlRetryProcessor(options: UseSqlRetryProcessorOptions) {
         transactionsSql,
         fleetSql,
         inventorySql,
+        canWriteUsersRoles,
         latest: getLatestSnapshot(),
       });
 
       await processPendingSqlRetries(runners, { notify });
     },
-    [isDataLoaded, getLatestSnapshot]
+    [isDataLoaded, getLatestSnapshot, canWriteUsersRoles]
   );
 
   useEffect(() => {

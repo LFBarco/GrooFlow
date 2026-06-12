@@ -982,6 +982,7 @@ export default function App() {
   useSqlRetryProcessor({
     isDataLoaded,
     getLatestSnapshot: getSqlRetryLatestSnapshot,
+    canWriteUsersRoles: isAdminAppUser(currentUser),
   });
 
   const { applyReadState, markAlertRead, markAllAlertsRead } = useAlertReadPersistence(isDataLoaded);
@@ -1066,6 +1067,7 @@ export default function App() {
   const { persistUsersToCloud, handleUpdateRoles } = useUsersRolesPersistence({
     isDataLoaded,
     canSaveUsers,
+    canWriteUsersRoles: isAdminAppUser(currentUser),
     users,
     roles,
     setUsers,

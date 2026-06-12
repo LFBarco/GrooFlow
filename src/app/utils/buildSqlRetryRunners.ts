@@ -68,6 +68,7 @@ export type BuildSqlRetryRunnersInput = {
   transactionsSql: boolean;
   fleetSql: boolean;
   inventorySql: boolean;
+  canWriteUsersRoles?: boolean;
   latest: SqlRetryLatestSnapshot;
 };
 
@@ -120,12 +121,14 @@ export function buildSqlRetryRunners(input: BuildSqlRetryRunnersInput): SqlRetry
   runners['data:requests'] = queuedRunner('data:requests', () =>
     savePurchaseRequestsToSql(client, latest.requests, uid)
   );
-  runners['data:users'] = queuedRunner('data:users', () =>
-    saveAppUsersToSql(client, latest.users, uid)
-  );
-  runners['data:roles'] = queuedRunner('data:roles', () =>
-    saveRolesToSql(client, latest.roles, uid)
-  );
+  if (input.canWriteUsersRoles) {
+    runners['data:users'] = queuedRunner('data:users', () =>
+      saveAppUsersToSql(client, latest.users, uid)
+    );
+    runners['data:roles'] = queuedRunner('data:roles', () =>
+      saveRolesToSql(client, latest.roles, uid)
+    );
+  }
   runners['data:feeReceipts'] = appKv('data:feeReceipts', latest.feeReceipts);
   runners['data:products'] = appKv('data:products', latest.products);
   runners['data:chartOfAccounts'] = appKv('data:chartOfAccounts', latest.chartOfAccounts);

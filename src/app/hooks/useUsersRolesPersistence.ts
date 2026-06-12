@@ -8,6 +8,7 @@ import { getSupabaseClient } from '../services/repository/supabase';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import type { User } from '../types';
 import { backupDomainSqlAfterKvSave, ensureSqlSave } from '../utils/sqlAutosaveBackup';
+import { dequeueSqlRetry } from '../services/repository/sqlRetryQueue';
 import {
   autosaveKvDomain,
   persistKvDomainNow,
@@ -20,6 +21,8 @@ const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 export type UseUsersRolesPersistenceOptions = {
   isDataLoaded: boolean;
   canSaveUsers: boolean;
+  /** Solo administradores pueden escribir app_users / roles en SQL (RLS). */
+  canWriteUsersRoles: boolean;
   users: User[];
   roles: Role[];
   setUsers: Dispatch<SetStateAction<User[]>>;
@@ -44,6 +47,7 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
   const {
     isDataLoaded,
     canSaveUsers,
+    canWriteUsersRoles,
     users,
     roles,
     setUsers,
@@ -70,10 +74,14 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
         return false;
       }
+      if (!canWriteUsersRoles) {
+        toast.error('Solo un administrador puede modificar la lista de usuarios.');
+        return false;
+      }
       const clean = sanitizeUsersForCloud(list);
       usersLatestRef.current = clean;
 
-      if (PRODUCTION_USE_SQL) {
+      if (PRODUCTION_USE_SQL && canWriteUsersRoles) {
         const { data: sess } = await getSupabaseClient().auth.getSession();
         const sqlOk = await ensureSqlSave(
           true,
@@ -114,7 +122,7 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
       }
       return false;
     },
-    [isDataLoaded, cloudSync]
+    [isDataLoaded, cloudSync, canWriteUsersRoles]
   );
 
   const handleUpdateRoles = useCallback(
@@ -122,6 +130,10 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
       setRoles(nextRoles);
       if (!isDataLoaded || !rolesHydratedRef.current) {
         toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
+        return false;
+      }
+      if (!canWriteUsersRoles) {
+        toast.error('Solo un administrador puede modificar la configuración de roles.');
         return false;
       }
       rolesLatestRef.current = nextRoles;
@@ -153,11 +165,17 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         sync: cloudSync,
       });
     },
-    [isDataLoaded, setRoles, cloudSync]
+    [isDataLoaded, setRoles, cloudSync, canWriteUsersRoles]
   );
 
   useEffect(() => {
-    if (!isDataLoaded || !usersHydratedRef.current || !canSaveUsers) return;
+    if (canWriteUsersRoles) return;
+    dequeueSqlRetry('data:users');
+    dequeueSqlRetry('data:roles');
+  }, [canWriteUsersRoles]);
+
+  useEffect(() => {
+    if (!isDataLoaded || !usersHydratedRef.current || !canSaveUsers || !canWriteUsersRoles) return;
     const cleanUsers = sanitizeUsersForCloud(users);
     void autosaveKvDomain({
       kvKey: 'data:users',
@@ -182,10 +200,10 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         );
       }
     });
-  }, [users, isDataLoaded, canSaveUsers]);
+  }, [users, isDataLoaded, canSaveUsers, canWriteUsersRoles]);
 
   useEffect(() => {
-    if (!isDataLoaded || !rolesHydratedRef.current) return;
+    if (!isDataLoaded || !rolesHydratedRef.current || !canWriteUsersRoles) return;
     void autosaveKvDomain({
       kvKey: 'data:roles',
       payload: roles,
@@ -209,7 +227,7 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
         );
       }
     });
-  }, [roles, isDataLoaded]);
+  }, [roles, isDataLoaded, canWriteUsersRoles]);
 
   return { persistUsersToCloud, handleUpdateRoles };
 }
