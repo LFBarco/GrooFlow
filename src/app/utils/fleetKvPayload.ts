@@ -1,5 +1,7 @@
 import type { FleetDataset, FleetInspectionRecord, FleetChecklistSection } from '../types/fleet';
 import { isDefaultFleetChecklist, normalizeFleetDataset } from './fleetData';
+import { isFleetSqlEnabled } from '../services/repository/fleetSql';
+
 const KV_TARGET_MAX_BYTES = 3_500_000;
 
 export function estimateFleetDatasetBytes(dataset: FleetDataset): number {
@@ -10,7 +12,57 @@ export function estimateFleetDatasetBytes(dataset: FleetDataset): number {
   }
 }
 
-/** KV: metadata sin dataUrls pesados; SQL guarda el documento completo en fleet_inspections. */
+function rowTimestamp(raw?: string): number {
+  if (!raw) return 0;
+  const t = Date.parse(raw);
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/** Combina listas operativas; respeta borrados y timestamps en conflictos multi-usuario. */
+function pickOperationalList<T extends { id: string; updatedAt?: string; createdAt?: string }>(
+  kvList: T[],
+  sqlList: T[]
+): T[] {
+  const kvIds = new Set(kvList.map((r) => r.id));
+  const sqlIds = new Set(sqlList.map((r) => r.id));
+  const kvOnly = [...kvIds].filter((id) => !sqlIds.has(id));
+  const sqlOnly = [...sqlIds].filter((id) => !kvIds.has(id));
+  if (kvOnly.length === 0 && sqlOnly.length > 0) return kvList;
+  if (sqlOnly.length === 0 && kvOnly.length > 0) return sqlList;
+  if (kvOnly.length > 0 && sqlOnly.length > 0) {
+    const merged = new Map<string, T>();
+    for (const row of sqlList) merged.set(row.id, row);
+    for (const row of kvList) merged.set(row.id, row);
+    return [...merged.values()];
+  }
+  const sqlMap = new Map(sqlList.map((r) => [r.id, r]));
+  const ts = (r: T) => rowTimestamp(r.updatedAt || r.createdAt);
+  return kvList.map((kvRow) => {
+    const sqlRow = sqlMap.get(kvRow.id);
+    if (!sqlRow) return kvRow;
+    return ts(sqlRow) >= ts(kvRow) ? sqlRow : kvRow;
+  });
+}
+
+function mergeInspections(
+  kv: FleetInspectionRecord[],
+  sql: FleetInspectionRecord[]
+): FleetInspectionRecord[] {
+  const base = pickOperationalList(
+    kv.map((r) => ({ ...r, createdAt: r.createdAt })),
+    sql.map((r) => ({ ...r, createdAt: r.createdAt }))
+  );
+  const kvMap = new Map(kv.map((r) => [r.id, r]));
+  const sqlMap = new Map(sql.map((r) => [r.id, r]));
+  return base.map((row) => {
+    const k = kvMap.get(row.id);
+    const s = sqlMap.get(row.id);
+    if (k && s) return pickRicherInspection(k, s);
+    return (k ?? s ?? row) as FleetInspectionRecord;
+  });
+}
+
+/** KV: metadata sin dataUrls pesados; inspecciones solo en SQL cuando está activo. */
 export function slimFleetDatasetForKv(dataset: FleetDataset): FleetDataset {
   const slimInspection = (ins: FleetInspectionRecord): FleetInspectionRecord => ({
     ...ins,
@@ -24,6 +76,13 @@ export function slimFleetDatasetForKv(dataset: FleetDataset): FleetDataset {
       dataUrl: '',
     })),
   });
+
+  if (isFleetSqlEnabled()) {
+    return normalizeFleetDataset({
+      ...dataset,
+      inspections: [],
+    });
+  }
 
   let inspections = dataset.inspections.map(slimInspection);
   let slim: FleetDataset = { ...dataset, inspections };
@@ -54,29 +113,6 @@ function pickRicherInspection(a: FleetInspectionRecord, b: FleetInspectionRecord
 export function mergeFleetKvAndSql(kv: FleetDataset, sql: FleetDataset): FleetDataset {
   const nk = normalizeFleetDataset(kv);
   const ns = normalizeFleetDataset(sql);
-  const inspMap = new Map<string, FleetInspectionRecord>();
-  for (const ins of nk.inspections) inspMap.set(ins.id, ins);
-  for (const ins of ns.inspections) {
-    const prev = inspMap.get(ins.id);
-    inspMap.set(ins.id, prev ? pickRicherInspection(prev, ins) : ins);
-  }
-
-  /** Combina listas operativas; respeta borrados en KV cuando SQL aún no hizo prune. */
-  const pickOperational = <T extends { id: string }>(kvList: T[], sqlList: T[]) => {
-    const kvIds = new Set(kvList.map((r) => r.id));
-    const sqlIds = new Set(sqlList.map((r) => r.id));
-    const kvOnly = [...kvIds].filter((id) => !sqlIds.has(id));
-    const sqlOnly = [...sqlIds].filter((id) => !kvIds.has(id));
-    if (kvOnly.length === 0 && sqlOnly.length > 0) return kvList;
-    if (sqlOnly.length === 0 && kvOnly.length > 0) return sqlList;
-    if (kvOnly.length > 0 && sqlOnly.length > 0) {
-      const merged = new Map<string, T>();
-      for (const row of sqlList) merged.set(row.id, row);
-      for (const row of kvList) merged.set(row.id, row);
-      return [...merged.values()];
-    }
-    return sqlList;
-  };
 
   const pickChecklist = (
     kvSections: FleetChecklistSection[],
@@ -94,14 +130,14 @@ export function mergeFleetKvAndSql(kv: FleetDataset, sql: FleetDataset): FleetDa
     if (kvSections.length !== sqlSections.length) {
       return sqlSections;
     }
-    /** Misma cantidad pero contenido distinto: SQL (tabla fleet_checklist). */
     return sqlSections;
   };
+
   return normalizeFleetDataset({
-    vehicles: pickOperational(nk.vehicles, ns.vehicles),
-    maintenance: pickOperational(nk.maintenance, ns.maintenance),
-    fuelEntries: pickOperational(nk.fuelEntries, ns.fuelEntries),
-    inspections: [...inspMap.values()],
+    vehicles: pickOperationalList(nk.vehicles, ns.vehicles),
+    maintenance: pickOperationalList(nk.maintenance, ns.maintenance),
+    fuelEntries: pickOperationalList(nk.fuelEntries, ns.fuelEntries),
+    inspections: mergeInspections(nk.inspections, ns.inspections),
     checklistSections: pickChecklist(nk.checklistSections, ns.checklistSections),
   });
 }

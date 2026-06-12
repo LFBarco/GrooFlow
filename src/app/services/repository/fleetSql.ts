@@ -12,13 +12,22 @@ import type {
   FleetChecklistSection,
 } from '../../types/fleet';
 import { normalizeFleetDataset } from '../../utils/fleetData';
+import {
+  detectFleetSqlConflicts,
+  fleetRowKey,
+  type FleetSqlTimestamps,
+} from '../../utils/fleetSqlTimestamps';
 import { deleteRowsByIdBatched, fetchAllRowIds, selectAllRowsPaginated } from './sqlDomainUtils';
+
+export type { FleetSqlTimestamps };
+export { fleetRowKey };
 
 export type FleetSqlLoadResult = {
   ok: boolean;
   data: FleetDataset | null;
   /** Tablas SQL vacías pero accesibles */
   empty: boolean;
+  timestamps?: FleetSqlTimestamps;
 };
 
 function vehicleRow(v: FleetVehicle, userId: string | null) {
@@ -82,18 +91,59 @@ function isMissingTableError(err: { code?: string; message?: string } | null): b
 async function loadFleetBodies<T>(
   client: SupabaseClient,
   table: string
-): Promise<{ items: T[]; missingTable: boolean; errors: string[] }> {
+): Promise<{ items: T[]; timestamps: FleetSqlTimestamps; missingTable: boolean; errors: string[] }> {
   const { rows, errors, missingTable } = await selectAllRowsPaginated(client, table, {
-    select: 'body',
+    select: 'id, updated_at, body',
   });
+  const timestamps: FleetSqlTimestamps = new Map();
   if (missingTable || errors.length > 0) {
-    return { items: [], missingTable, errors };
+    return { items: [], timestamps, missingTable, errors };
   }
-  return {
-    items: rows.map((r) => r.body as T),
-    missingTable: false,
-    errors: [],
-  };
+  const items = rows.map((r) => {
+    const id = String(r.id);
+    if (r.updated_at) timestamps.set(fleetRowKey(table, id), String(r.updated_at));
+    return r.body as T;
+  });
+  return { items, timestamps, missingTable: false, errors: [] };
+}
+
+async function loadFleetTimestampsOnly(
+  client: SupabaseClient,
+  table: string
+): Promise<{ timestamps: FleetSqlTimestamps; missingTable: boolean; errors: string[] }> {
+  const { rows, errors, missingTable } = await selectAllRowsPaginated(client, table, {
+    select: 'id, updated_at',
+  });
+  const timestamps: FleetSqlTimestamps = new Map();
+  if (missingTable || errors.length > 0) {
+    return { timestamps, missingTable, errors };
+  }
+  for (const r of rows) {
+    if (r.updated_at) timestamps.set(fleetRowKey(table, String(r.id)), String(r.updated_at));
+  }
+  return { timestamps, missingTable: false, errors: [] };
+}
+
+export async function loadFleetTimestampsFromSql(
+  client: SupabaseClient
+): Promise<FleetSqlTimestamps> {
+  const [vehicles, maint, fuel, insp, checklistRes] = await Promise.all([
+    loadFleetTimestampsOnly(client, 'fleet_vehicles'),
+    loadFleetTimestampsOnly(client, 'fleet_maintenance'),
+    loadFleetTimestampsOnly(client, 'fleet_fuel_entries'),
+    loadFleetTimestampsOnly(client, 'fleet_inspections'),
+    client.from('fleet_checklist').select('updated_at').eq('id', 'default').maybeSingle(),
+  ]);
+  const merged: FleetSqlTimestamps = new Map([
+    ...vehicles.timestamps,
+    ...maint.timestamps,
+    ...fuel.timestamps,
+    ...insp.timestamps,
+  ]);
+  if (checklistRes.data?.updated_at) {
+    merged.set(fleetRowKey('fleet_checklist', 'default'), String(checklistRes.data.updated_at));
+  }
+  return merged;
 }
 
 export async function loadFleetFromSql(
@@ -105,7 +155,7 @@ export async function loadFleetFromSql(
     loadFleetBodies<FleetMaintenanceRecord>(client, 'fleet_maintenance'),
     loadFleetBodies<FleetFuelEntry>(client, 'fleet_fuel_entries'),
     loadFleetBodies<FleetInspectionRecord>(client, 'fleet_inspections'),
-    client.from('fleet_checklist').select('sections').eq('id', 'default').maybeSingle(),
+    client.from('fleet_checklist').select('sections, updated_at').eq('id', 'default').maybeSingle(),
   ]);
 
   const firstMissing =
@@ -138,6 +188,19 @@ export async function loadFleetFromSql(
   const inspections = inspLoad.items;
   const checklistSections = (checklistRes.data?.sections ?? []) as FleetChecklistSection[];
 
+  const timestamps: FleetSqlTimestamps = new Map([
+    ...vehiclesLoad.timestamps,
+    ...maintLoad.timestamps,
+    ...fuelLoad.timestamps,
+    ...inspLoad.timestamps,
+  ]);
+  if (checklistRes.data?.updated_at) {
+    timestamps.set(
+      fleetRowKey('fleet_checklist', 'default'),
+      String(checklistRes.data.updated_at)
+    );
+  }
+
   const homeMap =
     vehicleHomeBaseById ??
     new Map(vehicles.map((v) => [v.id, v.homeBase]));
@@ -158,12 +221,14 @@ export async function loadFleetFromSql(
   });
 
   void homeMap;
-  return { ok: true, data, empty };
+  return { ok: true, data, empty, timestamps };
 }
 
 export type FleetSqlSaveResult = {
   ok: boolean;
   errors: string[];
+  /** Otro usuario modificó filas antes de este guardado */
+  conflict?: boolean;
 };
 
 /** Guarda solo la plantilla del checklist (tabla fleet_checklist). */
@@ -190,11 +255,37 @@ export async function saveFleetToSql(
   client: SupabaseClient,
   dataset: FleetDataset,
   userId: string | null,
-  options?: { allowPruneWhenEmpty?: boolean }
+  options?: {
+    allowPruneWhenEmpty?: boolean;
+    knownTimestamps?: FleetSqlTimestamps;
+    skipOptimisticLock?: boolean;
+  }
 ): Promise<FleetSqlSaveResult> {
   const errors: string[] = [];
   if (!userId) {
     return { ok: false, errors: ['Sin sesión de usuario (auth.uid)'] };
+  }
+
+  const upsertKeys = [
+    ...dataset.vehicles.map((v) => fleetRowKey('fleet_vehicles', v.id)),
+    ...dataset.maintenance.map((m) => fleetRowKey('fleet_maintenance', m.id)),
+    ...dataset.fuelEntries.map((f) => fleetRowKey('fleet_fuel_entries', f.id)),
+    ...dataset.inspections.map((i) => fleetRowKey('fleet_inspections', i.id)),
+    fleetRowKey('fleet_checklist', 'default'),
+  ];
+
+  if (!options?.skipOptimisticLock && options?.knownTimestamps) {
+    const live = await loadFleetTimestampsFromSql(client);
+    const conflicts = detectFleetSqlConflicts(options.knownTimestamps, live, upsertKeys);
+    if (conflicts.length > 0) {
+      return {
+        ok: false,
+        conflict: true,
+        errors: [
+          `Conflicto de edición concurrente (${conflicts.length} fila(s)). Recarga la flota e intenta de nuevo.`,
+        ],
+      };
+    }
   }
 
   const vehicleMap = new Map(dataset.vehicles.map((v) => [v.id, v.homeBase]));
@@ -220,15 +311,19 @@ export async function saveFleetToSql(
   const prune = async (table: string, keepIds: Set<string>) => {
     const { ids: existing, errors: listErrors } = await fetchAllRowIds(client, table);
     if (listErrors.length > 0) {
+      errors.push(...listErrors.map((e) => `${table} list: ${e}`));
       console.warn(`[fleetSql] prune list ${table}`, listErrors);
-      return;
+      return false;
     }
     const toDelete = existing.filter((id) => !keepIds.has(id));
-    if (toDelete.length === 0) return;
+    if (toDelete.length === 0) return true;
     const deleteErrors = await deleteRowsByIdBatched(client, table, toDelete);
     if (deleteErrors.length > 0) {
-      console.warn(`[fleetSql] prune delete ${table} (no fatal)`, deleteErrors);
+      errors.push(...deleteErrors.map((e) => `${table} delete: ${e}`));
+      console.warn(`[fleetSql] prune delete ${table}`, deleteErrors);
+      return false;
     }
+    return true;
   };
 
   const ids = {
@@ -271,12 +366,15 @@ export async function saveFleetToSql(
   const shouldPrune = !isEmpty || options?.allowPruneWhenEmpty;
 
   if (shouldPrune) {
-    const pruneTasks: Promise<void>[] = [];
-    if (vehiclesOk) pruneTasks.push(prune('fleet_vehicles', ids.vehicles));
-    if (maintOk) pruneTasks.push(prune('fleet_maintenance', ids.maintenance));
-    if (fuelOk) pruneTasks.push(prune('fleet_fuel_entries', ids.fuel));
-    if (inspOk) pruneTasks.push(prune('fleet_inspections', ids.inspections));
-    await Promise.all(pruneTasks);
+    const pruneResults = await Promise.all([
+      vehiclesOk ? prune('fleet_vehicles', ids.vehicles) : Promise.resolve(true),
+      maintOk ? prune('fleet_maintenance', ids.maintenance) : Promise.resolve(true),
+      fuelOk ? prune('fleet_fuel_entries', ids.fuel) : Promise.resolve(true),
+      inspOk ? prune('fleet_inspections', ids.inspections) : Promise.resolve(true),
+    ]);
+    if (pruneResults.some((ok) => !ok)) {
+      return { ok: false, errors };
+    }
   }
 
   const operationalOk = vehiclesOk && maintOk && fuelOk && inspOk;

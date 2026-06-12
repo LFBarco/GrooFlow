@@ -39,7 +39,6 @@ import {
   Landmark,
   BookOpen,
   Truck,
-  Package,
 } from "lucide-react";
 // Logo: coloque logo.png en la carpeta public/ para producción
 const logoUrl = '/logo.png';
@@ -80,7 +79,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { api, setKvSessionFatalHandler } from "./services/api";
 import { supabase } from "../../utils/supabase/client";
 import { getSupabaseClient } from "./services/repository/supabase";
-import { isFleetSqlEnabled } from "./services/repository/fleetSql";
+import { isFleetSqlEnabled, type FleetSqlTimestamps } from "./services/repository/fleetSql";
 import { isInventorySqlEnabled } from "./services/repository/inventorySql";
 import {
   syncUserProfilesToSql,
@@ -109,7 +108,8 @@ import { getSuperAdminEmails } from "./config/superAdmins";
 import { weekKeyMatches } from "./utils/pettyCashWeekKey";
 import type { FleetDataset } from "./types/fleet";
 import type { InventoryDataset } from "./types/inventory";
-import { createDemoFleetDataset, normalizeFleetDataset } from "./utils/fleetData";
+import { mergeFleetRemoteIntoLocal } from "./utils/fleetMerge";
+import { normalizeFleetDataset } from "./utils/fleetData";
 import { normalizeInventoryDataset } from "./utils/inventoryData";
 import { isInventoryDatasetEmpty } from "./utils/inventoryDatasetEmpty";
 import { getModuleSurfaces } from "./utils/moduleSurfaces";
@@ -577,6 +577,7 @@ export default function App() {
   const fleetKvCooldownUntilRef = useRef(0);
   const fleetKvChainRef = useRef(KV_CHAIN_IDLE);
   const fleetKvLatestRef = useRef<FleetDataset>(normalizeFleetDataset({}));
+  const fleetSqlTimestampsRef = useRef<FleetSqlTimestamps>(new Map());
   const inventoryHydratedFromKvRef = useRef(false);
   const skipInventoryHydrateRef = useRef(false);
   const inventoryKvCooldownUntilRef = useRef(0);
@@ -909,6 +910,7 @@ export default function App() {
     skipFleetHydrateRef,
     fleetKvCooldownUntilRef,
     fleetKvLatestRef,
+    fleetSqlTimestampsRef,
     inventoryHydratedFromKvRef,
     skipInventoryHydrateRef,
     inventoryKvCooldownUntilRef,
@@ -1174,6 +1176,7 @@ export default function App() {
     kvApplyGenerationRef,
     lastSaveErrorAtRef,
     cloudSync: cloudSyncTrackerRef.current,
+    sqlTimestampsRef: fleetSqlTimestampsRef,
   });
 
   const { persistInventoryNow, handleInventoryDatasetUpdate } = useInventoryPersistence({
@@ -1512,6 +1515,7 @@ export default function App() {
         break;
       }
       case 'data:fleet': {
+        if (FLEET_USE_SQL) return;
         if (!fleetHydratedFromKvRef.current) return;
         const next = normalizeFleetDataset(value as Partial<FleetDataset>);
         if (kvPayloadsEqual(fleetKvLatestRef.current, next)) return;
@@ -1567,10 +1571,12 @@ export default function App() {
       return;
     }
     if (kvPayloadsEqual(fleetKvLatestRef.current, normalized)) return;
-    fleetKvLatestRef.current = normalized;
-    markCrossTabEchoWindow('data:fleet');
+    const merged = mergeFleetRemoteIntoLocal(fleetKvLatestRef.current, normalized);
+    if (kvPayloadsEqual(fleetKvLatestRef.current, merged)) return;
+    fleetKvLatestRef.current = merged;
+    if (!FLEET_USE_SQL) markCrossTabEchoWindow('data:fleet');
     fleetKvCooldownUntilRef.current = Date.now() + FLEET_REMOTE_COOLDOWN_MS;
-    setFleetDataset(normalized);
+    setFleetDataset(merged);
     const now = Date.now();
     if (now - fleetRemoteToastLastAtRef.current >= 4000) {
       fleetRemoteToastLastAtRef.current = now;
@@ -2503,6 +2509,7 @@ export default function App() {
       feeReceiptsKvLatestRef.current = [];
       chartOfAccountsKvLatestRef.current = [];
       fleetKvLatestRef.current = emptyFleet;
+      fleetSqlTimestampsRef.current = new Map();
       treasuryInvoicesKvLatestRef.current = [];
       treasuryBankBalanceKvLatestRef.current = undefined;
       treasuryPaidHistoryKvLatestRef.current = [];

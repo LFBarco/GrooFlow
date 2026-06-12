@@ -3,6 +3,8 @@ import { useEffect, type MutableRefObject } from 'react';
 import { getSupabaseClient } from '../services/repository/supabase';
 import { isFleetSqlEnabled, loadFleetFromSql } from '../services/repository/fleetSql';
 import { normalizeFleetDataset } from '../utils/fleetData';
+import { mergeFleetRemoteIntoLocal } from '../utils/fleetMerge';
+import { kvPayloadsEqual } from '../utils/kvCrossTabSync';
 import { shouldApplyFleetRemoteSnapshot } from '../utils/fleetRemoteSyncGuard';
 import type { FleetDataset } from '../types/fleet';
 
@@ -47,8 +49,11 @@ export function useFleetRealtimeSync(
           return;
         }
 
-        latestRef.current = remote;
-        applyRef.current?.(remote);
+        const merged = mergeFleetRemoteIntoLocal(latestRef.current, remote);
+        if (kvPayloadsEqual(latestRef.current, merged)) return;
+
+        latestRef.current = merged;
+        applyRef.current?.(merged);
       } finally {
         reloadInFlight = false;
       }

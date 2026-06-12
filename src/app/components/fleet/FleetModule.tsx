@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Gauge,
+  Trash2,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -137,7 +138,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
   const avgCons = avgFleetConsumptionLPer100(dataset);
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2">
+    <div data-testid="fleet-module" className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-500/25 bg-gradient-to-br from-slate-950/90 via-[#151025] to-slate-900/95 p-3 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-emerald-500/15 p-2.5 border border-emerald-500/30">
@@ -160,7 +161,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
       <Tabs value={fleetTab} onValueChange={(v) => setFleetTab(v as FleetTab)} className="space-y-4">
         <TabsList className="flex-wrap h-auto gap-1 bg-slate-900/80 border border-white/10 p-1 rounded-xl">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="fleet">Flota</TabsTrigger>
+          <TabsTrigger value="fleet" data-testid="fleet-tab-fleet">Flota</TabsTrigger>
           <TabsTrigger value="maintenance">Mantenimiento</TabsTrigger>
           <TabsTrigger value="fuel">Combustible</TabsTrigger>
           <TabsTrigger value="alerts">Alertas ({alerts.filter((a) => a.severity !== 'info').length})</TabsTrigger>
@@ -361,7 +362,11 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
               />
             </TabsContent>
             <TabsContent value="inspection-global-hist" className="focus-visible:outline-none">
-              <FleetInspectionsGlobalTable dataset={dataset} />
+              <FleetInspectionsGlobalTable
+                dataset={dataset}
+                setDataset={setDataset}
+                onPersistDataset={onPersistDataset}
+              />
             </TabsContent>
           </Tabs>
         </TabsContent>
@@ -531,7 +536,7 @@ function FleetVehiclesSection({
   return (
     <>
       <div className="flex justify-end mb-3">
-        <Button onClick={openNew} className="gap-2 bg-teal-600 hover:bg-teal-500">
+        <Button onClick={openNew} data-testid="fleet-add-vehicle" className="gap-2 bg-teal-600 hover:bg-teal-500">
           <Plus className="h-4 w-4" />
           Alta de vehículo
         </Button>
@@ -610,15 +615,15 @@ function FleetVehiclesSection({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-slate-300">Placa *</Label>
-              <Input value={form.plate ?? ''} onChange={(e) => setForm((f) => ({ ...f, plate: e.target.value }))} />
+              <Input data-testid="fleet-plate-input" value={form.plate ?? ''} onChange={(e) => setForm((f) => ({ ...f, plate: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-300">Marca *</Label>
-              <Input value={form.brand ?? ''} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} />
+              <Input data-testid="fleet-brand-input" value={form.brand ?? ''} onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-300">Modelo *</Label>
-              <Input value={form.model ?? ''} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} />
+              <Input data-testid="fleet-model-input" value={form.model ?? ''} onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-300">Año</Label>
@@ -697,7 +702,7 @@ function FleetVehiclesSection({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-            <Button onClick={save} className="bg-teal-600 hover:bg-teal-500">{editing ? 'Guardar cambios' : 'Registrar vehículo'}</Button>
+            <Button data-testid="fleet-save-vehicle" onClick={save} className="bg-teal-600 hover:bg-teal-500">{editing ? 'Guardar cambios' : 'Registrar vehículo'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -817,6 +822,15 @@ function FleetMaintenanceSection({
     }
   };
 
+  const removeMaintenance = async (rec: FleetMaintenanceRecord) => {
+    if (!confirm('¿Eliminar este registro de mantenimiento?')) return;
+    const next: FleetDataset = {
+      ...dataset,
+      maintenance: dataset.maintenance.filter((m) => m.id !== rec.id),
+    };
+    await applyFleetDatasetChange(setDataset, onPersistDataset, next, 'Mantenimiento eliminado.');
+  };
+
   const rows = [...dataset.maintenance].sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
 
   return (
@@ -837,6 +851,7 @@ function FleetMaintenanceSection({
               <TableHead>Sede</TableHead>
               <TableHead>Descripción</TableHead>
               <TableHead className="text-right">Costo tot.</TableHead>
+              <TableHead className="w-10" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -855,6 +870,18 @@ function FleetMaintenanceSection({
                   <TableCell className="text-slate-400">{r.location || v?.homeBase || '—'}</TableCell>
                   <TableCell className="max-w-[240px] truncate text-slate-400">{r.description}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoneyStr(tot)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-400 hover:text-red-300"
+                      onClick={() => void removeMaintenance(r)}
+                      title="Eliminar mantenimiento"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}
@@ -1039,6 +1066,15 @@ function FleetFuelSection({
     }
   };
 
+  const removeFuelEntry = async (row: FleetFuelEntry) => {
+    if (!confirm('¿Eliminar este registro de combustible?')) return;
+    const next: FleetDataset = {
+      ...dataset,
+      fuelEntries: dataset.fuelEntries.filter((f) => f.id !== row.id),
+    };
+    await applyFleetDatasetChange(setDataset, onPersistDataset, next, 'Repostaje eliminado.');
+  };
+
   const [chartVid, setChartVid] = useState('');
   useEffect(() => {
     if (!chartVid && dataset.vehicles[0]) setChartVid(dataset.vehicles[0].id);
@@ -1102,7 +1138,7 @@ function FleetFuelSection({
 
       <ScrollArea className="h-[260px] rounded-xl border border-white/10 bg-slate-950/60">
         <Table>
-          <TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Placa</TableHead><TableHead>Sede</TableHead><TableHead>L</TableHead><TableHead>Km</TableHead><TableHead className="text-right">S/</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Placa</TableHead><TableHead>Sede</TableHead><TableHead>L</TableHead><TableHead>Km</TableHead><TableHead className="text-right">S/</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
           <TableBody>
             {[...dataset.fuelEntries].sort((a,b)=>parseISO(b.date).getTime()-parseISO(a.date).getTime()).map((r) => {
               const v = dataset.vehicles.find((x)=>x.id===r.vehicleId);
@@ -1115,6 +1151,18 @@ function FleetFuelSection({
                   <TableCell>{r.liters}</TableCell>
                   <TableCell>{r.odometerKm.toLocaleString('es-PE')}</TableCell>
                   <TableCell className="text-right">{formatCurrencyEs(r.totalCost)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-400 hover:text-red-300"
+                      onClick={() => void removeFuelEntry(r)}
+                      title="Eliminar repostaje"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}

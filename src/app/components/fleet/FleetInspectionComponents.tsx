@@ -273,7 +273,7 @@ export function FleetChecklistConfigurator({
       persistTimerRef.current = setTimeout(() => {
         persistTimerRef.current = null;
         void flushPersist();
-      }, 450);
+      }, 250);
     },
     [flushPersist]
   );
@@ -285,16 +285,31 @@ export function FleetChecklistConfigurator({
     }
   }, [persistenceReady, flushPersist]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const flushPending = () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      if (pendingSectionsRef.current && persistRef.current && readyRef.current) {
+        void flushPersist();
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushPending();
+    };
+    window.addEventListener('beforeunload', flushPending);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('beforeunload', flushPending);
+      document.removeEventListener('visibilitychange', onVisibility);
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
       if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
       if (pendingSectionsRef.current && persistRef.current && readyRef.current) {
         void persistRef.current(pendingSectionsRef.current, { silent: true });
       }
-    },
-    []
-  );
+    };
+  }, [flushPersist]);
 
   const withSections = (
     updater: (current: FleetChecklistSection[]) => FleetChecklistSection[],
@@ -753,6 +768,24 @@ export function FleetVehicleInspectionBar({
     if (ok) setOpenNew(false);
   };
 
+  const removeInspection = async (rec: FleetInspectionRecord) => {
+    if (!confirm('¿Eliminar esta inspección del historial?')) return;
+    const next: FleetDataset = {
+      ...dataset,
+      inspections: dataset.inspections.filter((i) => i.id !== rec.id),
+    };
+    const ok = await applyFleetDatasetChange(
+      setDataset,
+      onPersistDataset,
+      next,
+      'Inspección eliminada.'
+    );
+    if (ok) {
+      if (detail?.id === rec.id) setDetail(null);
+      setOpenHist(false);
+    }
+  };
+
   return (
     <>
       <div className="border-t border-white/10 pt-3 mt-2 space-y-2">
@@ -912,23 +945,34 @@ export function FleetVehicleInspectionBar({
           <ScrollArea className="flex-1 max-h-[55vh] pr-3">
             <div className="space-y-2">
               {vehicleInspections.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className="w-full text-left rounded-lg border border-white/10 p-3 hover:bg-white/5 transition-colors"
-                  onClick={() => {
-                    setDetail(r);
-                    setOpenHist(false);
-                  }}
-                >
-                  <div className="flex justify-between gap-2">
-                    <span className="text-sm font-medium text-white">{format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}</span>
-                    <Badge variant="outline" className="border-teal-500/40 text-teal-200">
-                      {r.compliancePercent}%
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1">{r.driverName}</p>
-                </button>
+                <div key={r.id} className="flex items-center gap-2 rounded-lg border border-white/10 p-1 hover:bg-white/5">
+                  <button
+                    type="button"
+                    className="flex-1 text-left p-2 transition-colors"
+                    onClick={() => {
+                      setDetail(r);
+                      setOpenHist(false);
+                    }}
+                  >
+                    <div className="flex justify-between gap-2">
+                      <span className="text-sm font-medium text-white">{format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}</span>
+                      <Badge variant="outline" className="border-teal-500/40 text-teal-200">
+                        {r.compliancePercent}%
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">{r.driverName}</p>
+                  </button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0 text-red-400 hover:text-red-300"
+                    onClick={() => void removeInspection(r)}
+                    title="Eliminar inspección"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               ))}
               {vehicleInspections.length === 0 && <p className="text-sm text-slate-500">Sin registros.</p>}
             </div>
@@ -949,13 +993,36 @@ export function FleetVehicleInspectionBar({
 }
 
 /** Tabla global de inspecciones (todos los vehículos) */
-export function FleetInspectionsGlobalTable({ dataset }: { dataset: FleetDataset }) {
+export function FleetInspectionsGlobalTable({
+  dataset,
+  setDataset,
+  onPersistDataset,
+}: {
+  dataset: FleetDataset;
+  setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
+  onPersistDataset?: FleetPersistFn;
+}) {
   const rows = useMemo(
     () =>
       [...dataset.inspections].sort((a, b) => parseISO(b.dateTime).getTime() - parseISO(a.dateTime).getTime()),
     [dataset.inspections]
   );
   const [detail, setDetail] = useState<FleetInspectionRecord | null>(null);
+
+  const removeInspection = async (rec: FleetInspectionRecord) => {
+    if (!confirm('¿Eliminar esta inspección del historial global?')) return;
+    const next: FleetDataset = {
+      ...dataset,
+      inspections: dataset.inspections.filter((i) => i.id !== rec.id),
+    };
+    const ok = await applyFleetDatasetChange(
+      setDataset,
+      onPersistDataset,
+      next,
+      'Inspección eliminada.'
+    );
+    if (ok && detail?.id === rec.id) setDetail(null);
+  };
 
   return (
     <>
@@ -993,9 +1060,21 @@ export function FleetInspectionsGlobalTable({ dataset }: { dataset: FleetDataset
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setDetail(r)}>
-                          Ver
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setDetail(r)}>
+                            Ver
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-400 hover:text-red-300"
+                            onClick={() => void removeInspection(r)}
+                            title="Eliminar inspección"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

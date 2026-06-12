@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { normalizeFleetDataset } from './fleetData';
 import { mergeFleetKvAndSql, slimFleetDatasetForKv } from './fleetKvPayload';
 
 describe('fleetKvPayload', () => {
   it('slimFleetDatasetForKv quita dataUrls de firmas', () => {
+    vi.stubEnv('VITE_BACKEND', 'supabase');
+    vi.stubEnv('VITE_FLEET_SQL', 'false');
     const dataset = normalizeFleetDataset({
       inspections: [
         {
@@ -31,6 +33,28 @@ describe('fleetKvPayload', () => {
     const slim = slimFleetDatasetForKv(dataset);
     expect(slim.inspections[0]?.driverSignatureDataUrl).toBe('sql');
     expect(slim.inspections[0]?.attachments[0]?.dataUrl).toBe('');
+    vi.unstubAllEnvs();
+  });
+
+  it('slimFleetDatasetForKv omite inspecciones cuando SQL flota está activo', () => {
+    vi.stubEnv('VITE_BACKEND', 'supabase');
+    vi.stubEnv('VITE_FLEET_SQL', 'true');
+    const dataset = normalizeFleetDataset({
+      inspections: [
+        {
+          id: 'i1',
+          vehicleId: 'v1',
+          dateTime: '2026-06-10T10:00:00.000Z',
+          driverName: 'Chofer',
+          responses: {},
+          compliancePercent: 100,
+          createdAt: '2026-06-10T10:00:00.000Z',
+        },
+      ],
+    });
+    const slim = slimFleetDatasetForKv(dataset);
+    expect(slim.inspections).toEqual([]);
+    vi.unstubAllEnvs();
   });
 
   it('mergeFleetKvAndSql prefiere SQL si misma cantidad de secciones pero distinto contenido', () => {

@@ -15,6 +15,7 @@ import type {
   User,
 } from '../../types';
 import type { FleetDataset } from '../../types/fleet';
+import type { FleetSqlTimestamps } from '../../services/repository/fleetSql';
 import type { InventoryDataset } from '../../types/inventory';
 import type { CloudSyncPhase } from '../../utils/kvDomainPersistence';
 
@@ -111,6 +112,7 @@ export type AppHydrationDeps = {
   skipFleetHydrateRef: MutableRefObject<boolean>;
   fleetKvCooldownUntilRef: MutableRefObject<number>;
   fleetKvLatestRef: MutableRefObject<FleetDataset>;
+  fleetSqlTimestampsRef: MutableRefObject<FleetSqlTimestamps>;
   inventoryHydratedFromKvRef: MutableRefObject<boolean>;
   skipInventoryHydrateRef: MutableRefObject<boolean>;
   inventoryKvCooldownUntilRef: MutableRefObject<number>;

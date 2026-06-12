@@ -65,7 +65,6 @@ import type { FleetDataset } from '../types/fleet';
 import type { InventoryDataset } from '../types/inventory';
 import { createDemoFleetDataset, normalizeFleetDataset } from '../utils/fleetData';
 import { isFleetDatasetEmpty } from '../utils/fleetDatasetEmpty';
-import { mergeFleetKvAndSql, slimFleetDatasetForKv } from '../utils/fleetKvPayload';
 import { mergeInventoryKvAndSql } from '../utils/inventoryKvPayload';
 import { normalizeInventoryDataset } from '../utils/inventoryData';
 import { isInventoryDatasetEmpty } from '../utils/inventoryDatasetEmpty';
@@ -881,27 +880,34 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               const kvFleet = rawFleet != null ? normalizeFleetDataset(rawFleet) : null;
               const kvHasData = kvFleet != null && !isFleetDatasetEmpty(kvFleet);
 
-              if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
-                nextFleet = kvHasData
-                  ? mergeFleetKvAndSql(kvFleet!, sqlLoad.data)
-                  : sqlLoad.data;
-                void api.saveKey('data:fleet', slimFleetDatasetForKv(nextFleet)).then((ok) => {
-                  if (!ok) console.warn('[hydration] fleet SQL→KV backup failed');
-                });
-              } else if (sqlLoad.ok && sqlLoad.data && sqlLoad.empty) {
-                nextFleet = sqlLoad.data;
-                void api.saveKey('data:fleet', normalizeFleetDataset({})).catch(() => undefined);
-              } else if (kvHasData && sqlLoad.ok && sqlLoad.data) {
-                nextFleet = mergeFleetKvAndSql(kvFleet!, sqlLoad.data);
+              if (sqlLoad.ok && sqlLoad.data) {
+                if (sqlLoad.empty && kvHasData && sessionUserId) {
+                  await migrateFleetKvToSql(getSupabaseClient(), kvFleet!, sessionUserId);
+                  const reload = await loadFleetFromSql(getSupabaseClient());
+                  nextFleet = reload.data ?? sqlLoad.data;
+                  if (reload.timestamps) {
+                    deps.fleetSqlTimestampsRef.current = reload.timestamps;
+                  }
+                } else {
+                  nextFleet = sqlLoad.data;
+                  if (sqlLoad.timestamps) {
+                    deps.fleetSqlTimestampsRef.current = sqlLoad.timestamps;
+                  }
+                }
+              } else if (kvHasData && sessionUserId) {
+                await migrateFleetKvToSql(getSupabaseClient(), kvFleet!, sessionUserId);
+                const reload = await loadFleetFromSql(getSupabaseClient());
+                nextFleet = reload.data ?? kvFleet!;
+                if (reload.timestamps) {
+                  deps.fleetSqlTimestampsRef.current = reload.timestamps;
+                }
               } else if (kvHasData) {
                 nextFleet = kvFleet!;
-                if (sessionUserId) {
-                  void migrateFleetKvToSql(getSupabaseClient(), nextFleet, sessionUserId);
-                }
-              } else if (kvFleet != null) {
-                nextFleet = kvFleet;
               } else if (sqlLoad.ok && sqlLoad.data) {
                 nextFleet = sqlLoad.data;
+                if (sqlLoad.timestamps) {
+                  deps.fleetSqlTimestampsRef.current = sqlLoad.timestamps;
+                }
               } else if (APP_BACKEND === 'local') {
                 nextFleet = createDemoFleetDataset();
               } else {
