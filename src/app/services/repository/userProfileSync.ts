@@ -71,11 +71,15 @@ export async function loadSelfAppUserProfile(
   };
 }
 
+/**
+ * Combina sedes/estado del perfil SQL (RLS) con el usuario de app_users.
+ * El rol de permisos vive en app_users/KV (puede ser custom); app_user_profiles
+ * solo guarda un bucket grueso (manager/analyst/…) para políticas RLS.
+ */
 export function mergeUserWithSqlProfile(user: User, profile: AppUserProfileRow | null): User {
   if (!profile) return user;
   return {
     ...user,
-    role: mapSqlRoleToAppRole(profile.role, user.role),
     status: profile.status === 'inactive' ? 'inactive' : user.status ?? 'active',
     sedes: profile.sedes?.length ? profile.sedes : user.sedes,
     allSedes: profile.all_sedes === true ? true : user.allSedes,
