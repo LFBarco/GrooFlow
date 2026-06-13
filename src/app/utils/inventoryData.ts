@@ -11,6 +11,7 @@ import {
 import { es } from 'date-fns/locale';
 import type {
   InventoryComputedAlert,
+  InventoryConsignmentStatus,
   InventoryDataset,
   InventoryEquipment,
   InventoryEquipmentStatus,
@@ -40,6 +41,41 @@ export const MAINTENANCE_STATUS_LABELS: Record<InventoryMaintenanceStatus, strin
   overdue: 'Vencido',
   cancelled: 'Cancelado',
 };
+
+export const CONSIGNMENT_STATUS_LABELS: Record<InventoryConsignmentStatus, string> = {
+  active: 'Vigente',
+  pending_return: 'Por devolver',
+  returned: 'Devuelto',
+  expired: 'Vencido',
+};
+
+export function isEquipmentConsignment(eq: InventoryEquipment): boolean {
+  return eq.isConsignment === true;
+}
+
+export function clearConsignmentFields(eq: InventoryEquipment): InventoryEquipment {
+  const {
+    isConsignment: _i,
+    consignorProviderId: _p,
+    consignorName: _n,
+    consignmentAgreementRef: _r,
+    consignmentStartDate: _s,
+    consignmentEndDate: _e,
+    consignmentStatus: _st,
+    consignmentTerms: _t,
+    consignmentReturnDate: _d,
+    ...rest
+  } = eq;
+  return { ...rest, isConsignment: false };
+}
+
+function normalizeConsignmentStatus(raw?: string): InventoryConsignmentStatus {
+  const t = (raw || '').toLowerCase();
+  if (t.includes('devu') || t === 'returned') return 'returned';
+  if (t.includes('venc') || t === 'expired') return 'expired';
+  if (t.includes('pend') || t.includes('return')) return 'pending_return';
+  return 'active';
+}
 
 function safeParseDate(raw?: string): Date | null {
   if (!raw) return null;
@@ -117,7 +153,8 @@ function normalizeEquipmentList(
     const r = row as Partial<InventoryEquipment>;
     if (typeof r.id !== 'string' || typeof r.code !== 'string' || typeof r.name !== 'string') continue;
     const t = nowIso();
-    out.push({
+    const isConsignment = r.isConsignment === true;
+    const base: InventoryEquipment = {
       id: r.id,
       code: r.code.trim(),
       name: r.name.trim(),
@@ -140,10 +177,22 @@ function normalizeEquipmentList(
       warrantyUntil: r.warrantyUntil,
       providerId: r.providerId,
       providerName: r.providerName?.trim(),
+      isConsignment,
       notes: r.notes?.trim(),
       createdAt: r.createdAt || t,
       updatedAt: r.updatedAt || t,
-    });
+    };
+    if (isConsignment) {
+      base.consignorProviderId = r.consignorProviderId;
+      base.consignorName = r.consignorName?.trim();
+      base.consignmentAgreementRef = r.consignmentAgreementRef?.trim();
+      base.consignmentStartDate = r.consignmentStartDate;
+      base.consignmentEndDate = r.consignmentEndDate;
+      base.consignmentStatus = normalizeConsignmentStatus(r.consignmentStatus);
+      base.consignmentTerms = r.consignmentTerms?.trim();
+      base.consignmentReturnDate = r.consignmentReturnDate;
+    }
+    out.push(base);
   }
   return out;
 }
@@ -218,8 +267,11 @@ export function computeInventoryKpis(ds: InventoryDataset): InventoryKpis {
   const maintScheduled = ds.maintenance.filter((m) => m.status === 'scheduled').length;
   const maintOverdue = ds.maintenance.filter((m) => m.status === 'overdue').length;
   const inMaintStatus = byStatus.maintenance + byStatus.critical;
-  const totalPurchase = ds.equipment.reduce((s, e) => s + e.purchaseValue, 0);
+  const ownedEquipment = ds.equipment.filter((e) => !isEquipmentConsignment(e));
+  const consignmentCount = ds.equipment.length - ownedEquipment.length;
+  const totalPurchase = ownedEquipment.reduce((s, e) => s + e.purchaseValue, 0);
   const totalCurrent = ds.equipment.reduce((s, e) => s + e.currentValue, 0);
+  const ownedCurrent = ownedEquipment.reduce((s, e) => s + e.currentValue, 0);
   const sedes = new Set(ds.equipment.map((e) => e.sede).filter(Boolean));
 
   return {
@@ -235,8 +287,10 @@ export function computeInventoryKpis(ds: InventoryDataset): InventoryKpis {
     scheduledMaintenance: maintScheduled,
     overdueMaintenance: maintOverdue,
     totalCurrentValue: totalCurrent,
-    totalDepreciation: Math.max(0, totalPurchase - totalCurrent),
+    totalDepreciation: Math.max(0, totalPurchase - ownedCurrent),
     sedeCount: sedes.size,
+    consignmentCount,
+    ownedCurrentValue: ownedCurrent,
   };
 }
 
@@ -276,6 +330,37 @@ export function buildInventoryAlerts(ds: InventoryDataset): InventoryComputedAle
           kind: 'maintenance',
         });
       }
+    }
+  }
+  for (const e of ds.equipment) {
+    if (!isEquipmentConsignment(e)) continue;
+    const end = safeParseDate(e.consignmentEndDate);
+    if (end && e.consignmentStatus !== 'returned') {
+      const days = differenceInDays(end, new Date());
+      if (days < 0 || days <= 45) {
+        alerts.push({
+          id: `consign-${e.id}-${e.consignmentEndDate}`,
+          severity: days < 0 ? 'critical' : days <= 15 ? 'warning' : 'info',
+          equipmentId: e.id,
+          equipmentCode: e.code,
+          title: days < 0 ? 'Consignación vencida' : 'Consignación por vencer',
+          detail: `${e.code}: ${e.consignorName || 'Consignante'} — ${
+            days < 0 ? `venció hace ${-days} día(s)` : `vence en ${days} día(s)`
+          }`,
+          kind: 'consignment',
+        });
+      }
+    }
+    if (e.consignmentStatus === 'pending_return') {
+      alerts.push({
+        id: `consign-ret-${e.id}`,
+        severity: 'warning',
+        equipmentId: e.id,
+        equipmentCode: e.code,
+        title: 'Consignación pendiente de devolución',
+        detail: `${e.code} — ${e.name}`,
+        kind: 'consignment',
+      });
     }
   }
   for (const m of ds.maintenance) {

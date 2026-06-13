@@ -58,6 +58,8 @@ import {
   monthlyMaintenanceSeries,
   sedeSummary,
   upcomingMaintenance,
+  clearConsignmentFields,
+  isEquipmentConsignment,
 } from '../../utils/inventoryData';
 import { applyInventoryDatasetChange, type InventoryPersistFn } from '../../utils/inventoryPersist';
 import { generateEquipmentCode, parseInventoryQrScan } from '../../utils/inventoryCodeGenerator';
@@ -94,6 +96,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import {
   CategoryBadge,
+  ConsignmentBadge,
   EquipmentStatusBadge,
   MaintenanceStatusBadge,
   UsefulLifeBar,
@@ -134,6 +137,7 @@ export function InventoryModule({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [consignmentFilter, setConsignmentFilter] = useState<'all' | 'consignment' | 'owned'>('all');
   const [maintStatusFilter, setMaintStatusFilter] = useState<string>('all');
   const [maintTypeFilter, setMaintTypeFilter] = useState<string>('all');
   const [equipmentDialog, setEquipmentDialog] = useState<InventoryEquipment | null>(null);
@@ -172,6 +176,8 @@ export function InventoryModule({
       if (sedeFilter !== 'all' && e.sede !== sedeFilter) return false;
       if (statusFilter !== 'all' && e.status !== statusFilter) return false;
       if (categoryFilter !== 'all' && e.category !== categoryFilter) return false;
+      if (consignmentFilter === 'consignment' && !isEquipmentConsignment(e)) return false;
+      if (consignmentFilter === 'owned' && isEquipmentConsignment(e)) return false;
       if (!q) return true;
       return (
         e.code.toLowerCase().includes(q) ||
@@ -180,10 +186,12 @@ export function InventoryModule({
         (e.model || '').toLowerCase().includes(q) ||
         (e.serialNumber || '').toLowerCase().includes(q) ||
         (e.floor || '').toLowerCase().includes(q) ||
-        (e.room || '').toLowerCase().includes(q)
+        (e.room || '').toLowerCase().includes(q) ||
+        (e.consignorName || '').toLowerCase().includes(q) ||
+        (e.consignmentAgreementRef || '').toLowerCase().includes(q)
       );
     });
-  }, [dataset.equipment, search, sedeFilter, statusFilter, categoryFilter]);
+  }, [dataset.equipment, search, sedeFilter, statusFilter, categoryFilter, consignmentFilter]);
 
   const filteredMaintenance = useMemo(() => {
     return dataset.maintenance
@@ -233,6 +241,7 @@ export function InventoryModule({
       sede: defaultSede,
       purchaseValue: 0,
       currentValue: 0,
+      isConsignment: false,
       createdAt: t,
       updatedAt: t,
     };
@@ -274,9 +283,21 @@ export function InventoryModule({
       toast.error('Código y nombre son obligatorios.');
       return;
     }
+    if (equipmentDialog.isConsignment) {
+      const hasConsignor =
+        Boolean(equipmentDialog.consignorProviderId?.trim()) ||
+        Boolean(equipmentDialog.consignorName?.trim());
+      if (!hasConsignor) {
+        toast.error('Indique el consignante (proveedor o nombre).');
+        return;
+      }
+    }
     const t = new Date().toISOString();
+    const baseRow: InventoryEquipment = equipmentDialog.isConsignment
+      ? equipmentDialog
+      : clearConsignmentFields(equipmentDialog);
     const row: InventoryEquipment = {
-      ...equipmentDialog,
+      ...baseRow,
       code,
       name,
       updatedAt: t,
@@ -439,7 +460,18 @@ export function InventoryModule({
             <KpiCard icon={Box} label="Total Equipos" value={String(kpis.total)} sub={`En ${kpis.sedeCount} sedes activas`} trend="↗ 3% vs mes anterior" trendUp />
             <KpiCard icon={CheckCircle2} label="Operativos" value={String(kpis.active)} sub={`${kpis.operationalPct}% del inventario`} />
             <KpiCard icon={Wrench} label="En Mantenimiento" value={String(kpis.inMaintenance)} sub={`${kpis.overdueMaintenance} vencido · ${kpis.scheduledMaintenance} programados`} />
-            <KpiCard icon={TrendingDown} label="Valor Actual" value={formatCompactCurrency(kpis.totalCurrentValue)} sub={`Depreciación: ${formatCompactCurrency(kpis.totalDepreciation)} acumulada`} trend="↘ 8% depreciación anual" trendDown />
+            <KpiCard
+              icon={TrendingDown}
+              label="Valor Actual"
+              value={formatCompactCurrency(kpis.ownedCurrentValue)}
+              sub={
+                kpis.consignmentCount > 0
+                  ? `${kpis.consignmentCount} en consignación · Deprec. ${formatCompactCurrency(kpis.totalDepreciation)}`
+                  : `Depreciación: ${formatCompactCurrency(kpis.totalDepreciation)} acumulada`
+              }
+              trend="↘ 8% depreciación anual"
+              trendDown
+            />
           </div>
 
           {alerts.some((a) => a.severity === 'critical') && (
@@ -615,6 +647,14 @@ export function InventoryModule({
                 ))}
               </SelectContent>
             </Select>
+            <Select value={consignmentFilter} onValueChange={(v) => setConsignmentFilter(v as typeof consignmentFilter)}>
+              <SelectTrigger className="w-[170px]"><SelectValue placeholder="Titularidad" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="owned">Propios</SelectItem>
+                <SelectItem value="consignment">Consignación</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           <Card>
@@ -639,6 +679,14 @@ export function InventoryModule({
                     <TableCell>
                       <div className="font-medium">{e.name}</div>
                       <div className="text-xs text-muted-foreground">{e.brand} {e.model}</div>
+                      {isEquipmentConsignment(e) ? (
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <ConsignmentBadge status={e.consignmentStatus ?? 'active'} compact />
+                          {e.consignorName ? (
+                            <span className="text-xs text-muted-foreground">· {e.consignorName}</span>
+                          ) : null}
+                        </div>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-sm">
                       <div>{e.sede}</div>

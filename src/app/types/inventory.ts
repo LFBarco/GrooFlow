@@ -19,6 +19,12 @@ export interface InventoryCategoryDef {
 
 export type InventoryEquipmentStatus = 'active' | 'maintenance' | 'critical' | 'inactive';
 
+export type InventoryConsignmentStatus =
+  | 'active'
+  | 'pending_return'
+  | 'returned'
+  | 'expired';
+
 export type InventoryMaintenanceKind = 'preventive' | 'corrective';
 
 export type InventoryMaintenanceStatus =
@@ -59,6 +65,17 @@ export interface InventoryEquipment {
   warrantyUntil?: string;
   providerId?: string;
   providerName?: string;
+  /** Equipo en consignación (propiedad del consignante). */
+  isConsignment?: boolean;
+  consignorProviderId?: string;
+  consignorName?: string;
+  consignmentAgreementRef?: string;
+  consignmentStartDate?: string;
+  consignmentEndDate?: string;
+  consignmentStatus?: InventoryConsignmentStatus;
+  /** Condiciones, fee, mínimos de consumo, etc. */
+  consignmentTerms?: string;
+  consignmentReturnDate?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -101,6 +118,10 @@ export interface InventoryKpis {
   totalCurrentValue: number;
   totalDepreciation: number;
   sedeCount: number;
+  /** Equipos marcados en consignación. */
+  consignmentCount: number;
+  /** Valor actual solo de equipos propios (excluye consignación). */
+  ownedCurrentValue: number;
 }
 
 export interface InventoryComputedAlert {
@@ -110,5 +131,5 @@ export interface InventoryComputedAlert {
   equipmentCode?: string;
   title: string;
   detail: string;
-  kind: 'status' | 'maintenance' | 'warranty' | 'value';
+  kind: 'status' | 'maintenance' | 'warranty' | 'value' | 'consignment';
 }

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import {
   Box,
   Calendar,
+  Handshake,
   MapPin,
   Package,
   Wand2,
@@ -10,6 +11,7 @@ import {
 
 import type {
   InventoryCategoryDef,
+  InventoryConsignmentStatus,
   InventoryDataset,
   InventoryEquipment,
 } from '../../types/inventory';
@@ -20,10 +22,11 @@ import {
   getCategoryLabel,
   getCategoryPrefix,
 } from '../../utils/inventoryCategoryConfig';
-import { formatEquipmentLocation } from '../../utils/inventoryData';
+import { formatEquipmentLocation, clearConsignmentFields, CONSIGNMENT_STATUS_LABELS } from '../../utils/inventoryData';
 import { EquipmentQrPanel } from './EquipmentQrPanel';
 import {
   CategoryBadge,
+  ConsignmentBadge,
   EquipmentStatusBadge,
 } from './inventoryUiHelpers';
 import {
@@ -46,6 +49,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { Separator } from '../ui/separator';
+import { Switch } from '../ui/switch';
 
 type EquipmentFormDialogProps = {
   equipment: InventoryEquipment | null;
@@ -85,6 +89,19 @@ export function EquipmentFormDialog({
 
   const categoryPrefix = getCategoryPrefix(dataset, equipment.category);
   const locationLabel = formatEquipmentLocation(equipment);
+  const isConsignment = equipment.isConsignment === true;
+
+  const setConsignmentEnabled = (enabled: boolean) => {
+    if (!enabled) {
+      onChange(clearConsignmentFields(equipment));
+      return;
+    }
+    onChange({
+      ...equipment,
+      isConsignment: true,
+      consignmentStatus: equipment.consignmentStatus ?? 'active',
+    });
+  };
 
   return (
     <Dialog open={equipment != null} onOpenChange={onOpenChange}>
@@ -108,6 +125,9 @@ export function EquipmentFormDialog({
                 label={getCategoryLabel(dataset, equipment.category)}
               />
               <EquipmentStatusBadge status={equipment.status} />
+              {isConsignment ? (
+                <ConsignmentBadge status={equipment.consignmentStatus ?? 'active'} />
+              ) : null}
             </div>
           </div>
         </DialogHeader>
@@ -272,9 +292,139 @@ export function EquipmentFormDialog({
             </FormSection>
 
             <FormSection
+              icon={Handshake}
+              title="Consignación"
+              description="Marque si el equipo no es propiedad de la clínica"
+            >
+              <div className="flex items-center justify-between gap-4 rounded-lg border bg-violet-500/5 border-violet-500/20 px-4 py-3">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">Equipo en consignación</p>
+                  <p className="text-xs text-muted-foreground">
+                    El bien pertenece a un laboratorio o proveedor; la clínica solo lo tiene en custodia.
+                  </p>
+                </div>
+                <Switch
+                  checked={isConsignment}
+                  onCheckedChange={setConsignmentEnabled}
+                  aria-label="Equipo en consignación"
+                />
+              </div>
+
+              {isConsignment ? (
+                <div className="grid sm:grid-cols-2 gap-4 pt-2">
+                  {providers.length > 0 ? (
+                    <FormField label="Consignante" required hint="Laboratorio, distribuidor o titular del bien">
+                      <Select
+                        value={equipment.consignorProviderId || 'none'}
+                        onValueChange={(v) => {
+                          const p = providers.find((x) => x.id === v);
+                          patch({
+                            consignorProviderId: v === 'none' ? undefined : v,
+                            consignorName: p?.name,
+                          });
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar consignante" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">— Seleccionar —</SelectItem>
+                          {providers.map((p) => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FormField>
+                  ) : (
+                    <FormField label="Consignante" required>
+                      <Input
+                        placeholder="Nombre del laboratorio o proveedor"
+                        value={equipment.consignorName || ''}
+                        onChange={(e) => patch({ consignorName: e.target.value })}
+                      />
+                    </FormField>
+                  )}
+                  <FormField label="Nº contrato / referencia">
+                    <Input
+                      placeholder="Ej. CONS-2026-014"
+                      value={equipment.consignmentAgreementRef || ''}
+                      onChange={(e) => patch({ consignmentAgreementRef: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Estado de consignación">
+                    <Select
+                      value={equipment.consignmentStatus || 'active'}
+                      onValueChange={(v) =>
+                        patch({ consignmentStatus: v as InventoryConsignmentStatus })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(Object.keys(CONSIGNMENT_STATUS_LABELS) as InventoryConsignmentStatus[]).map(
+                          (k) => (
+                            <SelectItem key={k} value={k}>
+                              {CONSIGNMENT_STATUS_LABELS[k]}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label="Inicio de consignación">
+                    <Input
+                      type="date"
+                      value={equipment.consignmentStartDate || ''}
+                      onChange={(e) => patch({ consignmentStartDate: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Fin / renovación" hint="Para alertas de vencimiento">
+                    <Input
+                      type="date"
+                      value={equipment.consignmentEndDate || ''}
+                      onChange={(e) => patch({ consignmentEndDate: e.target.value })}
+                    />
+                  </FormField>
+                  <FormField label="Fecha de devolución" hint="Si ya fue devuelto al consignante">
+                    <Input
+                      type="date"
+                      value={equipment.consignmentReturnDate || ''}
+                      onChange={(e) => patch({ consignmentReturnDate: e.target.value })}
+                    />
+                  </FormField>
+                  {providers.length > 0 && (
+                    <FormField label="Consignante (texto libre)" hint="Opcional si no está en proveedores">
+                      <Input
+                        placeholder="Nombre alternativo"
+                        value={equipment.consignorName || ''}
+                        onChange={(e) => patch({ consignorName: e.target.value })}
+                      />
+                    </FormField>
+                  )}
+                  <div className="sm:col-span-2">
+                    <FormField label="Condiciones" hint="Fee mensual, mínimo de consumo, responsabilidad de mantenimiento…">
+                      <Textarea
+                        placeholder="Ej. Fee S/ 200/mes · Devolución si no se alcanza mínimo de reactivos"
+                        value={equipment.consignmentTerms || ''}
+                        onChange={(e) => patch({ consignmentTerms: e.target.value })}
+                        rows={2}
+                        className="resize-none"
+                      />
+                    </FormField>
+                  </div>
+                </div>
+              ) : null}
+            </FormSection>
+
+            <FormSection
               icon={Calendar}
               title="4. Valor y vida útil"
-              description="Compra, depreciación y garantía"
+              description={
+                isConsignment
+                  ? 'Valor referencial (seguro); no se incluye en depreciación patrimonial'
+                  : 'Compra, depreciación y garantía'
+              }
             >
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <FormField label="Fecha de compra">

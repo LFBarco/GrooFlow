@@ -1,8 +1,9 @@
 import type {
   InventoryEquipmentStatus,
+  InventoryConsignmentStatus,
   InventoryMaintenanceStatus,
 } from '../../types/inventory';
-import { INVENTORY_STATUS_LABELS, MAINTENANCE_STATUS_LABELS } from '../../utils/inventoryData';
+import { CONSIGNMENT_STATUS_LABELS, INVENTORY_STATUS_LABELS, MAINTENANCE_STATUS_LABELS } from '../../utils/inventoryData';
 import { Badge } from '../ui/badge';
 
 const CATEGORY_STYLES: Record<string, string> = {
@@ -68,6 +69,31 @@ export function EquipmentStatusBadge({ status }: { status: InventoryEquipmentSta
         }`}
       />
       {INVENTORY_STATUS_LABELS[status]}
+    </span>
+  );
+}
+
+const CONSIGNMENT_STYLES: Record<InventoryConsignmentStatus, string> = {
+  active: 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/20 dark:text-violet-300',
+  pending_return: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-300',
+  returned: 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400',
+  expired: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-300',
+};
+
+export function ConsignmentBadge({
+  status = 'active',
+  compact,
+}: {
+  status?: InventoryConsignmentStatus;
+  compact?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${
+        CONSIGNMENT_STYLES[status]
+      }`}
+    >
+      {compact ? 'Consignación' : `Consignación · ${CONSIGNMENT_STATUS_LABELS[status]}`}
     </span>
   );
 }
