@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { CheckCircle2, Eye, EyeOff, Loader2, Plug, XCircle } from 'lucide-react';
@@ -21,6 +21,13 @@ type Props = {
   readOnly?: boolean;
 };
 
+type LiveTestResult = {
+  ok: boolean;
+  message: string;
+  status?: number;
+  at: string;
+};
+
 export function BukAsistenciaIntegrationSection({
   systemSettings,
   onUpdateSystemSettings,
@@ -31,6 +38,9 @@ export function BukAsistenciaIntegrationSection({
   const [showToken, setShowToken] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testingSec, setTestingSec] = useState(0);
+  const [liveTest, setLiveTest] = useState<LiveTestResult | null>(null);
+  const tokenRef = useRef<HTMLInputElement>(null);
+  const baseUrlRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!testing) {
@@ -52,23 +62,62 @@ export function BukAsistenciaIntegrationSection({
   };
 
   const handleTest = async () => {
+    const apiToken = (tokenRef.current?.value ?? buk.apiToken ?? '').trim();
+    const apiBaseUrl = (baseUrlRef.current?.value ?? buk.apiBaseUrl ?? DEFAULT_BUK_ASISTENCIA_BASE_URL).trim();
+
+    if (!apiToken) {
+      const msg = 'Indica el token de la API antes de probar.';
+      setLiveTest({ ok: false, message: msg, at: new Date().toISOString() });
+      toast.error(msg);
+      return;
+    }
+
     setTesting(true);
+    setLiveTest(null);
     try {
       const result = await validateBukAsistenciaConnection({
-        baseUrl: buk.apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
-        apiToken: buk.apiToken || '',
+        baseUrl: apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
+        apiToken,
+      });
+      const at = new Date().toISOString();
+      setLiveTest({
+        ok: result.ok,
+        message: result.message,
+        status: result.status,
+        at,
       });
       patchBuk({
-        lastValidatedAt: new Date().toISOString(),
+        apiToken,
+        apiBaseUrl: apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
+        lastValidatedAt: at,
         lastValidationOk: result.ok,
         lastValidationMessage: result.message,
       });
       if (result.ok) toast.success(result.message);
       else toast.error(result.message);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error al probar la conexión.';
+      const at = new Date().toISOString();
+      setLiveTest({ ok: false, message: msg, at });
+      patchBuk({
+        lastValidatedAt: at,
+        lastValidationOk: false,
+        lastValidationMessage: msg,
+      });
+      toast.error(msg);
     } finally {
       setTesting(false);
     }
   };
+
+  const displayTest = liveTest ?? (buk.lastValidatedAt
+    ? {
+        ok: buk.lastValidationOk === true,
+        message: buk.lastValidationMessage || '—',
+        status: undefined,
+        at: buk.lastValidatedAt,
+      }
+    : null);
 
   return (
     <Card>
@@ -78,7 +127,7 @@ export function BukAsistenciaIntegrationSection({
           Buk Asistencia (Ctrlit)
         </CardTitle>
         <CardDescription>
-          Conexión a marcaciones de personal. El token se usa vía servidor GrooFlow (evita CORS).
+          Conexión a marcaciones de personal. El token se envía vía servidor GrooFlow (evita CORS).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -98,10 +147,11 @@ export function BukAsistenciaIntegrationSection({
           <Label htmlFor="buk-base-url">URL base API</Label>
           <Input
             id="buk-base-url"
+            ref={baseUrlRef}
             placeholder={DEFAULT_BUK_ASISTENCIA_BASE_URL}
-            value={buk.apiBaseUrl ?? ''}
+            defaultValue={buk.apiBaseUrl ?? DEFAULT_BUK_ASISTENCIA_BASE_URL}
             disabled={readOnly}
-            onChange={(e) => patchBuk({ apiBaseUrl: e.target.value })}
+            onBlur={(e) => patchBuk({ apiBaseUrl: e.target.value.trim() })}
           />
         </div>
 
@@ -110,11 +160,13 @@ export function BukAsistenciaIntegrationSection({
           <div className="flex gap-2">
             <Input
               id="buk-token"
+              ref={tokenRef}
               type={showToken ? 'text' : 'password'}
-              value={buk.apiToken ?? ''}
+              defaultValue={buk.apiToken ?? ''}
               disabled={readOnly}
-              onChange={(e) => patchBuk({ apiToken: e.target.value })}
+              onBlur={(e) => patchBuk({ apiToken: e.target.value.trim() })}
               autoComplete="off"
+              placeholder="Pega el token de Buk Asistencia"
             />
             <Button type="button" variant="outline" size="icon" onClick={() => setShowToken((s) => !s)}>
               {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -123,26 +175,54 @@ export function BukAsistenciaIntegrationSection({
         </div>
 
         {!readOnly ? (
-          <Button type="button" variant="secondary" onClick={() => void handleTest()} disabled={testing}>
-            {testing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plug className="h-4 w-4 mr-1" />}
-            Probar conexión {testingSec > 0 ? `(${testingSec}s)` : ''}
-          </Button>
+          <div className="space-y-2">
+            <Button type="button" variant="secondary" onClick={() => void handleTest()} disabled={testing}>
+              {testing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Probando…{testingSec > 0 ? ` (${testingSec}s)` : ''}
+                </>
+              ) : (
+                <>
+                  <Plug className="h-4 w-4 mr-1" />
+                  Probar conexión
+                </>
+              )}
+            </Button>
+            {testing ? (
+              <p className="text-xs text-muted-foreground">
+                Consultando asistencia vía servidor GrooFlow → Buk (Ctrlit). Debería responder en unos segundos.
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
-        {buk.lastValidatedAt ? (
-          <Alert variant={buk.lastValidationOk ? 'default' : 'destructive'}>
-            {buk.lastValidationOk ? (
-              <CheckCircle2 className="h-4 w-4" />
+        {displayTest ? (
+          <Alert
+            variant={displayTest.ok ? 'default' : 'destructive'}
+            className={
+              displayTest.ok
+                ? 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20'
+                : undefined
+            }
+          >
+            {displayTest.ok ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
             ) : (
               <XCircle className="h-4 w-4" />
             )}
-            <AlertTitle>
-              Última prueba —{' '}
-              {format(new Date(buk.lastValidatedAt), "d MMM yyyy HH:mm", { locale: es })}
+            <AlertTitle className="text-sm">
+              {liveTest ? 'Resultado de la prueba' : 'Última prueba'} —{' '}
+              {format(new Date(displayTest.at), "d MMM yyyy, HH:mm", { locale: es })}
+              {displayTest.status != null ? ` · HTTP ${displayTest.status}` : ''}
             </AlertTitle>
-            <AlertDescription>{buk.lastValidationMessage || '—'}</AlertDescription>
+            <AlertDescription className="text-sm">{displayTest.message}</AlertDescription>
           </Alert>
-        ) : null}
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Pulsa «Probar conexión» para verificar URL y token. El resultado aparecerá aquí.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

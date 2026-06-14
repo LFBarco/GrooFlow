@@ -1,0 +1,21 @@
+*** Begin Patch
+*** Update File: c:\Users\Usuario\Desktop\Proyecto Sistema LB\1.- GooFlow\src\app\App.tsx
+@@
+-          {view === 'requisitions' && (
++          {view === 'products' && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+-                <RequisitionModule 
+-                    currentUser={currentUser}
+-                    users={users}
+-                    visibleSedes={visibleSedes}
+-                    requisitions={requisitions}
+-                    onUpdateRequisitions={setRequisitions}
++                <ProductModule 
++                    products={products}
++                    providers={providers}
++                    onUpdateProducts={setProducts}
++                    visibleSedes={visibleSedes}
+                 />
+              </div>
+           )}
+*** End Patch

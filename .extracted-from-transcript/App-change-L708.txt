@@ -1,0 +1,5 @@
+{
+  "new_string": "                <ProductModule \n                    products={products}\n                    providers={providers}\n                    onUpdateProducts={setProducts}\n                    visibleSedes={visibleSedes}\n                    currentUserName={currentUser.name}\n                />",
+  "old_string": "                <ProductModule \n                    products={products}\n                    providers={providers}\n                    onUpdateProducts={setProducts}\n                    visibleSedes={visibleSedes}\n                />",
+  "path": "c:\\Users\\Usuario\\Desktop\\Proyecto Sistema LB\\1.- GooFlow\\src\\app\\App.tsx"
+}

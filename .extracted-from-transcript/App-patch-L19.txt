@@ -1,0 +1,9 @@
+*** Begin Patch
+*** Update File: c:\Users\Usuario\Desktop\Proyecto Sistema LB\1.- GooFlow\src\app\App.tsx
+@@
+-import { Transaction, Category, TransactionType, InvoiceDraft, Provider, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, SystemAlert, AlertThresholds, Requisition, ChartOfAccountEntry } from "./types";
++import { Transaction, Category, TransactionType, InvoiceDraft, Provider, Product, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, SystemAlert, AlertThresholds, ChartOfAccountEntry } from "./types";
+@@
+-  RequisitionModule,
++  ProductModule,
+*** End Patch

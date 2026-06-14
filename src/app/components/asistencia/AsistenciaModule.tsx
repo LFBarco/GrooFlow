@@ -63,10 +63,13 @@ export function AsistenciaModule({
   }, [records, dateObj, asistencia, visibleSedes]);
 
   const refresh = useCallback(async () => {
-    const buk = asistencia.buk;
-    if (!buk?.enabled || !buk.apiToken?.trim()) {
-      toast.error('Configura Buk Asistencia en Configuración → Integraciones.');
+    const bukCfg = asistencia.buk;
+    if (!bukCfg?.enabled || !bukCfg.apiToken?.trim()) {
+      toast.error('Activa Buk Asistencia y configura el token en Configuración → Integraciones.');
       return;
+    }
+    if (bukCfg.lastValidationOk === false && bukCfg.lastValidationMessage) {
+      toast.error(`Última prueba falló: ${bukCfg.lastValidationMessage}`);
     }
     if (asistencia.requirements.length === 0) {
       toast.error('Define la estructura organizacional antes de consultar.');
@@ -76,8 +79,8 @@ export function AsistenciaModule({
     setLoading(true);
     try {
       const data = await fetchBukAsistenciaAll({
-        baseUrl: buk.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
-        apiToken: buk.apiToken,
+        baseUrl: bukCfg.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
+        apiToken: bukCfg.apiToken,
       });
       setRecords(data);
       toast.success(`${data.length} registros de asistencia cargados.`);
@@ -142,7 +145,19 @@ export function AsistenciaModule({
             <div>
               <p className="font-medium">Integración Buk no activa</p>
               <p className="text-sm text-muted-foreground">
-                Un administrador debe configurar URL y token en Configuración → Integraciones → Buk Asistencia.
+                Un administrador debe activar Buk en Configuración → Integraciones y probar la conexión.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : asistencia.buk.lastValidationOk === false ? (
+        <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/20">
+          <CardContent className="pt-6 flex gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
+            <div>
+              <p className="font-medium">Última prueba de conexión falló</p>
+              <p className="text-sm text-muted-foreground">
+                {asistencia.buk.lastValidationMessage || 'Revisa token y despliegue de la Edge Function server.'}
               </p>
             </div>
           </CardContent>

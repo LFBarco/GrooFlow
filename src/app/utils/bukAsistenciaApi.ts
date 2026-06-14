@@ -16,6 +16,27 @@ export type BukConnectionResult = {
 };
 
 const FETCH_TIMEOUT_MS = 90_000;
+const TEST_TIMEOUT_MS = 35_000;
+
+async function readJsonSafe(res: Response): Promise<Record<string, unknown>> {
+  const text = await res.text();
+  if (!text.trim()) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { raw: text.slice(0, 300) };
+  }
+}
+
+function proxyErrorMessage(res: Response, json: Record<string, unknown>): string {
+  if (typeof json.error === 'string') return json.error;
+  if (typeof json.message === 'string') return json.message;
+  if (typeof json.raw === 'string') return json.raw;
+  if (res.status === 404) {
+    return 'Ruta /buk/test no encontrada en el servidor. Despliega la Edge Function: supabase functions deploy server';
+  }
+  return `Error del servidor GrooFlow (HTTP ${res.status}).`;
+}
 
 function normalizeBaseUrl(raw: string): string {
   return raw.trim().replace(/\/+$/, '');
@@ -37,7 +58,8 @@ function buildAsistenciaUrl(baseUrl: string, page = 1, pageSize = 100): string {
 
 async function postBukProxy(
   path: 'test' | 'fetch',
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<Response> {
   const functionsUrl = getSupabaseFunctionsUrl();
   if (!functionsUrl) throw new Error('Supabase no configurado (VITE_SUPABASE_URL).');
@@ -45,7 +67,7 @@ async function postBukProxy(
   const accessToken = await getEdgeFunctionAccessToken();
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(`${functionsUrl}/buk/${path}`, {
@@ -108,24 +130,35 @@ export async function validateBukAsistenciaConnection(input: {
   }
 
   try {
-    const res = await postBukProxy('test', {
-      baseUrl,
-      apiToken,
-      targetUrl: buildAsistenciaUrl(baseUrl, 1, 5),
-    });
-    const json = (await res.json()) as Record<string, unknown>;
+    const res = await postBukProxy(
+      'test',
+      {
+        baseUrl,
+        apiToken,
+        targetUrl: buildAsistenciaUrl(baseUrl, 1, 5),
+      },
+      TEST_TIMEOUT_MS
+    );
+    const json = await readJsonSafe(res);
     if (!res.ok) {
       return {
         ok: false,
         status: res.status,
-        message: typeof json.error === 'string' ? json.error : `Error ${res.status}`,
+        message: proxyErrorMessage(res, json),
         durationMs: Date.now() - start,
       };
     }
+    const ok = json.ok === true;
+    const message =
+      typeof json.message === 'string'
+        ? json.message
+        : ok
+          ? 'Conexión OK.'
+          : 'La API respondió pero la prueba no fue exitosa.';
     return {
-      ok: Boolean(json.ok),
+      ok,
       status: typeof json.status === 'number' ? json.status : undefined,
-      message: typeof json.message === 'string' ? json.message : 'Conexión OK.',
+      message,
       recordHint: typeof json.recordHint === 'string' ? json.recordHint : undefined,
       durationMs: typeof json.durationMs === 'number' ? json.durationMs : Date.now() - start,
     };
@@ -133,7 +166,10 @@ export async function validateBukAsistenciaConnection(input: {
     const msg = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
-      message: err instanceof Error && err.name === 'AbortError' ? 'Tiempo de espera agotado.' : msg,
+      message:
+        err instanceof Error && err.name === 'AbortError'
+          ? 'Tiempo de espera agotado (~35s). Verifica red o despliega la Edge Function server.'
+          : msg,
       durationMs: Date.now() - start,
     };
   }
@@ -176,9 +212,9 @@ export async function fetchBukAsistenciaAll(input: {
       page,
       pageSize: 100,
     });
-    const json = (await res.json()) as Record<string, unknown>;
+    const json = await readJsonSafe(res);
     if (!res.ok) {
-      throw new Error(typeof json.error === 'string' ? json.error : `Error ${res.status}`);
+      throw new Error(proxyErrorMessage(res, json));
     }
     const data = Array.isArray(json.data) ? (json.data as BukAsistenciaRecord[]) : [];
     all.push(...data);

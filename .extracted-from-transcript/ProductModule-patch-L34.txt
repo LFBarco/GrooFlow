@@ -1,0 +1,8 @@
+*** Begin Patch
+*** Update File: c:\Users\Usuario\Desktop\Proyecto Sistema LB\1.- GooFlow\src\app\components\products\ProductModule.tsx
+@@
+-  const updateForm = (field: keyof ProductFormState, value: string) => {
++  const updateForm = <K extends keyof ProductFormState>(field: K, value: ProductFormState[K]) => {
+     setForm((current) => ({ ...current, [field]: value }));
+   };
+*** End Patch

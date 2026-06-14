@@ -1,0 +1,9 @@
+*** Begin Patch
+*** Update File: c:\Users\Usuario\Desktop\Proyecto Sistema LB\1.- GooFlow\src\app\lazyRouteModules.tsx
+@@
+-export const RequisitionModule = lazy(() =>
+-  import('./components/procurement/RequisitionModule').then((m) => ({ default: m.RequisitionModule }))
++export const ProductModule = lazy(() =>
++  import('./components/products/ProductModule').then((m) => ({ default: m.ProductModule }))
+ );
+*** End Patch

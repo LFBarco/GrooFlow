@@ -1,0 +1,17 @@
+  const commitWorkspace = useCallback(
+    (saved: Product) => {
+      const duplicated = products.some(
+        (p) => p.systemCode === saved.systemCode && p.id !== (workspace?.isNew ? undefined : saved.id) && p.id !== saved.id,
+      );
+      const duplicateReal = products.some((p) => p.systemCode === saved.systemCode && p.id !== saved.id);
+      if (duplicateReal) {
+        toast.error('El código de sistema ya existe');
+        return;
+      }
+      void duplicated;
+      const next = workspace?.isNew ? [saved, ...products] : products.map((p) => (p.id === saved.id ? saved : p));
+      onUpdateProducts(next);
+      setWorkspace(null);
+    },
+    [onUpdateProducts, products, workspace?.isNew],
+  );

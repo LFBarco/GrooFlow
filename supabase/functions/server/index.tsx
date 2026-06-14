@@ -428,10 +428,7 @@ async function fetchBukAsistencia(targetUrl: string, apiToken: string): Promise<
 
 for (const base of KV_PATH_BASES) {
   app.post(`${base}/buk/test`, async (c) => {
-    const auth = await requireAdminRequest(
-      c,
-      "Solo administradores pueden probar la API Buk Asistencia.",
-    );
+    const auth = await requireAuthenticatedRequest(c);
     if (auth.response) return auth.response;
     try {
       const body = await c.req.json();
