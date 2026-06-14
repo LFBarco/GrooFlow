@@ -8,7 +8,9 @@ import type {
   AsistenciaPresentPerson,
   AsistenciaRequirementCoverage,
   AsistenciaSedeCoverage,
+  AsistenciaSedeProfile,
   AsistenciaSettings,
+  AsistenciaStaffMember,
   BukAsistenciaRecord,
 } from '../types/asistencia';
 
@@ -33,6 +35,8 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
       enabled: false,
     },
     requirements: [],
+    staff: [],
+    sedeProfiles: [],
     areaKeywords: { ...DEFAULT_ASISTENCIA_AREA_KEYWORDS },
     sedeMappings: [],
   };
@@ -48,6 +52,8 @@ export function mergeAsistenciaSettings(
     ...partial,
     buk: { ...base.buk, ...(partial.buk ?? {}) },
     requirements: Array.isArray(partial.requirements) ? partial.requirements : base.requirements,
+    staff: Array.isArray(partial.staff) ? partial.staff : base.staff ?? [],
+    sedeProfiles: Array.isArray(partial.sedeProfiles) ? partial.sedeProfiles : base.sedeProfiles ?? [],
     areaKeywords: {
       medica:
         partial.areaKeywords?.medica?.length

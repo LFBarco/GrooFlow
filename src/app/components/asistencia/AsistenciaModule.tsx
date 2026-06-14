@@ -4,7 +4,6 @@ import { es } from 'date-fns/locale';
 import {
   AlertTriangle,
   Building2,
-  CheckCircle2,
   Loader2,
   RefreshCw,
   Settings2,
@@ -13,20 +12,23 @@ import {
 import { toast } from 'sonner';
 
 import type { SystemSettings } from '../../types';
-import type { AsistenciaAreaGroup, AsistenciaSettings } from '../../types/asistencia';
-import { ASISTENCIA_AREA_GROUP_LABELS } from '../../types/asistencia';
-import {
-  buildAsistenciaDaySummary,
-  mergeAsistenciaSettings,
-} from '../../utils/asistenciaData';
+import type { AsistenciaSettings } from '../../types/asistencia';
+import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { fetchBukAsistenciaAll } from '../../utils/bukAsistenciaApi';
-import { AsistenciaOrgConfigDialog } from './AsistenciaOrgConfigDialog';
-import { AreaGroupLabel, CoverageBar, CoverageStatusBadge } from './asistenciaUiHelpers';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { buildLiveSedeSummary, staffForSede } from '../../utils/asistenciaStaff';
+import { AsistenciaLiveOrgChart } from './AsistenciaLiveOrgChart';
+import { AsistenciaSedeConfigPanel } from './AsistenciaSedeConfigPanel';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
+import { Card, CardContent } from '../ui/card';
 
 export interface AsistenciaModuleProps {
   systemSettings: SystemSettings;
@@ -34,8 +36,6 @@ export interface AsistenciaModuleProps {
   visibleSedes?: string[];
   canConfigure?: boolean;
 }
-
-const AREA_TABS: AsistenciaAreaGroup[] = ['medica', 'peluqueria', 'global'];
 
 export function AsistenciaModule({
   systemSettings,
@@ -47,20 +47,33 @@ export function AsistenciaModule({
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<Awaited<ReturnType<typeof fetchBukAsistenciaAll>>>([]);
-  const [configOpen, setConfigOpen] = useState(false);
-  const [areaTab, setAreaTab] = useState<AsistenciaAreaGroup | 'all'>('all');
+  const [mainTab, setMainTab] = useState<'live' | 'config'>('live');
+
+  const sedeOptions = useMemo(() => {
+    const fromStaff = (asistencia.staff ?? []).map((s) => s.sedeName);
+    const fromProfiles = (asistencia.sedeProfiles ?? []).map((p) => p.sedeName);
+    const fromReqs = asistencia.requirements.map((r) => r.sedeName);
+    const fromMap = (asistencia.sedeMappings ?? []).map((m) => m.sedeName);
+    const all = [...new Set([...visibleSedes, ...fromStaff, ...fromProfiles, ...fromReqs, ...fromMap])].filter(Boolean);
+    return all.length > 0 ? all : ['Principal'];
+  }, [visibleSedes, asistencia]);
+
+  const [selectedSede, setSelectedSede] = useState(() => sedeOptions[0] ?? 'Principal');
+
+  const activeSede = sedeOptions.includes(selectedSede) ? selectedSede : sedeOptions[0];
 
   const dateObj = useMemo(() => new Date(`${selectedDate}T12:00:00`), [selectedDate]);
 
-  const summary = useMemo(() => {
-    if (records.length === 0) return null;
-    return buildAsistenciaDaySummary({
-      date: dateObj,
-      records,
-      settings: asistencia,
-      visibleSedes: visibleSedes.length > 0 ? visibleSedes : undefined,
-    });
-  }, [records, dateObj, asistencia, visibleSedes]);
+  const liveSummary = useMemo(
+    () =>
+      buildLiveSedeSummary({
+        sedeName: activeSede,
+        settings: asistencia,
+        records,
+        date: dateObj,
+      }),
+    [activeSede, asistencia, records, dateObj]
+  );
 
   const refresh = useCallback(async () => {
     const bukCfg = asistencia.buk;
@@ -68,12 +81,9 @@ export function AsistenciaModule({
       toast.error('Activa Buk Asistencia y configura el token en Configuración → Integraciones.');
       return;
     }
-    if (bukCfg.lastValidationOk === false && bukCfg.lastValidationMessage) {
-      toast.error(`Última prueba falló: ${bukCfg.lastValidationMessage}`);
-    }
-    if (asistencia.requirements.length === 0) {
-      toast.error('Define la estructura organizacional antes de consultar.');
-      setConfigOpen(true);
+    if (staffForSede(asistencia, activeSede).length === 0) {
+      toast.error('Registra personal en la sede antes de actualizar el panel en vivo.');
+      setMainTab('config');
       return;
     }
     setLoading(true);
@@ -89,19 +99,11 @@ export function AsistenciaModule({
     } finally {
       setLoading(false);
     }
-  }, [asistencia]);
+  }, [asistencia, activeSede]);
 
   const saveSettings = (next: AsistenciaSettings) => {
     onUpdateSystemSettings({ ...systemSettings, asistencia: next });
   };
-
-  const sedeOptions = useMemo(() => {
-    const fromReqs = asistencia.requirements.map((r) => r.sedeName);
-    const fromMap = (asistencia.sedeMappings ?? []).map((m) => m.sedeName);
-    return [...new Set([...visibleSedes, ...fromReqs, ...fromMap])].filter(Boolean);
-  }, [visibleSedes, asistencia]);
-
-  const filteredSedes = summary?.sedes ?? [];
 
   return (
     <div className="space-y-6">
@@ -113,10 +115,23 @@ export function AsistenciaModule({
           </div>
           <h2 className="text-2xl font-bold tracking-tight">Panel de dotación operativa</h2>
           <p className="text-sm text-slate-400 max-w-2xl">
-            Compara quién marcó entrada en Buk Asistencia contra la estructura organizacional por sede, área y cargo.
+            Gestiona el personal por sede y visualiza el organigrama en vivo cruzado con Buk Asistencia.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label className="text-xs text-slate-400 block mb-1">Sede</label>
+            <Select value={activeSede} onValueChange={setSelectedSede}>
+              <SelectTrigger className="w-[180px] bg-slate-900/60 border-slate-700 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {sedeOptions.map((s) => (
+                  <SelectItem key={s} value={s}>{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div>
             <label className="text-xs text-slate-400 block mb-1">Fecha</label>
             <Input
@@ -128,13 +143,8 @@ export function AsistenciaModule({
           </div>
           <Button variant="secondary" onClick={() => void refresh()} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-            Actualizar
+            Actualizar Buk
           </Button>
-          {canConfigure ? (
-            <Button variant="outline" className="border-slate-600 text-white hover:bg-slate-800" onClick={() => setConfigOpen(true)}>
-              <Settings2 className="h-4 w-4 mr-1" /> Estructura
-            </Button>
-          ) : null}
         </div>
       </div>
 
@@ -150,179 +160,51 @@ export function AsistenciaModule({
             </div>
           </CardContent>
         </Card>
-      ) : asistencia.buk.lastValidationOk === false ? (
-        <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/20">
-          <CardContent className="pt-6 flex gap-3">
-            <AlertTriangle className="h-5 w-5 text-red-600 shrink-0" />
-            <div>
-              <p className="font-medium">Última prueba de conexión falló</p>
-              <p className="text-sm text-muted-foreground">
-                {asistencia.buk.lastValidationMessage || 'Revisa token y despliegue de la Edge Function server.'}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       ) : null}
 
-      {summary ? (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Personal presente (únicos)</CardDescription>
-                <CardTitle className="text-3xl">{summary.totalPresentUnique}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">
-                {format(dateObj, "EEEE d 'de' MMMM", { locale: es })}
+      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'live' | 'config')}>
+        <TabsList className="bg-slate-900/80 border border-slate-800">
+          <TabsTrigger value="live" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
+            <Users className="h-4 w-4 mr-1" /> Operativa en vivo
+          </TabsTrigger>
+          {canConfigure ? (
+            <TabsTrigger value="config" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
+              <Settings2 className="h-4 w-4 mr-1" /> Configuración sede
+            </TabsTrigger>
+          ) : null}
+        </TabsList>
+
+        <TabsContent value="live" className="mt-4 space-y-4">
+          {records.length === 0 && !loading ? (
+            <Card className="border-slate-800 bg-slate-950/50">
+              <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                Pulsa «Actualizar Buk» para cargar marcaciones de{' '}
+                {format(dateObj, "d 'de' MMMM", { locale: es })}. El organigrama mostrará ausentes en rojo.
               </CardContent>
             </Card>
-            {AREA_TABS.map((area) => (
-              <Card key={area}>
-                <CardHeader className="pb-2">
-                  <CardDescription>{ASISTENCIA_AREA_GROUP_LABELS[area]}</CardDescription>
-                  <CardTitle className="text-2xl">
-                    {summary.globalByArea[area].present}
-                    <span className="text-base font-normal text-muted-foreground">
-                      {' '}/ {summary.globalByArea[area].required} req.
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="text-xs text-muted-foreground">
-                  {summary.globalByArea[area].completeSlots}/{summary.globalByArea[area].slots} cargos completos
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+          ) : null}
+          <AsistenciaLiveOrgChart
+            summary={liveSummary}
+            onRefresh={() => void refresh()}
+            loading={loading}
+          />
+        </TabsContent>
 
-          <Tabs value={areaTab} onValueChange={(v) => setAreaTab(v as typeof areaTab)}>
-            <TabsList>
-              <TabsTrigger value="all">Todas las áreas</TabsTrigger>
-              {AREA_TABS.map((a) => (
-                <TabsTrigger key={a} value={a}>{ASISTENCIA_AREA_GROUP_LABELS[a]}</TabsTrigger>
-              ))}
-            </TabsList>
-
-            <TabsContent value={areaTab} className="space-y-4 mt-4">
-              {filteredSedes.length === 0 ? (
-                <Card>
-                  <CardContent className="py-10 text-center text-muted-foreground">
-                    No hay sedes con estructura configurada para tu alcance.
-                  </CardContent>
-                </Card>
-              ) : (
-                filteredSedes.map((sede) => {
-                  const rows =
-                    areaTab === 'all'
-                      ? [...sede.byArea.medica, ...sede.byArea.peluqueria, ...sede.byArea.global]
-                      : sede.byArea[areaTab];
-
-                  return (
-                    <Card key={sede.sedeName}>
-                      <CardHeader className="pb-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Building2 className="h-5 w-5 text-muted-foreground" />
-                            <CardTitle className="text-lg">{sede.sedeName}</CardTitle>
-                            {sede.bukRecintoCode ? (
-                              <span className="text-xs text-muted-foreground">· Buk: {sede.bukRecintoCode}</span>
-                            ) : null}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {sede.isComplete ? (
-                              <span className="inline-flex items-center gap-1 text-sm text-emerald-600">
-                                <CheckCircle2 className="h-4 w-4" /> Dotación completa
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-sm text-amber-600">
-                                <AlertTriangle className="h-4 w-4" /> {sede.completeSlots}/{sede.totalSlots} cargos OK
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <CardDescription>
-                          {sede.totalPresent} presentes · {sede.totalRequired} requeridos en estructura
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Área</TableHead>
-                              <TableHead>Cargo</TableHead>
-                              <TableHead>Cobertura</TableHead>
-                              <TableHead>Estado</TableHead>
-                              <TableHead>Presentes</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {rows.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                                  Sin cargos en esta vista.
-                                </TableCell>
-                              </TableRow>
-                            ) : (
-                              rows.map((row) => (
-                                <TableRow key={row.requirement.id}>
-                                  <TableCell><AreaGroupLabel group={row.requirement.areaGroup} /></TableCell>
-                                  <TableCell className="font-medium">{row.requirement.cargoLabel}</TableCell>
-                                  <TableCell>
-                                    <CoverageBar present={row.presentCount} required={row.requiredCount} />
-                                  </TableCell>
-                                  <TableCell><CoverageStatusBadge status={row.status} /></TableCell>
-                                  <TableCell>
-                                    {row.present.length === 0 ? (
-                                      <span className="text-muted-foreground text-sm">—</span>
-                                    ) : (
-                                      <ul className="text-sm space-y-0.5">
-                                        {row.present.map((p) => (
-                                          <li key={p.rut}>
-                                            <span className="font-medium">{p.fullName}</span>
-                                            <span className="text-muted-foreground text-xs ml-1">
-                                              {p.entradaFormat ? `· ${p.entradaFormat}` : ''}
-                                              {p.stillOnSite ? ' · en sede' : ''}
-                                            </span>
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                  </TableCell>
-                                </TableRow>
-                              ))
-                            )}
-                          </TableBody>
-                        </Table>
-                      </CardContent>
-                    </Card>
-                  );
-                })
-              )}
-            </TabsContent>
-          </Tabs>
-        </>
-      ) : (
-        <Card>
-          <CardContent className="py-16 text-center space-y-3">
-            <Users className="h-10 w-10 mx-auto text-muted-foreground/50" />
-            <p className="text-muted-foreground">
-              Pulsa «Actualizar» para cargar la asistencia del día desde Buk.
-            </p>
-            {canConfigure && asistencia.requirements.length === 0 ? (
-              <Button variant="outline" onClick={() => setConfigOpen(true)}>
-                Configurar estructura organizacional
-              </Button>
-            ) : null}
-          </CardContent>
-        </Card>
-      )}
-
-      <AsistenciaOrgConfigDialog
-        open={configOpen}
-        onOpenChange={setConfigOpen}
-        settings={asistencia}
-        sedeOptions={sedeOptions.length > 0 ? sedeOptions : ['Principal']}
-        onSave={saveSettings}
-      />
+        {canConfigure ? (
+          <TabsContent value="config" className="mt-4">
+            <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <Building2 className="h-4 w-4" />
+              Configurando: <strong className="text-foreground">{activeSede}</strong>
+            </div>
+            <AsistenciaSedeConfigPanel
+              sedeName={activeSede}
+              settings={asistencia}
+              canConfigure={canConfigure}
+              onSave={saveSettings}
+            />
+          </TabsContent>
+        ) : null}
+      </Tabs>
     </div>
   );
 }

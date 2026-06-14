@@ -1,4 +1,4 @@
-/** Grupo de área para cobertura operativa. */
+/** Grupo de área para cobertura operativa (legacy / resumen Buk). */
 export type AsistenciaAreaGroup = 'medica' | 'peluqueria' | 'global';
 
 export const ASISTENCIA_AREA_GROUP_LABELS: Record<AsistenciaAreaGroup, string> = {
@@ -6,6 +6,97 @@ export const ASISTENCIA_AREA_GROUP_LABELS: Record<AsistenciaAreaGroup, string> =
   peluqueria: 'Peluquería / baño',
   global: 'Global / operaciones',
 };
+
+/** Área del organigrama operativo por sede. */
+export type AsistenciaStaffArea = 'administracion' | 'medica' | 'peluqueria';
+
+export const ASISTENCIA_STAFF_AREA_LABELS: Record<AsistenciaStaffArea, string> = {
+  administracion: 'Administración',
+  medica: 'Área Médica',
+  peluqueria: 'Peluquería',
+};
+
+export const ASISTENCIA_STAFF_AREAS: AsistenciaStaffArea[] = [
+  'administracion',
+  'medica',
+  'peluqueria',
+];
+
+export type AsistenciaLiveStatus = 'trabajando' | 'presente' | 'tarde' | 'ausente';
+
+export const ASISTENCIA_LIVE_STATUS_LABELS: Record<AsistenciaLiveStatus, string> = {
+  trabajando: 'Trabajando',
+  presente: 'Presente',
+  tarde: 'Tarde',
+  ausente: 'Ausente',
+};
+
+/** Persona registrada en la estructura de la sede. */
+export interface AsistenciaStaffMember {
+  id: string;
+  sedeName: string;
+  fullName: string;
+  cargoLabel: string;
+  area: AsistenciaStaffArea;
+  /** HH:mm esperado de llegada. */
+  expectedTime: string;
+  email?: string;
+  phone?: string;
+  avatarUrl?: string;
+  isCritical: boolean;
+  isManager?: boolean;
+  /** RUT para cruce directo con Buk. */
+  rut?: string;
+  matchArea?: string;
+  matchSpecialty?: string;
+  sortOrder?: number;
+}
+
+/** Configuración operativa de una sede. */
+export interface AsistenciaSedeProfile {
+  sedeName: string;
+  scheduleStart?: string;
+  scheduleEnd?: string;
+  bukRecintoCode?: string;
+}
+
+export interface AsistenciaStaffLiveState {
+  staff: AsistenciaStaffMember;
+  status: AsistenciaLiveStatus;
+  entradaFormat?: string;
+  stillOnSite: boolean;
+}
+
+export interface AsistenciaLiveAreaBlock {
+  area: AsistenciaStaffArea;
+  staff: AsistenciaStaffLiveState[];
+  activeCount: number;
+  totalCount: number;
+}
+
+export interface AsistenciaLiveSedeSummary {
+  sedeName: string;
+  scheduleLabel: string;
+  workingCount: number;
+  absentCount: number;
+  lateCount: number;
+  manager: AsistenciaStaffLiveState | null;
+  areas: AsistenciaLiveAreaBlock[];
+  isOperational: boolean;
+  criticalMissing: AsistenciaStaffMember[];
+}
+
+export const ASISTENCIA_CARGO_PRESETS = [
+  'Gerente',
+  'Recepcionista',
+  'Counter',
+  'Médico veterinario',
+  'Asistente veterinario',
+  'Peluquero',
+  'Bañador',
+  'Limpieza',
+  'Mantenimiento',
+] as const;
 
 /** Registro crudo de Buk Asistencia (Ctrlit). */
 export interface BukAsistenciaRecord {
@@ -90,6 +181,10 @@ export interface BukAsistenciaIntegrationSettings {
 export interface AsistenciaSettings {
   buk?: BukAsistenciaIntegrationSettings;
   requirements: AsistenciaOrgRequirement[];
+  /** Personal nominal por sede (organigrama operativo). */
+  staff?: AsistenciaStaffMember[];
+  /** Horarios y mapeo Buk por sede. */
+  sedeProfiles?: AsistenciaSedeProfile[];
   areaKeywords?: AsistenciaAreaKeywords;
   sedeMappings?: AsistenciaSedeMapping[];
 }
