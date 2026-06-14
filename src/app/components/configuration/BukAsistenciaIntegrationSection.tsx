@@ -73,7 +73,7 @@ export function BukAsistenciaIntegrationSection({
     }
 
     setTesting(true);
-    setLiveTest(null);
+    toast.info('Probando conexión con Buk Asistencia…');
     try {
       const result = await validateBukAsistenciaConnection({
         baseUrl: apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
@@ -189,15 +189,20 @@ export function BukAsistenciaIntegrationSection({
                 </>
               )}
             </Button>
-            {testing ? (
-              <p className="text-xs text-muted-foreground">
-                Consultando asistencia vía servidor GrooFlow → Buk (Ctrlit). Debería responder en unos segundos.
-              </p>
-            ) : null}
           </div>
         ) : null}
 
-        {displayTest ? (
+        {testing ? (
+          <Alert className="border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-950/20">
+            <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+            <AlertTitle className="text-sm">
+              Probando conexión{testingSec > 0 ? ` (${testingSec}s)` : ''}
+            </AlertTitle>
+            <AlertDescription className="text-sm">
+              Consultando Buk vía servidor GrooFlow. Si tarda más de 35 s, revisa red o contacta soporte.
+            </AlertDescription>
+          </Alert>
+        ) : displayTest ? (
           <Alert
             variant={displayTest.ok ? 'default' : 'destructive'}
             className={
