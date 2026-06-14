@@ -5,6 +5,7 @@ import { SystemSettings, type PettyCashRenditionPrintSettings, type BankAccountC
 import { mergePettyCashRenditionPrint } from '../../data/initialData';
 import { Plus, Trash2, Settings, Edit2, Check, X, CalendarClock, Lock, Unlock, Store, Calculator, ShieldCheck, HardDrive, Receipt, ShieldAlert, UserCircle, Upload, ImageIcon, Tags, Landmark, Plug } from 'lucide-react';
 import { VeterinariIntegrationSection } from './VeterinariIntegrationSection';
+import { BukAsistenciaIntegrationSection } from './BukAsistenciaIntegrationSection';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import {
@@ -1723,6 +1724,11 @@ export function ConfigPanel({
             <TabsContent value="integrations" className="mt-0 outline-none data-[state=inactive]:hidden">
               <div className="grid grid-cols-1 gap-6 max-w-3xl">
                 <VeterinariIntegrationSection
+                  systemSettings={systemSettings}
+                  onUpdateSystemSettings={onUpdateSystemSettings}
+                  readOnly={!isSystemAdmin}
+                />
+                <BukAsistenciaIntegrationSection
                   systemSettings={systemSettings}
                   onUpdateSystemSettings={onUpdateSystemSettings}
                   readOnly={!isSystemAdmin}

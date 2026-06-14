@@ -406,6 +406,122 @@ for (const base of KV_PATH_BASES) {
   });
 }
 
+function isAllowedBukUrl(targetUrl: string): boolean {
+  try {
+    const u = new URL(targetUrl);
+    const host = u.hostname.toLowerCase();
+    return host === "app.ctrlit.cl" || host.endsWith(".ctrlit.cl");
+  } catch {
+    return false;
+  }
+}
+
+async function fetchBukAsistencia(targetUrl: string, apiToken: string): Promise<Response> {
+  return fetch(targetUrl, {
+    method: "GET",
+    headers: {
+      token: apiToken,
+      accept: "application/json",
+    },
+  });
+}
+
+for (const base of KV_PATH_BASES) {
+  app.post(`${base}/buk/test`, async (c) => {
+    const auth = await requireAdminRequest(
+      c,
+      "Solo administradores pueden probar la API Buk Asistencia.",
+    );
+    if (auth.response) return auth.response;
+    try {
+      const body = await c.req.json();
+      const targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
+      if (!targetUrl || !apiToken) {
+        return c.json({ error: "Faltan targetUrl o apiToken." }, 400);
+      }
+      if (!isAllowedBukUrl(targetUrl)) {
+        return c.json({ error: "URL de destino no permitida." }, 400);
+      }
+      const started = Date.now();
+      const res = await fetchBukAsistencia(targetUrl, apiToken);
+      const text = await res.text();
+      let json: unknown = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+      const hint =
+        json && typeof json === "object" && json !== null && "pagination" in json
+          ? `${(json as { pagination?: { count?: number } }).pagination?.count ?? 0} registro(s) de asistencia`
+          : undefined;
+      const durationMs = Date.now() - started;
+      if (res.ok) {
+        return c.json({
+          ok: true,
+          status: res.status,
+          message: hint
+            ? `Conexión exitosa (servidor GrooFlow → Buk). ${hint}.`
+            : `Conexión exitosa. HTTP ${res.status}.`,
+          recordHint: hint,
+          durationMs,
+        });
+      }
+      return c.json({
+        ok: false,
+        status: res.status,
+        message: `HTTP ${res.status}: ${text.slice(0, 200).replace(/\s+/g, " ")}`,
+        durationMs,
+      });
+    } catch (error) {
+      console.error("buk/test error:", error);
+      return c.json({ error: "Error al contactar Buk Asistencia desde el servidor." }, 500);
+    }
+  });
+
+  app.post(`${base}/buk/fetch`, async (c) => {
+    const auth = await requireAuthenticatedRequest(c);
+    if (auth.response) return auth.response;
+    try {
+      const body = await c.req.json();
+      const baseUrl = typeof body?.baseUrl === "string" ? body.baseUrl.trim().replace(/\/+$/, "") : "";
+      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      const page = Math.max(1, Number(body?.page) || 1);
+      const pageSize = Math.min(200, Math.max(1, Number(body?.pageSize) || 100));
+      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
+      if (!baseUrl || !apiToken) {
+        return c.json({ error: "Faltan baseUrl o apiToken." }, 400);
+      }
+      const targetUrl = `${baseUrl}/asistencia-empresa?page=${page}&page_size=${pageSize}`;
+      if (!isAllowedBukUrl(targetUrl)) {
+        return c.json({ error: "URL de destino no permitida." }, 400);
+      }
+      const res = await fetchBukAsistencia(targetUrl, apiToken);
+      const text = await res.text();
+      if (!res.ok) {
+        return c.json({ error: `Buk HTTP ${res.status}: ${text.slice(0, 160)}` }, res.status);
+      }
+      let json: { data?: unknown[]; pagination?: { totalPages?: number; count?: number } } = {};
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return c.json({ error: "Respuesta Buk no es JSON válido." }, 502);
+      }
+      return c.json({
+        data: Array.isArray(json.data) ? json.data : [],
+        totalPages: json.pagination?.totalPages ?? page,
+        count: json.pagination?.count ?? 0,
+        page,
+      });
+    } catch (error) {
+      console.error("buk/fetch error:", error);
+      return c.json({ error: "Error al obtener asistencia desde Buk." }, 500);
+    }
+  });
+}
+
 for (const base of KV_PATH_BASES) {
   app.get(`${base}/kv/*`, async (c) => {
     const auth = await requireAuthenticatedRequest(c);

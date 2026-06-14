@@ -514,6 +514,8 @@ export interface SystemSettings {
   smartCashFlow?: SmartCashFlowSettings;
   /** API Veterinari — URL base y token para integración / reportes. */
   veterinari?: VeterinariIntegrationSettings;
+  /** Buk Asistencia + estructura organizacional de dotación. */
+  asistencia?: import('./asistencia').AsistenciaSettings;
   /**
    * Catálogo de sedes. Formato nuevo: `{ name, enabled }[]`.
    * Legacy: `string[]` se normaliza al cargar (todas habilitadas).

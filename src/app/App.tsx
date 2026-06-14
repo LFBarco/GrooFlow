@@ -39,6 +39,7 @@ import {
   Landmark,
   BookOpen,
   Truck,
+  UserCheck,
 } from "lucide-react";
 // Logo: coloque logo.png en la carpeta public/ para producción
 const logoUrl = '/logo.png';
@@ -65,6 +66,7 @@ import {
   UserManager,
   FleetModule,
   InventoryModule,
+  AsistenciaModule,
 } from "./lazyRouteModules";
 import { UserMenu } from "./components/layout/UserMenu";
 import { UserProfileDialog } from "./components/users/UserProfileDialog";
@@ -2770,7 +2772,8 @@ export default function App() {
     hasPermission("Productos") ||
     hasPermission("Auditoría") ||
     hasPermission("Gestión Vehicular") ||
-    hasPermission("Gestión de Inventario");
+    hasPermission("Gestión de Inventario") ||
+    hasPermission("Asistencia");
 
   // --- SEDE FILTERING HELPERS (memoizado: menos re-renders en vistas que filtran por sede) ---
   const catalogSedes = useMemo(() => getAllSedeNames(systemSettings), [systemSettings]);
@@ -3319,6 +3322,7 @@ export default function App() {
            <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Contabilidad" />
            <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Gestión Vehicular" />
            <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Gestión de Inventario" />
+           <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Asistencia" />
            <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Productos" />
            <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
@@ -3416,6 +3420,7 @@ export default function App() {
                     <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400" requiredModule="Contabilidad" />
                     <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400" requiredModule="Gestión Vehicular" />
                     <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400" requiredModule="Gestión de Inventario" />
+                    <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400" requiredModule="Asistencia" />
                     <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400" requiredModule="Productos" />
                     <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" requiredModule="Compras" />
                     <div className="pt-4 border-t border-border mt-4 space-y-2">
@@ -3938,6 +3943,19 @@ export default function App() {
                     'Principal'
                   }
                   providers={providers}
+                />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'asistencia' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <Suspense fallback={<RouteLoader />}>
+                <AsistenciaModule
+                  systemSettings={systemSettings}
+                  onUpdateSystemSettings={handlePersistSystemSettings}
+                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  canConfigure={isAdminAppUser(currentUser)}
                 />
               </Suspense>
             </div>

@@ -21,7 +21,8 @@ export type ViewType =
   | 'alerts'
   | 'products'
   | 'fleet'
-  | 'inventory';
+  | 'inventory'
+  | 'asistencia';
 
 /** Path por defecto (raíz) */
 export const DEFAULT_VIEW: ViewType = 'dashboard';
@@ -47,6 +48,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   config: '/configuracion',
   fleet: '/flota-clinica',
   inventory: '/inventario-equipos',
+  asistencia: '/asistencia',
 };
 
 /** Path → vista (para leer la URL) */
@@ -87,6 +89,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   config: 'Configuración',
   fleet: 'Gestión Vehicular',
   inventory: 'Gestión de Inventario',
+  asistencia: 'Asistencia',
 };
 
 /**
@@ -112,4 +115,5 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'config',
   'fleet',
   'inventory',
+  'asistencia',
 ];

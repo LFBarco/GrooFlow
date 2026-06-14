@@ -79,3 +79,6 @@ export const FleetModule = lazy(() =>
 export const InventoryModule = lazy(() =>
   import('./components/inventory/InventoryModule').then((m) => ({ default: m.InventoryModule }))
 );
+export const AsistenciaModule = lazy(() =>
+  import('./components/asistencia/AsistenciaModule').then((m) => ({ default: m.AsistenciaModule }))
+);
