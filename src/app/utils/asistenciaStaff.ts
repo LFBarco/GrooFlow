@@ -10,9 +10,11 @@ import type {
 } from '../types/asistencia';
 import { ASISTENCIA_STAFF_AREAS } from '../types/asistencia';
 import {
+  formatBukRecintoLabel,
   formatDayKey,
   isPresentOnDate,
   isRecordOnDate,
+  matchesBukRecintoConfig,
   mergeAsistenciaSettings,
   personFullName,
 } from './asistenciaData';
@@ -85,7 +87,7 @@ function recordMatchesSede(
   const recintoName = (r.nombre_recinto || '').trim().toLowerCase();
   const sedeLower = sedeName.trim().toLowerCase();
 
-  if (code && recintoCode === code.toLowerCase()) return true;
+  if (code && matchesBukRecintoConfig(code, r)) return true;
   if (recintoName && (recintoName.includes(sedeLower) || sedeLower.includes(recintoName))) {
     return true;
   }
@@ -149,13 +151,7 @@ export function diagnoseStaffBukMatch(input: {
   );
   const bukCode = profile.bukRecintoCode?.trim();
   if (atSede.length === 0) {
-    const recintos = [
-      ...new Set(
-        onDate.map((r) =>
-          [r.codigo_recinto, r.nombre_recinto].filter(Boolean).join(' · ')
-        )
-      ),
-    ].slice(0, 4);
+    const recintos = [...new Set(onDate.map((r) => formatBukRecintoLabel(r)))].slice(0, 4);
     const codeHint = bukCode
       ? `Código configurado: «${bukCode}».`
       : 'Configura el código recinto Buk en Configuración sede → Editar Sede.';
@@ -290,11 +286,7 @@ export function buildLiveSedeSummary(input: {
 
   const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
   const bukRecintosOnDate = [
-    ...new Set(
-      onDate
-        .map((r) => (r.codigo_recinto || r.nombre_recinto || '').trim())
-        .filter(Boolean)
-    ),
+    ...new Set(onDate.map((r) => formatBukRecintoLabel(r)).filter(Boolean)),
   ];
 
   const managerState =

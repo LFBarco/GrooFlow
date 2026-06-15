@@ -97,6 +97,51 @@ describe('asistenciaStaff', () => {
     expect(live.absentCount).toBe(0);
   });
 
+  it('cruza sede por etiqueta completa Petmax · Petmax Principal', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: '50.- La Molina',
+      fullName: 'Farah',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: false,
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [
+        {
+          sedeName: '50.- La Molina',
+          bukRecintoCode: 'Petmax · Petmax Principal',
+        },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '222',
+        nombre: 'Farah',
+        apellido_paterno: 'Test',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        dia_entrada: '15/06/2026',
+        entrada_format: '08:10',
+        entrada: '2026-06-15T08:10:00Z',
+        salida: null,
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: '50.- La Molina',
+      settings,
+      records,
+      date: new Date('2026-06-15T12:00:00'),
+    });
+    expect(live.workingCount).toBe(1);
+    expect(live.absentCount).toBe(0);
+    expect(live.areas[0].staff[0]?.matchHint).toBeUndefined();
+  });
+
   it('diagnostica ausente por código recinto incorrecto', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',

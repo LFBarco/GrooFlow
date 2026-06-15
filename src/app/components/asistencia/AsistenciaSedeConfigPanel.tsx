@@ -159,9 +159,12 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
               <Input
                 value={bukCode}
                 onChange={(e) => setBukCode(e.target.value)}
-                placeholder="Ej. SANISIDRO"
-                className="max-w-xs bg-slate-800 border-slate-700 text-white"
+                placeholder="Ej. Petmax o Petmax · Petmax Principal"
+                className="max-w-md bg-slate-800 border-slate-700 text-white"
               />
+              <p className="text-[11px] text-slate-500">
+                Puedes pegar el código solo (Petmax) o la etiqueta completa del diagnóstico.
+              </p>
             </div>
           ) : null}
         </CardContent>

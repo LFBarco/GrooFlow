@@ -83,6 +83,60 @@ export function personFullName(r: BukAsistenciaRecord): string {
   return [r.nombre, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ').trim();
 }
 
+/** Etiqueta legible del recinto Buk (código · nombre), como en el diagnóstico. */
+export function formatBukRecintoLabel(r: BukAsistenciaRecord): string {
+  return [r.codigo_recinto, r.nombre_recinto].filter(Boolean).join(' · ').trim();
+}
+
+function normalizeRecintoKey(raw: string): string {
+  return raw
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Cruza código configurado con codigo_recinto, nombre_recinto o etiqueta combinada. */
+export function matchesBukRecintoConfig(configuredCode: string, r: BukAsistenciaRecord): boolean {
+  const config = configuredCode.trim();
+  if (!config) return false;
+
+  const recintoCode = (r.codigo_recinto || '').trim();
+  const recintoName = (r.nombre_recinto || '').trim();
+  const combined = formatBukRecintoLabel(r);
+
+  const normConfig = normalizeRecintoKey(config);
+  const normCode = normalizeRecintoKey(recintoCode);
+  const normName = normalizeRecintoKey(recintoName);
+  const normCombined = normalizeRecintoKey(combined);
+
+  if (normConfig === normCode || normConfig === normName || normConfig === normCombined) {
+    return true;
+  }
+
+  const parts = config
+    .split(/\s*[·•|/]\s*/)
+    .map((p) => normalizeRecintoKey(p))
+    .filter(Boolean);
+
+  if (parts.length >= 2) {
+    const [codePart, ...nameParts] = parts;
+    const namePart = nameParts.join(' ');
+    if (normCode === codePart && (normName === namePart || normName.includes(namePart))) {
+      return true;
+    }
+    const hay = `${normCode} ${normName}`;
+    if (parts.every((p) => hay.includes(p))) return true;
+  }
+
+  if (parts.length === 1 && (normCode === parts[0] || normName === parts[0])) {
+    return true;
+  }
+
+  return false;
+}
+
 export function parseBukDayEntrada(raw?: string): Date | null {
   if (!raw) return null;
   const d = parse(raw.trim(), 'dd/MM/yyyy', new Date());
@@ -135,7 +189,7 @@ function recordMatchesSede(
   const code = (req.bukRecintoCode || resolveBukCodeForSede(sedeName, settings) || '').trim();
   const recintoName = (r.nombre_recinto || '').trim().toLowerCase();
   const sedeLower = sedeName.trim().toLowerCase();
-  if (code && (r.codigo_recinto || '').trim().toLowerCase() === code.toLowerCase()) return true;
+  if (code && matchesBukRecintoConfig(code, r)) return true;
   if (recintoName && (recintoName.includes(sedeLower) || sedeLower.includes(recintoName))) {
     return true;
   }
