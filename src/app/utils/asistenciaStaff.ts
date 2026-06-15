@@ -13,26 +13,15 @@ import {
   formatBukRecintoLabel,
   formatDayKey,
   hasBukEntradaMarcada,
-  isPresentOnDate,
   isRecordOnDate,
   matchesBukRecintoConfig,
   mergeAsistenciaSettings,
-  personFullName,
 } from './asistenciaData';
 
 const DEFAULT_SCHEDULE = { start: '08:00', end: '18:00' };
 
 function normalizeRut(raw?: string): string {
   return (raw ?? '').replace(/[.\-\s]/g, '').toUpperCase();
-}
-
-function normalizeName(raw: string): string {
-  return raw
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function parseTimeToMinutes(hhmm: string): number | null {
@@ -102,24 +91,11 @@ function recordMatchesSede(
   return !code && !recintoName;
 }
 
-function staffNamesMatch(staffFullName: string, recordFullName: string): boolean {
-  const staffTokens = normalizeName(staffFullName).split(' ').filter((t) => t.length >= 2);
-  const recordTokens = normalizeName(recordFullName).split(' ').filter((t) => t.length >= 2);
-  if (staffTokens.length === 0 || recordTokens.length === 0) return false;
-
-  const staffNorm = staffTokens.join(' ');
-  const recordNorm = recordTokens.join(' ');
-  if (staffNorm === recordNorm) return true;
-  if (staffTokens.every((t) => recordNorm.includes(t))) return true;
-  if (recordTokens.length >= 2 && staffNorm.includes(recordNorm)) return true;
-  return false;
-}
-
 function recordMatchesStaff(r: BukAsistenciaRecord, staff: AsistenciaStaffMember): boolean {
   const staffRut = normalizeRut(staff.rut);
   const recordRut = normalizeRut(r.rut_trabajador);
-  if (staffRut) return Boolean(recordRut && staffRut === recordRut);
-  return staffNamesMatch(staff.fullName, personFullName(r));
+  if (!staffRut || !recordRut) return false;
+  return staffRut === recordRut;
 }
 
 function hasEntradaMarcada(r: BukAsistenciaRecord): boolean {
@@ -138,44 +114,42 @@ export function diagnoseStaffBukMatch(input: {
   const profile = getSedeProfile(settings, input.sedeName);
   const dateKey = formatDayKey(input.date);
   const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
+  const staffRut = normalizeRut(input.staff.rut);
 
   if (onDate.length === 0) {
     return `Buk no tiene marcaciones para el ${dateKey}. Revisa la fecha del panel.`;
   }
 
-  const atSede = onDate.filter((r) =>
+  if (!staffRut) {
+    return 'Configura el RUT del trabajador (debe coincidir con rut_trabajador en Buk).';
+  }
+
+  const byRutOnDate = onDate.filter((r) => normalizeRut(r.rut_trabajador) === staffRut);
+  if (byRutOnDate.length === 0) {
+    return `Buk no tiene marcación con RUT ${input.staff.rut?.trim()} el ${dateKey}.`;
+  }
+
+  const atSede = byRutOnDate.filter((r) =>
     recordMatchesSede(r, input.sedeName, profile, settings)
   );
   const bukCode = profile.bukRecintoCode?.trim();
   if (atSede.length === 0) {
-    const recintos = [...new Set(onDate.map((r) => formatBukRecintoLabel(r)))].slice(0, 4);
+    const recinto = formatBukRecintoLabel(byRutOnDate[0]!);
     const codeHint = bukCode
-      ? `Código configurado: «${bukCode}».`
-      : 'Configura el código recinto Buk en Configuración sede → Editar Sede.';
-    return `Hay ${onDate.length} marcación(es) el ${dateKey}, pero ninguna coincide con «${input.sedeName}». ${codeHint} Recintos en Buk ese día: ${recintos.join('; ') || '—'}.`;
+      ? ` Código configurado: «${bukCode}».`
+      : ' Configura el código recinto Buk en Configuración sede.';
+    return `RUT coincide en Buk pero en otro recinto: «${recinto}».${codeHint}`;
   }
 
-  const personAtSede = atSede.filter((r) => recordMatchesStaff(r, input.staff));
-  if (personAtSede.length === 0) {
-    const names = atSede
-      .slice(0, 3)
-      .map((r) => personFullName(r))
-      .join(', ');
-    const rutHint = input.staff.rut?.trim()
-      ? ''
-      : ' Agrega el RUT Buk del trabajador para un cruce más preciso.';
-    return `En «${input.sedeName}» hay ${atSede.length} persona(s) ese día (${names}${atSede.length > 3 ? '…' : ''}), pero no coincide con «${input.staff.fullName}».${rutHint}`;
-  }
-
-  const withEntrada = personAtSede.filter((r) => hasEntradaMarcada(r));
-  if (withEntrada.length === 0) {
-    return `Buk registra a «${input.staff.fullName}» en la sede el ${dateKey}, pero sin hora de entrada marcada.`;
+  const record = atSede[0]!;
+  if (!hasEntradaMarcada(record)) {
+    return `RUT coincide el ${dateKey} en «${input.sedeName}», pero sin hora en entrada_format (aún no marca entrada).`;
   }
 
   return undefined;
 }
 
-function findBukMatch(
+function findBukRecordForStaff(
   staff: AsistenciaStaffMember,
   records: BukAsistenciaRecord[],
   sedeName: string,
@@ -185,7 +159,7 @@ function findBukMatch(
 ): BukAsistenciaRecord | undefined {
   return records.find(
     (r) =>
-      isPresentOnDate(r, date) &&
+      isRecordOnDate(r, date) &&
       recordMatchesSede(r, sedeName, profile, settings) &&
       recordMatchesStaff(r, staff)
   );
@@ -195,7 +169,7 @@ function resolveLiveStatus(
   staff: AsistenciaStaffMember,
   record: BukAsistenciaRecord | undefined
 ): Pick<AsistenciaStaffLiveState, 'status' | 'entradaFormat' | 'stillOnSite'> {
-  if (!record) {
+  if (!record || !hasEntradaMarcada(record)) {
     return { status: 'ausente', stillOnSite: false };
   }
   const expected = parseTimeToMinutes(staff.expectedTime);
@@ -266,18 +240,25 @@ export function buildLiveSedeSummary(input: {
   const staffList = staffForSede(settings, input.sedeName);
 
   const liveStates: AsistenciaStaffLiveState[] = staffList.map((staff) => {
-    const buk = findBukMatch(staff, input.records, input.sedeName, profile, settings, input.date);
+    const buk = findBukRecordForStaff(
+      staff,
+      input.records,
+      input.sedeName,
+      profile,
+      settings,
+      input.date
+    );
     const live = resolveLiveStatus(staff, buk);
     const matchHint =
-      buk || input.records.length === 0
-        ? undefined
-        : diagnoseStaffBukMatch({
+      live.status === 'ausente' && input.records.length > 0
+        ? diagnoseStaffBukMatch({
             staff,
             records: input.records,
             sedeName: input.sedeName,
             settings: input.settings,
             date: input.date,
-          });
+          })
+        : undefined;
     return { staff, ...live, matchHint };
   });
 

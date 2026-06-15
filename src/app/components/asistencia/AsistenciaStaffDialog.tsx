@@ -90,6 +90,7 @@ export function AsistenciaStaffDialog({
 
   const handleSubmit = () => {
     if (!form.fullName.trim()) return;
+    if (!form.rut?.trim()) return;
     onSave({
       ...form,
       fullName: form.fullName.trim(),
@@ -213,13 +214,17 @@ export function AsistenciaStaffDialog({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-slate-300">RUT Buk (opcional, mejora el cruce)</Label>
+            <Label className="text-slate-300">RUT Buk * (rut_trabajador)</Label>
             <Input
               value={form.rut ?? ''}
               onChange={(e) => patch({ rut: e.target.value })}
               placeholder="12345678-9"
               className="bg-white text-slate-900 border-0"
+              required
             />
+            <p className="text-[11px] text-slate-500">
+              Debe coincidir exactamente con rut_trabajador en Buk. La asistencia se valida con entrada_format.
+            </p>
           </div>
 
           <div className="space-y-2">

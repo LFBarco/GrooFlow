@@ -162,12 +162,20 @@ export function isPresentOnDate(r: BukAsistenciaRecord, date: Date): boolean {
   return hasBukEntradaMarcada(r);
 }
 
-/** Marca real de entrada en Buk: requiere timestamp `entrada`, no solo `entrada_format`. */
+/** Hora de llegada válida en Buk (`entrada_format` HH:mm). */
+export function isValidBukEntradaFormat(raw?: string | null): boolean {
+  const fmt = raw?.trim();
+  if (!fmt) return false;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(fmt);
+  if (!m) return false;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h >= 0 && h <= 23 && min >= 0 && min <= 59;
+}
+
+/** Marca de entrada en Buk: usa `entrada_format` (hora de llegada). */
 export function hasBukEntradaMarcada(r: BukAsistenciaRecord): boolean {
-  const entrada = r.entrada?.trim();
-  if (!entrada) return false;
-  const d = new Date(entrada);
-  return !Number.isNaN(d.getTime());
+  return isValidBukEntradaFormat(r.entrada_format);
 }
 
 export function classifyRecordAreaGroup(

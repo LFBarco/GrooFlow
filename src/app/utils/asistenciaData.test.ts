@@ -26,6 +26,7 @@ describe('asistenciaData', () => {
         especialidad: 'MEDICO VETERINARIO',
         dia_entrada: '14/06/2026',
         entrada: '2026-06-14T12:00:00Z',
+        entrada_format: '12:00',
         salida: null,
       },
     ];

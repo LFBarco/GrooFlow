@@ -15,6 +15,7 @@ describe('asistenciaStaff', () => {
       expectedTime: '08:00',
       isCritical: true,
       matchArea: 'COUNTER',
+      rut: '111',
     };
     const settings = mergeAsistenciaSettings({
       staff: [staff],
@@ -97,15 +98,16 @@ describe('asistenciaStaff', () => {
     expect(live.absentCount).toBe(0);
   });
 
-  it('cruza sede por etiqueta completa Petmax · Petmax Principal', () => {
+  it('cruza por RUT y sede con etiqueta Petmax · Petmax Principal', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',
       sedeName: '50.- La Molina',
-      fullName: 'Farah',
+      fullName: 'Farah del Rio',
       cargoLabel: 'Recepcionista',
       area: 'administracion',
       expectedTime: '08:00',
       isCritical: false,
+      rut: '22222222-2',
     };
     const settings = mergeAsistenciaSettings({
       staff: [staff],
@@ -120,14 +122,13 @@ describe('asistenciaStaff', () => {
       {
         id: 1,
         trab_id: 1,
-        rut_trabajador: '222',
+        rut_trabajador: '22222222-2',
         nombre: 'Farah',
-        apellido_paterno: 'Test',
+        apellido_paterno: 'del Rio',
         codigo_recinto: 'Petmax',
         nombre_recinto: 'Petmax Principal',
         dia_entrada: '15/06/2026',
         entrada_format: '08:10',
-        entrada: '2026-06-15T08:10:00Z',
         salida: null,
       },
     ];
@@ -142,7 +143,7 @@ describe('asistenciaStaff', () => {
     expect(live.areas[0].staff[0]?.matchHint).toBeUndefined();
   });
 
-  it('no asigna asistencia de otro recepcionista a Luis Barco por area COUNTER', () => {
+  it('no asigna asistencia de otro recepcionista por area sin coincidir RUT', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',
       sedeName: '50.- La Molina',
@@ -152,6 +153,7 @@ describe('asistenciaStaff', () => {
       expectedTime: '08:00',
       isCritical: true,
       matchArea: 'COUNTER',
+      rut: '11111111-1',
     };
     const settings = mergeAsistenciaSettings({
       staff: [staff],
@@ -163,7 +165,7 @@ describe('asistenciaStaff', () => {
       {
         id: 1,
         trab_id: 99,
-        rut_trabajador: '999',
+        rut_trabajador: '99999999-9',
         nombre: 'Farah',
         apellido_paterno: 'Test',
         codigo_recinto: 'Petmax',
@@ -171,7 +173,6 @@ describe('asistenciaStaff', () => {
         area: 'COUNTER',
         dia_entrada: '15/06/2026',
         entrada_format: '08:10',
-        entrada: '2026-06-15T08:10:00Z',
         salida: null,
       },
     ];
@@ -186,7 +187,7 @@ describe('asistenciaStaff', () => {
     expect(live.areas[0].staff[0]?.status).toBe('ausente');
   });
 
-  it('no marca presente si Buk solo trae entrada_format sin entrada', () => {
+  it('marca trabajando con entrada_format aunque entrada sea null', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',
       sedeName: 'SAN ISIDRO',
@@ -220,10 +221,49 @@ describe('asistenciaStaff', () => {
       records,
       date: new Date('2026-06-10T12:00:00'),
     });
-    expect(live.absentCount).toBe(1);
+    expect(live.workingCount).toBe(1);
+    expect(live.absentCount).toBe(0);
   });
 
-  it('diagnostica ausente por código recinto incorrecto', () => {
+  it('marca ausente si RUT coincide pero entrada_format está vacío', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: 'SAN ISIDRO',
+      fullName: 'Luis Barco',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: false,
+      rut: '11111111-1',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [{ sedeName: 'SAN ISIDRO', bukRecintoCode: 'SANISIDRO' }],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '11111111-1',
+        nombre: 'Luis',
+        apellido_paterno: 'Barco',
+        codigo_recinto: 'SANISIDRO',
+        dia_entrada: '10/06/2026',
+        entrada_format: '',
+        entrada: null,
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: 'SAN ISIDRO',
+      settings,
+      records,
+      date: new Date('2026-06-10T12:00:00'),
+    });
+    expect(live.absentCount).toBe(1);
+    expect(live.areas[0].staff[0]?.matchHint).toMatch(/entrada_format/);
+  });
+
+  it('diagnostica si falta RUT configurado', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',
       sedeName: 'La Molina',
@@ -235,20 +275,18 @@ describe('asistenciaStaff', () => {
     };
     const settings = mergeAsistenciaSettings({
       staff: [staff],
-      sedeProfiles: [{ sedeName: 'La Molina', bukRecintoCode: 'CODIGO_MAL' }],
+      sedeProfiles: [{ sedeName: 'La Molina', bukRecintoCode: 'MOLINA' }],
     });
     const records: BukAsistenciaRecord[] = [
       {
         id: 1,
         trab_id: 1,
         rut_trabajador: '111',
-        nombre: 'Pedro',
-        apellido_paterno: 'Sur',
-        codigo_recinto: 'SUR_ONLY',
-        nombre_recinto: 'Petmax Sur',
+        nombre: 'Ana',
+        apellido_paterno: 'X',
+        codigo_recinto: 'MOLINA',
         dia_entrada: '10/06/2026',
         entrada_format: '08:00',
-        entrada: '2026-06-10T08:00:00Z',
       },
     ];
     const hint = diagnoseStaffBukMatch({
@@ -258,7 +296,6 @@ describe('asistenciaStaff', () => {
       settings,
       date: new Date('2026-06-10T12:00:00'),
     });
-    expect(hint).toBeDefined();
-    expect(hint).toMatch(/ninguna coincide|Recintos en Buk|SUR_ONLY/);
+    expect(hint).toMatch(/RUT/);
   });
 });
