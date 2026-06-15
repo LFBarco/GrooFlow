@@ -12,6 +12,7 @@ import { ASISTENCIA_STAFF_AREAS } from '../types/asistencia';
 import {
   formatBukRecintoLabel,
   formatDayKey,
+  hasBukEntradaMarcada,
   isPresentOnDate,
   isRecordOnDate,
   matchesBukRecintoConfig,
@@ -101,32 +102,28 @@ function recordMatchesSede(
   return !code && !recintoName;
 }
 
-function recordMatchesStaff(r: BukAsistenciaRecord, staff: AsistenciaStaffMember): boolean {
-  const staffRut = normalizeRut(staff.rut);
-  const recordRut = normalizeRut(r.rut_trabajador);
-  if (staffRut && recordRut && staffRut === recordRut) return true;
+function staffNamesMatch(staffFullName: string, recordFullName: string): boolean {
+  const staffTokens = normalizeName(staffFullName).split(' ').filter((t) => t.length >= 2);
+  const recordTokens = normalizeName(recordFullName).split(' ').filter((t) => t.length >= 2);
+  if (staffTokens.length === 0 || recordTokens.length === 0) return false;
 
-  const staffName = normalizeName(staff.fullName);
-  const recordName = normalizeName(personFullName(r));
-  if (staffName && recordName && (recordName.includes(staffName) || staffName.includes(recordName))) {
-    return true;
-  }
-
-  const areaHay = (r.area || '').toUpperCase();
-  const specHay = (r.especialidad || '').toUpperCase();
-  if (staff.matchArea?.trim() && areaHay.includes(staff.matchArea.trim().toUpperCase())) return true;
-  if (staff.matchSpecialty?.trim() && specHay.includes(staff.matchSpecialty.trim().toUpperCase())) {
-    return true;
-  }
-
-  const cargo = staff.cargoLabel.toUpperCase();
-  if (cargo && (specHay.includes(cargo) || areaHay.includes(cargo))) return true;
-
+  const staffNorm = staffTokens.join(' ');
+  const recordNorm = recordTokens.join(' ');
+  if (staffNorm === recordNorm) return true;
+  if (staffTokens.every((t) => recordNorm.includes(t))) return true;
+  if (recordTokens.length >= 2 && staffNorm.includes(recordNorm)) return true;
   return false;
 }
 
+function recordMatchesStaff(r: BukAsistenciaRecord, staff: AsistenciaStaffMember): boolean {
+  const staffRut = normalizeRut(staff.rut);
+  const recordRut = normalizeRut(r.rut_trabajador);
+  if (staffRut) return Boolean(recordRut && staffRut === recordRut);
+  return staffNamesMatch(staff.fullName, personFullName(r));
+}
+
 function hasEntradaMarcada(r: BukAsistenciaRecord): boolean {
-  return Boolean(r.entrada?.trim() || r.entrada_format?.trim());
+  return hasBukEntradaMarcada(r);
 }
 
 /** Explica por qué no hubo match Buk para un trabajador registrado. */

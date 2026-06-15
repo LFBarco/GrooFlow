@@ -159,7 +159,15 @@ export function isRecordOnDate(r: BukAsistenciaRecord, date: Date): boolean {
 
 export function isPresentOnDate(r: BukAsistenciaRecord, date: Date): boolean {
   if (!isRecordOnDate(r, date)) return false;
-  return Boolean(r.entrada?.trim() || r.entrada_format?.trim());
+  return hasBukEntradaMarcada(r);
+}
+
+/** Marca real de entrada en Buk: requiere timestamp `entrada`, no solo `entrada_format`. */
+export function hasBukEntradaMarcada(r: BukAsistenciaRecord): boolean {
+  const entrada = r.entrada?.trim();
+  if (!entrada) return false;
+  const d = new Date(entrada);
+  return !Number.isNaN(d.getTime());
 }
 
 export function classifyRecordAreaGroup(

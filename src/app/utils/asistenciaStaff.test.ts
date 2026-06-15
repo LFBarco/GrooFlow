@@ -142,6 +142,87 @@ describe('asistenciaStaff', () => {
     expect(live.areas[0].staff[0]?.matchHint).toBeUndefined();
   });
 
+  it('no asigna asistencia de otro recepcionista a Luis Barco por area COUNTER', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: '50.- La Molina',
+      fullName: 'Luis Barco',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: true,
+      matchArea: 'COUNTER',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [
+        { sedeName: '50.- La Molina', bukRecintoCode: 'Petmax · Petmax Principal' },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 99,
+        rut_trabajador: '999',
+        nombre: 'Farah',
+        apellido_paterno: 'Test',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        area: 'COUNTER',
+        dia_entrada: '15/06/2026',
+        entrada_format: '08:10',
+        entrada: '2026-06-15T08:10:00Z',
+        salida: null,
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: '50.- La Molina',
+      settings,
+      records,
+      date: new Date('2026-06-15T12:00:00'),
+    });
+    expect(live.workingCount).toBe(0);
+    expect(live.absentCount).toBe(1);
+    expect(live.areas[0].staff[0]?.status).toBe('ausente');
+  });
+
+  it('no marca presente si Buk solo trae entrada_format sin entrada', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: 'SAN ISIDRO',
+      fullName: 'Luis Barco',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: false,
+      rut: '11111111-1',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [{ sedeName: 'SAN ISIDRO', bukRecintoCode: 'SANISIDRO' }],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '11111111-1',
+        nombre: 'Luis',
+        apellido_paterno: 'Barco',
+        codigo_recinto: 'SANISIDRO',
+        dia_entrada: '10/06/2026',
+        entrada_format: '08:05',
+        entrada: null,
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: 'SAN ISIDRO',
+      settings,
+      records,
+      date: new Date('2026-06-10T12:00:00'),
+    });
+    expect(live.absentCount).toBe(1);
+  });
+
   it('diagnostica ausente por código recinto incorrecto', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',
