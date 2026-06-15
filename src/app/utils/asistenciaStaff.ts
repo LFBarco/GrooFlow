@@ -10,12 +10,14 @@ import type {
 } from '../types/asistencia';
 import { ASISTENCIA_STAFF_AREAS } from '../types/asistencia';
 import {
+  formatBukEntradaDisplay,
   formatBukRecintoLabel,
   formatDayKey,
   hasBukEntradaMarcada,
   isRecordOnDate,
   matchesBukRecintoConfig,
   mergeAsistenciaSettings,
+  parseBukEntradaFormatMinutes,
 } from './asistenciaData';
 
 const DEFAULT_SCHEDULE = { start: '08:00', end: '18:00' };
@@ -24,20 +26,26 @@ function normalizeRut(raw?: string): string {
   return (raw ?? '').replace(/[.\-\s]/g, '').toUpperCase();
 }
 
-function parseTimeToMinutes(hhmm: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
-  if (!m) return null;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
-  return h * 60 + min;
+/** Cuerpo numérico del RUT (sin dígito verificador) para cruzar con Buk. */
+function rutMatchKey(raw?: string): string {
+  const n = normalizeRut(raw);
+  if (!n) return '';
+  if (n.length >= 8 && /^[0-9]{7,8}[0-9K]$/.test(n)) {
+    return n.slice(0, -1);
+  }
+  return n;
+}
+
+function rutsMatch(staffRut?: string, recordRut?: string): boolean {
+  const a = rutMatchKey(staffRut);
+  const b = rutMatchKey(recordRut);
+  return Boolean(a && b && a === b);
 }
 
 function entradaMinutes(record?: BukAsistenciaRecord): number | null {
   if (!record) return null;
-  if (record.entrada_format?.trim()) {
-    return parseTimeToMinutes(record.entrada_format);
-  }
+  const fromFormat = parseBukEntradaFormatMinutes(record.entrada_format);
+  if (fromFormat != null) return fromFormat;
   if (record.entrada) {
     const d = new Date(record.entrada);
     if (!Number.isNaN(d.getTime())) return d.getHours() * 60 + d.getMinutes();
@@ -92,10 +100,7 @@ function recordMatchesSede(
 }
 
 function recordMatchesStaff(r: BukAsistenciaRecord, staff: AsistenciaStaffMember): boolean {
-  const staffRut = normalizeRut(staff.rut);
-  const recordRut = normalizeRut(r.rut_trabajador);
-  if (!staffRut || !recordRut) return false;
-  return staffRut === recordRut;
+  return rutsMatch(staff.rut, r.rut_trabajador);
 }
 
 function hasEntradaMarcada(r: BukAsistenciaRecord): boolean {
@@ -114,7 +119,7 @@ export function diagnoseStaffBukMatch(input: {
   const profile = getSedeProfile(settings, input.sedeName);
   const dateKey = formatDayKey(input.date);
   const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
-  const staffRut = normalizeRut(input.staff.rut);
+  const staffRut = rutMatchKey(input.staff.rut);
 
   if (onDate.length === 0) {
     return `Buk no tiene marcaciones para el ${dateKey}. Revisa la fecha del panel.`;
@@ -124,7 +129,7 @@ export function diagnoseStaffBukMatch(input: {
     return 'Configura el RUT del trabajador (debe coincidir con rut_trabajador en Buk).';
   }
 
-  const byRutOnDate = onDate.filter((r) => normalizeRut(r.rut_trabajador) === staffRut);
+  const byRutOnDate = onDate.filter((r) => rutsMatch(input.staff.rut, r.rut_trabajador));
   if (byRutOnDate.length === 0) {
     return `Buk no tiene marcación con RUT ${input.staff.rut?.trim()} el ${dateKey}.`;
   }
@@ -172,9 +177,10 @@ function resolveLiveStatus(
   if (!record || !hasEntradaMarcada(record)) {
     return { status: 'ausente', stillOnSite: false };
   }
-  const expected = parseTimeToMinutes(staff.expectedTime);
+  const expected = parseBukEntradaFormatMinutes(staff.expectedTime);
   const arrived = entradaMinutes(record);
-  const entradaFormat = record.entrada_format || staff.expectedTime;
+  const entradaFormat =
+    formatBukEntradaDisplay(record.entrada_format) ?? staff.expectedTime;
   const stillOnSite = !record.salida;
 
   if (stillOnSite) {

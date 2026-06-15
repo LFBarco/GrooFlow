@@ -162,15 +162,42 @@ export function isPresentOnDate(r: BukAsistenciaRecord, date: Date): boolean {
   return hasBukEntradaMarcada(r);
 }
 
-/** Hora de llegada válida en Buk (`entrada_format` HH:mm). */
-export function isValidBukEntradaFormat(raw?: string | null): boolean {
+const BUK_ENTRADA_FORMAT_EMPTY = new Set(['', '-', '--', '--:--', 'null', 'undefined']);
+
+/** Extrae minutos desde entrada_format de Buk (HH:mm o yyyy/MM/dd HH:mm:ss). */
+export function parseBukEntradaFormatMinutes(raw?: string | null): number | null {
   const fmt = raw?.trim();
-  if (!fmt) return false;
-  const m = /^(\d{1,2}):(\d{2})$/.exec(fmt);
-  if (!m) return false;
-  const h = Number(m[1]);
-  const min = Number(m[2]);
-  return h >= 0 && h <= 23 && min >= 0 && min <= 59;
+  if (!fmt || BUK_ENTRADA_FORMAT_EMPTY.has(fmt.toLowerCase())) return null;
+
+  const hhmm = /^(\d{1,2}):(\d{2})$/.exec(fmt);
+  if (hhmm) {
+    const h = Number(hhmm[1]);
+    const min = Number(hhmm[2]);
+    if (h >= 0 && h <= 23 && min >= 0 && min <= 59) return h * 60 + min;
+  }
+
+  const datetime = /^(\d{4})[/-](\d{2})[/-](\d{2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(fmt);
+  if (datetime) {
+    const h = Number(datetime[4]);
+    const min = Number(datetime[5]);
+    if (h >= 0 && h <= 23 && min >= 0 && min <= 59) return h * 60 + min;
+  }
+
+  return null;
+}
+
+/** Hora legible HH:mm desde entrada_format Buk. */
+export function formatBukEntradaDisplay(raw?: string | null): string | undefined {
+  const mins = parseBukEntradaFormatMinutes(raw);
+  if (mins == null) return undefined;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/** Hora de llegada válida en Buk (`entrada_format`). */
+export function isValidBukEntradaFormat(raw?: string | null): boolean {
+  return parseBukEntradaFormatMinutes(raw) != null;
 }
 
 /** Marca de entrada en Buk: usa `entrada_format` (hora de llegada). */

@@ -263,6 +263,55 @@ describe('asistenciaStaff', () => {
     expect(live.areas[0].staff[0]?.matchHint).toMatch(/entrada_format/);
   });
 
+  it('marca trabajando con entrada_format Buk yyyy/MM/dd HH:mm:ss', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: '50.- La Molina',
+      fullName: 'Farah del Rio',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: false,
+      rut: '44784524',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [
+        {
+          sedeName: '50.- La Molina',
+          bukRecintoCode: 'Petmax · Petmax Principal',
+        },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '44784524',
+        nombre: 'FARAH FABIOLA',
+        apellido_paterno: 'DEL RÍO',
+        apellido_materno: 'VÁSQUEZ',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        area: 'COUNTER',
+        dia_entrada: '15/06/2026',
+        entrada: '2026-06-15T12:02:00Z',
+        entrada_format: '2026/06/15 08:02:00',
+        salida: null,
+        salida_format: '-',
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: '50.- La Molina',
+      settings,
+      records,
+      date: new Date('2026-06-15T12:00:00'),
+    });
+    expect(live.workingCount).toBe(1);
+    expect(live.areas[0].staff[0]?.entradaFormat).toBe('08:02');
+    expect(live.areas[0].staff[0]?.status).toBe('trabajando');
+  });
+
   it('diagnostica si falta RUT configurado', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',

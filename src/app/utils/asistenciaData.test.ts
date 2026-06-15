@@ -5,7 +5,10 @@ import {
   buildAsistenciaDaySummary,
   buildDefaultRequirementsForSede,
   defaultAsistenciaSettings,
+  formatBukEntradaDisplay,
+  hasBukEntradaMarcada,
   mergeAsistenciaSettings,
+  parseBukEntradaFormatMinutes,
 } from './asistenciaData';
 
 describe('asistenciaData', () => {
@@ -45,5 +48,12 @@ describe('asistenciaData', () => {
 
   it('merge conserva defaults', () => {
     expect(mergeAsistenciaSettings(null).requirements).toEqual(defaultAsistenciaSettings().requirements);
+  });
+
+  it('parsea entrada_format Buk con fecha y hora', () => {
+    expect(parseBukEntradaFormatMinutes('2026/06/15 08:02:00')).toBe(8 * 60 + 2);
+    expect(formatBukEntradaDisplay('2026/06/15 08:02:00')).toBe('08:02');
+    expect(hasBukEntradaMarcada({ id: 1, trab_id: 1, rut_trabajador: '1', nombre: 'X', entrada_format: '2026/06/15 08:02:00' })).toBe(true);
+    expect(hasBukEntradaMarcada({ id: 1, trab_id: 1, rut_trabajador: '1', nombre: 'X', entrada_format: '-' })).toBe(false);
   });
 });
