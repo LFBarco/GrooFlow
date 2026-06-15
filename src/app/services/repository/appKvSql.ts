@@ -3,7 +3,51 @@
  * Usado para settings, productos, honorarios, tesorería, plan de cuentas.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { mergeSystemSettings } from '../../data/initialData';
+import type { SystemSettings } from '../../types';
+import { mergeAsistenciaSettings, mergeAsistenciaStaffLists } from '../../utils/asistenciaData';
 import { isMissingTableError, isProductionSqlEnabled } from './sqlDomainUtils';
+
+const SETTINGS_SYSTEM_KEY = 'settings:system';
+
+/** Fusiona SQL + KV para settings:system sin perder asistencia.staff ni sedeProfiles. */
+export function mergeSystemSettingsSqlAndKv(
+  sql: Partial<SystemSettings> | null | undefined,
+  kv: Partial<SystemSettings> | null | undefined
+): SystemSettings {
+  const fromSql = mergeSystemSettings(sql);
+  const fromKv = mergeSystemSettings(kv);
+  const staff = mergeAsistenciaStaffLists(fromSql.asistencia?.staff, fromKv.asistencia?.staff);
+  const profileMap = new Map<string, NonNullable<typeof fromSql.asistencia>['sedeProfiles'][number]>();
+  for (const p of fromSql.asistencia?.sedeProfiles ?? []) profileMap.set(p.sedeName, p);
+  for (const p of fromKv.asistencia?.sedeProfiles ?? []) profileMap.set(p.sedeName, p);
+
+  const asistencia = mergeAsistenciaSettings({
+    ...fromSql.asistencia,
+    ...fromKv.asistencia,
+    staff,
+    sedeProfiles: [...profileMap.values()],
+    buk: { ...fromSql.asistencia?.buk, ...fromKv.asistencia?.buk },
+    requirements:
+      (fromKv.asistencia?.requirements?.length ?? 0) >= (fromSql.asistencia?.requirements?.length ?? 0)
+        ? fromKv.asistencia?.requirements
+        : fromSql.asistencia?.requirements,
+    sedeMappings:
+      (fromKv.asistencia?.sedeMappings?.length ?? 0) >= (fromSql.asistencia?.sedeMappings?.length ?? 0)
+        ? fromKv.asistencia?.sedeMappings
+        : fromSql.asistencia?.sedeMappings,
+  });
+
+  return mergeSystemSettings({
+    ...fromSql,
+    ...fromKv,
+    asistencia,
+    pettyCash: { ...fromSql.pettyCash, ...fromKv.pettyCash },
+    veterinari: { ...fromSql.veterinari, ...fromKv.veterinari },
+    providers: { ...fromSql.providers, ...fromKv.providers },
+    accounting: { ...fromSql.accounting, ...fromKv.accounting },
+  });
+}
 
 export type AppKvLoadResult<T> = {
   ok: boolean;
@@ -106,6 +150,22 @@ export async function resolveAppKvFromSql<T>(
         if (userId) await migrateAppKvKey(client, key, merged, userId);
         return merged;
       }
+    }
+    if (
+      key === SETTINGS_SYSTEM_KEY &&
+      kvValue != null &&
+      !isEmpty(kvValue) &&
+      typeof sqlLoad.data === 'object' &&
+      typeof kvValue === 'object' &&
+      !Array.isArray(sqlLoad.data) &&
+      !Array.isArray(kvValue)
+    ) {
+      const merged = mergeSystemSettingsSqlAndKv(
+        sqlLoad.data as Partial<SystemSettings>,
+        kvValue as Partial<SystemSettings>
+      );
+      if (userId) await migrateAppKvKey(client, key, merged, userId);
+      return merged as T;
     }
     return sqlLoad.data;
   }

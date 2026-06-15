@@ -33,6 +33,10 @@ import { Card, CardContent } from '../ui/card';
 export interface AsistenciaModuleProps {
   systemSettings: SystemSettings;
   onUpdateSystemSettings: (settings: SystemSettings) => void;
+  onPersistSystemSettings?: (
+    nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings),
+    successMessage?: string
+  ) => Promise<boolean>;
   visibleSedes?: string[];
   canConfigure?: boolean;
 }
@@ -40,6 +44,7 @@ export interface AsistenciaModuleProps {
 export function AsistenciaModule({
   systemSettings,
   onUpdateSystemSettings,
+  onPersistSystemSettings,
   visibleSedes = [],
   canConfigure = false,
 }: AsistenciaModuleProps) {
@@ -101,9 +106,31 @@ export function AsistenciaModule({
     }
   }, [asistencia, activeSede]);
 
-  const saveSettings = (next: AsistenciaSettings) => {
-    onUpdateSystemSettings({ ...systemSettings, asistencia: next });
-  };
+  const saveAsistencia = useCallback(
+    async (
+      updater: (prev: AsistenciaSettings) => AsistenciaSettings,
+      successMessage?: string
+    ): Promise<boolean> => {
+      if (onPersistSystemSettings) {
+        const ok = await onPersistSystemSettings(
+          (prev) => ({
+            ...prev,
+            asistencia: updater(mergeAsistenciaSettings(prev.asistencia)),
+          }),
+          successMessage
+        );
+        if (!ok) {
+          toast.error('No se pudo guardar en la nube. Revisa tu sesión e intenta de nuevo.');
+        }
+        return ok;
+      }
+      const next = updater(mergeAsistenciaSettings(systemSettings.asistencia));
+      onUpdateSystemSettings({ ...systemSettings, asistencia: next });
+      if (successMessage) toast.success(successMessage);
+      return true;
+    },
+    [onPersistSystemSettings, onUpdateSystemSettings, systemSettings]
+  );
 
   return (
     <div className="space-y-6">
@@ -200,7 +227,7 @@ export function AsistenciaModule({
               sedeName={activeSede}
               settings={asistencia}
               canConfigure={canConfigure}
-              onSave={saveSettings}
+              onSave={saveAsistencia}
             />
           </TabsContent>
         ) : null}

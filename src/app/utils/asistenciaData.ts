@@ -47,25 +47,36 @@ export function mergeAsistenciaSettings(
 ): AsistenciaSettings {
   const base = defaultAsistenciaSettings();
   if (!partial || typeof partial !== 'object') return { ...base };
+  const spread = { ...base, ...partial };
   return {
-    ...base,
-    ...partial,
+    ...spread,
     buk: { ...base.buk, ...(partial.buk ?? {}) },
-    requirements: Array.isArray(partial.requirements) ? partial.requirements : base.requirements,
-    staff: Array.isArray(partial.staff) ? partial.staff : base.staff ?? [],
-    sedeProfiles: Array.isArray(partial.sedeProfiles) ? partial.sedeProfiles : base.sedeProfiles ?? [],
+    requirements: Array.isArray(partial.requirements) ? partial.requirements : spread.requirements,
+    staff: Array.isArray(partial.staff) ? partial.staff : spread.staff ?? [],
+    sedeProfiles: Array.isArray(partial.sedeProfiles) ? partial.sedeProfiles : spread.sedeProfiles ?? [],
     areaKeywords: {
       medica:
         partial.areaKeywords?.medica?.length
           ? partial.areaKeywords.medica
-          : base.areaKeywords!.medica,
+          : spread.areaKeywords!.medica,
       peluqueria:
         partial.areaKeywords?.peluqueria?.length
           ? partial.areaKeywords.peluqueria
-          : base.areaKeywords!.peluqueria,
+          : spread.areaKeywords!.peluqueria,
     },
-    sedeMappings: Array.isArray(partial.sedeMappings) ? partial.sedeMappings : base.sedeMappings,
+    sedeMappings: Array.isArray(partial.sedeMappings) ? partial.sedeMappings : spread.sedeMappings ?? [],
   };
+}
+
+/** Une listas de personal por id (KV + SQL). */
+export function mergeAsistenciaStaffLists(
+  a?: AsistenciaStaffMember[] | null,
+  b?: AsistenciaStaffMember[] | null
+): AsistenciaStaffMember[] {
+  const map = new Map<string, AsistenciaStaffMember>();
+  for (const m of a ?? []) map.set(m.id, m);
+  for (const m of b ?? []) map.set(m.id, m);
+  return [...map.values()];
 }
 
 export function personFullName(r: BukAsistenciaRecord): string {

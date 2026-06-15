@@ -89,7 +89,12 @@ export function useSystemSettingsPersistence(
   }, [systemSettings, isDataLoaded]);
 
   const persistSystemSettingsNow = useCallback(
-    async (next: SystemSettings, successMessage?: string): Promise<boolean> => {
+    async (
+      nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings),
+      successMessage?: string
+    ): Promise<boolean> => {
+      const next =
+        typeof nextOrUpdater === 'function' ? nextOrUpdater(latestRef.current) : nextOrUpdater;
       const merged = mergeSystemSettings(next);
       setSystemSettings(merged);
       if (!isDataLoaded || !hydratedRef.current) {
@@ -156,8 +161,8 @@ export function useSystemSettingsPersistence(
   );
 
   const handlePersistSystemSettings = useCallback(
-    (next: SystemSettings) => {
-      void persistSystemSettingsNow(next);
+    (nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings)) => {
+      void persistSystemSettingsNow(nextOrUpdater);
     },
     [persistSystemSettingsNow]
   );

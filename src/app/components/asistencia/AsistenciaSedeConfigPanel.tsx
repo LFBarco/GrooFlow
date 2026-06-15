@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Building2, Pencil, Plus, Trash2, Users } from 'lucide-react';
-import { toast } from 'sonner';
 
 import type { AsistenciaSettings, AsistenciaStaffArea, AsistenciaStaffMember } from '../../types/asistencia';
 import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_STAFF_AREAS } from '../../types/asistencia';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
+import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { AsistenciaStaffDialog } from './AsistenciaStaffDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -21,7 +21,10 @@ type Props = {
   sedeName: string;
   settings: AsistenciaSettings;
   canConfigure: boolean;
-  onSave: (next: AsistenciaSettings) => void;
+  onSave: (
+    updater: (prev: AsistenciaSettings) => AsistenciaSettings,
+    successMessage?: string
+  ) => Promise<boolean>;
 };
 
 export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, onSave }: Props) {
@@ -44,47 +47,54 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
     return map;
   }, [staff]);
 
-  const patchSettings = (partial: Partial<AsistenciaSettings>) => {
-    onSave({ ...settings, ...partial });
+  const saveSedeProfile = async () => {
+    const ok = await onSave((prev) => {
+      const rest = (prev.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
+      const mappings = (prev.sedeMappings ?? []).filter((m) => m.sedeName !== sedeName);
+      return mergeAsistenciaSettings({
+        ...prev,
+        sedeProfiles: [
+          ...rest,
+          {
+            sedeName,
+            scheduleStart,
+            scheduleEnd,
+            bukRecintoCode: bukCode.trim() || undefined,
+          },
+        ],
+        sedeMappings: bukCode.trim()
+          ? [...mappings, { sedeName, bukRecintoCode: bukCode.trim() }]
+          : mappings,
+      });
+    }, 'Configuración de sede guardada.');
+    if (ok) setEditSede(false);
   };
 
-  const saveSedeProfile = () => {
-    const rest = (settings.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
-    const mappings = (settings.sedeMappings ?? []).filter((m) => m.sedeName !== sedeName);
-    patchSettings({
-      sedeProfiles: [
-        ...rest,
-        {
-          sedeName,
-          scheduleStart,
-          scheduleEnd,
-          bukRecintoCode: bukCode.trim() || undefined,
-        },
-      ],
-      sedeMappings: bukCode.trim()
-        ? [...mappings, { sedeName, bukRecintoCode: bukCode.trim() }]
-        : mappings,
-    });
-    setEditSede(false);
-    toast.success('Configuración de sede guardada.');
+  const upsertStaff = async (member: AsistenciaStaffMember) => {
+    const isEdit = member.id === editingStaff?.id;
+    const ok = await onSave((prev) => {
+      const others = (prev.staff ?? []).filter((s) => s.id !== member.id);
+      let nextStaff = [...others, { ...member, sedeName }];
+      if (member.isManager) {
+        nextStaff = nextStaff.map((s) =>
+          s.sedeName === sedeName && s.id !== member.id ? { ...s, isManager: false } : s
+        );
+      }
+      return mergeAsistenciaSettings({ ...prev, staff: nextStaff });
+    }, isEdit ? 'Personal actualizado.' : 'Personal agregado.');
+    if (ok) setEditingStaff(null);
   };
 
-  const upsertStaff = (member: AsistenciaStaffMember) => {
-    const others = (settings.staff ?? []).filter((s) => s.id !== member.id);
-    let nextStaff = [...others, { ...member, sedeName }];
-    if (member.isManager) {
-      nextStaff = nextStaff.map((s) =>
-        s.sedeName === sedeName && s.id !== member.id ? { ...s, isManager: false } : s
-      );
-    }
-    patchSettings({ staff: nextStaff });
-    toast.success(member.id === editingStaff?.id ? 'Personal actualizado.' : 'Personal agregado.');
-  };
-
-  const removeStaff = (id: string) => {
+  const removeStaff = async (id: string) => {
     if (!window.confirm('¿Eliminar este miembro del personal?')) return;
-    patchSettings({ staff: (settings.staff ?? []).filter((s) => s.id !== id) });
-    toast.success('Personal eliminado.');
+    await onSave(
+      (prev) =>
+        mergeAsistenciaSettings({
+          ...prev,
+          staff: (prev.staff ?? []).filter((s) => s.id !== id),
+        }),
+      'Personal eliminado.'
+    );
   };
 
   return (
@@ -102,7 +112,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
           </div>
           {canConfigure ? (
             editSede ? (
-              <Button size="sm" onClick={saveSedeProfile}>Guardar</Button>
+              <Button size="sm" onClick={() => void saveSedeProfile()}>Guardar</Button>
             ) : (
               <Button
                 size="sm"
@@ -228,7 +238,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-slate-400 hover:text-red-400"
-                              onClick={() => removeStaff(member.id)}
+                              onClick={() => void removeStaff(member.id)}
                             >
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
@@ -249,7 +259,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
         onOpenChange={setDialogOpen}
         sedeName={sedeName}
         initial={editingStaff}
-        onSave={upsertStaff}
+        onSave={(member) => void upsertStaff(member)}
       />
     </div>
   );

@@ -3954,6 +3954,7 @@ export default function App() {
                 <AsistenciaModule
                   systemSettings={systemSettings}
                   onUpdateSystemSettings={handlePersistSystemSettings}
+                  onPersistSystemSettings={persistSystemSettingsNow}
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                   canConfigure={isAdminAppUser(currentUser)}
                 />
