@@ -58,6 +58,7 @@ function StaffCard({
   time,
   avatarUrl,
   critical,
+  matchHint,
 }: {
   name: string;
   cargo: string;
@@ -65,11 +66,12 @@ function StaffCard({
   time?: string;
   avatarUrl?: string;
   critical?: boolean;
+  matchHint?: string;
 }) {
   const absent = status === 'ausente';
   return (
     <div
-      className={`relative rounded-xl border p-3 min-w-[160px] ${
+      className={`relative rounded-xl border p-3 min-w-[160px] max-w-[220px] ${
         absent
           ? 'border-red-500/30 bg-slate-900/80'
           : 'border-slate-700 bg-slate-900/90'
@@ -104,6 +106,11 @@ function StaffCard({
         <span>{time ?? '—'}</span>
         <span>{ASISTENCIA_LIVE_STATUS_LABELS[status]}</span>
       </div>
+      {absent && matchHint ? (
+        <p className="mt-2 text-[10px] leading-snug text-red-300/90 border-t border-red-500/20 pt-2">
+          {matchHint}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -163,6 +170,14 @@ export function AsistenciaLiveOrgChart({ summary, onRefresh, loading }: Props) {
             Dotación crítica cubierta · Horario {summary.scheduleLabel}
           </div>
         ) : null}
+        {summary.recordsOnDateCount > 0 ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Buk: {summary.recordsOnDateCount} marcación(es) en la fecha seleccionada
+            {summary.bukRecintosOnDate.length > 0
+              ? ` · Recintos: ${summary.bukRecintosOnDate.join(', ')}`
+              : ''}
+          </p>
+        ) : null}
       </CardHeader>
 
       <CardContent className="pt-8 pb-10">
@@ -176,6 +191,7 @@ export function AsistenciaLiveOrgChart({ summary, onRefresh, loading }: Props) {
                 time={summary.manager.entradaFormat ?? summary.manager.staff.expectedTime}
                 avatarUrl={summary.manager.staff.avatarUrl}
                 critical={summary.manager.staff.isCritical}
+                matchHint={summary.manager.matchHint}
               />
             ) : (
               <div className="rounded-xl border border-dashed border-slate-600 bg-slate-900/40 px-8 py-4 text-center">
@@ -235,6 +251,7 @@ export function AsistenciaLiveOrgChart({ summary, onRefresh, loading }: Props) {
                             time={s.entradaFormat ?? s.staff.expectedTime}
                             avatarUrl={s.staff.avatarUrl}
                             critical={s.staff.isCritical}
+                            matchHint={s.matchHint}
                           />
                         ))
                     )}

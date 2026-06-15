@@ -65,6 +65,8 @@ export interface AsistenciaStaffLiveState {
   status: AsistenciaLiveStatus;
   entradaFormat?: string;
   stillOnSite: boolean;
+  /** Por qué no hubo match con Buk (solo si ausente y hay datos cargados). */
+  matchHint?: string;
 }
 
 export interface AsistenciaLiveAreaBlock {
@@ -84,6 +86,9 @@ export interface AsistenciaLiveSedeSummary {
   areas: AsistenciaLiveAreaBlock[];
   isOperational: boolean;
   criticalMissing: AsistenciaStaffMember[];
+  /** Códigos de recinto Buk vistos en la fecha seleccionada (ayuda a configurar sede). */
+  bukRecintosOnDate: string[];
+  recordsOnDateCount: number;
 }
 
 export const ASISTENCIA_CARGO_PRESETS = [

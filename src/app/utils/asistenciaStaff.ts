@@ -12,6 +12,7 @@ import { ASISTENCIA_STAFF_AREAS } from '../types/asistencia';
 import {
   formatDayKey,
   isPresentOnDate,
+  isRecordOnDate,
   mergeAsistenciaSettings,
   personFullName,
 } from './asistenciaData';
@@ -52,6 +53,23 @@ function entradaMinutes(record?: BukAsistenciaRecord): number | null {
   return null;
 }
 
+const SEDE_STOPWORDS = new Set(['la', 'el', 'los', 'las', 'de', 'del', 'y', 'san', 'santa']);
+
+function sedeMatchTokens(sedeName: string): string[] {
+  return sedeName
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .split(/[\s\-_./]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3 && !SEDE_STOPWORDS.has(t));
+}
+
+function haystackIncludesToken(haystack: string, token: string): boolean {
+  const h = haystack.toLowerCase();
+  return h.includes(token) || token.includes(h);
+}
+
 function recordMatchesSede(
   r: BukAsistenciaRecord,
   sedeName: string,
@@ -63,10 +81,21 @@ function recordMatchesSede(
     settings.sedeMappings?.find((m) => m.sedeName === sedeName)?.bukRecintoCode ??
     ''
   ).trim();
+  const recintoCode = (r.codigo_recinto || '').trim().toLowerCase();
   const recintoName = (r.nombre_recinto || '').trim().toLowerCase();
   const sedeLower = sedeName.trim().toLowerCase();
-  if (code && (r.codigo_recinto || '').trim().toLowerCase() === code.toLowerCase()) return true;
-  if (recintoName && (recintoName.includes(sedeLower) || sedeLower.includes(recintoName))) return true;
+
+  if (code && recintoCode === code.toLowerCase()) return true;
+  if (recintoName && (recintoName.includes(sedeLower) || sedeLower.includes(recintoName))) {
+    return true;
+  }
+
+  const tokens = sedeMatchTokens(sedeName);
+  if (tokens.length > 0) {
+    const hay = `${recintoCode} ${recintoName}`;
+    if (tokens.some((t) => haystackIncludesToken(hay, t))) return true;
+  }
+
   return !code && !recintoName;
 }
 
@@ -92,6 +121,65 @@ function recordMatchesStaff(r: BukAsistenciaRecord, staff: AsistenciaStaffMember
   if (cargo && (specHay.includes(cargo) || areaHay.includes(cargo))) return true;
 
   return false;
+}
+
+function hasEntradaMarcada(r: BukAsistenciaRecord): boolean {
+  return Boolean(r.entrada?.trim() || r.entrada_format?.trim());
+}
+
+/** Explica por qué no hubo match Buk para un trabajador registrado. */
+export function diagnoseStaffBukMatch(input: {
+  staff: AsistenciaStaffMember;
+  records: BukAsistenciaRecord[];
+  sedeName: string;
+  settings: AsistenciaSettings;
+  date: Date;
+}): string | undefined {
+  const settings = mergeAsistenciaSettings(input.settings);
+  const profile = getSedeProfile(settings, input.sedeName);
+  const dateKey = formatDayKey(input.date);
+  const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
+
+  if (onDate.length === 0) {
+    return `Buk no tiene marcaciones para el ${dateKey}. Revisa la fecha del panel.`;
+  }
+
+  const atSede = onDate.filter((r) =>
+    recordMatchesSede(r, input.sedeName, profile, settings)
+  );
+  const bukCode = profile.bukRecintoCode?.trim();
+  if (atSede.length === 0) {
+    const recintos = [
+      ...new Set(
+        onDate.map((r) =>
+          [r.codigo_recinto, r.nombre_recinto].filter(Boolean).join(' · ')
+        )
+      ),
+    ].slice(0, 4);
+    const codeHint = bukCode
+      ? `Código configurado: «${bukCode}».`
+      : 'Configura el código recinto Buk en Configuración sede → Editar Sede.';
+    return `Hay ${onDate.length} marcación(es) el ${dateKey}, pero ninguna coincide con «${input.sedeName}». ${codeHint} Recintos en Buk ese día: ${recintos.join('; ') || '—'}.`;
+  }
+
+  const personAtSede = atSede.filter((r) => recordMatchesStaff(r, input.staff));
+  if (personAtSede.length === 0) {
+    const names = atSede
+      .slice(0, 3)
+      .map((r) => personFullName(r))
+      .join(', ');
+    const rutHint = input.staff.rut?.trim()
+      ? ''
+      : ' Agrega el RUT Buk del trabajador para un cruce más preciso.';
+    return `En «${input.sedeName}» hay ${atSede.length} persona(s) ese día (${names}${atSede.length > 3 ? '…' : ''}), pero no coincide con «${input.staff.fullName}».${rutHint}`;
+  }
+
+  const withEntrada = personAtSede.filter((r) => hasEntradaMarcada(r));
+  if (withEntrada.length === 0) {
+    return `Buk registra a «${input.staff.fullName}» en la sede el ${dateKey}, pero sin hora de entrada marcada.`;
+  }
+
+  return undefined;
 }
 
 function findBukMatch(
@@ -187,8 +275,27 @@ export function buildLiveSedeSummary(input: {
   const liveStates: AsistenciaStaffLiveState[] = staffList.map((staff) => {
     const buk = findBukMatch(staff, input.records, input.sedeName, profile, settings, input.date);
     const live = resolveLiveStatus(staff, buk);
-    return { staff, ...live };
+    const matchHint =
+      buk || input.records.length === 0
+        ? undefined
+        : diagnoseStaffBukMatch({
+            staff,
+            records: input.records,
+            sedeName: input.sedeName,
+            settings: input.settings,
+            date: input.date,
+          });
+    return { staff, ...live, matchHint };
   });
+
+  const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
+  const bukRecintosOnDate = [
+    ...new Set(
+      onDate
+        .map((r) => (r.codigo_recinto || r.nombre_recinto || '').trim())
+        .filter(Boolean)
+    ),
+  ];
 
   const managerState =
     liveStates.find((s) => s.staff.isManager) ??
@@ -228,6 +335,8 @@ export function buildLiveSedeSummary(input: {
     areas,
     isOperational: criticalMissing.length === 0,
     criticalMissing,
+    bukRecintosOnDate,
+    recordsOnDateCount: onDate.length,
   };
 }
 

@@ -105,7 +105,7 @@ export function isRecordOnDate(r: BukAsistenciaRecord, date: Date): boolean {
 
 export function isPresentOnDate(r: BukAsistenciaRecord, date: Date): boolean {
   if (!isRecordOnDate(r, date)) return false;
-  return Boolean(r.entrada?.trim());
+  return Boolean(r.entrada?.trim() || r.entrada_format?.trim());
 }
 
 export function classifyRecordAreaGroup(

@@ -15,7 +15,7 @@ import type { SystemSettings } from '../../types';
 import type { AsistenciaSettings } from '../../types/asistencia';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { fetchBukAsistenciaAll } from '../../utils/bukAsistenciaApi';
-import { buildLiveSedeSummary, staffForSede } from '../../utils/asistenciaStaff';
+import { buildLiveSedeSummary, formatSedeDateLabel, staffForSede } from '../../utils/asistenciaStaff';
 import { AsistenciaLiveOrgChart } from './AsistenciaLiveOrgChart';
 import { AsistenciaSedeConfigPanel } from './AsistenciaSedeConfigPanel';
 import { Button } from '../ui/button';
@@ -98,13 +98,19 @@ export function AsistenciaModule({
         apiToken: bukCfg.apiToken,
       });
       setRecords(data);
-      toast.success(`${data.length} registros de asistencia cargados.`);
+      const onDate = data.filter((r) => {
+        const key = formatSedeDateLabel(dateObj);
+        return r.dia_entrada === key || (r.entrada && formatSedeDateLabel(new Date(r.entrada)) === key);
+      });
+      toast.success(
+        `${data.length} registros Buk · ${onDate.length} en ${format(dateObj, 'dd/MM/yyyy')} para cruzar con ${activeSede}.`
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'No se pudo cargar asistencia.');
     } finally {
       setLoading(false);
     }
-  }, [asistencia, activeSede]);
+  }, [asistencia, activeSede, dateObj]);
 
   const saveAsistencia = useCallback(
     async (
@@ -215,6 +221,33 @@ export function AsistenciaModule({
             onRefresh={() => void refresh()}
             loading={loading}
           />
+          {records.length > 0 && liveSummary.absentCount > 0 ? (
+            <Card className="border-amber-500/30 bg-amber-950/10">
+              <CardContent className="pt-6 space-y-3">
+                <p className="text-sm font-medium text-amber-200 flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  Diagnóstico de cruce Buk — {activeSede}
+                </p>
+                <ul className="space-y-2 text-sm text-slate-300">
+                  {liveSummary.areas.flatMap((a) => a.staff)
+                    .filter((s) => s.status === 'ausente' && s.matchHint)
+                    .map((s) => (
+                      <li key={s.staff.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                        <span className="font-medium text-white">{s.staff.fullName}</span>
+                        <span className="text-slate-500"> · {s.staff.cargoLabel}</span>
+                        <p className="mt-1 text-xs text-amber-100/90 leading-relaxed">{s.matchHint}</p>
+                      </li>
+                    ))}
+                </ul>
+                {liveSummary.bukRecintosOnDate.length > 0 ? (
+                  <p className="text-xs text-slate-500">
+                    Códigos recinto Buk ese día: <strong className="text-slate-300">{liveSummary.bukRecintosOnDate.join(', ')}</strong>
+                    {' '}— úsalos en Configuración sede → Editar Sede si no coinciden con La Molina.
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
         </TabsContent>
 
         {canConfigure ? (
