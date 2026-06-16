@@ -1,5 +1,5 @@
 import type { BukAsistenciaRecord } from '../types/asistencia';
-import { normalizeBukToken } from './bukAsistenciaApi';
+import { sanitizeBukBaseUrl, normalizeBukToken } from './bukAsistenciaApi';
 
 export const BUK_ASISTENCIA_CACHE_TTL_MS = 48 * 60 * 60 * 1000;
 const STORAGE_PREFIX = 'gooflow:buk-asistencia:v1:';
@@ -11,7 +11,7 @@ export type BukAsistenciaCachePayload = {
 };
 
 function storageKey(baseUrl: string, apiToken: string): string {
-  const base = baseUrl.trim().replace(/\/+$/, '').toLowerCase();
+  const base = sanitizeBukBaseUrl(baseUrl).toLowerCase();
   const token = normalizeBukToken(apiToken);
   let fp = 0;
   for (let i = 0; i < token.length; i++) fp = (fp * 31 + token.charCodeAt(i)) | 0;

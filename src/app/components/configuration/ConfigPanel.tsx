@@ -54,7 +54,17 @@ interface ConfigPanelProps {
   config: ConfigStructure;
   onUpdateConfig: (newConfig: ConfigStructure) => void;
   systemSettings: SystemSettings;
-  onUpdateSystemSettings: (newSettings: SystemSettings) => void;
+  onUpdateSystemSettings: (
+    nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings)
+  ) => void;
+  onPersistSystemSettings?: (
+    nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings),
+    successMessage?: string
+  ) => Promise<boolean>;
+  onPersistAsistenciaSettings?: (
+    updater: (prev: import('../types/asistencia').AsistenciaSettings) => import('../types/asistencia').AsistenciaSettings,
+    successMessage?: string
+  ) => Promise<boolean>;
   onStressTest?: () => void;
   onResetData?: () => void;
   users: User[];
@@ -75,6 +85,8 @@ export function ConfigPanel({
   onUpdateConfig,
   systemSettings,
   onUpdateSystemSettings,
+  onPersistSystemSettings,
+  onPersistAsistenciaSettings,
   onStressTest,
   onResetData,
   users,
@@ -1731,6 +1743,8 @@ export function ConfigPanel({
                 <BukAsistenciaIntegrationSection
                   systemSettings={systemSettings}
                   onUpdateSystemSettings={onUpdateSystemSettings}
+                  onPersistSystemSettings={onPersistSystemSettings}
+                  onPersistAsistenciaSettings={onPersistAsistenciaSettings}
                   readOnly={!isSystemAdmin}
                 />
               </div>

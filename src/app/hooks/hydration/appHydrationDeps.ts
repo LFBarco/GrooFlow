@@ -72,6 +72,9 @@ export type AppHydrationDeps = {
   skipSystemSettingsHydrateRef: MutableRefObject<boolean>;
   systemSettingsKvCooldownUntilRef: MutableRefObject<number>;
   systemSettingsKvLatestRef: MutableRefObject<SystemSettings>;
+  asistenciaKvLatestRef: MutableRefObject<
+    import('../types/asistencia').AsistenciaSettings
+  >;
   invoicesHydratedFromKvRef: MutableRefObject<boolean>;
   skipInvoicesHydrateRef: MutableRefObject<boolean>;
   invoicesKvCooldownUntilRef: MutableRefObject<number>;

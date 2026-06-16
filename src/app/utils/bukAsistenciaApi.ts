@@ -13,12 +13,12 @@ export type BukConnectionResult = {
   message: string;
   recordHint?: string;
   durationMs: number;
+  triedUrl?: string;
 };
 
-const FETCH_TIMEOUT_MS = 60_000;
-const TEST_TIMEOUT_MS = 35_000;
-const BUK_PAGE_SIZE = 200;
-const BUK_FETCH_CONCURRENCY = 4;
+const FETCH_TIMEOUT_MS = 120_000;
+const TEST_TIMEOUT_MS = 45_000;
+const BUK_PAGE_SIZE = 100;
 
 async function readJsonSafe(res: Response): Promise<Record<string, unknown>> {
   const text = await res.text();
@@ -34,14 +34,43 @@ function proxyErrorMessage(res: Response, json: Record<string, unknown>): string
   if (typeof json.error === 'string') return json.error;
   if (typeof json.message === 'string') return json.message;
   if (typeof json.raw === 'string') return json.raw;
+  if (res.status === 401) {
+    return 'Sesión caducada. Cierra sesión, recarga (Ctrl+F5) e inicia sesión de nuevo.';
+  }
   if (res.status === 404) {
-    return 'Ruta /buk/test no encontrada en el servidor. Despliega la Edge Function: supabase functions deploy server';
+    return 'Ruta Buk no encontrada en el servidor GrooFlow. Ejecuta: npm run supabase:deploy:server';
   }
   return `Error del servidor GrooFlow (HTTP ${res.status}).`;
 }
 
-function normalizeBaseUrl(raw: string): string {
-  return raw.trim().replace(/\/+$/, '');
+/**
+ * Normaliza la URL base que pega el usuario.
+ * Postman suele usar la URL completa; aquí solo va la base hasta /ctrl/api/v2.
+ */
+export function sanitizeBukBaseUrl(raw: string): string {
+  let s = raw.trim();
+  if (!s) return DEFAULT_BUK_ASISTENCIA_BASE_URL;
+
+  s = s.split('#')[0].split('?')[0].trim();
+  s = s.replace(/\/+$/, '');
+  // Quitar endpoint si pegaron la URL completa de Postman
+  s = s.replace(/\/asistencia-empresa\/?$/i, '');
+  s = s.replace(/\/+$/, '');
+
+  try {
+    const u = new URL(s.startsWith('http') ? s : `https://${s}`);
+    const host = u.hostname.toLowerCase();
+    if (host === 'app.ctrlit.cl' || host.endsWith('.ctrlit.cl')) {
+      const path = u.pathname.replace(/\/+$/, '');
+      if (!path || path === '/') return DEFAULT_BUK_ASISTENCIA_BASE_URL;
+      if (path === '/ctrl' || path === '/ctrl/api') return DEFAULT_BUK_ASISTENCIA_BASE_URL;
+      if (!path.includes('/api/v2')) return DEFAULT_BUK_ASISTENCIA_BASE_URL;
+      return `${u.origin}${path}`;
+    }
+    return `${u.origin}${u.pathname.replace(/\/+$/, '')}`;
+  } catch {
+    return DEFAULT_BUK_ASISTENCIA_BASE_URL;
+  }
 }
 
 export function normalizeBukToken(raw: string): string {
@@ -50,16 +79,36 @@ export function normalizeBukToken(raw: string): string {
   return t;
 }
 
-function buildAsistenciaUrl(baseUrl: string, page = 1, pageSize = BUK_PAGE_SIZE): string {
-  const base = normalizeBaseUrl(baseUrl);
+export function buildBukAsistenciaUrl(baseUrl: string, page = 1, pageSize = BUK_PAGE_SIZE): string {
+  const base = sanitizeBukBaseUrl(baseUrl);
   const url = new URL(`${base}/asistencia-empresa`);
   url.searchParams.set('page', String(page));
   url.searchParams.set('page_size', String(pageSize));
   return url.toString();
 }
 
+function bukHttpErrorMessage(status: number, triedUrl: string, bodyPreview?: string): string {
+  if (status === 404) {
+    return (
+      `HTTP 404 — la URL no existe en Buk. ` +
+      `Usa solo la base: ${DEFAULT_BUK_ASISTENCIA_BASE_URL} ` +
+      `(sin /asistencia-empresa al final). ` +
+      `URL probada: ${triedUrl}`
+    );
+  }
+  if (status === 403) {
+    return 'HTTP 403 — token inválido o no enviado. Revisa el token en Buk Asistencia.';
+  }
+  if (bodyPreview?.includes('<!DOCTYPE')) {
+    return `HTTP ${status} — Buk devolvió HTML (ruta incorrecta). URL probada: ${triedUrl}`;
+  }
+  return bodyPreview
+    ? `HTTP ${status}: ${bodyPreview.slice(0, 160).replace(/\s+/g, ' ')}`
+    : `HTTP ${status} — URL probada: ${triedUrl}`;
+}
+
 async function postBukProxy(
-  path: 'test' | 'fetch',
+  path: 'test' | 'fetch' | 'fetch-all',
   body: Record<string, unknown>,
   timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<Response> {
@@ -92,12 +141,10 @@ export async function validateBukAsistenciaConnection(input: {
   apiToken: string;
 }): Promise<BukConnectionResult> {
   const start = Date.now();
-  const baseUrl = normalizeBaseUrl(input.baseUrl);
+  const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
   const apiToken = normalizeBukToken(input.apiToken);
+  const triedUrl = buildBukAsistenciaUrl(baseUrl, 1, 5);
 
-  if (!baseUrl) {
-    return { ok: false, message: 'Indica la URL base de Buk Asistencia.', durationMs: 0 };
-  }
   if (!apiToken) {
     return { ok: false, message: 'Indica el token de la API.', durationMs: 0 };
   }
@@ -105,18 +152,32 @@ export async function validateBukAsistenciaConnection(input: {
   const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
   if (backend !== 'supabase') {
     try {
-      const res = await fetch(buildAsistenciaUrl(baseUrl, 1, 5), {
+      const res = await fetch(triedUrl, {
         headers: { token: apiToken, accept: 'application/json' },
       });
-      const json = (await res.json()) as BukAsistenciaResponse;
+      const text = await res.text();
+      let json: BukAsistenciaResponse | null = null;
+      try {
+        json = text ? (JSON.parse(text) as BukAsistenciaResponse) : null;
+      } catch {
+        json = null;
+      }
       const count = json?.pagination?.count ?? json?.data?.length ?? 0;
+      if (!res.ok) {
+        return {
+          ok: false,
+          status: res.status,
+          message: bukHttpErrorMessage(res.status, triedUrl, text),
+          triedUrl,
+          durationMs: Date.now() - start,
+        };
+      }
       return {
-        ok: res.ok,
+        ok: true,
         status: res.status,
-        message: res.ok
-          ? `Conexión OK. ${count} registro(s) en asistencia.`
-          : `HTTP ${res.status}`,
-        recordHint: res.ok ? `${count} registros` : undefined,
+        message: `Conexión OK. ${count} registro(s) en asistencia.`,
+        recordHint: `${count} registros`,
+        triedUrl,
         durationMs: Date.now() - start,
       };
     } catch (err) {
@@ -126,6 +187,7 @@ export async function validateBukAsistenciaConnection(input: {
         message: msg.includes('Failed to fetch')
           ? 'CORS bloqueado. Usa VITE_BACKEND=supabase.'
           : msg,
+        triedUrl,
         durationMs: Date.now() - start,
       };
     }
@@ -134,11 +196,7 @@ export async function validateBukAsistenciaConnection(input: {
   try {
     const res = await postBukProxy(
       'test',
-      {
-        baseUrl,
-        apiToken,
-        targetUrl: buildAsistenciaUrl(baseUrl, 1, 5),
-      },
+      { baseUrl, apiToken, targetUrl: triedUrl },
       TEST_TIMEOUT_MS
     );
     const json = await readJsonSafe(res);
@@ -147,21 +205,24 @@ export async function validateBukAsistenciaConnection(input: {
         ok: false,
         status: res.status,
         message: proxyErrorMessage(res, json),
+        triedUrl,
         durationMs: Date.now() - start,
       };
     }
     const ok = json.ok === true;
-    const message =
-      typeof json.message === 'string'
-        ? json.message
-        : ok
-          ? 'Conexión OK.'
-          : 'La API respondió pero la prueba no fue exitosa.';
+    const status = typeof json.status === 'number' ? json.status : undefined;
+    const serverMessage = typeof json.message === 'string' ? json.message : '';
+    const message = ok
+      ? serverMessage || 'Conexión OK.'
+      : status != null
+        ? bukHttpErrorMessage(status, triedUrl, serverMessage)
+        : serverMessage || 'La API respondió pero la prueba no fue exitosa.';
     return {
       ok,
-      status: typeof json.status === 'number' ? json.status : undefined,
+      status,
       message,
       recordHint: typeof json.recordHint === 'string' ? json.recordHint : undefined,
+      triedUrl,
       durationMs: typeof json.durationMs === 'number' ? json.durationMs : Date.now() - start,
     };
   } catch (err) {
@@ -170,47 +231,65 @@ export async function validateBukAsistenciaConnection(input: {
       ok: false,
       message:
         err instanceof Error && err.name === 'AbortError'
-          ? 'Tiempo de espera agotado (~35s). Verifica red o despliega la Edge Function server.'
+          ? 'Tiempo de espera agotado (~45s). Verifica red o despliega la Edge Function server.'
           : msg,
+      triedUrl,
       durationMs: Date.now() - start,
     };
   }
 }
 
-/** Descarga todas las páginas de asistencia-empresa (páginas en paralelo). */
-export async function fetchBukAsistenciaAll(input: {
+async function fetchPageDirect(
+  baseUrl: string,
+  apiToken: string,
+  page: number
+): Promise<{ data: BukAsistenciaRecord[]; totalPages: number }> {
+  const triedUrl = buildBukAsistenciaUrl(baseUrl, page, BUK_PAGE_SIZE);
+  const res = await fetch(triedUrl, {
+    headers: { token: apiToken, accept: 'application/json' },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(bukHttpErrorMessage(res.status, triedUrl, text));
+  }
+  const json = (await res.json()) as BukAsistenciaResponse;
+  return {
+    data: json.data ?? [],
+    totalPages: json.pagination?.totalPages ?? page,
+  };
+}
+
+async function fetchAllViaProxy(input: {
   baseUrl: string;
   apiToken: string;
-  maxPages?: number;
+  maxPages: number;
+}): Promise<BukAsistenciaRecord[]> {
+  const res = await postBukProxy('fetch-all', {
+    baseUrl: sanitizeBukBaseUrl(input.baseUrl),
+    apiToken: input.apiToken,
+    maxPages: input.maxPages,
+    pageSize: BUK_PAGE_SIZE,
+  });
+  const json = await readJsonSafe(res);
+  if (!res.ok) throw new Error(proxyErrorMessage(res, json));
+  return Array.isArray(json.data) ? (json.data as BukAsistenciaRecord[]) : [];
+}
+
+async function fetchAllViaProxyPages(input: {
+  baseUrl: string;
+  apiToken: string;
+  maxPages: number;
   onProgress?: (loaded: number, totalPages: number) => void;
 }): Promise<BukAsistenciaRecord[]> {
-  const baseUrl = normalizeBaseUrl(input.baseUrl);
-  const apiToken = normalizeBukToken(input.apiToken);
-  const maxPages = input.maxPages ?? 15;
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+  const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
 
-  async function fetchPageDirect(page: number): Promise<{
-    data: BukAsistenciaRecord[];
-    totalPages: number;
-  }> {
-    const res = await fetch(buildAsistenciaUrl(baseUrl, page, BUK_PAGE_SIZE), {
-      headers: { token: apiToken, accept: 'application/json' },
-    });
-    if (!res.ok) throw new Error(`Buk HTTP ${res.status}`);
-    const json = (await res.json()) as BukAsistenciaResponse;
-    return {
-      data: json.data ?? [],
-      totalPages: json.pagination?.totalPages ?? page,
-    };
-  }
-
-  async function fetchPageProxy(page: number): Promise<{
+  async function fetchPage(page: number): Promise<{
     data: BukAsistenciaRecord[];
     totalPages: number;
   }> {
     const res = await postBukProxy('fetch', {
       baseUrl,
-      apiToken,
+      apiToken: input.apiToken,
       page,
       pageSize: BUK_PAGE_SIZE,
     });
@@ -222,22 +301,84 @@ export async function fetchBukAsistenciaAll(input: {
     };
   }
 
-  const fetchPage = backend !== 'supabase' ? fetchPageDirect : fetchPageProxy;
-
   const first = await fetchPage(1);
   const all: BukAsistenciaRecord[] = [...first.data];
-  const totalPages = Math.min(first.totalPages, maxPages);
+  const totalPages = Math.min(first.totalPages, input.maxPages);
   input.onProgress?.(1, totalPages);
 
-  const pages: number[] = [];
-  for (let p = 2; p <= totalPages; p++) pages.push(p);
-
-  for (let i = 0; i < pages.length; i += BUK_FETCH_CONCURRENCY) {
-    const batch = pages.slice(i, i + BUK_FETCH_CONCURRENCY);
-    const results = await Promise.all(batch.map((p) => fetchPage(p)));
-    for (const r of results) all.push(...r.data);
-    input.onProgress?.(Math.min(i + batch.length + 1, totalPages), totalPages);
+  for (let page = 2; page <= totalPages; page++) {
+    const next = await fetchPage(page);
+    all.push(...next.data);
+    input.onProgress?.(page, totalPages);
   }
 
   return all;
+}
+
+async function fetchAllDirect(input: {
+  baseUrl: string;
+  apiToken: string;
+  maxPages: number;
+  onProgress?: (loaded: number, totalPages: number) => void;
+}): Promise<BukAsistenciaRecord[]> {
+  const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
+  const first = await fetchPageDirect(baseUrl, input.apiToken, 1);
+  const all: BukAsistenciaRecord[] = [...first.data];
+  const totalPages = Math.min(first.totalPages, input.maxPages);
+  input.onProgress?.(1, totalPages);
+
+  for (let page = 2; page <= totalPages; page++) {
+    const next = await fetchPageDirect(baseUrl, input.apiToken, page);
+    all.push(...next.data);
+    input.onProgress?.(page, totalPages);
+  }
+
+  return all;
+}
+
+/** Descarga todas las páginas de asistencia-empresa (una petición al proxy cuando está disponible). */
+export async function fetchBukAsistenciaAll(input: {
+  baseUrl: string;
+  apiToken: string;
+  maxPages?: number;
+  onProgress?: (loaded: number, totalPages: number) => void;
+}): Promise<BukAsistenciaRecord[]> {
+  const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
+  const apiToken = normalizeBukToken(input.apiToken);
+  const maxPages = input.maxPages ?? 15;
+  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+
+  if (!apiToken) {
+    throw new Error('Falta el token de Buk. Configúralo en Integraciones y guarda los cambios.');
+  }
+
+  if (backend !== 'supabase') {
+    return fetchAllDirect({ baseUrl, apiToken, maxPages, onProgress: input.onProgress });
+  }
+
+  input.onProgress?.(0, 1);
+
+  try {
+    const all = await fetchAllViaProxy({ baseUrl, apiToken, maxPages });
+    const totalPages =
+      all.length > 0 ? Math.min(maxPages, Math.ceil(all.length / BUK_PAGE_SIZE) || 1) : 1;
+    input.onProgress?.(totalPages, totalPages);
+    return all;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('404') || msg.includes('no encontrada')) {
+      return fetchAllViaProxyPages({
+        baseUrl,
+        apiToken,
+        maxPages,
+        onProgress: input.onProgress,
+      });
+    }
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(
+        'Tiempo de espera agotado (~2 min) al descargar Buk. Reintenta o verifica que la Edge Function server esté desplegada.'
+      );
+    }
+    throw err;
+  }
 }

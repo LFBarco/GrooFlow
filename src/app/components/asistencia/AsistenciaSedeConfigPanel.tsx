@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Building2, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { Building2, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import type { AsistenciaSettings, AsistenciaStaffArea, AsistenciaStaffMember } from '../../types/asistencia';
 import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_STAFF_AREAS } from '../../types/asistencia';
@@ -36,6 +36,20 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
   const [bukCode, setBukCode] = useState(profile.bukRecintoCode ?? '');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<AsistenciaStaffMember | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const runSave = async (
+    updater: (prev: AsistenciaSettings) => AsistenciaSettings,
+    successMessage?: string
+  ) => {
+    if (saving) return false;
+    setSaving(true);
+    try {
+      return await onSave(updater, successMessage);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const byArea = useMemo(() => {
     const map: Record<AsistenciaStaffArea, AsistenciaStaffMember[]> = {
@@ -48,7 +62,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
   }, [staff]);
 
   const saveSedeProfile = async () => {
-    const ok = await onSave((prev) => {
+    const ok = await runSave((prev) => {
       const rest = (prev.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
       const mappings = (prev.sedeMappings ?? []).filter((m) => m.sedeName !== sedeName);
       return mergeAsistenciaSettings({
@@ -72,7 +86,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
 
   const upsertStaff = async (member: AsistenciaStaffMember) => {
     const isEdit = member.id === editingStaff?.id;
-    const ok = await onSave((prev) => {
+    const ok = await runSave((prev) => {
       const others = (prev.staff ?? []).filter((s) => s.id !== member.id);
       let nextStaff = [...others, { ...member, sedeName }];
       if (member.isManager) {
@@ -87,7 +101,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
 
   const removeStaff = async (id: string) => {
     if (!window.confirm('¿Eliminar este miembro del personal?')) return;
-    await onSave(
+    await runSave(
       (prev) =>
         mergeAsistenciaSettings({
           ...prev,
@@ -112,7 +126,10 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
           </div>
           {canConfigure ? (
             editSede ? (
-              <Button size="sm" onClick={() => void saveSedeProfile()}>Guardar</Button>
+              <Button size="sm" disabled={saving} onClick={() => void saveSedeProfile()}>
+                {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+                Guardar
+              </Button>
             ) : (
               <Button
                 size="sm"

@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import type { SystemSettings } from '../../types';
 import type { AsistenciaSettings } from '../../types/asistencia';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
-import { fetchBukAsistenciaAll } from '../../utils/bukAsistenciaApi';
+import { fetchBukAsistenciaAll, sanitizeBukBaseUrl } from '../../utils/bukAsistenciaApi';
 import {
   cacheAgeLabel,
   loadBukAsistenciaCache,
@@ -41,6 +41,10 @@ import { Card, CardContent } from '../ui/card';
 export interface AsistenciaModuleProps {
   systemSettings: SystemSettings;
   onUpdateSystemSettings: (settings: SystemSettings) => void;
+  onPersistAsistenciaSettings?: (
+    updater: (prev: AsistenciaSettings) => AsistenciaSettings,
+    successMessage?: string
+  ) => Promise<boolean>;
   onPersistSystemSettings?: (
     nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings),
     successMessage?: string
@@ -52,6 +56,7 @@ export interface AsistenciaModuleProps {
 export function AsistenciaModule({
   systemSettings,
   onUpdateSystemSettings,
+  onPersistAsistenciaSettings,
   onPersistSystemSettings,
   visibleSedes = [],
   canConfigure = false,
@@ -64,7 +69,7 @@ export function AsistenciaModule({
   const [fetchProgress, setFetchProgress] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
 
-  const bukBaseUrl = asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2';
+  const bukBaseUrl = sanitizeBukBaseUrl(asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
   const bukToken = asistencia.buk?.apiToken?.trim() ?? '';
 
   useEffect(() => {
@@ -104,6 +109,7 @@ export function AsistenciaModule({
 
   const refresh = useCallback(async () => {
     const bukCfg = asistencia.buk;
+    const resolvedBase = sanitizeBukBaseUrl(bukCfg?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
     if (!bukCfg?.enabled || !bukCfg.apiToken?.trim()) {
       toast.error('Activa Buk Asistencia y configura el token en Configuración → Integraciones.');
       return;
@@ -119,7 +125,7 @@ export function AsistenciaModule({
     setLoading(true);
     setFetchProgress(null);
     const cached = loadBukAsistenciaCache({
-      baseUrl: bukCfg.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
+      baseUrl: resolvedBase,
       apiToken: bukCfg.apiToken,
     });
     const priorCount = cached?.records.length ?? 0;
@@ -129,16 +135,20 @@ export function AsistenciaModule({
     }
     try {
       const fresh = await fetchBukAsistenciaAll({
-        baseUrl: bukCfg.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
+        baseUrl: resolvedBase,
         apiToken: bukCfg.apiToken,
         onProgress: (loaded, total) => {
-          setFetchProgress(`Buk ${loaded}/${total} páginas…`);
+          setFetchProgress(
+            loaded === 0
+              ? 'Conectando con Buk vía servidor…'
+              : `Buk ${loaded}/${total} páginas…`
+          );
         },
       });
       const merged = mergeBukAsistenciaRecords(cached?.records ?? [], fresh);
       const now = Date.now();
       saveBukAsistenciaCache({
-        baseUrl: bukCfg.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
+        baseUrl: resolvedBase,
         apiToken: bukCfg.apiToken,
         records: merged,
         fetchedAt: now,
@@ -174,6 +184,13 @@ export function AsistenciaModule({
       updater: (prev: AsistenciaSettings) => AsistenciaSettings,
       successMessage?: string
     ): Promise<boolean> => {
+      if (onPersistAsistenciaSettings) {
+        const ok = await onPersistAsistenciaSettings(updater, successMessage);
+        if (!ok) {
+          toast.error('No se pudo guardar en la nube. Revisa tu sesión e intenta de nuevo.');
+        }
+        return ok;
+      }
       if (onPersistSystemSettings) {
         const ok = await onPersistSystemSettings(
           (prev) => ({
@@ -192,7 +209,7 @@ export function AsistenciaModule({
       if (successMessage) toast.success(successMessage);
       return true;
     },
-    [onPersistSystemSettings, onUpdateSystemSettings, systemSettings]
+    [onPersistAsistenciaSettings, onPersistSystemSettings, onUpdateSystemSettings, systemSettings]
   );
 
   return (

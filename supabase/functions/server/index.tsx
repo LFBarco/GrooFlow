@@ -416,6 +416,55 @@ function isAllowedBukUrl(targetUrl: string): boolean {
   }
 }
 
+const DEFAULT_BUK_BASE_URL = "https://app.ctrlit.cl/ctrl/api/v2";
+
+function sanitizeBukBaseUrl(raw: string): string {
+  let s = raw.trim();
+  if (!s) return DEFAULT_BUK_BASE_URL;
+  s = s.split("#")[0].split("?")[0].trim();
+  s = s.replace(/\/+$/, "");
+  s = s.replace(/\/asistencia-empresa\/?$/i, "");
+  s = s.replace(/\/+$/, "");
+  try {
+    const u = new URL(s.startsWith("http") ? s : `https://${s}`);
+    const host = u.hostname.toLowerCase();
+    if (host === "app.ctrlit.cl" || host.endsWith(".ctrlit.cl")) {
+      const path = u.pathname.replace(/\/+$/, "");
+      if (!path || path === "/" || path === "/ctrl" || path === "/ctrl/api") {
+        return DEFAULT_BUK_BASE_URL;
+      }
+      if (!path.includes("/api/v2")) return DEFAULT_BUK_BASE_URL;
+      return `${u.origin}${path}`;
+    }
+    return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return DEFAULT_BUK_BASE_URL;
+  }
+}
+
+function buildBukAsistenciaTargetUrl(baseUrl: string, page: number, pageSize: number): string {
+  const base = sanitizeBukBaseUrl(baseUrl);
+  return `${base}/asistencia-empresa?page=${page}&page_size=${pageSize}`;
+}
+
+function bukFailureMessage(status: number, targetUrl: string, text: string): string {
+  if (status === 404) {
+    return (
+      `HTTP 404 — la URL no existe en Buk. ` +
+      `Usa solo la base: ${DEFAULT_BUK_BASE_URL} ` +
+      `(sin /asistencia-empresa al final). ` +
+      `URL probada: ${targetUrl}`
+    );
+  }
+  if (status === 403) {
+    return "HTTP 403 — token inválido o no enviado. Revisa el token en Buk Asistencia.";
+  }
+  if (text.includes("<!DOCTYPE")) {
+    return `HTTP ${status} — Buk devolvió HTML (ruta incorrecta). URL probada: ${targetUrl}`;
+  }
+  return `HTTP ${status}: ${text.slice(0, 200).replace(/\s+/g, " ")}`;
+}
+
 async function fetchBukAsistencia(targetUrl: string, apiToken: string): Promise<Response> {
   return fetch(targetUrl, {
     method: "GET",
@@ -432,9 +481,13 @@ for (const base of KV_PATH_BASES) {
     if (auth.response) return auth.response;
     try {
       const body = await c.req.json();
-      const targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+      const baseUrlInput = typeof body?.baseUrl === "string" ? body.baseUrl.trim() : "";
+      let targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
       let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
       if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
+      if (!targetUrl && baseUrlInput) {
+        targetUrl = buildBukAsistenciaTargetUrl(baseUrlInput, 1, 5);
+      }
       if (!targetUrl || !apiToken) {
         return c.json({ error: "Faltan targetUrl o apiToken." }, 400);
       }
@@ -469,7 +522,7 @@ for (const base of KV_PATH_BASES) {
       return c.json({
         ok: false,
         status: res.status,
-        message: `HTTP ${res.status}: ${text.slice(0, 200).replace(/\s+/g, " ")}`,
+        message: bukFailureMessage(res.status, targetUrl, text),
         durationMs,
       });
     } catch (error) {
@@ -483,22 +536,24 @@ for (const base of KV_PATH_BASES) {
     if (auth.response) return auth.response;
     try {
       const body = await c.req.json();
-      const baseUrl = typeof body?.baseUrl === "string" ? body.baseUrl.trim().replace(/\/+$/, "") : "";
+      const baseUrl = sanitizeBukBaseUrl(
+        typeof body?.baseUrl === "string" ? body.baseUrl : "",
+      );
       let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
       const page = Math.max(1, Number(body?.page) || 1);
-      const pageSize = Math.min(200, Math.max(1, Number(body?.pageSize) || 100));
+      const pageSize = Math.min(100, Math.max(1, Number(body?.pageSize) || 100));
       if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
       if (!baseUrl || !apiToken) {
         return c.json({ error: "Faltan baseUrl o apiToken." }, 400);
       }
-      const targetUrl = `${baseUrl}/asistencia-empresa?page=${page}&page_size=${pageSize}`;
+      const targetUrl = buildBukAsistenciaTargetUrl(baseUrl, page, pageSize);
       if (!isAllowedBukUrl(targetUrl)) {
         return c.json({ error: "URL de destino no permitida." }, 400);
       }
       const res = await fetchBukAsistencia(targetUrl, apiToken);
       const text = await res.text();
       if (!res.ok) {
-        return c.json({ error: `Buk HTTP ${res.status}: ${text.slice(0, 160)}` }, res.status);
+        return c.json({ error: bukFailureMessage(res.status, targetUrl, text) }, res.status);
       }
       let json: { data?: unknown[]; pagination?: { totalPages?: number; count?: number } } = {};
       try {
@@ -514,6 +569,67 @@ for (const base of KV_PATH_BASES) {
       });
     } catch (error) {
       console.error("buk/fetch error:", error);
+      return c.json({ error: "Error al obtener asistencia desde Buk." }, 500);
+    }
+  });
+
+  /** Descarga todas las páginas en el servidor (una sola petición desde el navegador). */
+  app.post(`${base}/buk/fetch-all`, async (c) => {
+    const auth = await requireAuthenticatedRequest(c);
+    if (auth.response) return auth.response;
+    try {
+      const body = await c.req.json();
+      const baseUrl = sanitizeBukBaseUrl(
+        typeof body?.baseUrl === "string" ? body.baseUrl : "",
+      );
+      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      const maxPages = Math.min(25, Math.max(1, Number(body?.maxPages) || 15));
+      const pageSize = Math.min(100, Math.max(1, Number(body?.pageSize) || 100));
+      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
+      if (!baseUrl || !apiToken) {
+        return c.json({ error: "Faltan baseUrl o apiToken." }, 400);
+      }
+
+      const all: unknown[] = [];
+      let page = 1;
+      let totalPages = 1;
+      const started = Date.now();
+
+      while (page <= totalPages && page <= maxPages) {
+        const targetUrl = buildBukAsistenciaTargetUrl(baseUrl, page, pageSize);
+        if (!isAllowedBukUrl(targetUrl)) {
+          return c.json({ error: "URL de destino no permitida." }, 400);
+        }
+        const res = await fetchBukAsistencia(targetUrl, apiToken);
+        const text = await res.text();
+        if (!res.ok) {
+          return c.json(
+            {
+              error: bukFailureMessage(res.status, targetUrl, text),
+            },
+            res.status >= 500 ? 502 : res.status,
+          );
+        }
+        let json: { data?: unknown[]; pagination?: { totalPages?: number; count?: number } } = {};
+        try {
+          json = JSON.parse(text);
+        } catch {
+          return c.json({ error: `Respuesta Buk no es JSON válido (página ${page}).` }, 502);
+        }
+        if (Array.isArray(json.data)) all.push(...json.data);
+        totalPages = json.pagination?.totalPages ?? page;
+        page += 1;
+      }
+
+      return c.json({
+        data: all,
+        totalPages,
+        count: all.length,
+        pagesFetched: page - 1,
+        durationMs: Date.now() - started,
+      });
+    } catch (error) {
+      console.error("buk/fetch-all error:", error);
       return c.json({ error: "Error al obtener asistencia desde Buk." }, 500);
     }
   });

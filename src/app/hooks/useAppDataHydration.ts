@@ -35,7 +35,7 @@ import {
   loadInventoryFromSql,
   migrateInventoryKvToSql,
 } from '../services/repository/inventorySql';
-import { resolveAppKvFromSql } from '../services/repository/appKvSql';
+import { resolveAppKvFromSql, saveAppKvKey } from '../services/repository/appKvSql';
 import {
   loadPettyCashMetaFromSql,
   migratePettyCashMetaKvToSql,
@@ -80,7 +80,14 @@ import {
   PETTY_CASH_META_KV_KEY,
   resolvePettyCashMeta,
 } from '../utils/pettyCashMeta';
+import {
+  ASISTENCIA_SETTINGS_KV_KEY,
+  asistenciaSettingsHasContent,
+  mergeAsistenciaIntoSystemSettings,
+  resolveAsistenciaSettings,
+} from '../utils/asistenciaPersistence';
 import { parseTransactionDate } from '../utils/transactionDate';
+import type { AsistenciaSettings } from '../types/asistencia';
 import {
   applySuperAdminRoleFromConfig,
   dedupeUsersByEmail,
@@ -352,9 +359,47 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               );
             }
             const merged = mergePettyCashMetaIntoSettings(mergedBase, resolvedMeta);
+
+            let asistenciaRemote = data[ASISTENCIA_SETTINGS_KV_KEY] as
+              | Partial<AsistenciaSettings>
+              | null
+              | undefined;
+            if (PRODUCTION_USE_SQL) {
+              asistenciaRemote =
+                ((await resolveAppKvFromSql(
+                  getSupabaseClient(),
+                  ASISTENCIA_SETTINGS_KV_KEY,
+                  asistenciaRemote ?? merged.asistencia,
+                  sessionUserId,
+                  (v) => v == null
+                )) as Partial<AsistenciaSettings> | null | undefined) ?? asistenciaRemote;
+            }
+            const resolvedAsistencia = resolveAsistenciaSettings(
+              asistenciaRemote,
+              merged.asistencia
+            );
+            const mergedWithAsistencia = mergeAsistenciaIntoSystemSettings(
+              merged,
+              resolvedAsistencia
+            );
+            if (
+              PRODUCTION_USE_SQL &&
+              sessionUserId &&
+              asistenciaSettingsHasContent(resolvedAsistencia) &&
+              !asistenciaSettingsHasContent(asistenciaRemote)
+            ) {
+              void saveAppKvKey(
+                getSupabaseClient(),
+                ASISTENCIA_SETTINGS_KV_KEY,
+                resolvedAsistencia,
+                sessionUserId
+              );
+            }
+
             deps.pettyCashMetaKvLatestRef.current = resolvedMeta;
-            deps.systemSettingsKvLatestRef.current = merged;
-            deps.setSystemSettings(merged);
+            deps.systemSettingsKvLatestRef.current = mergedWithAsistencia;
+            deps.asistenciaKvLatestRef.current = resolvedAsistencia;
+            deps.setSystemSettings(mergedWithAsistencia);
             deps.systemSettingsHydratedFromKvRef.current = true;
           }
         }

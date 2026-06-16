@@ -1,7 +1,8 @@
-import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { toast } from 'sonner';
 
 import { mergeSystemSettings } from '../data/initialData';
+import { mergeSystemSettingsSqlAndKv } from '../services/repository/appKvSql';
 import { saveAppKvKey } from '../services/repository/appKvSql';
 import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
 import { getSupabaseClient } from '../services/repository/supabase';
@@ -16,6 +17,7 @@ import {
   persistKvDomainNow,
   type CloudSyncTracker,
 } from '../utils/kvDomainPersistence';
+import { PRODUCTION_REMOTE_COOLDOWN_MS } from '../utils/listRemoteSyncGuard';
 import {
   enqueueKvSerializedSave,
   kvSaveSucceeded,
@@ -27,6 +29,7 @@ import {
   stripPettyCashMetaForSystemKv,
   type PettyCashWeekMetaPayload,
 } from '../utils/pettyCashMeta';
+import { stripAsistenciaForSystemKv } from '../utils/asistenciaPersistence';
 
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 
@@ -65,9 +68,18 @@ export function useSystemSettingsPersistence(
     cloudSync,
   } = options;
 
+  const lastSystemPayloadSigRef = useRef('');
+
+  function buildSystemKvPayload(settings: SystemSettings): SystemSettings {
+    return stripAsistenciaForSystemKv(stripPettyCashMetaForSystemKv(settings));
+  }
+
   useEffect(() => {
     if (!isDataLoaded || !hydratedRef.current) return;
-    const systemPayload = stripPettyCashMetaForSystemKv(systemSettings);
+    const systemPayload = buildSystemKvPayload(systemSettings);
+    const sig = JSON.stringify(systemPayload);
+    if (sig === lastSystemPayloadSigRef.current) return;
+    lastSystemPayloadSigRef.current = sig;
     void autosaveKvDomain({
       kvKey: 'settings:system',
       payload: systemPayload,
@@ -94,7 +106,12 @@ export function useSystemSettingsPersistence(
       successMessage?: string
     ): Promise<boolean> => {
       const next =
-        typeof nextOrUpdater === 'function' ? nextOrUpdater(latestRef.current) : nextOrUpdater;
+        typeof nextOrUpdater === 'function'
+          ? nextOrUpdater(latestRef.current)
+          : mergeSystemSettingsSqlAndKv(
+              mergeSystemSettings(nextOrUpdater),
+              latestRef.current
+            );
       const merged = mergeSystemSettings(next);
       setSystemSettings(merged);
       if (!isDataLoaded || !hydratedRef.current) {
@@ -106,7 +123,8 @@ export function useSystemSettingsPersistence(
       latestRef.current = merged;
       const meta = extractPettyCashMeta(merged.pettyCash);
       pettyCashMetaLatestRef.current = meta;
-      const systemPayload = stripPettyCashMetaForSystemKv(merged);
+      const systemPayload = buildSystemKvPayload(merged);
+      lastSystemPayloadSigRef.current = JSON.stringify(systemPayload);
 
       if (PRODUCTION_USE_SQL) {
         const { data: sess } = await getSupabaseClient().auth.getSession();
@@ -155,6 +173,11 @@ export function useSystemSettingsPersistence(
         errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
         successMessage,
         sync: cloudSync,
+      }).then((ok) => {
+        if (ok) {
+          cooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+        }
+        return ok;
       });
     },
     [isDataLoaded, setSystemSettings, cloudSync]

@@ -34,7 +34,7 @@ import {
 
 import { loadTransactionsFromSql } from '../services/repository/transactionsSql';
 
-import { loadAppKvKey } from '../services/repository/appKvSql';
+import { loadAppKvKey, mergeSystemSettingsSqlAndKv } from '../services/repository/appKvSql';
 
 import { kvPayloadsEqual } from '../utils/kvCrossTabSync';
 import { mergeRolesWithDefaults } from '../utils/mergeRolesWithDefaults';
@@ -572,7 +572,10 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
           if (!h || !latest) return;
 
-          const base = mergeSystemSettings(result.data as Partial<SystemSettings>);
+          const base = mergeSystemSettingsSqlAndKv(
+            result.data as Partial<SystemSettings>,
+            latest.current
+          );
 
           const meta = metaLatest?.current ?? extractPettyCashMeta(base.pettyCash);
 

@@ -15,6 +15,7 @@ import {
 import { getBankAccounts } from "./utils/bankAccounts";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
 import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings, getSubcategories } from "./data/initialData";
+import { mergeSystemSettingsSqlAndKv } from "./services/repository/appKvSql";
 import { 
   LayoutDashboard, 
   ArrowUpCircle, 
@@ -204,6 +205,8 @@ import {
 import { useConfigPersistence } from "./hooks/useConfigPersistence";
 import { usePettyCashTransactionsPersistence } from "./hooks/usePettyCashTransactionsPersistence";
 import { useSystemSettingsPersistence } from "./hooks/useSystemSettingsPersistence";
+import { useAsistenciaPersistence } from "./hooks/useAsistenciaPersistence";
+import { mergeAsistenciaSettings } from "./utils/asistenciaData";
 import { useTransactionsPersistence } from "./hooks/useTransactionsPersistence";
 import { useAppDataHydration } from "./hooks/useAppDataHydration";
 import { useProvidersPersistence } from "./hooks/useProvidersPersistence";
@@ -640,6 +643,8 @@ export default function App() {
   const systemSettingsKvCooldownUntilRef = useRef(0);
   const systemSettingsKvChainRef = useRef(KV_CHAIN_IDLE);
   const systemSettingsKvLatestRef = useRef<SystemSettings>(initialSystemSettings);
+  const asistenciaKvLatestRef = useRef(mergeAsistenciaSettings(undefined));
+  const asistenciaKvChainRef = useRef(KV_CHAIN_IDLE);
   /** Tesorería — tres claves KV relacionadas. */
   const treasuryHydratedFromKvRef = useRef(false);
   const skipTreasuryHydrateRef = useRef(false);
@@ -700,6 +705,7 @@ export default function App() {
     providersKvChainRef.current = KV_CHAIN_IDLE;
     pettyCashKvChainRef.current = KV_CHAIN_IDLE;
     pettyCashMetaKvChainRef.current = KV_CHAIN_IDLE;
+    asistenciaKvChainRef.current = KV_CHAIN_IDLE;
     transactionsKvChainRef.current = KV_CHAIN_IDLE;
     configKvChainRef.current = KV_CHAIN_IDLE;
     fleetKvChainRef.current = KV_CHAIN_IDLE;
@@ -875,6 +881,7 @@ export default function App() {
     skipSystemSettingsHydrateRef,
     systemSettingsKvCooldownUntilRef,
     systemSettingsKvLatestRef,
+    asistenciaKvLatestRef,
     invoicesHydratedFromKvRef,
     skipInvoicesHydrateRef,
     invoicesKvCooldownUntilRef,
@@ -1028,6 +1035,19 @@ export default function App() {
     kvApplyGenerationRef,
     lastSaveErrorAtRef,
     cloudSync: cloudSyncTrackerRef.current,
+  });
+
+  const { persistAsistenciaNow } = useAsistenciaPersistence({
+    isDataLoaded,
+    systemSettingsHydratedRef: systemSettingsHydratedFromKvRef,
+    setSystemSettings,
+    systemSettingsLatestRef: systemSettingsKvLatestRef,
+    asistenciaLatestRef: asistenciaKvLatestRef,
+    asistenciaChainRef: asistenciaKvChainRef,
+    skipHydrateRef: skipSystemSettingsHydrateRef,
+    cooldownUntilRef: systemSettingsKvCooldownUntilRef,
+    kvApplyGenerationRef,
+    lastSaveErrorAtRef,
   });
 
   usePettyCashMetaPersistence({
@@ -1837,19 +1857,24 @@ export default function App() {
   const applySystemSettingsRemoteRef = useRef<((items: SystemSettings) => void) | null>(null);
   applySystemSettingsRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !systemSettingsHydratedFromKvRef.current) return;
+    const merged = mergeSystemSettingsSqlAndKv(
+      items,
+      systemSettingsKvLatestRef.current
+    );
     if (
       !shouldApplyObjectRemoteSnapshot(
         systemSettingsKvLatestRef.current,
-        items,
+        merged,
         systemSettingsKvCooldownUntilRef.current
       )
     ) {
       return;
     }
-    systemSettingsKvLatestRef.current = items;
-    pettyCashMetaKvLatestRef.current = extractPettyCashMeta(items.pettyCash);
+    systemSettingsKvLatestRef.current = merged;
+    asistenciaKvLatestRef.current = mergeAsistenciaSettings(merged.asistencia);
+    pettyCashMetaKvLatestRef.current = extractPettyCashMeta(merged.pettyCash);
     systemSettingsKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
-    setSystemSettings(items);
+    setSystemSettings(merged);
   };
 
   const applyPettyCashMetaRemoteRef = useRef<((items: SystemSettings) => void) | null>(null);
@@ -3954,6 +3979,7 @@ export default function App() {
                 <AsistenciaModule
                   systemSettings={systemSettings}
                   onUpdateSystemSettings={handlePersistSystemSettings}
+                  onPersistAsistenciaSettings={persistAsistenciaNow}
                   onPersistSystemSettings={persistSystemSettingsNow}
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                   canConfigure={isAdminAppUser(currentUser)}
@@ -4063,6 +4089,8 @@ export default function App() {
               onUpdateConfig={setConfig} 
               systemSettings={systemSettings}
               onUpdateSystemSettings={handlePersistSystemSettings}
+              onPersistSystemSettings={persistSystemSettingsNow}
+              onPersistAsistenciaSettings={persistAsistenciaNow}
               onStressTest={handleStressTest}
               onResetData={handleResetData}
               users={users}

@@ -6,8 +6,9 @@ import { toast } from 'sonner';
 
 import type { SystemSettings } from '../../types';
 import type { BukAsistenciaIntegrationSettings } from '../../types/asistencia';
-import { DEFAULT_BUK_ASISTENCIA_BASE_URL, validateBukAsistenciaConnection } from '../../utils/bukAsistenciaApi';
+import { DEFAULT_BUK_ASISTENCIA_BASE_URL, sanitizeBukBaseUrl, validateBukAsistenciaConnection } from '../../utils/bukAsistenciaApi';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
+import { patchAsistenciaSettings } from '../../utils/asistenciaPersistence';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -17,7 +18,17 @@ import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 
 type Props = {
   systemSettings: SystemSettings;
-  onUpdateSystemSettings: (settings: SystemSettings) => void;
+  onUpdateSystemSettings: (
+    nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings)
+  ) => void;
+  onPersistSystemSettings?: (
+    nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings),
+    successMessage?: string
+  ) => Promise<boolean>;
+  onPersistAsistenciaSettings?: (
+    updater: (prev: import('../../types/asistencia').AsistenciaSettings) => import('../../types/asistencia').AsistenciaSettings,
+    successMessage?: string
+  ) => Promise<boolean>;
   readOnly?: boolean;
 };
 
@@ -31,6 +42,8 @@ type LiveTestResult = {
 export function BukAsistenciaIntegrationSection({
   systemSettings,
   onUpdateSystemSettings,
+  onPersistSystemSettings,
+  onPersistAsistenciaSettings,
   readOnly = false,
 }: Props) {
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
@@ -51,19 +64,37 @@ export function BukAsistenciaIntegrationSection({
     return () => window.clearInterval(id);
   }, [testing]);
 
-  const patchBuk = (partial: Partial<BukAsistenciaIntegrationSettings>) => {
-    onUpdateSystemSettings({
-      ...systemSettings,
-      asistencia: mergeAsistenciaSettings({
-        ...asistencia,
-        buk: { ...buk, ...partial },
-      }),
-    });
+  const patchBuk = (
+    partial: Partial<BukAsistenciaIntegrationSettings>,
+    options?: { persist?: boolean; message?: string }
+  ) => {
+    const applyAsistencia = (prev: import('../../types/asistencia').AsistenciaSettings) =>
+      patchAsistenciaSettings(prev, {
+        buk: { ...mergeAsistenciaSettings(prev).buk, ...partial },
+      });
+
+    if (options?.persist && onPersistAsistenciaSettings) {
+      void onPersistAsistenciaSettings(applyAsistencia, options.message);
+      return;
+    }
+    if (options?.persist && onPersistSystemSettings) {
+      void onPersistSystemSettings(
+        (prev) => ({ ...prev, asistencia: applyAsistencia(mergeAsistenciaSettings(prev.asistencia)) }),
+        options.message
+      );
+      return;
+    }
+    onUpdateSystemSettings((prev) => ({
+      ...prev,
+      asistencia: applyAsistencia(mergeAsistenciaSettings(prev.asistencia)),
+    }));
   };
 
   const handleTest = async () => {
     const apiToken = (tokenRef.current?.value ?? buk.apiToken ?? '').trim();
-    const apiBaseUrl = (baseUrlRef.current?.value ?? buk.apiBaseUrl ?? DEFAULT_BUK_ASISTENCIA_BASE_URL).trim();
+    const apiBaseUrl = sanitizeBukBaseUrl(
+      (baseUrlRef.current?.value ?? buk.apiBaseUrl ?? DEFAULT_BUK_ASISTENCIA_BASE_URL).trim()
+    );
 
     if (!apiToken) {
       const msg = 'Indica el token de la API antes de probar.';
@@ -86,13 +117,16 @@ export function BukAsistenciaIntegrationSection({
         status: result.status,
         at,
       });
-      patchBuk({
-        apiToken,
-        apiBaseUrl: apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
-        lastValidatedAt: at,
-        lastValidationOk: result.ok,
-        lastValidationMessage: result.message,
-      });
+      patchBuk(
+        {
+          apiToken,
+          apiBaseUrl: apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
+          lastValidatedAt: at,
+          lastValidationOk: result.ok,
+          lastValidationMessage: result.message,
+        },
+        { persist: true, message: result.ok ? 'Integración Buk guardada en la nube.' : undefined }
+      );
       if (result.ok) toast.success(result.message);
       else toast.error(result.message);
     } catch (e) {
@@ -139,7 +173,15 @@ export function BukAsistenciaIntegrationSection({
           <Switch
             checked={buk.enabled === true}
             disabled={readOnly}
-            onCheckedChange={(v) => patchBuk({ enabled: v })}
+            onCheckedChange={(v) =>
+              patchBuk(
+                { enabled: v },
+                {
+                  persist: true,
+                  message: v ? 'Buk Asistencia activado.' : 'Buk Asistencia desactivado.',
+                }
+              )
+            }
           />
         </div>
 
@@ -149,10 +191,19 @@ export function BukAsistenciaIntegrationSection({
             id="buk-base-url"
             ref={baseUrlRef}
             placeholder={DEFAULT_BUK_ASISTENCIA_BASE_URL}
-            defaultValue={buk.apiBaseUrl ?? DEFAULT_BUK_ASISTENCIA_BASE_URL}
+            defaultValue={sanitizeBukBaseUrl(buk.apiBaseUrl ?? DEFAULT_BUK_ASISTENCIA_BASE_URL)}
             disabled={readOnly}
-            onBlur={(e) => patchBuk({ apiBaseUrl: e.target.value.trim() })}
+            onBlur={(e) =>
+              patchBuk(
+                { apiBaseUrl: sanitizeBukBaseUrl(e.target.value.trim()) },
+                { persist: true }
+              )
+            }
           />
+          <p className="text-xs text-muted-foreground">
+            Solo la base (hasta <code className="text-[11px]">/ctrl/api/v2</code>). En Postman la ruta completa es distinta; no pegues{' '}
+            <code className="text-[11px]">/asistencia-empresa</code> aquí.
+          </p>
         </div>
 
         <div className="space-y-2">
@@ -164,7 +215,9 @@ export function BukAsistenciaIntegrationSection({
               type={showToken ? 'text' : 'password'}
               defaultValue={buk.apiToken ?? ''}
               disabled={readOnly}
-              onBlur={(e) => patchBuk({ apiToken: e.target.value.trim() })}
+              onBlur={(e) =>
+                patchBuk({ apiToken: e.target.value.trim() }, { persist: true })
+              }
               autoComplete="off"
               placeholder="Pega el token de Buk Asistencia"
             />

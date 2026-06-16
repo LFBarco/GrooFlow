@@ -21,6 +21,8 @@ export const SQL_BACKUP_ERROR_MESSAGES: Record<string, string> = {
     'No se pudo guardar Configuración en SQL. Revisa sesión o permisos antes de cerrar.',
   'settings:system':
     'No se pudo guardar la configuración del sistema en SQL. Revisa sesión o permisos.',
+  'settings:asistencia':
+    'No se pudo guardar la configuración de Asistencia en SQL. Revisa sesión o permisos.',
   'settings:theme': 'No se pudo guardar el tema en SQL. Revisa sesión o permisos.',
   'settings:alertThresholds':
     'No se pudieron guardar los umbrales de alertas en SQL. Revisa sesión o permisos.',

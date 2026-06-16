@@ -73,6 +73,8 @@ export interface InitialDataKeys {
   'data:pettyCash'?:            unknown;
   /** Cierres, pre-cierres y dotaciones de caja chica (separado de settings:system). */
   'data:pettyCashMeta'?:        unknown;
+  /** Personal, sedes y Buk Asistencia (separado de settings:system). */
+  'settings:asistencia'?:        unknown;
   'data:users'?:                unknown;
   'data:roles'?:                unknown;
   'data:feeReceipts'?:          unknown;
@@ -142,6 +144,7 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'data:requests',
   'data:feeReceipts',
   'settings:system',
+  'settings:asistencia',
   'data:treasuryInvoices',
   'data:treasuryBankBalance',
   'data:treasuryPaidHistory',
@@ -150,6 +153,7 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
 const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'settings:config',
   'settings:system',
+  'settings:asistencia',
   'settings:theme',
   'settings:alertThresholds',
   'maintenance:transactionsClearedAt',
