@@ -8,44 +8,63 @@ import type { SystemSettings } from '../../types';
 import { mergeAsistenciaSettings, mergeAsistenciaStaffLists } from '../../utils/asistenciaData';
 import { isMissingTableError, isProductionSqlEnabled } from './sqlDomainUtils';
 
+import type { AsistenciaOrgRequirement } from '../../types/asistencia';
+
 const SETTINGS_SYSTEM_KEY = 'settings:system';
 
-/** Fusiona SQL + KV para settings:system sin perder asistencia.staff ni sedeProfiles. */
+function mergeByKey<T>(
+  kvItems: T[] | undefined,
+  sqlItems: T[] | undefined,
+  keyOf: (item: T) => string
+): T[] {
+  const map = new Map<string, T>();
+  for (const item of kvItems ?? []) map.set(keyOf(item), item);
+  for (const item of sqlItems ?? []) map.set(keyOf(item), item);
+  return [...map.values()];
+}
+
+/** Fusiona SQL + KV para settings:system; SQL gana en conflictos de asistencia. */
 export function mergeSystemSettingsSqlAndKv(
   sql: Partial<SystemSettings> | null | undefined,
   kv: Partial<SystemSettings> | null | undefined
 ): SystemSettings {
   const fromSql = mergeSystemSettings(sql);
   const fromKv = mergeSystemSettings(kv);
-  const staff = mergeAsistenciaStaffLists(fromSql.asistencia?.staff, fromKv.asistencia?.staff);
-  const profileMap = new Map<string, NonNullable<typeof fromSql.asistencia>['sedeProfiles'][number]>();
-  for (const p of fromSql.asistencia?.sedeProfiles ?? []) profileMap.set(p.sedeName, p);
-  for (const p of fromKv.asistencia?.sedeProfiles ?? []) profileMap.set(p.sedeName, p);
+  const staff = mergeAsistenciaStaffLists(fromKv.asistencia?.staff, fromSql.asistencia?.staff);
+  const sedeProfiles = mergeByKey(
+    fromKv.asistencia?.sedeProfiles,
+    fromSql.asistencia?.sedeProfiles,
+    (p) => p.sedeName
+  );
+  const sedeMappings = mergeByKey(
+    fromKv.asistencia?.sedeMappings,
+    fromSql.asistencia?.sedeMappings,
+    (m) => m.sedeName
+  );
+  const requirements = mergeByKey(
+    fromKv.asistencia?.requirements,
+    fromSql.asistencia?.requirements,
+    (r) => r.id
+  ) as AsistenciaOrgRequirement[];
 
   const asistencia = mergeAsistenciaSettings({
-    ...fromSql.asistencia,
     ...fromKv.asistencia,
+    ...fromSql.asistencia,
     staff,
-    sedeProfiles: [...profileMap.values()],
-    buk: { ...fromSql.asistencia?.buk, ...fromKv.asistencia?.buk },
-    requirements:
-      (fromKv.asistencia?.requirements?.length ?? 0) >= (fromSql.asistencia?.requirements?.length ?? 0)
-        ? fromKv.asistencia?.requirements
-        : fromSql.asistencia?.requirements,
-    sedeMappings:
-      (fromKv.asistencia?.sedeMappings?.length ?? 0) >= (fromSql.asistencia?.sedeMappings?.length ?? 0)
-        ? fromKv.asistencia?.sedeMappings
-        : fromSql.asistencia?.sedeMappings,
+    sedeProfiles,
+    sedeMappings,
+    requirements,
+    buk: { ...fromKv.asistencia?.buk, ...fromSql.asistencia?.buk },
   });
 
   return mergeSystemSettings({
-    ...fromSql,
     ...fromKv,
+    ...fromSql,
     asistencia,
-    pettyCash: { ...fromSql.pettyCash, ...fromKv.pettyCash },
-    veterinari: { ...fromSql.veterinari, ...fromKv.veterinari },
-    providers: { ...fromSql.providers, ...fromKv.providers },
-    accounting: { ...fromSql.accounting, ...fromKv.accounting },
+    pettyCash: { ...fromKv.pettyCash, ...fromSql.pettyCash },
+    veterinari: { ...fromKv.veterinari, ...fromSql.veterinari },
+    providers: { ...fromKv.providers, ...fromSql.providers },
+    accounting: { ...fromKv.accounting, ...fromSql.accounting },
   });
 }
 
