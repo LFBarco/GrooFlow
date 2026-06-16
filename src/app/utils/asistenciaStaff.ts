@@ -107,6 +107,19 @@ function hasEntradaMarcada(r: BukAsistenciaRecord): boolean {
   return hasBukEntradaMarcada(r);
 }
 
+export function filterBukRecordsForSedeDate(
+  records: BukAsistenciaRecord[],
+  sedeName: string,
+  settings: AsistenciaSettings,
+  date: Date
+): BukAsistenciaRecord[] {
+  const merged = mergeAsistenciaSettings(settings);
+  const profile = getSedeProfile(merged, sedeName);
+  return records.filter(
+    (r) => isRecordOnDate(r, date) && recordMatchesSede(r, sedeName, profile, merged)
+  );
+}
+
 /** Explica por qué no hubo match Buk para un trabajador registrado. */
 export function diagnoseStaffBukMatch(input: {
   staff: AsistenciaStaffMember;

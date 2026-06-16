@@ -4,6 +4,7 @@ import { es } from 'date-fns/locale';
 import {
   AlertTriangle,
   Building2,
+  LayoutDashboard,
   Loader2,
   RefreshCw,
   Settings2,
@@ -22,6 +23,7 @@ import {
   saveBukAsistenciaCache,
 } from '../../utils/bukAsistenciaCache';
 import { buildLiveSedeSummary, formatSedeDateLabel, staffForSede } from '../../utils/asistenciaStaff';
+import { AsistenciaBukDashboard } from './AsistenciaBukDashboard';
 import { AsistenciaLiveOrgChart } from './AsistenciaLiveOrgChart';
 import { AsistenciaSedeConfigPanel } from './AsistenciaSedeConfigPanel';
 import { Button } from '../ui/button';
@@ -60,7 +62,7 @@ export function AsistenciaModule({
   const [records, setRecords] = useState<Awaited<ReturnType<typeof fetchBukAsistenciaAll>>>([]);
   const [cacheFetchedAt, setCacheFetchedAt] = useState<number | null>(null);
   const [fetchProgress, setFetchProgress] = useState<string | null>(null);
-  const [mainTab, setMainTab] = useState<'live' | 'config'>('live');
+  const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
 
   const bukBaseUrl = asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2';
   const bukToken = asistencia.buk?.apiToken?.trim() ?? '';
@@ -106,8 +108,11 @@ export function AsistenciaModule({
       toast.error('Activa Buk Asistencia y configura el token en Configuración → Integraciones.');
       return;
     }
-    if (staffForSede(asistencia, activeSede).length === 0) {
-      toast.error('Registra personal en la sede antes de actualizar el panel en vivo.');
+    if (
+      mainTab === 'live' &&
+      staffForSede(asistencia, activeSede).length === 0
+    ) {
+      toast.error('Registra personal en la sede para el organigrama en vivo.');
       setMainTab('config');
       return;
     }
@@ -162,7 +167,7 @@ export function AsistenciaModule({
       setLoading(false);
       setFetchProgress(null);
     }
-  }, [asistencia, activeSede, dateObj, bukBaseUrl, bukToken]);
+  }, [asistencia, activeSede, dateObj, bukBaseUrl, bukToken, mainTab]);
 
   const saveAsistencia = useCallback(
     async (
@@ -252,10 +257,13 @@ export function AsistenciaModule({
         </Card>
       ) : null}
 
-      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'live' | 'config')}>
+      <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'live' | 'dashboard' | 'config')}>
         <TabsList className="bg-slate-900/80 border border-slate-800">
           <TabsTrigger value="live" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
             <Users className="h-4 w-4 mr-1" /> Operativa en vivo
+          </TabsTrigger>
+          <TabsTrigger value="dashboard" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
+            <LayoutDashboard className="h-4 w-4 mr-1" /> Dashboard Buk
           </TabsTrigger>
           {canConfigure ? (
             <TabsTrigger value="config" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
@@ -305,6 +313,15 @@ export function AsistenciaModule({
               </CardContent>
             </Card>
           ) : null}
+        </TabsContent>
+
+        <TabsContent value="dashboard" className="mt-4">
+          <AsistenciaBukDashboard
+            records={records}
+            settings={asistencia}
+            sedeName={activeSede}
+            date={dateObj}
+          />
         </TabsContent>
 
         {canConfigure ? (
