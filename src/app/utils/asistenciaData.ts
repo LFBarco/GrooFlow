@@ -169,14 +169,16 @@ export function parseBukEntradaFormatMinutes(raw?: string | null): number | null
   const fmt = raw?.trim();
   if (!fmt || BUK_ENTRADA_FORMAT_EMPTY.has(fmt.toLowerCase())) return null;
 
-  const hhmm = /^(\d{1,2}):(\d{2})$/.exec(fmt);
-  if (hhmm) {
+  const hhmm = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(fmt);
+  if (hhmm && !/^\d{4}[/-]/.test(fmt) && !fmt.includes(' ')) {
     const h = Number(hhmm[1]);
     const min = Number(hhmm[2]);
     if (h >= 0 && h <= 23 && min >= 0 && min <= 59) return h * 60 + min;
   }
 
-  const datetime = /^(\d{4})[/-](\d{2})[/-](\d{2})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(fmt);
+  const datetime =
+    /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(fmt) ??
+    /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(fmt);
   if (datetime) {
     const h = Number(datetime[4]);
     const min = Number(datetime[5]);
@@ -186,13 +188,29 @@ export function parseBukEntradaFormatMinutes(raw?: string | null): number | null
   return null;
 }
 
-/** Hora legible HH:mm desde entrada_format Buk. */
-export function formatBukEntradaDisplay(raw?: string | null): string | undefined {
-  const mins = parseBukEntradaFormatMinutes(raw);
-  if (mins == null) return undefined;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+function hasBukEntradaTimestamp(raw?: string | null): boolean {
+  const entrada = raw?.trim();
+  if (!entrada) return false;
+  const d = new Date(entrada);
+  return !Number.isNaN(d.getTime());
+}
+
+/** Hora legible HH:mm desde entrada_format Buk o timestamp entrada. */
+export function formatBukEntradaDisplay(
+  entradaFormat?: string | null,
+  entrada?: string | null
+): string | undefined {
+  const fromFormat = parseBukEntradaFormatMinutes(entradaFormat);
+  if (fromFormat != null) {
+    const h = Math.floor(fromFormat / 60);
+    const m = fromFormat % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }
+  if (hasBukEntradaTimestamp(entrada)) {
+    const d = new Date(entrada!.trim());
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  }
+  return undefined;
 }
 
 /** Hora de llegada válida en Buk (`entrada_format`). */
@@ -200,9 +218,9 @@ export function isValidBukEntradaFormat(raw?: string | null): boolean {
   return parseBukEntradaFormatMinutes(raw) != null;
 }
 
-/** Marca de entrada en Buk: usa `entrada_format` (hora de llegada). */
+/** Marca de entrada en Buk: entrada_format (fecha+hora) o timestamp entrada. */
 export function hasBukEntradaMarcada(r: BukAsistenciaRecord): boolean {
-  return isValidBukEntradaFormat(r.entrada_format);
+  return isValidBukEntradaFormat(r.entrada_format) || hasBukEntradaTimestamp(r.entrada);
 }
 
 export function classifyRecordAreaGroup(

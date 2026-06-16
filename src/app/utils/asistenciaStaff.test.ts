@@ -260,10 +260,59 @@ describe('asistenciaStaff', () => {
       date: new Date('2026-06-10T12:00:00'),
     });
     expect(live.absentCount).toBe(1);
-    expect(live.areas[0].staff[0]?.matchHint).toMatch(/entrada_format/);
+    expect(live.areas[0].staff[0]?.matchHint).toMatch(/entrada_format|entrada válida/);
   });
 
-  it('marca trabajando con entrada_format Buk yyyy/MM/dd HH:mm:ss', () => {
+  it('cruza Andrea: RUT Buk sin DV y entrada_format 2026/06/15 08:06:00', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: '50.- La Molina',
+      fullName: 'Andrea Ramirez',
+      cargoLabel: 'Asistente Veterinario',
+      area: 'medica',
+      expectedTime: '08:00',
+      isCritical: false,
+      rut: '76362592-9',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [
+        {
+          sedeName: '50.- La Molina',
+          bukRecintoCode: 'Petmax · Petmax Principal',
+        },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 541382193,
+        trab_id: 955600,
+        rut_trabajador: '76362592',
+        nombre: 'ANDREA ANGELICA',
+        apellido_paterno: 'CERVAN',
+        apellido_materno: 'RAMIREZ',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        area: 'ASISTENTES VETERINARIOS',
+        dia_entrada: '15/06/2026',
+        entrada: '2026-06-15T12:06:00Z',
+        entrada_format: '2026/06/15 08:06:00',
+        salida: null,
+        salida_format: '-',
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: '50.- La Molina',
+      settings,
+      records,
+      date: new Date('2026-06-15T12:00:00'),
+    });
+    expect(live.workingCount).toBe(1);
+    expect(live.areas.find((a) => a.area === 'medica')?.staff[0]?.entradaFormat).toBe('08:06');
+    expect(live.areas.find((a) => a.area === 'medica')?.staff[0]?.status).toBe('trabajando');
+  });
+
+  it('cruza Farah con entrada_format Buk yyyy/MM/dd HH:mm:ss', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',
       sedeName: '50.- La Molina',

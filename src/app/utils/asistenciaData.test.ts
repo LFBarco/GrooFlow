@@ -52,8 +52,34 @@ describe('asistenciaData', () => {
 
   it('parsea entrada_format Buk con fecha y hora', () => {
     expect(parseBukEntradaFormatMinutes('2026/06/15 08:02:00')).toBe(8 * 60 + 2);
+    expect(parseBukEntradaFormatMinutes('2026/06/15 08:06:00')).toBe(8 * 60 + 6);
     expect(formatBukEntradaDisplay('2026/06/15 08:02:00')).toBe('08:02');
-    expect(hasBukEntradaMarcada({ id: 1, trab_id: 1, rut_trabajador: '1', nombre: 'X', entrada_format: '2026/06/15 08:02:00' })).toBe(true);
-    expect(hasBukEntradaMarcada({ id: 1, trab_id: 1, rut_trabajador: '1', nombre: 'X', entrada_format: '-' })).toBe(false);
+    expect(
+      hasBukEntradaMarcada({
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '1',
+        nombre: 'X',
+        entrada_format: '2026/06/15 08:02:00',
+      })
+    ).toBe(true);
+    expect(
+      hasBukEntradaMarcada({
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '1',
+        nombre: 'X',
+        entrada: '2026-06-15T12:06:00Z',
+      })
+    ).toBe(true);
+    expect(
+      hasBukEntradaMarcada({
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '1',
+        nombre: 'X',
+        entrada_format: '-',
+      })
+    ).toBe(false);
   });
 });

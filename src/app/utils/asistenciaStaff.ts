@@ -30,9 +30,9 @@ function normalizeRut(raw?: string): string {
 function rutMatchKey(raw?: string): string {
   const n = normalizeRut(raw);
   if (!n) return '';
-  if (n.length >= 8 && /^[0-9]{7,8}[0-9K]$/.test(n)) {
-    return n.slice(0, -1);
-  }
+  // Buk suele enviar solo el cuerpo (7-8 dígitos), sin DV.
+  if (/^\d{7,8}$/.test(n)) return n;
+  if (/^\d{7,8}[0-9K]$/.test(n)) return n.slice(0, -1);
   return n;
 }
 
@@ -148,7 +148,8 @@ export function diagnoseStaffBukMatch(input: {
 
   const record = atSede[0]!;
   if (!hasEntradaMarcada(record)) {
-    return `RUT coincide el ${dateKey} en «${input.sedeName}», pero sin hora en entrada_format (aún no marca entrada).`;
+    const fmt = record.entrada_format?.trim() || '—';
+    return `RUT coincide el ${dateKey} en «${input.sedeName}», pero sin hora de entrada válida (entrada_format: «${fmt}»).`;
   }
 
   return undefined;
@@ -180,7 +181,7 @@ function resolveLiveStatus(
   const expected = parseBukEntradaFormatMinutes(staff.expectedTime);
   const arrived = entradaMinutes(record);
   const entradaFormat =
-    formatBukEntradaDisplay(record.entrada_format) ?? staff.expectedTime;
+    formatBukEntradaDisplay(record.entrada_format, record.entrada) ?? staff.expectedTime;
   const stillOnSite = !record.salida;
 
   if (stillOnSite) {
