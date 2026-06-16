@@ -15,8 +15,10 @@ export type BukConnectionResult = {
   durationMs: number;
 };
 
-const FETCH_TIMEOUT_MS = 90_000;
+const FETCH_TIMEOUT_MS = 60_000;
 const TEST_TIMEOUT_MS = 35_000;
+const BUK_PAGE_SIZE = 200;
+const BUK_FETCH_CONCURRENCY = 4;
 
 async function readJsonSafe(res: Response): Promise<Record<string, unknown>> {
   const text = await res.text();
@@ -48,7 +50,7 @@ export function normalizeBukToken(raw: string): string {
   return t;
 }
 
-function buildAsistenciaUrl(baseUrl: string, page = 1, pageSize = 100): string {
+function buildAsistenciaUrl(baseUrl: string, page = 1, pageSize = BUK_PAGE_SIZE): string {
   const base = normalizeBaseUrl(baseUrl);
   const url = new URL(`${base}/asistencia-empresa`);
   url.searchParams.set('page', String(page));
@@ -175,52 +177,67 @@ export async function validateBukAsistenciaConnection(input: {
   }
 }
 
-/** Descarga todas las páginas de asistencia-empresa. */
+/** Descarga todas las páginas de asistencia-empresa (páginas en paralelo). */
 export async function fetchBukAsistenciaAll(input: {
   baseUrl: string;
   apiToken: string;
   maxPages?: number;
+  onProgress?: (loaded: number, totalPages: number) => void;
 }): Promise<BukAsistenciaRecord[]> {
   const baseUrl = normalizeBaseUrl(input.baseUrl);
   const apiToken = normalizeBukToken(input.apiToken);
-  const maxPages = input.maxPages ?? 20;
+  const maxPages = input.maxPages ?? 15;
   const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
 
-  const all: BukAsistenciaRecord[] = [];
-
-  if (backend !== 'supabase') {
-    let page = 1;
-    while (page <= maxPages) {
-      const res = await fetch(buildAsistenciaUrl(baseUrl, page), {
-        headers: { token: apiToken, accept: 'application/json' },
-      });
-      if (!res.ok) throw new Error(`Buk HTTP ${res.status}`);
-      const json = (await res.json()) as BukAsistenciaResponse;
-      all.push(...(json.data ?? []));
-      if (!json.pagination?.next || page >= (json.pagination.totalPages ?? page)) break;
-      page += 1;
-    }
-    return all;
+  async function fetchPageDirect(page: number): Promise<{
+    data: BukAsistenciaRecord[];
+    totalPages: number;
+  }> {
+    const res = await fetch(buildAsistenciaUrl(baseUrl, page, BUK_PAGE_SIZE), {
+      headers: { token: apiToken, accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Buk HTTP ${res.status}`);
+    const json = (await res.json()) as BukAsistenciaResponse;
+    return {
+      data: json.data ?? [],
+      totalPages: json.pagination?.totalPages ?? page,
+    };
   }
 
-  let page = 1;
-  let totalPages = 1;
-  while (page <= totalPages && page <= maxPages) {
+  async function fetchPageProxy(page: number): Promise<{
+    data: BukAsistenciaRecord[];
+    totalPages: number;
+  }> {
     const res = await postBukProxy('fetch', {
       baseUrl,
       apiToken,
       page,
-      pageSize: 100,
+      pageSize: BUK_PAGE_SIZE,
     });
     const json = await readJsonSafe(res);
-    if (!res.ok) {
-      throw new Error(proxyErrorMessage(res, json));
-    }
-    const data = Array.isArray(json.data) ? (json.data as BukAsistenciaRecord[]) : [];
-    all.push(...data);
-    totalPages = typeof json.totalPages === 'number' ? json.totalPages : page;
-    if (data.length === 0) break;
-    page += 1;
+    if (!res.ok) throw new Error(proxyErrorMessage(res, json));
+    return {
+      data: Array.isArray(json.data) ? (json.data as BukAsistenciaRecord[]) : [],
+      totalPages: typeof json.totalPages === 'number' ? json.totalPages : page,
+    };
   }
+
+  const fetchPage = backend !== 'supabase' ? fetchPageDirect : fetchPageProxy;
+
+  const first = await fetchPage(1);
+  const all: BukAsistenciaRecord[] = [...first.data];
+  const totalPages = Math.min(first.totalPages, maxPages);
+  input.onProgress?.(1, totalPages);
+
+  const pages: number[] = [];
+  for (let p = 2; p <= totalPages; p++) pages.push(p);
+
+  for (let i = 0; i < pages.length; i += BUK_FETCH_CONCURRENCY) {
+    const batch = pages.slice(i, i + BUK_FETCH_CONCURRENCY);
+    const results = await Promise.all(batch.map((p) => fetchPage(p)));
+    for (const r of results) all.push(...r.data);
+    input.onProgress?.(Math.min(i + batch.length + 1, totalPages), totalPages);
+  }
+
   return all;
 }

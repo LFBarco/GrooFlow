@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -15,6 +15,12 @@ import type { SystemSettings } from '../../types';
 import type { AsistenciaSettings } from '../../types/asistencia';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { fetchBukAsistenciaAll } from '../../utils/bukAsistenciaApi';
+import {
+  cacheAgeLabel,
+  loadBukAsistenciaCache,
+  mergeBukAsistenciaRecords,
+  saveBukAsistenciaCache,
+} from '../../utils/bukAsistenciaCache';
 import { buildLiveSedeSummary, formatSedeDateLabel, staffForSede } from '../../utils/asistenciaStaff';
 import { AsistenciaLiveOrgChart } from './AsistenciaLiveOrgChart';
 import { AsistenciaSedeConfigPanel } from './AsistenciaSedeConfigPanel';
@@ -52,7 +58,21 @@ export function AsistenciaModule({
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState<Awaited<ReturnType<typeof fetchBukAsistenciaAll>>>([]);
+  const [cacheFetchedAt, setCacheFetchedAt] = useState<number | null>(null);
+  const [fetchProgress, setFetchProgress] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<'live' | 'config'>('live');
+
+  const bukBaseUrl = asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2';
+  const bukToken = asistencia.buk?.apiToken?.trim() ?? '';
+
+  useEffect(() => {
+    if (!asistencia.buk?.enabled || !bukToken) return;
+    const cached = loadBukAsistenciaCache({ baseUrl: bukBaseUrl, apiToken: bukToken });
+    if (cached?.records.length) {
+      setRecords(cached.records);
+      setCacheFetchedAt(cached.fetchedAt);
+    }
+  }, [asistencia.buk?.enabled, bukBaseUrl, bukToken]);
 
   const sedeOptions = useMemo(() => {
     const fromStaff = (asistencia.staff ?? []).map((s) => s.sedeName);
@@ -92,25 +112,57 @@ export function AsistenciaModule({
       return;
     }
     setLoading(true);
+    setFetchProgress(null);
+    const cached = loadBukAsistenciaCache({
+      baseUrl: bukCfg.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
+      apiToken: bukCfg.apiToken,
+    });
+    const priorCount = cached?.records.length ?? 0;
+    if (cached?.records.length) {
+      setRecords(cached.records);
+      setCacheFetchedAt(cached.fetchedAt);
+    }
     try {
-      const data = await fetchBukAsistenciaAll({
+      const fresh = await fetchBukAsistenciaAll({
         baseUrl: bukCfg.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
         apiToken: bukCfg.apiToken,
+        onProgress: (loaded, total) => {
+          setFetchProgress(`Buk ${loaded}/${total} páginas…`);
+        },
       });
-      setRecords(data);
-      const onDate = data.filter((r) => {
+      const merged = mergeBukAsistenciaRecords(cached?.records ?? [], fresh);
+      const now = Date.now();
+      saveBukAsistenciaCache({
+        baseUrl: bukCfg.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2',
+        apiToken: bukCfg.apiToken,
+        records: merged,
+        fetchedAt: now,
+      });
+      setRecords(merged);
+      setCacheFetchedAt(now);
+      const onDate = merged.filter((r) => {
         const key = formatSedeDateLabel(dateObj);
         return r.dia_entrada === key || (r.entrada && formatSedeDateLabel(new Date(r.entrada)) === key);
       });
+      const delta = Math.max(0, merged.length - priorCount);
       toast.success(
-        `${data.length} registros Buk · ${onDate.length} en ${format(dateObj, 'dd/MM/yyyy')} para cruzar con ${activeSede}.`
+        `${merged.length} registros (${delta > 0 ? `+${delta} nuevos · ` : ''}${onDate.length} hoy para ${activeSede}). Caché 48 h.`
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo cargar asistencia.');
+      if (cached?.records.length) {
+        toast.error(
+          err instanceof Error
+            ? `${err.message} — mostrando caché ${cacheAgeLabel(cached.fetchedAt)}.`
+            : 'Error Buk — mostrando caché local.'
+        );
+      } else {
+        toast.error(err instanceof Error ? err.message : 'No se pudo cargar asistencia.');
+      }
     } finally {
       setLoading(false);
+      setFetchProgress(null);
     }
-  }, [asistencia, activeSede, dateObj]);
+  }, [asistencia, activeSede, dateObj, bukBaseUrl, bukToken]);
 
   const saveAsistencia = useCallback(
     async (
@@ -176,9 +228,14 @@ export function AsistenciaModule({
           </div>
           <Button variant="secondary" onClick={() => void refresh()} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-            Actualizar Buk
+            {loading && fetchProgress ? fetchProgress : 'Actualizar Buk'}
           </Button>
         </div>
+        {cacheFetchedAt && records.length > 0 ? (
+          <p className="w-full text-xs text-slate-500">
+            Caché local: {records.length} registros · actualizado {cacheAgeLabel(cacheFetchedAt)} · válido 48 h
+          </p>
+        ) : null}
       </div>
 
       {!asistencia.buk?.enabled ? (
