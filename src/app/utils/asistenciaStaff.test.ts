@@ -357,8 +357,79 @@ describe('asistenciaStaff', () => {
       date: new Date('2026-06-15T12:00:00'),
     });
     expect(live.workingCount).toBe(1);
-    expect(live.areas[0].staff[0]?.entradaFormat).toBe('08:02');
-    expect(live.areas[0].staff[0]?.status).toBe('trabajando');
+    expect(live.areas[0]?.staff[0]?.entradaFormat).toBe('08:02');
+    expect(live.areas[0]?.staff[0]?.status).toBe('trabajando');
+  });
+
+  it('marca ausente si salida_format indica salida el mismo día', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: '50.- La Molina',
+      fullName: 'Farah del Rio',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: false,
+      rut: '44784524',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [{ sedeName: '50.- La Molina', bukRecintoCode: 'Petmax · Petmax Principal' }],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '44784524',
+        nombre: 'FARAH',
+        apellido_paterno: 'DEL RIO',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        dia_entrada: '15/06/2026',
+        entrada_format: '2026/06/15 08:02:00',
+        salida_format: '2026/06/15 17:30:00',
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: '50.- La Molina',
+      settings,
+      records,
+      date: new Date('2026-06-15T12:00:00'),
+    });
+    expect(live.workingCount).toBe(0);
+    expect(live.absentCount).toBe(1);
+    expect(live.areas[0]?.staff[0]?.status).toBe('ausente');
+    expect(live.areas[0]?.staff[0]?.statusNote).toMatch(/17:30/);
+  });
+
+  it('usa etiquetas y orden personalizados de áreas', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's1',
+      sedeName: 'La Molina',
+      fullName: 'Ana',
+      cargoLabel: 'Recepcionista',
+      area: 'peluqueria',
+      expectedTime: '08:00',
+      isCritical: false,
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [
+        {
+          sedeName: 'La Molina',
+          areaOrder: ['peluqueria', 'medica', 'administracion'],
+          areaLabels: { peluqueria: 'Spa & Baño' },
+        },
+      ],
+    });
+    const live = buildLiveSedeSummary({
+      sedeName: 'La Molina',
+      settings,
+      records: [],
+      date: new Date('2026-06-10T12:00:00'),
+    });
+    expect(live.areas[0]?.area).toBe('peluqueria');
+    expect(live.areas[0]?.label).toBe('Spa & Baño');
   });
 
   it('diagnostica si falta RUT configurado', () => {

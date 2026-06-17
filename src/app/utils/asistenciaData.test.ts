@@ -7,6 +7,7 @@ import {
   defaultAsistenciaSettings,
   formatBukEntradaDisplay,
   hasBukEntradaMarcada,
+  hasBukSalidaMarcadaOnDate,
   mergeAsistenciaSettings,
   parseBukEntradaFormatMinutes,
 } from './asistenciaData';
@@ -80,6 +81,26 @@ describe('asistenciaData', () => {
         nombre: 'X',
         entrada_format: '-',
       })
+    ).toBe(false);
+  });
+
+  it('detecta salida_format válida el mismo día', () => {
+    const record: BukAsistenciaRecord = {
+      id: 1,
+      trab_id: 1,
+      rut_trabajador: '1',
+      nombre: 'X',
+      dia_entrada: '15/06/2026',
+      entrada_format: '2026/06/15 08:00:00',
+      salida_format: '2026/06/15 17:00:00',
+    };
+    const date = new Date('2026-06-15T12:00:00');
+    expect(hasBukSalidaMarcadaOnDate(record, date)).toBe(true);
+    expect(
+      hasBukSalidaMarcadaOnDate(
+        { ...record, salida_format: '-' },
+        date
+      )
     ).toBe(false);
   });
 });

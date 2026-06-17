@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 import type { AsistenciaLiveSedeSummary, AsistenciaLiveStatus, AsistenciaStaffArea } from '../../types/asistencia';
-import { ASISTENCIA_LIVE_STATUS_LABELS, ASISTENCIA_STAFF_AREA_LABELS } from '../../types/asistencia';
+import { ASISTENCIA_LIVE_STATUS_LABELS } from '../../types/asistencia';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
@@ -59,6 +59,7 @@ function StaffCard({
   avatarUrl,
   critical,
   matchHint,
+  statusNote,
 }: {
   name: string;
   cargo: string;
@@ -67,8 +68,10 @@ function StaffCard({
   avatarUrl?: string;
   critical?: boolean;
   matchHint?: string;
+  statusNote?: string;
 }) {
   const absent = status === 'ausente';
+  const detailHint = statusNote ?? (absent ? matchHint : undefined);
   return (
     <div
       className={`relative rounded-xl border p-3 min-w-[160px] max-w-[220px] ${
@@ -106,9 +109,13 @@ function StaffCard({
         <span>{time ?? '—'}</span>
         <span>{ASISTENCIA_LIVE_STATUS_LABELS[status]}</span>
       </div>
-      {absent && matchHint ? (
-        <p className="mt-2 text-[10px] leading-snug text-red-300/90 border-t border-red-500/20 pt-2">
-          {matchHint}
+      {detailHint ? (
+        <p className={`mt-2 text-[10px] leading-snug border-t pt-2 ${
+          statusNote
+            ? 'text-amber-200/90 border-amber-500/20'
+            : 'text-red-300/90 border-red-500/20'
+        }`}>
+          {detailHint}
         </p>
       ) : null}
     </div>
@@ -192,6 +199,7 @@ export function AsistenciaLiveOrgChart({ summary, onRefresh, loading }: Props) {
                 avatarUrl={summary.manager.staff.avatarUrl}
                 critical={summary.manager.staff.isCritical}
                 matchHint={summary.manager.matchHint}
+                statusNote={summary.manager.statusNote}
               />
             ) : (
               <div className="rounded-xl border border-dashed border-slate-600 bg-slate-900/40 px-8 py-4 text-center">
@@ -204,7 +212,12 @@ export function AsistenciaLiveOrgChart({ summary, onRefresh, loading }: Props) {
           <div className="h-6 w-px bg-slate-700" />
           <div className="h-px w-full max-w-3xl bg-slate-700" />
 
-          <div className="grid w-full max-w-5xl grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+          <div
+            className="grid w-full max-w-5xl gap-6 mt-4"
+            style={{
+              gridTemplateColumns: `repeat(${Math.max(1, Math.min(summary.areas.length, 3))}, minmax(0, 1fr))`,
+            }}
+          >
             {summary.areas.map((block) => {
               const theme = AREA_THEME[block.area];
               const Icon = theme.icon;
@@ -218,7 +231,7 @@ export function AsistenciaLiveOrgChart({ summary, onRefresh, loading }: Props) {
                     <div className="flex items-center gap-2 mb-2">
                       <Icon className="h-4 w-4 text-white/80" />
                       <span className="font-semibold text-white">
-                        {ASISTENCIA_STAFF_AREA_LABELS[block.area]}
+                        {block.label}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mb-2">
@@ -252,6 +265,7 @@ export function AsistenciaLiveOrgChart({ summary, onRefresh, loading }: Props) {
                             avatarUrl={s.staff.avatarUrl}
                             critical={s.staff.isCritical}
                             matchHint={s.matchHint}
+                            statusNote={s.statusNote}
                           />
                         ))
                     )}

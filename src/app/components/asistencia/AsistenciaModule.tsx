@@ -350,6 +350,7 @@ export function AsistenciaModule({
             <AsistenciaSedeConfigPanel
               sedeName={activeSede}
               settings={asistencia}
+              sedeOptions={sedeOptions}
               canConfigure={canConfigure}
               onSave={saveAsistencia}
             />

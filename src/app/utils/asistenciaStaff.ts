@@ -8,12 +8,14 @@ import type {
   AsistenciaStaffMember,
   BukAsistenciaRecord,
 } from '../types/asistencia';
-import { ASISTENCIA_STAFF_AREAS } from '../types/asistencia';
+import { ASISTENCIA_STAFF_AREAS, ASISTENCIA_STAFF_AREA_LABELS } from '../types/asistencia';
 import {
   formatBukEntradaDisplay,
   formatBukRecintoLabel,
+  formatBukSalidaDisplay,
   formatDayKey,
   hasBukEntradaMarcada,
+  hasBukSalidaMarcadaOnDate,
   isRecordOnDate,
   matchesBukRecintoConfig,
   mergeAsistenciaSettings,
@@ -186,24 +188,43 @@ function findBukRecordForStaff(
 
 function resolveLiveStatus(
   staff: AsistenciaStaffMember,
-  record: BukAsistenciaRecord | undefined
-): Pick<AsistenciaStaffLiveState, 'status' | 'entradaFormat' | 'stillOnSite'> {
+  record: BukAsistenciaRecord | undefined,
+  date: Date
+): Pick<AsistenciaStaffLiveState, 'status' | 'entradaFormat' | 'stillOnSite' | 'statusNote'> {
   if (!record || !hasEntradaMarcada(record)) {
     return { status: 'ausente', stillOnSite: false };
   }
-  const expected = parseBukEntradaFormatMinutes(staff.expectedTime);
-  const arrived = entradaMinutes(record);
+
   const entradaFormat =
     formatBukEntradaDisplay(record.entrada_format, record.entrada) ?? staff.expectedTime;
-  const stillOnSite = !record.salida;
 
-  if (stillOnSite) {
-    return { status: 'trabajando', entradaFormat, stillOnSite: true };
+  if (hasBukSalidaMarcadaOnDate(record, date)) {
+    const salidaDisplay =
+      formatBukSalidaDisplay(record.salida_format, record.salida) ??
+      record.salida_format?.trim();
+    return {
+      status: 'ausente',
+      entradaFormat,
+      stillOnSite: false,
+      statusNote: salidaDisplay
+        ? `Marcó salida ${salidaDisplay} (mismo día)`
+        : 'Marcó salida el mismo día',
+    };
   }
-  if (expected != null && arrived != null && arrived > expected + 5) {
-    return { status: 'tarde', entradaFormat, stillOnSite: false };
+
+  return { status: 'trabajando', entradaFormat, stillOnSite: true };
+}
+
+function areaOrderForProfile(profile: AsistenciaSedeProfile): AsistenciaStaffArea[] {
+  const custom = profile.areaOrder?.filter((a) => ASISTENCIA_STAFF_AREAS.includes(a));
+  if (custom?.length) {
+    return [...custom, ...ASISTENCIA_STAFF_AREAS.filter((a) => !custom.includes(a))];
   }
-  return { status: 'presente', entradaFormat, stillOnSite: false };
+  return [...ASISTENCIA_STAFF_AREAS];
+}
+
+function areaLabelForProfile(profile: AsistenciaSedeProfile, area: AsistenciaStaffArea): string {
+  return profile.areaLabels?.[area]?.trim() || ASISTENCIA_STAFF_AREA_LABELS[area];
 }
 
 export function getSedeProfile(
@@ -218,6 +239,9 @@ export function getSedeProfile(
     scheduleStart: found?.scheduleStart ?? DEFAULT_SCHEDULE.start,
     scheduleEnd: found?.scheduleEnd ?? DEFAULT_SCHEDULE.end,
     bukRecintoCode: found?.bukRecintoCode ?? map?.bukRecintoCode,
+    areaLabels: found?.areaLabels,
+    areaOrder: found?.areaOrder,
+    hideEmptyAreas: found?.hideEmptyAreas,
   };
 }
 
@@ -268,9 +292,9 @@ export function buildLiveSedeSummary(input: {
       settings,
       input.date
     );
-    const live = resolveLiveStatus(staff, buk);
+    const live = resolveLiveStatus(staff, buk, input.date);
     const matchHint =
-      live.status === 'ausente' && input.records.length > 0
+      live.status === 'ausente' && !live.statusNote && input.records.length > 0
         ? diagnoseStaffBukMatch({
             staff,
             records: input.records,
@@ -292,18 +316,21 @@ export function buildLiveSedeSummary(input: {
     liveStates.find((s) => s.staff.cargoLabel.toLowerCase().includes('gerente')) ??
     null;
 
-  const areas = ASISTENCIA_STAFF_AREAS.map((area) => {
-    const areaStaff = liveStates.filter((s) => s.staff.area === area);
-    const activeCount = areaStaff.filter(
-      (s) => s.status === 'trabajando' || s.status === 'presente'
-    ).length;
-    return {
-      area,
-      staff: areaStaff,
-      activeCount,
-      totalCount: areaStaff.length,
-    };
-  });
+  const areas = areaOrderForProfile(profile)
+    .map((area) => {
+      const areaStaff = liveStates.filter((s) => s.staff.area === area);
+      const activeCount = areaStaff.filter(
+        (s) => s.status === 'trabajando' || s.status === 'presente'
+      ).length;
+      return {
+        area,
+        label: areaLabelForProfile(profile, area),
+        staff: areaStaff,
+        activeCount,
+        totalCount: areaStaff.length,
+      };
+    })
+    .filter((block) => !(profile.hideEmptyAreas && block.totalCount === 0));
 
   const workingCount = liveStates.filter((s) => s.status === 'trabajando').length;
   const absentCount = liveStates.filter((s) => s.status === 'ausente').length;

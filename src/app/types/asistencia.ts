@@ -58,6 +58,12 @@ export interface AsistenciaSedeProfile {
   scheduleStart?: string;
   scheduleEnd?: string;
   bukRecintoCode?: string;
+  /** Etiquetas personalizadas de áreas en el organigrama. */
+  areaLabels?: Partial<Record<AsistenciaStaffArea, string>>;
+  /** Orden de columnas en el organigrama (izquierda → derecha). */
+  areaOrder?: AsistenciaStaffArea[];
+  /** Ocultar columnas de área sin personal asignado. */
+  hideEmptyAreas?: boolean;
 }
 
 export interface AsistenciaStaffLiveState {
@@ -65,12 +71,16 @@ export interface AsistenciaStaffLiveState {
   status: AsistenciaLiveStatus;
   entradaFormat?: string;
   stillOnSite: boolean;
+  /** Detalle operativo (ej. salida marcada el mismo día). */
+  statusNote?: string;
   /** Por qué no hubo match con Buk (solo si ausente y hay datos cargados). */
   matchHint?: string;
 }
 
 export interface AsistenciaLiveAreaBlock {
   area: AsistenciaStaffArea;
+  /** Etiqueta visible (personalizable por sede). */
+  label: string;
   staff: AsistenciaStaffLiveState[];
   activeCount: number;
   totalCount: number;

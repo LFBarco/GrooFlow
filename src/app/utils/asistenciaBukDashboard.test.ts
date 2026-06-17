@@ -51,4 +51,50 @@ describe('asistenciaBukDashboard', () => {
     expect(summary.rows[0]?.apellidos).toBe('CERVAN RAMIREZ');
     expect(summary.rows[0]?.entradaHora).toBe('08:06');
   });
+
+  it('incluye hora de salida y agrupa por especialidad', () => {
+    const settings = mergeAsistenciaSettings({
+      sedeProfiles: [
+        { sedeName: '50.- La Molina', bukRecintoCode: 'Petmax · Petmax Principal' },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '111',
+        nombre: 'ANDREA',
+        apellido_paterno: 'CERVAN',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        especialidad: 'ASISTENTE VETERINARIO',
+        dia_entrada: '15/06/2026',
+        entrada_format: '2026/06/15 08:06:00',
+        salida_format: '2026/06/15 17:30:00',
+      },
+      {
+        id: 2,
+        trab_id: 2,
+        rut_trabajador: '222',
+        nombre: 'FARAH',
+        apellido_paterno: 'DEL RIO',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        especialidad: 'COUNTER',
+        dia_entrada: '15/06/2026',
+        entrada_format: '2026/06/15 08:02:00',
+        salida_format: '-',
+      },
+    ];
+    const summary = buildBukDashboardSummary({
+      records,
+      sedeName: '50.- La Molina',
+      settings,
+      date: new Date('2026-06-15T12:00:00'),
+    });
+    expect(summary.leftSameDay).toBe(1);
+    expect(summary.rows.find((r) => r.id === 1)?.salidaHora).toBe('17:30');
+    expect(summary.specialtyGroups).toHaveLength(2);
+    expect(summary.specialtyGroups[0]?.especialidad).toBeTruthy();
+  });
 });

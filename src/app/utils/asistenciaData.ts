@@ -223,6 +223,57 @@ export function hasBukEntradaMarcada(r: BukAsistenciaRecord): boolean {
   return isValidBukEntradaFormat(r.entrada_format) || hasBukEntradaTimestamp(r.entrada);
 }
 
+/** Extrae clave dd/MM/yyyy desde un formato Buk con fecha (yyyy/MM/dd …). */
+export function parseBukFormatDayKey(raw?: string | null): string | null {
+  const fmt = raw?.trim();
+  if (!fmt) return null;
+  const iso = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/.exec(fmt);
+  if (iso) {
+    const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return isValid(d) ? formatDayKey(d) : null;
+  }
+  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})/.exec(fmt);
+  if (dmy) {
+    const d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+    return isValid(d) ? formatDayKey(d) : null;
+  }
+  return null;
+}
+
+/** Hora de salida válida en Buk (`salida_format`). */
+export function isValidBukSalidaFormat(raw?: string | null): boolean {
+  const fmt = raw?.trim();
+  if (!fmt || BUK_ENTRADA_FORMAT_EMPTY.has(fmt.toLowerCase())) return false;
+  return parseBukEntradaFormatMinutes(fmt) != null;
+}
+
+/** Salida marcada el mismo día consultado (prioriza salida_format). */
+export function hasBukSalidaMarcadaOnDate(r: BukAsistenciaRecord, date: Date): boolean {
+  if (!isRecordOnDate(r, date)) return false;
+  const dateKey = formatDayKey(date);
+
+  const fmt = r.salida_format?.trim();
+  if (fmt && !BUK_ENTRADA_FORMAT_EMPTY.has(fmt.toLowerCase())) {
+    const fmtDay = parseBukFormatDayKey(fmt);
+    if (fmtDay) return fmtDay === dateKey;
+    if (parseBukEntradaFormatMinutes(fmt) != null) return true;
+  }
+
+  if (r.salida) {
+    const d = new Date(r.salida);
+    if (!Number.isNaN(d.getTime()) && formatDayKey(d) === dateKey) return true;
+  }
+  return false;
+}
+
+/** Hora legible HH:mm desde salida_format Buk o timestamp salida. */
+export function formatBukSalidaDisplay(
+  salidaFormat?: string | null,
+  salida?: string | null
+): string | undefined {
+  return formatBukEntradaDisplay(salidaFormat, salida);
+}
+
 export function classifyRecordAreaGroup(
   r: BukAsistenciaRecord,
   keywords: AsistenciaAreaKeywords

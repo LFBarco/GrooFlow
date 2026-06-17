@@ -1,14 +1,16 @@
 import { useMemo, useState } from 'react';
-import { Building2, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { ArrowDown, ArrowUp, Building2, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import type { AsistenciaSettings, AsistenciaStaffArea, AsistenciaStaffMember } from '../../types/asistencia';
 import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_STAFF_AREAS } from '../../types/asistencia';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
+import { AsistenciaOrgConfigDialog } from './AsistenciaOrgConfigDialog';
 import { AsistenciaStaffDialog } from './AsistenciaStaffDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Switch } from '../ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
 const AREA_BADGE: Record<AsistenciaStaffArea, string> = {
@@ -20,6 +22,7 @@ const AREA_BADGE: Record<AsistenciaStaffArea, string> = {
 type Props = {
   sedeName: string;
   settings: AsistenciaSettings;
+  sedeOptions?: string[];
   canConfigure: boolean;
   onSave: (
     updater: (prev: AsistenciaSettings) => AsistenciaSettings,
@@ -27,7 +30,15 @@ type Props = {
   ) => Promise<boolean>;
 };
 
-export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, onSave }: Props) {
+function defaultAreaOrder(profile: ReturnType<typeof getSedeProfile>): AsistenciaStaffArea[] {
+  const custom = profile.areaOrder?.filter((a) => ASISTENCIA_STAFF_AREAS.includes(a));
+  if (custom?.length) {
+    return [...custom, ...ASISTENCIA_STAFF_AREAS.filter((a) => !custom.includes(a))];
+  }
+  return [...ASISTENCIA_STAFF_AREAS];
+}
+
+export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = [], canConfigure, onSave }: Props) {
   const profile = getSedeProfile(settings, sedeName);
   const staff = staffForSede(settings, sedeName);
   const [editSede, setEditSede] = useState(false);
@@ -37,6 +48,12 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<AsistenciaStaffMember | null>(null);
   const [saving, setSaving] = useState(false);
+  const [orgDialogOpen, setOrgDialogOpen] = useState(false);
+  const [areaOrder, setAreaOrder] = useState<AsistenciaStaffArea[]>(() => defaultAreaOrder(profile));
+  const [areaLabels, setAreaLabels] = useState<Partial<Record<AsistenciaStaffArea, string>>>(
+    () => ({ ...profile.areaLabels })
+  );
+  const [hideEmptyAreas, setHideEmptyAreas] = useState(profile.hideEmptyAreas ?? false);
 
   const runSave = async (
     updater: (prev: AsistenciaSettings) => AsistenciaSettings,
@@ -65,6 +82,12 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
     const ok = await runSave((prev) => {
       const rest = (prev.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
       const mappings = (prev.sedeMappings ?? []).filter((m) => m.sedeName !== sedeName);
+      const labels = Object.fromEntries(
+        ASISTENCIA_STAFF_AREAS.map((area) => [
+          area,
+          areaLabels[area]?.trim() || undefined,
+        ]).filter(([, v]) => v)
+      ) as Partial<Record<AsistenciaStaffArea, string>>;
       return mergeAsistenciaSettings({
         ...prev,
         sedeProfiles: [
@@ -74,6 +97,9 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
             scheduleStart,
             scheduleEnd,
             bukRecintoCode: bukCode.trim() || undefined,
+            areaOrder,
+            areaLabels: Object.keys(labels).length ? labels : undefined,
+            hideEmptyAreas,
           },
         ],
         sedeMappings: bukCode.trim()
@@ -82,6 +108,43 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
       });
     }, 'Configuración de sede guardada.');
     if (ok) setEditSede(false);
+  };
+
+  const saveOrgLayout = async () => {
+    const ok = await runSave((prev) => {
+      const rest = (prev.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
+      const existing = getSedeProfile(prev, sedeName);
+      const labels = Object.fromEntries(
+        ASISTENCIA_STAFF_AREAS.map((area) => [
+          area,
+          areaLabels[area]?.trim() || undefined,
+        ]).filter(([, v]) => v)
+      ) as Partial<Record<AsistenciaStaffArea, string>>;
+      return mergeAsistenciaSettings({
+        ...prev,
+        sedeProfiles: [
+          ...rest,
+          {
+            ...existing,
+            sedeName,
+            areaOrder,
+            areaLabels: Object.keys(labels).length ? labels : undefined,
+            hideEmptyAreas,
+          },
+        ],
+      });
+    }, 'Estructura del organigrama guardada.');
+    return ok;
+  };
+
+  const moveArea = (index: number, dir: -1 | 1) => {
+    setAreaOrder((order) => {
+      const next = [...order];
+      const target = index + dir;
+      if (target < 0 || target >= next.length) return order;
+      [next[index], next[target]] = [next[target]!, next[index]!];
+      return next;
+    });
   };
 
   const upsertStaff = async (member: AsistenciaStaffMember) => {
@@ -139,6 +202,9 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
                   setScheduleStart(profile.scheduleStart ?? '08:00');
                   setScheduleEnd(profile.scheduleEnd ?? '18:00');
                   setBukCode(profile.bukRecintoCode ?? '');
+                  setAreaOrder(defaultAreaOrder(profile));
+                  setAreaLabels({ ...profile.areaLabels });
+                  setHideEmptyAreas(profile.hideEmptyAreas ?? false);
                   setEditSede(true);
                 }}
               >
@@ -186,6 +252,91 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
           ) : null}
         </CardContent>
       </Card>
+
+      {canConfigure ? (
+        <Card className="border-slate-800 bg-slate-950/80">
+          <CardHeader className="flex flex-row items-start justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-white">
+                <LayoutGrid className="h-5 w-5 text-cyan-400" />
+                Estructura del organigrama
+              </CardTitle>
+              <CardDescription className="text-slate-400">
+                Renombra áreas, ordénalas y define la dotación Buk por cargo.
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-slate-600 text-slate-200"
+                onClick={() => setOrgDialogOpen(true)}
+              >
+                Dotación Buk
+              </Button>
+              <Button type="button" size="sm" disabled={saving} onClick={() => void saveOrgLayout()}>
+                {saving ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : null}
+                Guardar estructura
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              {areaOrder.map((area, index) => (
+                <div
+                  key={area}
+                  className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/50 p-3"
+                >
+                  <span className="text-xs text-slate-500 w-24 shrink-0">
+                    Columna {index + 1}
+                  </span>
+                  <Input
+                    value={areaLabels[area] ?? ASISTENCIA_STAFF_AREA_LABELS[area]}
+                    onChange={(e) =>
+                      setAreaLabels((prev) => ({ ...prev, [area]: e.target.value }))
+                    }
+                    className="max-w-xs h-8 bg-slate-800 border-slate-700 text-white"
+                  />
+                  <span className="text-[10px] text-slate-500">({area})</span>
+                  <div className="ml-auto flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-slate-400"
+                      disabled={index === 0}
+                      onClick={() => moveArea(index, -1)}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-slate-400"
+                      disabled={index === areaOrder.length - 1}
+                      onClick={() => moveArea(index, 1)}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                id="hide-empty-areas"
+                checked={hideEmptyAreas}
+                onCheckedChange={setHideEmptyAreas}
+              />
+              <Label htmlFor="hide-empty-areas" className="text-sm text-slate-300">
+                Ocultar áreas sin personal en el organigrama en vivo
+              </Label>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card className="border-slate-800 bg-slate-950/80">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -280,6 +431,16 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, canConfigure, on
         sedeName={sedeName}
         initial={editingStaff}
         onSave={(member) => void upsertStaff(member)}
+      />
+
+      <AsistenciaOrgConfigDialog
+        open={orgDialogOpen}
+        onOpenChange={setOrgDialogOpen}
+        settings={settings}
+        sedeOptions={sedeOptions.length ? sedeOptions : [sedeName]}
+        onSave={(next) => {
+          void runSave(() => mergeAsistenciaSettings(next), 'Dotación Buk guardada.');
+        }}
       />
     </div>
   );
