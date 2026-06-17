@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   Building2,
   LayoutDashboard,
+  LayoutGrid,
   Loader2,
   RefreshCw,
   Settings2,
@@ -22,9 +23,9 @@ import {
   mergeBukAsistenciaRecords,
   saveBukAsistenciaCache,
 } from '../../utils/bukAsistenciaCache';
-import { buildLiveSedeSummary, formatSedeDateLabel, staffForSede } from '../../utils/asistenciaStaff';
+import { buildLiveConsolidatedSummary, buildLiveSedeSummary, formatSedeDateLabel, staffForSede } from '../../utils/asistenciaStaff';
 import { AsistenciaBukDashboard } from './AsistenciaBukDashboard';
-import { AsistenciaLiveOrgChart } from './AsistenciaLiveOrgChart';
+import { AsistenciaLiveView } from './AsistenciaLiveView';
 import { AsistenciaSedeConfigPanel } from './AsistenciaSedeConfigPanel';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -68,6 +69,8 @@ export function AsistenciaModule({
   const [cacheFetchedAt, setCacheFetchedAt] = useState<number | null>(null);
   const [fetchProgress, setFetchProgress] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
+  const [liveViewMode, setLiveViewMode] = useState<'single' | 'consolidated'>('single');
+  const [editLayout, setEditLayout] = useState(false);
 
   const bukBaseUrl = sanitizeBukBaseUrl(asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
   const bukToken = asistencia.buk?.apiToken?.trim() ?? '';
@@ -107,6 +110,22 @@ export function AsistenciaModule({
     [activeSede, asistencia, records, dateObj]
   );
 
+  const consolidatedSummary = useMemo(
+    () =>
+      buildLiveConsolidatedSummary({
+        sedeNames: sedeOptions,
+        settings: asistencia,
+        records,
+        date: dateObj,
+      }),
+    [sedeOptions, asistencia, records, dateObj]
+  );
+
+  const hasAnyStaff = useMemo(
+    () => sedeOptions.some((s) => staffForSede(asistencia, s).length > 0),
+    [sedeOptions, asistencia]
+  );
+
   const refresh = useCallback(async () => {
     const bukCfg = asistencia.buk;
     const resolvedBase = sanitizeBukBaseUrl(bukCfg?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
@@ -116,9 +135,18 @@ export function AsistenciaModule({
     }
     if (
       mainTab === 'live' &&
+      !hasAnyStaff
+    ) {
+      toast.error('Registra personal en al menos una sede para el organigrama en vivo.');
+      setMainTab('config');
+      return;
+    }
+    if (
+      mainTab === 'live' &&
+      liveViewMode === 'single' &&
       staffForSede(asistencia, activeSede).length === 0
     ) {
-      toast.error('Registra personal en la sede para el organigrama en vivo.');
+      toast.error('Registra personal en la sede seleccionada o usa vista consolidada.');
       setMainTab('config');
       return;
     }
@@ -177,7 +205,7 @@ export function AsistenciaModule({
       setLoading(false);
       setFetchProgress(null);
     }
-  }, [asistencia, activeSede, dateObj, bukBaseUrl, bukToken, mainTab]);
+  }, [asistencia, activeSede, dateObj, bukBaseUrl, bukToken, mainTab, liveViewMode, hasAnyStaff]);
 
   const saveAsistencia = useCallback(
     async (
@@ -228,7 +256,11 @@ export function AsistenciaModule({
         <div className="flex flex-wrap items-end gap-2">
           <div>
             <label className="text-xs text-slate-400 block mb-1">Sede</label>
-            <Select value={activeSede} onValueChange={setSelectedSede}>
+            <Select
+              value={activeSede}
+              onValueChange={setSelectedSede}
+              disabled={liveViewMode === 'consolidated' && mainTab === 'live'}
+            >
               <SelectTrigger className="w-[180px] bg-slate-900/60 border-slate-700 text-white">
                 <SelectValue />
               </SelectTrigger>
@@ -252,6 +284,23 @@ export function AsistenciaModule({
             {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             {loading && fetchProgress ? fetchProgress : 'Actualizar Buk'}
           </Button>
+          {mainTab === 'live' ? (
+            <Button
+              type="button"
+              variant={liveViewMode === 'consolidated' ? 'default' : 'outline'}
+              className={
+                liveViewMode === 'consolidated'
+                  ? 'bg-cyan-600 hover:bg-cyan-500 text-white border-0'
+                  : 'border-slate-600 text-slate-200 bg-slate-900/60'
+              }
+              onClick={() =>
+                setLiveViewMode((m) => (m === 'consolidated' ? 'single' : 'consolidated'))
+              }
+            >
+              <LayoutGrid className="h-4 w-4 mr-1" />
+              {liveViewMode === 'consolidated' ? 'Consolidado' : 'Por sede'}
+            </Button>
+          ) : null}
         </div>
         {cacheFetchedAt && records.length > 0 ? (
           <p className="w-full text-xs text-slate-500">
@@ -298,33 +347,50 @@ export function AsistenciaModule({
               </CardContent>
             </Card>
           ) : null}
-          <AsistenciaLiveOrgChart
-            summary={liveSummary}
+          <AsistenciaLiveView
+            mode={liveViewMode}
+            summary={liveViewMode === 'single' ? liveSummary : undefined}
+            consolidated={liveViewMode === 'consolidated' ? consolidatedSummary : undefined}
+            editLayout={editLayout}
+            canEditLayout={canConfigure}
+            onEditLayoutChange={setEditLayout}
+            onPersistLayout={saveAsistencia}
             onRefresh={() => void refresh()}
             loading={loading}
           />
-          {records.length > 0 && liveSummary.absentCount > 0 ? (
+          {records.length > 0 &&
+          (liveViewMode === 'consolidated'
+            ? consolidatedSummary.absentCount > 0
+            : liveSummary.absentCount > 0) ? (
             <Card className="border-amber-500/30 bg-amber-950/10">
               <CardContent className="pt-6 space-y-3">
                 <p className="text-sm font-medium text-amber-200 flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
-                  Diagnóstico de cruce Buk — {activeSede}
+                  Diagnóstico de cruce Buk —{' '}
+                  {liveViewMode === 'consolidated' ? 'todas las sedes' : activeSede}
                 </p>
                 <ul className="space-y-2 text-sm text-slate-300">
-                  {liveSummary.areas.flatMap((a) => a.staff)
+                  {(liveViewMode === 'consolidated'
+                    ? consolidatedSummary.sedes.flatMap((s) => s.areas.flatMap((a) => a.staff))
+                    : liveSummary.areas.flatMap((a) => a.staff)
+                  )
                     .filter((s) => s.status === 'ausente' && s.matchHint)
                     .map((s) => (
                       <li key={s.staff.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
                         <span className="font-medium text-white">{s.staff.fullName}</span>
-                        <span className="text-slate-500"> · {s.staff.cargoLabel}</span>
+                        <span className="text-slate-500">
+                          {' '}
+                          · {s.staff.cargoLabel} · {s.staff.sedeName}
+                        </span>
                         <p className="mt-1 text-xs text-amber-100/90 leading-relaxed">{s.matchHint}</p>
                       </li>
                     ))}
                 </ul>
-                {liveSummary.bukRecintosOnDate.length > 0 ? (
+                {(liveViewMode === 'consolidated'
+                  ? consolidatedSummary.sedes.some((s) => s.bukRecintosOnDate.length > 0)
+                  : liveSummary.bukRecintosOnDate.length > 0) ? (
                   <p className="text-xs text-slate-500">
-                    Códigos recinto Buk ese día: <strong className="text-slate-300">{liveSummary.bukRecintosOnDate.join(', ')}</strong>
-                    {' '}— úsalos en Configuración sede → Editar Sede si no coinciden con La Molina.
+                    Revisa códigos recinto Buk en Configuración sede si el cruce falla.
                   </p>
                 ) : null}
               </CardContent>

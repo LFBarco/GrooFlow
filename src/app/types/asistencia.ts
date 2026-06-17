@@ -101,6 +101,15 @@ export interface AsistenciaLiveSedeSummary {
   recordsOnDateCount: number;
 }
 
+/** Consolidado multi-sede para organigrama en vivo. */
+export interface AsistenciaLiveConsolidatedSummary {
+  workingCount: number;
+  absentCount: number;
+  lateCount: number;
+  isFullyOperational: boolean;
+  sedes: AsistenciaLiveSedeSummary[];
+}
+
 export const ASISTENCIA_CARGO_PRESETS = [
   'Gerente',
   'Recepcionista',

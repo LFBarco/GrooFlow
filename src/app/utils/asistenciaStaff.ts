@@ -1,4 +1,5 @@
 import type {
+  AsistenciaLiveConsolidatedSummary,
   AsistenciaLiveSedeSummary,
   AsistenciaLiveStatus,
   AsistenciaSettings,
@@ -363,4 +364,27 @@ export function isActiveStatus(status: AsistenciaLiveStatus): boolean {
 
 export function formatSedeDateLabel(date: Date): string {
   return formatDayKey(date);
+}
+
+export function buildLiveConsolidatedSummary(input: {
+  sedeNames: string[];
+  settings: AsistenciaSettings;
+  records: BukAsistenciaRecord[];
+  date: Date;
+}): AsistenciaLiveConsolidatedSummary {
+  const sedes = input.sedeNames.map((sedeName) =>
+    buildLiveSedeSummary({
+      sedeName,
+      settings: input.settings,
+      records: input.records,
+      date: input.date,
+    })
+  );
+  return {
+    workingCount: sedes.reduce((n, s) => n + s.workingCount, 0),
+    absentCount: sedes.reduce((n, s) => n + s.absentCount, 0),
+    lateCount: sedes.reduce((n, s) => n + s.lateCount, 0),
+    isFullyOperational: sedes.every((s) => s.isOperational),
+    sedes,
+  };
 }
