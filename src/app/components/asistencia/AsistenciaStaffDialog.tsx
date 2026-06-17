@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Briefcase,
   Clock,
@@ -10,13 +10,9 @@ import {
   User,
 } from 'lucide-react';
 
-import type { AsistenciaStaffArea, AsistenciaStaffMember } from '../../types/asistencia';
-import {
-  ASISTENCIA_CARGO_PRESETS,
-  ASISTENCIA_STAFF_AREA_LABELS,
-  ASISTENCIA_STAFF_AREAS,
-} from '../../types/asistencia';
+import type { AsistenciaSedeProfile, AsistenciaStaffMember } from '../../types/asistencia';
 import { defaultMatchHints } from '../../utils/asistenciaStaff';
+import { cargosForOrgColumn, type AsistenciaOrgColumn } from '../../utils/asistenciaOrgColumns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -39,6 +35,8 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sedeName: string;
+  sedeProfile: AsistenciaSedeProfile;
+  orgColumns: AsistenciaOrgColumn[];
   initial?: AsistenciaStaffMember | null;
   onSave: (member: AsistenciaStaffMember) => void;
 };
@@ -47,12 +45,12 @@ function newStaffId() {
   return `staff_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const emptyForm = (sedeName: string): AsistenciaStaffMember => ({
+const emptyForm = (sedeName: string, defaultArea: string): AsistenciaStaffMember => ({
   id: newStaffId(),
   sedeName,
   fullName: '',
   cargoLabel: 'Recepcionista',
-  area: 'administracion',
+  area: defaultArea,
   expectedTime: '08:00',
   isCritical: false,
   isManager: false,
@@ -62,20 +60,34 @@ export function AsistenciaStaffDialog({
   open,
   onOpenChange,
   sedeName,
+  sedeProfile,
+  orgColumns,
   initial,
   onSave,
 }: Props) {
-  const [form, setForm] = useState<AsistenciaStaffMember>(() => emptyForm(sedeName));
+  const defaultArea = orgColumns[0]?.id ?? 'administracion';
+  const [form, setForm] = useState<AsistenciaStaffMember>(() => emptyForm(sedeName, defaultArea));
 
   useEffect(() => {
     if (open) {
-      setForm(initial ? { ...initial } : emptyForm(sedeName));
+      setForm(initial ? { ...initial } : emptyForm(sedeName, defaultArea));
     }
-  }, [open, initial, sedeName]);
+  }, [open, initial, sedeName, defaultArea]);
+
+  const cargoOptions = useMemo(
+    () => cargosForOrgColumn(sedeProfile, form.area),
+    [sedeProfile, form.area]
+  );
 
   const patch = (partial: Partial<AsistenciaStaffMember>) => {
     setForm((f) => {
       const next = { ...f, ...partial };
+      if (partial.area && !partial.cargoLabel) {
+        const cargos = cargosForOrgColumn(sedeProfile, next.area);
+        if (!cargos.includes(next.cargoLabel)) {
+          next.cargoLabel = cargos[0] ?? 'Personal';
+        }
+      }
       if (partial.cargoLabel || partial.area) {
         const hints = defaultMatchHints(next.cargoLabel, next.area);
         next.matchArea = hints.matchArea;
@@ -130,6 +142,21 @@ export function AsistenciaStaffDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label className="text-slate-300 flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5" /> Área
+              </Label>
+              <Select value={form.area} onValueChange={(v) => patch({ area: v })}>
+                <SelectTrigger className="bg-white text-slate-900 border-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {orgColumns.map((col) => (
+                    <SelectItem key={col.id} value={col.id}>{col.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300 flex items-center gap-1">
                 <Briefcase className="h-3.5 w-3.5" /> Cargo
               </Label>
               <Select value={form.cargoLabel} onValueChange={(v) => patch({ cargoLabel: v })}>
@@ -137,26 +164,8 @@ export function AsistenciaStaffDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ASISTENCIA_CARGO_PRESETS.map((c) => (
+                  {cargoOptions.map((c) => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-300 flex items-center gap-1">
-                <MapPin className="h-3.5 w-3.5" /> Área
-              </Label>
-              <Select
-                value={form.area}
-                onValueChange={(v) => patch({ area: v as AsistenciaStaffArea })}
-              >
-                <SelectTrigger className="bg-white text-slate-900 border-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ASISTENCIA_STAFF_AREAS.map((a) => (
-                    <SelectItem key={a} value={a}>{ASISTENCIA_STAFF_AREA_LABELS[a]}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

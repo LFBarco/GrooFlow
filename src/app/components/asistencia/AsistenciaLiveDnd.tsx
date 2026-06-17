@@ -6,11 +6,10 @@ import type {
   AsistenciaLiveAreaBlock,
   AsistenciaLiveSedeSummary,
   AsistenciaSettings,
-  AsistenciaStaffArea,
   AsistenciaStaffLiveState,
 } from '../../types/asistencia';
 import { applyAreaLayoutReorder, applyStaffLayoutMove } from '../../utils/asistenciaLayoutUtils';
-import { AREA_THEME, ManagerPlaceholder, StaffLiveCard } from './asistenciaLiveUi';
+import { ManagerPlaceholder, StaffLiveCard, themeForColumnId } from './asistenciaLiveUi';
 
 export const DND_STAFF = 'asistencia-live-staff';
 export const DND_AREA = 'asistencia-live-area';
@@ -18,15 +17,14 @@ export const DND_AREA = 'asistencia-live-area';
 export type StaffDragItem = {
   staffId: string;
   sedeName: string;
-  area: AsistenciaStaffArea;
+  area: string;
   index: number;
 };
 
 export type AreaDragItem = {
   sedeName: string;
-  area: AsistenciaStaffArea;
+  area: string;
 };
-
 type LayoutPersist = (
   updater: (prev: AsistenciaSettings) => AsistenciaSettings,
   message?: string
@@ -41,7 +39,7 @@ function DraggableStaffCard({
 }: {
   live: AsistenciaStaffLiveState;
   sedeName: string;
-  area: AsistenciaStaffArea;
+  area: string;
   index: number;
   editLayout: boolean;
 }) {
@@ -112,10 +110,10 @@ function AreaStaffDropZone({
   children,
 }: {
   sedeName: string;
-  area: AsistenciaStaffArea;
+  area: string;
   index: number;
   editLayout: boolean;
-  onDropStaff: (item: StaffDragItem, toIndex: number, toArea: AsistenciaStaffArea) => void;
+  onDropStaff: (item: StaffDragItem, toIndex: number, toArea: string) => void;
   children?: ReactNode;
 }) {
   const [{ isOver }, drop] = useDrop(
@@ -153,11 +151,11 @@ function DraggableAreaColumn({
   block: AsistenciaLiveAreaBlock;
   sedeName: string;
   editLayout: boolean;
-  onAreaReorder: (dragArea: AsistenciaStaffArea, hoverArea: AsistenciaStaffArea) => void;
-  onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: AsistenciaStaffArea) => void;
+  onAreaReorder: (dragArea: string, hoverArea: string) => void;
+  onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: string) => void;
 }) {
   const headerRef = useRef<HTMLDivElement>(null);
-  const theme = AREA_THEME[block.area];
+  const theme = themeForColumnId(block.area);
   const Icon = theme.icon;
   const pct = block.totalCount > 0 ? Math.round((block.activeCount / block.totalCount) * 100) : 0;
   const visibleStaff = block.staff.filter((s) => !s.staff.isManager);
@@ -269,7 +267,7 @@ export function AsistenciaLiveSedeBlock({
   compact,
 }: SedeBlockProps) {
   const handleStaffDrop = useCallback(
-    (item: StaffDragItem, toIndex: number, toArea: AsistenciaStaffArea) => {
+    (item: StaffDragItem, toIndex: number, toArea: string) => {
       if (item.sedeName !== summary.sedeName) return;
       void onPersistLayout(
         (prev) =>
@@ -286,7 +284,7 @@ export function AsistenciaLiveSedeBlock({
   );
 
   const handleAreaReorder = useCallback(
-    (dragArea: AsistenciaStaffArea, hoverArea: AsistenciaStaffArea) => {
+    (dragArea: string, hoverArea: string) => {
       void onPersistLayout(
         (prev) => applyAreaLayoutReorder(prev, summary.sedeName, dragArea, hoverArea),
         'Columnas reordenadas.'
@@ -332,7 +330,7 @@ export function AsistenciaLiveSedeBlock({
         <div
           className="grid w-full max-w-5xl gap-6 mt-4"
           style={{
-            gridTemplateColumns: `repeat(${Math.max(1, Math.min(summary.areas.length, 3))}, minmax(0, 1fr))`,
+            gridTemplateColumns: `repeat(${Math.max(1, summary.areas.length)}, minmax(0, 1fr))`,
           }}
         >
           {summary.areas.map((block) => (

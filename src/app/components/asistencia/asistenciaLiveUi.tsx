@@ -3,19 +3,19 @@ import {
   Building2,
   Crown,
   GripVertical,
+  LayoutGrid,
   Scissors,
   Sparkles,
   Stethoscope,
   User,
+  type LucideIcon,
 } from 'lucide-react';
 
-import type { AsistenciaLiveStatus, AsistenciaStaffArea } from '../../types/asistencia';
+import type { AsistenciaLiveStatus } from '../../types/asistencia';
 import { ASISTENCIA_LIVE_STATUS_LABELS } from '../../types/asistencia';
+import { isBuiltinOrgColumnId } from '../../utils/asistenciaOrgColumns';
 
-export const AREA_THEME: Record<
-  AsistenciaStaffArea,
-  { icon: typeof Building2; card: string; bar: string; glow: string }
-> = {
+const BUILTIN_THEME = {
   administracion: {
     icon: Building2,
     card: 'border-fuchsia-500/40 bg-fuchsia-950/20',
@@ -34,7 +34,24 @@ export const AREA_THEME: Record<
     bar: 'bg-sky-500',
     glow: 'shadow-[0_0_24px_rgba(14,165,233,0.15)]',
   },
+} as const;
+
+const CUSTOM_THEME = {
+  icon: LayoutGrid,
+  card: 'border-violet-500/40 bg-violet-950/20',
+  bar: 'bg-violet-500',
+  glow: 'shadow-[0_0_24px_rgba(139,92,246,0.15)]',
 };
+
+export function themeForColumnId(columnId: string): {
+  icon: LucideIcon;
+  card: string;
+  bar: string;
+  glow: string;
+} {
+  if (isBuiltinOrgColumnId(columnId)) return BUILTIN_THEME[columnId];
+  return CUSTOM_THEME;
+}
 
 export const STATUS_DOT: Record<AsistenciaLiveStatus, string> = {
   trabajando: 'bg-emerald-500',

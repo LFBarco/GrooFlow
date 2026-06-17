@@ -37,7 +37,8 @@ export interface AsistenciaStaffMember {
   sedeName: string;
   fullName: string;
   cargoLabel: string;
-  area: AsistenciaStaffArea;
+  /** Id de columna del organigrama (área built-in o personalizada). */
+  area: string;
   /** HH:mm esperado de llegada. */
   expectedTime: string;
   email?: string;
@@ -52,17 +53,27 @@ export interface AsistenciaStaffMember {
   sortOrder?: number;
 }
 
+/** Columna personalizada del organigrama (además de las 3 built-in). */
+export interface AsistenciaCustomOrgColumn {
+  id: string;
+  label: string;
+}
+
 /** Configuración operativa de una sede. */
 export interface AsistenciaSedeProfile {
   sedeName: string;
   scheduleStart?: string;
   scheduleEnd?: string;
   bukRecintoCode?: string;
-  /** Etiquetas personalizadas de áreas en el organigrama. */
-  areaLabels?: Partial<Record<AsistenciaStaffArea, string>>;
-  /** Orden de columnas en el organigrama (izquierda → derecha). */
-  areaOrder?: AsistenciaStaffArea[];
-  /** Ocultar columnas de área sin personal asignado. */
+  /** Columnas extra del organigrama. */
+  customOrgColumns?: AsistenciaCustomOrgColumn[];
+  /** Etiquetas por id de columna. */
+  areaLabels?: Record<string, string>;
+  /** Orden de columnas (ids built-in + custom). */
+  areaOrder?: string[];
+  /** Cargos permitidos por columna (override). */
+  cargoByColumn?: Record<string, string[]>;
+  /** Ocultar columnas sin personal asignado. */
   hideEmptyAreas?: boolean;
 }
 
@@ -78,7 +89,7 @@ export interface AsistenciaStaffLiveState {
 }
 
 export interface AsistenciaLiveAreaBlock {
-  area: AsistenciaStaffArea;
+  area: string;
   /** Etiqueta visible (personalizable por sede). */
   label: string;
   staff: AsistenciaStaffLiveState[];
@@ -121,6 +132,13 @@ export const ASISTENCIA_CARGO_PRESETS = [
   'Limpieza',
   'Mantenimiento',
 ] as const;
+
+/** Cargos sugeridos por área built-in del organigrama. */
+export const ASISTENCIA_CARGOS_BY_BUILTIN_AREA: Record<AsistenciaStaffArea, string[]> = {
+  administracion: ['Gerente', 'Recepcionista', 'Counter', 'Limpieza', 'Mantenimiento'],
+  medica: ['Médico veterinario', 'Asistente veterinario'],
+  peluqueria: ['Peluquero', 'Bañador'],
+};
 
 /** Registro crudo de Buk Asistencia (Ctrlit). */
 export interface BukAsistenciaRecord {

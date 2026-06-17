@@ -4,12 +4,11 @@ import type {
   AsistenciaLiveStatus,
   AsistenciaSettings,
   AsistenciaSedeProfile,
-  AsistenciaStaffArea,
   AsistenciaStaffLiveState,
   AsistenciaStaffMember,
   BukAsistenciaRecord,
 } from '../types/asistencia';
-import { ASISTENCIA_STAFF_AREAS, ASISTENCIA_STAFF_AREA_LABELS } from '../types/asistencia';
+import { resolveOrgColumns } from './asistenciaOrgColumns';
 import {
   formatBukEntradaDisplay,
   formatBukRecintoLabel,
@@ -216,16 +215,12 @@ function resolveLiveStatus(
   return { status: 'trabajando', entradaFormat, stillOnSite: true };
 }
 
-function areaOrderForProfile(profile: AsistenciaSedeProfile): AsistenciaStaffArea[] {
-  const custom = profile.areaOrder?.filter((a) => ASISTENCIA_STAFF_AREAS.includes(a));
-  if (custom?.length) {
-    return [...custom, ...ASISTENCIA_STAFF_AREAS.filter((a) => !custom.includes(a))];
-  }
-  return [...ASISTENCIA_STAFF_AREAS];
+function areaOrderForProfile(profile: AsistenciaSedeProfile): string[] {
+  return resolveOrgColumns(profile).map((c) => c.id);
 }
 
-function areaLabelForProfile(profile: AsistenciaSedeProfile, area: AsistenciaStaffArea): string {
-  return profile.areaLabels?.[area]?.trim() || ASISTENCIA_STAFF_AREA_LABELS[area];
+function areaLabelForProfile(profile: AsistenciaSedeProfile, columnId: string): string {
+  return resolveOrgColumns(profile).find((c) => c.id === columnId)?.label ?? columnId;
 }
 
 export function getSedeProfile(
@@ -242,6 +237,8 @@ export function getSedeProfile(
     bukRecintoCode: found?.bukRecintoCode ?? map?.bukRecintoCode,
     areaLabels: found?.areaLabels,
     areaOrder: found?.areaOrder,
+    customOrgColumns: found?.customOrgColumns,
+    cargoByColumn: found?.cargoByColumn,
     hideEmptyAreas: found?.hideEmptyAreas,
   };
 }
@@ -253,13 +250,13 @@ export function staffForSede(settings: AsistenciaSettings, sedeName: string): As
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.fullName.localeCompare(b.fullName));
 }
 
-export function defaultMatchHints(cargoLabel: string, area: AsistenciaStaffArea): {
+export function defaultMatchHints(cargoLabel: string, area: string): {
   matchArea?: string;
   matchSpecialty?: string;
 } {
   const c = cargoLabel.toLowerCase();
   if (c.includes('recep') || c.includes('counter')) {
-    return { matchArea: area === 'administracion' ? 'COUNTER' : 'COUNTER' };
+    return { matchArea: 'COUNTER' };
   }
   if (c.includes('médico') || c.includes('medico')) {
     return { matchArea: 'MEDICOS VETERINARIOS', matchSpecialty: 'MEDICO' };
@@ -271,6 +268,9 @@ export function defaultMatchHints(cargoLabel: string, area: AsistenciaStaffArea)
   if (c.includes('bañ') || c.includes('banad')) return { matchArea: 'BANADORES' };
   if (c.includes('limpieza')) return { matchArea: 'LIMPIEZA' };
   if (c.includes('manten')) return { matchArea: 'SERVICIOS GENERALES' };
+  if (area === 'medica') return { matchArea: 'MEDICOS VETERINARIOS' };
+  if (area === 'peluqueria') return { matchArea: 'PELUQUEROS' };
+  if (area === 'administracion') return { matchArea: 'COUNTER' };
   return {};
 }
 
@@ -318,14 +318,14 @@ export function buildLiveSedeSummary(input: {
     null;
 
   const areas = areaOrderForProfile(profile)
-    .map((area) => {
-      const areaStaff = liveStates.filter((s) => s.staff.area === area);
+    .map((columnId) => {
+      const areaStaff = liveStates.filter((s) => s.staff.area === columnId);
       const activeCount = areaStaff.filter(
         (s) => s.status === 'trabajando' || s.status === 'presente'
       ).length;
       return {
-        area,
-        label: areaLabelForProfile(profile, area),
+        area: columnId,
+        label: areaLabelForProfile(profile, columnId),
         staff: areaStaff,
         activeCount,
         totalCount: areaStaff.length,

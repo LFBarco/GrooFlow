@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CheckCircle2, LayoutDashboard, Layers, List, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, LayoutDashboard, Layers, List, MapPin, Search, XCircle } from 'lucide-react';
 
 import type { AsistenciaSettings, BukAsistenciaRecord } from '../../types/asistencia';
 import {
@@ -35,18 +35,23 @@ type Props = {
 };
 
 type ArrivalFilter = 'all' | 'arrived' | 'absent';
+const ALL_FILTER = '__all__';
 
 function filterRows(
   rows: BukDashboardRow[],
   search: string,
-  arrivalFilter: ArrivalFilter
+  arrivalFilter: ArrivalFilter,
+  areaFilter: string,
+  specialtyFilter: string
 ): BukDashboardRow[] {
   const q = search.trim().toLowerCase();
   return rows.filter((row) => {
     if (arrivalFilter === 'arrived' && !row.arrived) return false;
     if (arrivalFilter === 'absent' && row.arrived) return false;
+    if (areaFilter !== ALL_FILTER && row.area !== areaFilter) return false;
+    if (specialtyFilter !== ALL_FILTER && row.especialidad !== specialtyFilter) return false;
     if (!q) return true;
-    const hay = `${row.nombre} ${row.apellidos} ${row.especialidad} ${row.rut}`.toLowerCase();
+    const hay = `${row.nombre} ${row.apellidos} ${row.especialidad} ${row.area} ${row.rut}`.toLowerCase();
     return hay.includes(q);
   });
 }
@@ -64,6 +69,7 @@ function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
         <TableRow className="border-slate-800 hover:bg-transparent">
           <TableHead className="text-slate-400">Nombre</TableHead>
           <TableHead className="text-slate-400">Apellidos</TableHead>
+          <TableHead className="text-slate-400">Área</TableHead>
           <TableHead className="text-slate-400">Especialidad</TableHead>
           <TableHead className="text-slate-400">RUT</TableHead>
           <TableHead className="text-slate-400">¿Llegó?</TableHead>
@@ -76,6 +82,9 @@ function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
           <TableRow key={row.id} className="border-slate-800/80 hover:bg-slate-900/50">
             <TableCell className="font-medium text-white">{row.nombre}</TableCell>
             <TableCell className="text-slate-300">{row.apellidos || '—'}</TableCell>
+            <TableCell className="text-slate-300 max-w-[180px] truncate" title={row.area}>
+              {row.area}
+            </TableCell>
             <TableCell className="text-slate-300 max-w-[220px] truncate" title={row.especialidad}>
               {row.especialidad}
             </TableCell>
@@ -107,7 +116,9 @@ function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
 export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Props) {
   const [search, setSearch] = useState('');
   const [arrivalFilter, setArrivalFilter] = useState<ArrivalFilter>('all');
-  const [view, setView] = useState<'list' | 'specialty'>('list');
+  const [areaFilter, setAreaFilter] = useState(ALL_FILTER);
+  const [specialtyFilter, setSpecialtyFilter] = useState(ALL_FILTER);
+  const [view, setView] = useState<'list' | 'specialty' | 'area'>('list');
 
   const summary = useMemo(
     () =>
@@ -120,20 +131,44 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
     [records, sedeName, settings, date]
   );
 
-  const filteredRows = useMemo(
-    () => filterRows(summary.rows, search, arrivalFilter),
-    [summary.rows, search, arrivalFilter]
+  const areaOptions = useMemo(
+    () => [...new Set(summary.rows.map((r) => r.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
+    [summary.rows]
   );
 
-  const filteredGroups = useMemo(
+  const specialtyOptions = useMemo(
+    () =>
+      [...new Set(summary.rows.map((r) => r.especialidad).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, 'es')
+      ),
+    [summary.rows]
+  );
+
+  const filteredRows = useMemo(
+    () => filterRows(summary.rows, search, arrivalFilter, areaFilter, specialtyFilter),
+    [summary.rows, search, arrivalFilter, areaFilter, specialtyFilter]
+  );
+
+  const filteredSpecialtyGroups = useMemo(
     () =>
       summary.specialtyGroups
         .map((group) => ({
           ...group,
-          rows: filterRows(group.rows, search, arrivalFilter),
+          rows: filterRows(group.rows, search, arrivalFilter, areaFilter, specialtyFilter),
         }))
         .filter((group) => group.rows.length > 0),
-    [summary.specialtyGroups, search, arrivalFilter]
+    [summary.specialtyGroups, search, arrivalFilter, areaFilter, specialtyFilter]
+  );
+
+  const filteredAreaGroups = useMemo(
+    () =>
+      summary.areaGroups
+        .map((group) => ({
+          ...group,
+          rows: filterRows(group.rows, search, arrivalFilter, areaFilter, specialtyFilter),
+        }))
+        .filter((group) => group.rows.length > 0),
+    [summary.areaGroups, search, arrivalFilter, areaFilter, specialtyFilter]
   );
 
   const dateLabel = format(date, "d 'de' MMMM yyyy", { locale: es });
@@ -192,7 +227,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
             Dashboard Buk — {dateLabel}
           </CardTitle>
           <CardDescription className="text-slate-400">
-            Datos directos de la API: especialidad, entrada y salida por persona.
+            Datos directos de la API: área, especialidad, entrada y salida por persona.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -202,10 +237,32 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar nombre, apellido, especialidad o RUT…"
+                placeholder="Buscar nombre, apellido, área, especialidad o RUT…"
                 className="pl-9 bg-slate-900 border-slate-700 text-white"
               />
             </div>
+            <Select value={areaFilter} onValueChange={setAreaFilter}>
+              <SelectTrigger className="w-[200px] bg-slate-900 border-slate-700 text-white">
+                <SelectValue placeholder="Área" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER}>Todas las áreas</SelectItem>
+                {areaOptions.map((area) => (
+                  <SelectItem key={area} value={area}>{area}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={specialtyFilter} onValueChange={setSpecialtyFilter}>
+              <SelectTrigger className="w-[220px] bg-slate-900 border-slate-700 text-white">
+                <SelectValue placeholder="Especialidad" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_FILTER}>Todas las especialidades</SelectItem>
+                {specialtyOptions.map((esp) => (
+                  <SelectItem key={esp} value={esp}>{esp}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={arrivalFilter} onValueChange={(v) => setArrivalFilter(v as ArrivalFilter)}>
               <SelectTrigger className="w-[180px] bg-slate-900 border-slate-700 text-white">
                 <SelectValue />
@@ -218,13 +275,19 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
             </Select>
           </div>
 
-          <Tabs value={view} onValueChange={(v) => setView(v as 'list' | 'specialty')}>
+          <Tabs value={view} onValueChange={(v) => setView(v as 'list' | 'specialty' | 'area')}>
             <TabsList className="bg-slate-900 border border-slate-800">
               <TabsTrigger
                 value="list"
                 className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
               >
                 <List className="h-4 w-4 mr-1" /> Lista
+              </TabsTrigger>
+              <TabsTrigger
+                value="area"
+                className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
+              >
+                <MapPin className="h-4 w-4 mr-1" /> Por área
               </TabsTrigger>
               <TabsTrigger
                 value="specialty"
@@ -243,13 +306,47 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
               </p>
             </TabsContent>
 
-            <TabsContent value="specialty" className="mt-4 space-y-4">
-              {filteredGroups.length === 0 ? (
+            <TabsContent value="area" className="mt-4 space-y-4">
+              {filteredAreaGroups.length === 0 ? (
                 <p className="text-center text-slate-500 py-8 text-sm">
                   Sin resultados para los filtros aplicados.
                 </p>
               ) : (
-                filteredGroups.map((group) => (
+                filteredAreaGroups.map((group) => (
+                  <div key={group.area} className="rounded-xl border border-slate-800 overflow-hidden">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 px-4 py-3">
+                      <div>
+                        <p className="font-semibold text-white">{group.area}</p>
+                        <p className="text-xs text-slate-500">{group.rows.length} persona(s) en vista</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
+                          {group.rows.filter((r) => r.arrived).length} llegaron
+                        </span>
+                        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-red-400">
+                          {group.rows.filter((r) => !r.arrived).length} sin entrada
+                        </span>
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">
+                          {group.rows.filter((r) => r.leftSameDay).length} con salida
+                        </span>
+                      </div>
+                    </div>
+                    <BukRowsTable rows={group.rows} />
+                  </div>
+                ))
+              )}
+              <p className="text-xs text-slate-500">
+                {filteredAreaGroups.length} área(s) · {filteredRows.length} persona(s) en total.
+              </p>
+            </TabsContent>
+
+            <TabsContent value="specialty" className="mt-4 space-y-4">
+              {filteredSpecialtyGroups.length === 0 ? (
+                <p className="text-center text-slate-500 py-8 text-sm">
+                  Sin resultados para los filtros aplicados.
+                </p>
+              ) : (
+                filteredSpecialtyGroups.map((group) => (
                   <div
                     key={group.especialidad}
                     className="rounded-xl border border-slate-800 overflow-hidden"
@@ -278,7 +375,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                 ))
               )}
               <p className="text-xs text-slate-500">
-                {filteredGroups.length} especialidad(es) · {filteredRows.length} persona(s) en total.
+                {filteredSpecialtyGroups.length} especialidad(es) · {filteredRows.length} persona(s) en total.
               </p>
             </TabsContent>
           </Tabs>

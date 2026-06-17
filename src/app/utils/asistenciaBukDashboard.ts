@@ -29,6 +29,15 @@ export type BukDashboardSpecialtyGroup = {
   rows: BukDashboardRow[];
 };
 
+export type BukDashboardAreaGroup = {
+  area: string;
+  total: number;
+  arrived: number;
+  absent: number;
+  leftSameDay: number;
+  rows: BukDashboardRow[];
+};
+
 export type BukDashboardSummary = {
   total: number;
   arrived: number;
@@ -36,6 +45,7 @@ export type BukDashboardSummary = {
   leftSameDay: number;
   rows: BukDashboardRow[];
   specialtyGroups: BukDashboardSpecialtyGroup[];
+  areaGroups: BukDashboardAreaGroup[];
 };
 
 function apellidosFromRecord(r: BukAsistenciaRecord): string {
@@ -108,6 +118,28 @@ export function buildBukDashboardSummary(input: {
       return a.especialidad.localeCompare(b.especialidad, 'es');
     });
 
+  const byArea = new Map<string, BukDashboardRow[]>();
+  for (const row of rows) {
+    const key = row.area || '—';
+    const list = byArea.get(key) ?? [];
+    list.push(row);
+    byArea.set(key, list);
+  }
+
+  const areaGroups: BukDashboardAreaGroup[] = [...byArea.entries()]
+    .map(([area, groupRows]) => ({
+      area,
+      total: groupRows.length,
+      arrived: groupRows.filter((r) => r.arrived).length,
+      absent: groupRows.filter((r) => !r.arrived).length,
+      leftSameDay: groupRows.filter((r) => r.leftSameDay).length,
+      rows: groupRows,
+    }))
+    .sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return a.area.localeCompare(b.area, 'es');
+    });
+
   return {
     total: rows.length,
     arrived,
@@ -115,5 +147,6 @@ export function buildBukDashboardSummary(input: {
     leftSameDay,
     rows,
     specialtyGroups,
+    areaGroups,
   };
 }
