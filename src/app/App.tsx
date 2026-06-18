@@ -214,6 +214,7 @@ import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
 import { useAlertReadPersistence } from "./hooks/useAlertReadPersistence";
 import { useSqlRetryProcessor } from "./hooks/useSqlRetryProcessor";
 import { useOnlineStatus } from "./hooks/useOnlineStatus";
+import { useUnsavedWorkGuard } from "./hooks/useUnsavedWorkGuard";
 import {
   applyPettyCashMetaRemoteUpdate,
   usePettyCashMetaPersistence,
@@ -460,6 +461,12 @@ export default function App() {
     setCloudSyncPhase,
     cloudSyncErrorKeyRef
   ));
+
+  useUnsavedWorkGuard({
+    enabled: isAuthenticated && isDataLoaded,
+    cloudSyncPendingRef,
+    cloudSyncErrorRef,
+  });
 
   const resetKvSaveChains = () => {
     kvApplyGenerationRef.current += 1;
@@ -1933,7 +1940,14 @@ export default function App() {
         signingOutRef.current = false;
         return;
       }
-      await flushAllSqlSaveQueues();
+      const sqlFlush = await flushAllSqlSaveQueues();
+      if (!sqlFlush.ok) {
+        toast.error(
+          'Hay cambios sin guardar en SQL. Revisa conexión o permisos antes de cerrar sesión.'
+        );
+        signingOutRef.current = false;
+        return;
+      }
       pendingHydrateRef.current = false;
       setIsAuthChecking(false);
       if (typeof window !== 'undefined') {
@@ -3466,7 +3480,7 @@ export default function App() {
           )}
 
             {view === 'transactions' && (
-            <div className="grid gap-6 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="grid gap-6 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="transactions-module">
               <div className="lg:col-span-4 xl:col-span-3 space-y-5">
                 <div className={`rounded-2xl p-5 ${!isDarkTheme ? 'gf-glass-card' : ''}`} style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
                   <h3 className="mb-5 flex items-center gap-2" style={{ color: surfaces.pageTitle, fontWeight: 700 }}>

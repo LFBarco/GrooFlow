@@ -151,7 +151,7 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
   const lastRecord = Math.min(currentPage * pageSize, transactions.length);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" data-testid="transactions-list">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-xs" style={{ color: '#6b5fa5' }}>
           {selectionCount > 0 ? `${selectionCount} seleccionada(s)` : 'Selecciona filas para eliminar en bloque'}

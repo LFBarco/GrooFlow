@@ -3,22 +3,36 @@
  */
 export type SqlSaveQueue = {
   enqueue<T>(label: string, run: () => Promise<T>): Promise<T>;
-  flush(): Promise<void>;
+  flush(): Promise<boolean>;
+};
+
+export type SqlFlushReport = {
+  ok: boolean;
+  failedLabels: string[];
 };
 
 export function createSqlSaveQueue(): SqlSaveQueue {
   let chain: Promise<unknown> = Promise.resolve();
+  let lastFailedLabel: string | null = null;
 
   return {
     enqueue<T>(label: string, run: () => Promise<T>): Promise<T> {
-      const next = chain.then(() => run());
-      chain = next.catch((err) => {
-        console.warn(`[sqlSaveQueue] ${label}`, err);
+      const next = chain.then(async () => {
+        try {
+          const result = await run();
+          lastFailedLabel = null;
+          return result;
+        } catch (err) {
+          lastFailedLabel = label;
+          console.warn(`[sqlSaveQueue] ${label}`, err);
+          throw err;
+        }
       });
+      chain = next.catch(() => undefined);
       return next;
     },
-    flush(): Promise<void> {
-      return chain.then(() => undefined);
+    flush(): Promise<boolean> {
+      return chain.then(() => lastFailedLabel === null);
     },
   };
 }
@@ -36,8 +50,20 @@ export function getSqlSaveQueue(storageKey: string): SqlSaveQueue {
 }
 
 /** Espera a que terminen todos los guardados SQL encolados (p. ej. antes de logout). */
-export function flushAllSqlSaveQueues(): Promise<void> {
-  return Promise.all([...queuesByKey.values()].map((q) => q.flush())).then(() => undefined);
+export function flushAllSqlSaveQueues(): Promise<SqlFlushReport> {
+  const entries = [...queuesByKey.entries()];
+  if (entries.length === 0) {
+    return Promise.resolve({ ok: true, failedLabels: [] });
+  }
+  return Promise.all(
+    entries.map(async ([key, queue]) => ({
+      key,
+      ok: await queue.flush(),
+    }))
+  ).then((results) => {
+    const failedLabels = results.filter((r) => !r.ok).map((r) => r.key);
+    return { ok: failedLabels.length === 0, failedLabels };
+  });
 }
 
 /** Solo para tests — reinicia colas globales. */

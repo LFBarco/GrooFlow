@@ -174,7 +174,7 @@ export function TransactionForm({
   };
 
   return (
-    <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4" data-testid="transaction-form">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Tipo</Label>
@@ -297,7 +297,7 @@ export function TransactionForm({
           }}
           value={selectedCategory}
         >
-          <SelectTrigger className="w-full bg-background">
+          <SelectTrigger className="w-full bg-background" data-testid="transaction-category">
             <SelectValue placeholder="Seleccionar categoría" />
           </SelectTrigger>
           <SelectContent>
@@ -354,6 +354,7 @@ export function TransactionForm({
         ) : (
           <Input
             id="concept"
+            data-testid="transaction-concept-input"
             placeholder="Escribe un concepto..."
             {...register("concept")}
             disabled={!selectedCategory}
@@ -416,7 +417,7 @@ export function TransactionForm({
             Cancelar
           </Button>
         )}
-        <Button type="submit" className="w-full">
+        <Button type="submit" className="w-full" data-testid="transaction-submit">
           {initialData ? "Actualizar Transacción" : "Registrar Transacción"}
         </Button>
       </div>

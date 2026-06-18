@@ -6,6 +6,18 @@ export type KvSaveResult = 'saved' | 'skipped' | 'failed';
 /** Promesa inicial de cadenas KV (no usar `true` — rompe kvSaveSucceeded). */
 export const KV_CHAIN_IDLE: Promise<KvSaveResult> = Promise.resolve('saved');
 
+let kvSavesInFlight = 0;
+
+/** Guardados KV encolados aún en vuelo (autosave + persist explícito). */
+export function getKvSavesInFlightCount(): number {
+  return kvSavesInFlight;
+}
+
+/** Solo para tests. */
+export function resetKvSavesInFlightForTests(): void {
+  kvSavesInFlight = 0;
+}
+
 /**
  * Encadena `saveKey` por clave KV: cada POST espera al anterior y envía
  * siempre el último snapshot en `latestRef`.
@@ -26,6 +38,7 @@ export function enqueueKvSerializedSave<T>(
   }
   const genAtEnqueue = generationRef.current;
   const snapshot = payload;
+  kvSavesInFlight += 1;
   const next = chainRef.current.then(async (): Promise<KvSaveResult> => {
     if (generationRef.current !== genAtEnqueue) {
       return 'skipped';
@@ -33,6 +46,9 @@ export function enqueueKvSerializedSave<T>(
     const toSave = options?.updateLatestRef === false ? snapshot : latestRef.current;
     const ok = await api.saveKey(kvKey, toSave as unknown);
     return ok ? 'saved' : 'failed';
+  });
+  void next.finally(() => {
+    kvSavesInFlight = Math.max(0, kvSavesInFlight - 1);
   });
   chainRef.current = next.catch(() => 'failed' as KvSaveResult);
   return next;

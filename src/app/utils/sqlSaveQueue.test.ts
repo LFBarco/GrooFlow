@@ -50,8 +50,23 @@ describe('getSqlSaveQueue', () => {
     });
     const flushed = flushAllSqlSaveQueues();
     expect(done).toBe(false);
-    await flushed;
+    const report = await flushed;
     await pending;
     expect(done).toBe(true);
+    expect(report.ok).toBe(true);
+  });
+
+  it('flushAllSqlSaveQueues reporta fallos SQL', async () => {
+    resetSqlSaveQueuesForTests();
+    const queue = getSqlSaveQueue('data:transactions');
+    await expect(
+      queue.enqueue('fail', async () => {
+        throw new Error('sql down');
+      })
+    ).rejects.toThrow('sql down');
+
+    const report = await flushAllSqlSaveQueues();
+    expect(report.ok).toBe(false);
+    expect(report.failedLabels).toContain('data:transactions');
   });
 });

@@ -12,8 +12,11 @@ on:
       - 'src/app/hooks/useUsersRolesPersistence.ts'
       - 'src/app/hooks/useFleetPersistence.ts'
       - 'src/app/hooks/useInventoryPersistence.ts'
-      - 'src/app/hooks/useAsistenciaPersistence.ts'
+      - 'src/app/hooks/useTransactionsPersistence.ts'
+      - 'src/app/components/transactions/**'
+      - 'src/app/components/dashboard/RecentTransactions.tsx'
       - 'src/app/services/repository/fleetSql.ts'
+      - 'e2e/transactions.spec.ts'
       - 'e2e/**'
       - 'playwright.config.ts'
 
