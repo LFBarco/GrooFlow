@@ -170,7 +170,7 @@ import {
   ensureSqlSave,
 } from "./utils/sqlAutosaveBackup";
 import { useProductionRealtimeSync } from "./hooks/useProductionRealtimeSync";
-import { enqueueKvSerializedSave, flushKvSaveChains, KV_CHAIN_IDLE, kvSaveSucceeded, type KvSaveResult } from "./utils/kvSerializedSave";
+import { enqueueKvSerializedSave, flushKvSaveChains, KV_CHAIN_IDLE, kvFlushHasFailures, kvSaveSucceeded, type KvSaveResult } from "./utils/kvSerializedSave";
 import { flushAllSqlSaveQueues } from "./utils/sqlSaveQueue";
 import {
   autosaveKvDomain,
@@ -213,6 +213,7 @@ import { generateEntityId } from "./utils/generateEntityId";
 import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
 import { useAlertReadPersistence } from "./hooks/useAlertReadPersistence";
 import { useSqlRetryProcessor } from "./hooks/useSqlRetryProcessor";
+import { useOnlineStatus } from "./hooks/useOnlineStatus";
 import {
   applyPettyCashMetaRemoteUpdate,
   usePettyCashMetaPersistence,
@@ -449,6 +450,7 @@ export default function App() {
   const configKvLatestRef = useRef<ConfigStructure>(initialStructure);
 
   const [cloudSyncPhase, setCloudSyncPhase] = useState<CloudSyncPhase>('idle');
+  const isOnline = useOnlineStatus();
   const cloudSyncPendingRef = useRef(0);
   const cloudSyncErrorRef = useRef(false);
   const cloudSyncErrorKeyRef = useRef<string | null>(null);
@@ -751,7 +753,7 @@ export default function App() {
     []
   );
 
-  useSqlRetryProcessor({
+  const { processPendingSqlRetryQueue } = useSqlRetryProcessor({
     isDataLoaded,
     getLatestSnapshot: getSqlRetryLatestSnapshot,
     canWriteUsersRoles: isAdminAppUser(currentUser),
@@ -1806,10 +1808,17 @@ export default function App() {
     productionRealtimeHandlers
   );
 
-  const handleCloudSyncRetry = useCallback(() => {
+  const handleCloudSyncRetry = useCallback(async () => {
     cloudSyncErrorRef.current = false;
-    void hydrateFromKvRef.current?.();
-  }, []);
+    try {
+      await hydrateFromKvRef.current?.();
+      await processPendingSqlRetryQueue(true);
+    } catch (e) {
+      console.warn('[GrooFlow] cloud sync retry', e);
+      cloudSyncErrorRef.current = true;
+      setCloudSyncPhase('error');
+    }
+  }, [processPendingSqlRetryQueue]);
 
   // --- ALERTS ENGINE (diferido al idle: no bloquea el hilo al hidratar datos) ---
   useEffect(() => {
@@ -1893,7 +1902,8 @@ export default function App() {
 
   const handleLogout = async () => {
       signingOutRef.current = true;
-      await flushKvSaveChains([
+      try {
+      const kvResults = await flushKvSaveChains([
         transactionsKvChainRef,
         providersKvChainRef,
         pettyCashKvChainRef,
@@ -1916,6 +1926,13 @@ export default function App() {
         treasuryBankBalanceKvChainRef,
         treasuryPaidHistoryKvChainRef,
       ]);
+      if (kvFlushHasFailures(kvResults)) {
+        toast.error(
+          'Hay cambios sin guardar en la nube. Revisa tu conexión e intenta de nuevo antes de cerrar sesión.'
+        );
+        signingOutRef.current = false;
+        return;
+      }
       await flushAllSqlSaveQueues();
       pendingHydrateRef.current = false;
       setIsAuthChecking(false);
@@ -1971,6 +1988,13 @@ export default function App() {
       setIsProfileOpen(false);
       signingOutRef.current = false;
       navigate(viewToPath('dashboard'), { replace: true });
+      } catch (e) {
+        console.error('[GrooFlow] logout flush', e);
+        toast.error(
+          'No se pudo confirmar el guardado. Revisa conexión e intenta de nuevo antes de cerrar sesión.'
+        );
+        signingOutRef.current = false;
+      }
   };
 
   const handleLogoutRef = useRef(handleLogout);
@@ -2096,9 +2120,11 @@ export default function App() {
      };
 
      const updatedList = transactions.map(t => t.id === updatedTx.id ? updatedTx : t);
-     await persistTransactionsNow(updatedList, "Transacción actualizada correctamente");
-     setIsEditDialogOpen(false);
-     setEditingTransaction(null);
+     const ok = await persistTransactionsNow(updatedList, "Transacción actualizada correctamente");
+     if (ok) {
+       setIsEditDialogOpen(false);
+       setEditingTransaction(null);
+     }
   };
 
   const openEditDialog = (transaction: Transaction) => {
@@ -2167,7 +2193,10 @@ export default function App() {
   };
 
   const handleProjectTransactions = async (projectedTxs: Transaction[]) => {
-     await persistTransactionsNow([...transactions, ...projectedTxs], `${projectedTxs.length} transacciones proyectadas guardadas`);
+     await persistTransactionsNow(
+       [...transactions, ...projectedTxs],
+       `${projectedTxs.length} transacciones proyectadas guardadas`
+     );
   };
 
   const mergedTreasuryForCashflow = useMemo(() => {
@@ -3074,6 +3103,7 @@ export default function App() {
                 <CloudSyncIndicator
                   phase={cloudSyncPhase}
                   visible
+                  isOnline={isOnline}
                   onRetry={handleCloudSyncRetry}
                   compact
                   errorKey={cloudSyncPhase === 'error' ? cloudSyncErrorKeyRef.current : null}
@@ -3182,6 +3212,7 @@ export default function App() {
             <CloudSyncIndicator
               phase={cloudSyncPhase}
               visible
+              isOnline={isOnline}
               onRetry={handleCloudSyncRetry}
               compact
               errorKey={cloudSyncPhase === 'error' ? cloudSyncErrorKeyRef.current : null}

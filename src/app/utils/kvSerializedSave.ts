@@ -51,11 +51,16 @@ export async function flushKvSaveChain(
 
 export async function flushKvSaveChains(
   chainRefs: MutableRefObject<Promise<KvSaveResult>>[]
-): Promise<void> {
-  await Promise.all(chainRefs.map((ref) => flushKvSaveChain(ref)));
+): Promise<KvSaveResult[]> {
+  return Promise.all(chainRefs.map((ref) => flushKvSaveChain(ref)));
 }
 
 /** Compat: true solo si el guardado llegó a la nube. */
 export function kvSaveSucceeded(result: KvSaveResult): boolean {
   return result === 'saved';
+}
+
+/** Tras flush pre-logout: bloquear cierre si alguna cadena reportó fallo de red/API. */
+export function kvFlushHasFailures(results: KvSaveResult[]): boolean {
+  return results.some((r) => r === 'failed');
 }

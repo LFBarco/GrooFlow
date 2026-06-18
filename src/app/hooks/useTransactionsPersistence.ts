@@ -1,4 +1,4 @@
-import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -19,6 +19,16 @@ import {
 } from '../utils/kvSerializedSave';
 
 const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
+const TRANSACTIONS_KV_SAVE_TIMEOUT_MS = 45_000;
+
+function withKvSaveTimeout(promise: Promise<KvSaveResult>): Promise<KvSaveResult> {
+  return Promise.race([
+    promise,
+    new Promise<KvSaveResult>((resolve) => {
+      setTimeout(() => resolve('failed'), TRANSACTIONS_KV_SAVE_TIMEOUT_MS);
+    }),
+  ]);
+}
 
 export type UseTransactionsPersistenceOptions = {
   isDataLoaded: boolean;
@@ -47,8 +57,11 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
     lastSaveErrorAtRef,
   } = options;
 
+  const skipExplicitAutosaveRef = useRef(false);
+
   useEffect(() => {
     if (!isDataLoaded || !cloudHydrationDoneRef.current) return;
+    if (skipExplicitAutosaveRef.current) return;
     if (transactions.length === 0 && !hydratedFromKvRef.current) return;
     void enqueueKvSerializedSave(
       chainRef,
@@ -86,54 +99,68 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
       successMessage?: string,
       saveOptions?: { allowPruneWhenEmpty?: boolean }
     ): Promise<boolean> => {
-      setTransactions(next);
       if (!isDataLoaded || !cloudHydrationDoneRef.current) {
         toast.error(
           'Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.'
         );
         return false;
       }
-      latestRef.current = next;
 
-      if (TRANSACTIONS_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
-        const uid = sess.session?.user?.id ?? null;
-        const sqlOpts = {
-          ...saveOptions,
-          ...(next.length === 0 ? { allowPruneWhenEmpty: true } : {}),
-        };
-        const sqlOk = await ensureSqlSave(
-          true,
-          'data:transactions',
-          () => saveTransactionsToSql(getSupabaseClient(), next, uid, sqlOpts),
-          lastSaveErrorAtRef
+      skipExplicitAutosaveRef.current = true;
+      try {
+        if (TRANSACTIONS_USE_SQL) {
+          const { data: sess } = await getSupabaseClient().auth.getSession();
+          const uid = sess.session?.user?.id ?? null;
+          const sqlOpts = {
+            ...saveOptions,
+            ...(next.length === 0 ? { allowPruneWhenEmpty: true } : {}),
+          };
+          const sqlOk = await ensureSqlSave(
+            true,
+            'data:transactions',
+            () => saveTransactionsToSql(getSupabaseClient(), next, uid, sqlOpts),
+            lastSaveErrorAtRef
+          );
+          if (!sqlOk) return false;
+        }
+
+        const result = await withKvSaveTimeout(
+          enqueueKvSerializedSave(
+            chainRef,
+            kvApplyGenerationRef,
+            latestRef,
+            'data:transactions',
+            next,
+            { updateLatestRef: false }
+          )
         );
-        if (!sqlOk) return false;
-      }
 
-      const result = await enqueueKvSerializedSave(
-        chainRef,
-        kvApplyGenerationRef,
-        latestRef,
-        'data:transactions',
-        next
-      );
-      if (kvSaveSucceeded(result)) {
+        if (result === 'skipped') {
+          toast.error(
+            'No se pudo confirmar el guardado (sesión en transición). Espera un momento e intenta de nuevo.'
+          );
+          return false;
+        }
+        if (!kvSaveSucceeded(result)) {
+          toast.error(
+            'No se pudieron guardar las transacciones en la nube. No cierres ni actualices; revisa conexión/sesión.'
+          );
+          return false;
+        }
+
+        latestRef.current = next;
         hydratedFromKvRef.current = true;
         cooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setTransactions(next);
         if (successMessage) toast.success(successMessage);
         return true;
-      }
-      if (result === 'skipped') {
-        toast.error(
-          'No se pudo confirmar el guardado (sesión en transición). Espera un momento e intenta de nuevo.'
-        );
+      } catch (e) {
+        console.warn('[GrooFlow] transactions persist:', e);
+        toast.error('Error de red al guardar transacciones. Comprueba conexión e inténtalo de nuevo.');
         return false;
+      } finally {
+        skipExplicitAutosaveRef.current = false;
       }
-      toast.error(
-        'No se pudieron guardar las transacciones en la nube. No cierres ni actualices; revisa conexión/sesión.'
-      );
-      return false;
     },
     [isDataLoaded, setTransactions]
   );

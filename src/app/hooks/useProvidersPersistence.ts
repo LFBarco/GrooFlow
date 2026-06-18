@@ -111,16 +111,14 @@ export function useProvidersPersistence(options: UseProvidersPersistenceOptions)
       skipExplicitAutosaveRef.current = true;
       skipHydrateRef.current = true;
       try {
-        latestRef.current = clean;
-        setProviders(next);
-
         const result = await withKvSaveTimeout(
           enqueueKvSerializedSave(
             chainRef,
             kvApplyGenerationRef,
             latestRef,
             'data:providers',
-            clean
+            clean,
+            { updateLatestRef: false }
           )
         );
 
@@ -137,6 +135,8 @@ export function useProvidersPersistence(options: UseProvidersPersistenceOptions)
           return false;
         }
 
+        latestRef.current = clean;
+        setProviders(next);
         cooldownUntilRef.current = Date.now() + DOMAIN_KV_COOLDOWN_MS;
         hydratedRef.current = true;
 
