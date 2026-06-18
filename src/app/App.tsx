@@ -2819,10 +2819,14 @@ export default function App() {
 
   const handleResetCustodianPettyCash = useCallback(
     async (custodianId: string): Promise<boolean> => {
-      const nextTx = pettyCashTransactions.filter((t) => t.custodianId !== custodianId);
-      setPettyCashTransactions(nextTx);
-      pettyCashKvLatestRef.current = nextTx;
+      if (!isDataLoaded) {
+        toast.error(
+          'Los datos siguen cargando desde la nube. Espera e intenta de nuevo.'
+        );
+        return false;
+      }
 
+      const nextTx = pettyCashTransactions.filter((t) => t.custodianId !== custodianId);
       const nextSettings = mergeSystemSettings({
         ...systemSettings,
         pettyCash: {
@@ -2838,60 +2842,35 @@ export default function App() {
           ),
         },
       });
-      setSystemSettings(nextSettings);
-      systemSettingsKvLatestRef.current = nextSettings;
-      pettyCashMetaKvLatestRef.current = extractPettyCashMeta(nextSettings.pettyCash);
-
       const nextUsers = users.map((u) =>
         u.id === custodianId ? { ...u, pettyCashOpeningCarryConsumedAt: undefined } : u
       );
-      setUsers(nextUsers);
-
-      if (!isDataLoaded) return true;
-
-      const meta = extractPettyCashMeta(nextSettings.pettyCash);
-      const systemPayload = stripPettyCashMetaForSystemKv(nextSettings);
 
       skipPettyCashHydrateRef.current = true;
+      skipSystemSettingsHydrateRef.current = true;
+      skipUsersHydrateRef.current = true;
       try {
-        const [txOk, settingsOk, metaOk, usersOk] = await Promise.all([
-          enqueueKvSerializedSave(
-            pettyCashKvChainRef,
-            kvApplyGenerationRef,
-            pettyCashKvLatestRef,
-            'data:pettyCash',
-            nextTx
-          ),
-          autosaveKvDomain({
-            kvKey: 'settings:system',
-            payload: systemPayload,
-            refs: {
-              chainRef: systemSettingsKvChainRef,
-              latestRef: systemSettingsKvLatestRef,
-              cooldownUntilRef: systemSettingsKvCooldownUntilRef,
-            },
-            kvApplyGenerationRef,
-            lastSaveErrorAtRef,
-            errorMessage: 'No se pudo guardar la configuración del sistema en la nube.',
-            sync: cloudSyncTrackerRef.current,
-          }),
-          enqueueKvSerializedSave(
-            pettyCashMetaKvChainRef,
-            kvApplyGenerationRef,
-            pettyCashMetaKvLatestRef,
-            PETTY_CASH_META_KV_KEY,
-            meta
-          ),
-          persistUsersToCloud(nextUsers),
-        ]);
-        if (!txOk || !settingsOk || !kvSaveSucceeded(metaOk) || !usersOk) {
-          toast.error('No se pudo guardar el reinicio completo en la nube. Reintente.');
+        const txOk = await persistPettyCashNow(nextTx);
+        if (!txOk) return false;
+
+        const settingsOk = await persistSystemSettingsNow(nextSettings);
+        if (!settingsOk) return false;
+
+        const usersOk = await persistUsersToCloud(nextUsers);
+        if (!usersOk) {
+          toast.error(
+            'No se pudo actualizar usuarios tras el reinicio de caja chica. Reintente.'
+          );
           return false;
         }
+
+        setUsers(nextUsers);
         pettyCashHydratedFromKvRef.current = true;
         return true;
       } finally {
         skipPettyCashHydrateRef.current = false;
+        skipSystemSettingsHydrateRef.current = false;
+        skipUsersHydrateRef.current = false;
       }
     },
     [
@@ -2899,6 +2878,8 @@ export default function App() {
       systemSettings,
       users,
       isDataLoaded,
+      persistPettyCashNow,
+      persistSystemSettingsNow,
       persistUsersToCloud,
     ]
   );

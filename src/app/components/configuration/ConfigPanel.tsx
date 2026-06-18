@@ -1662,6 +1662,7 @@ export function ConfigPanel({
                                   type="button"
                                   variant="outline"
                                   size="sm"
+                                  data-testid={`petty-cash-reset-${user.id}`}
                                   className="text-destructive border-destructive/40 hover:bg-destructive/10"
                                   disabled={user.pettyCashFundEnabled !== true}
                                   onClick={() => void handleResetCustodian(user)}

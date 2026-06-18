@@ -655,6 +655,7 @@ export function PettyCashModule({
                         Recibo / Planilla
                     </Button>
                     <Button 
+                        data-testid="petty-cash-add-expense"
                         onClick={() => setIsExpenseModalOpen(true)}
                         className="bg-cyan-500 hover:bg-cyan-600 text-black font-medium"
                         disabled={sedeOptions.length === 0}
@@ -681,6 +682,7 @@ export function PettyCashModule({
 
             <Dialog open={isExpenseModalOpen} onOpenChange={setIsExpenseModalOpen}>
                 <DialogContent
+                    data-testid="petty-cash-expense-dialog"
                     className="w-[97vw] sm:max-w-[980px] h-auto bg-[#161427]/95 border-[#3D3B5C]/70 text-white max-h-[calc(100vh-2rem)] overflow-y-auto shadow-[0_35px_120px_rgba(0,0,0,0.7)]"
                     onPointerDownOutside={(e) => e.preventDefault()}
                     onEscapeKeyDown={(e) => e.preventDefault()}
@@ -1185,6 +1187,7 @@ export function PettyCashModule({
 
                         <div className="lg:col-span-2">
                         <Button
+                            data-testid="petty-cash-submit-expense"
                             className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold mt-1 h-11 text-sm"
                             onClick={handleRegisterExpense}
                             disabled={
