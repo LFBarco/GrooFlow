@@ -14,6 +14,12 @@ export function RouteLoader() {
 }
 
 /** Vistas y formularios pesados: se cargan bajo demanda (code-split) para un arranque más liviano. */
+export const Overview = lazy(() =>
+  import('./components/dashboard/Overview').then((m) => ({ default: m.Overview }))
+);
+export const CashFlowChart = lazy(() =>
+  import('./components/dashboard/CashFlowChart').then((m) => ({ default: m.CashFlowChart }))
+);
 export const RecentTransactions = lazy(() =>
   import('./components/dashboard/RecentTransactions').then((m) => ({ default: m.RecentTransactions }))
 );
@@ -81,4 +87,7 @@ export const InventoryModule = lazy(() =>
 );
 export const AsistenciaModule = lazy(() =>
   import('./components/asistencia/AsistenciaModule').then((m) => ({ default: m.AsistenciaModule }))
+);
+export const UserProfileDialog = lazy(() =>
+  import('./components/users/UserProfileDialog').then((m) => ({ default: m.UserProfileDialog }))
 );

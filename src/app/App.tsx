@@ -2,8 +2,6 @@ import { useState, useEffect, useRef, useCallback, useMemo, Suspense, type CSSPr
 import { useLocation, useNavigate } from "react-router-dom";
 import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
-import { Overview } from "./components/dashboard/Overview";
-import { CashFlowChart } from "./components/dashboard/CashFlowChart";
 import { Transaction, Category, TransactionType, InvoiceDraft, Provider, Product, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, PettyCashFundDelivery, SystemAlert, AlertThresholds, ChartOfAccountEntry } from "./types";
 import {
   getAllSedeNames,
@@ -68,9 +66,11 @@ import {
   FleetModule,
   InventoryModule,
   AsistenciaModule,
+  Overview,
+  CashFlowChart,
+  UserProfileDialog,
 } from "./lazyRouteModules";
 import { UserMenu } from "./components/layout/UserMenu";
-import { UserProfileDialog } from "./components/users/UserProfileDialog";
 import { addMonths, subMonths, format, startOfDay, isValid, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -3671,17 +3671,19 @@ export default function App() {
 
           {view === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-              {/* Financial Cockpit - Full Dashboard */}
-              <Overview 
-                  transactions={transactions} 
-                  alerts={alerts}
-                  onOpenAlerts={() => navigate(viewToPath('alerts'))}
-                  fleetDataset={fleetDataset}
-                  onOpenFleet={() => navigate(viewToPath('fleet'))}
-              />
+              <Suspense fallback={<RouteLoader />}>
+                <Overview 
+                    transactions={transactions} 
+                    alerts={alerts}
+                    onOpenAlerts={() => navigate(viewToPath('alerts'))}
+                    fleetDataset={fleetDataset}
+                    onOpenFleet={() => navigate(viewToPath('fleet'))}
+                />
+              </Suspense>
 
-              {/* Cash Flow Chart */}
-              <CashFlowChart transactions={transactions} currentDate={safeCurrentDate} />
+              <Suspense fallback={<RouteLoader />}>
+                <CashFlowChart transactions={transactions} currentDate={safeCurrentDate} />
+              </Suspense>
             </div>
           )}
 
@@ -4203,19 +4205,21 @@ export default function App() {
           )}
 
           {/* User Profile Dialog - Always Available */}
-          <UserProfileDialog 
-            open={isProfileOpen} 
-            onOpenChange={setIsProfileOpen} 
-            onLogout={handleLogout}
-            onUpdateUser={(updatedUser) => {
-              setUsers((prev) => {
-                const next = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
-                void persistUsersToCloud(next);
-                return next;
-              });
-              setCurrentUser(updatedUser);
-            }}
-          />
+          <Suspense fallback={null}>
+            <UserProfileDialog 
+              open={isProfileOpen} 
+              onOpenChange={setIsProfileOpen} 
+              onLogout={handleLogout}
+              onUpdateUser={(updatedUser) => {
+                setUsers((prev) => {
+                  const next = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+                  void persistUsersToCloud(next);
+                  return next;
+                });
+                setCurrentUser(updatedUser);
+              }}
+            />
+          </Suspense>
 
           {/* Alert View - now integrated as a main view */}
 
