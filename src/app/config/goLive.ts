@@ -1,6 +1,9 @@
 /**
  * Módulos fuera del go-live inicial (ocultos en menú salvo super-admin).
  * Quitar un módulo de esta lista cuando esté listo para producción.
+ *
+ * Nota: la tabla/KV `requisitions` no tiene UI propia; las solicitudes de compra
+ * usan `data:requests` y el módulo Compras.
  */
 export const GO_LIVE_EXCLUDED_MODULES = [
   'Tesorería',

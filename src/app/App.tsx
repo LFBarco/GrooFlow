@@ -13,6 +13,20 @@ import {
 import { getBankAccounts } from "./utils/bankAccounts";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
 import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings, getSubcategories } from "./data/initialData";
+import {
+  DEMO_INITIAL_INVOICES,
+  DEMO_INITIAL_PRODUCTS,
+  DEMO_INITIAL_PROVIDERS,
+  DEMO_INITIAL_REQUESTS,
+} from "./data/demoSeedData";
+import {
+  APP_BACKEND,
+  EMPTY_INITIAL_TRANSACTIONS,
+  GUEST_USER,
+  type TransactionDatePreset,
+} from "./constants/appSession";
+import { AppNavButton, AppNavigationContext } from "./components/layout/AppNavigationContext";
+import type { FeeReceiptGlobal } from "./utils/buildSqlRetryRunners";
 import { mergeSystemSettingsSqlAndKv } from "./services/repository/appKvSql";
 import { 
   LayoutDashboard, 
@@ -229,291 +243,35 @@ import {
   savePettyCashMetaToSql,
 } from "./services/repository/pettyCashMetaSql";
 
-const initialTransactions: Transaction[] = [];
-const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
-type TransactionDatePreset = 'all' | 'last7' | 'currentMonth' | 'previousMonth' | 'year' | 'custom';
-const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
 const FLEET_USE_SQL = isFleetSqlEnabled();
 const INVENTORY_USE_SQL = isInventorySqlEnabled();
 const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
-const initialInvoices: InvoiceDraft[] = [
-    {
-        id: "mock-1",
-        fileName: "Factura_E001-450.pdf",
-        provider: "Distribuidora Veterinaria SAC",
-        invoiceNumber: "E001-450",
-        issueDate: "2024-03-01",
-        dueDate: "2024-03-15",
-        description: "Compra de medicamentos marzo",
-        location: "Principal",
-        subtotal: 1000,
-        igv: 180,
-        total: 1180,
-        status: 'pending_approval'
-    },
-    {
-        id: "mock-2",
-        fileName: "Recibo_Luz_Marzo.pdf",
-        provider: "Luz del Sur",
-        invoiceNumber: "S002-998877",
-        issueDate: "2024-03-05",
-        dueDate: "2024-03-20",
-        description: "Servicio eléctrico Sede Norte",
-        location: "Norte",
-        subtotal: 450,
-        igv: 0,
-        total: 450,
-        status: 'approved'
-    }
-];
-
-const initialProviders: Provider[] = [
-    {
-        id: "prov-1",
-        name: "Distribuidora Veterinaria SAC",
-        ruc: "20123456789",
-        category: "Farmacia",
-        defaultCreditDays: 30,
-        email: "ventas@distvet.com",
-        phone: "999888777",
-        contactName: "Roberto Gomez",
-        bankName: "BCP",
-        bankAccount: "191-12345678-0-99",
-        totalPurchased: 15400
-    },
-    {
-        id: "prov-2",
-        name: "Luz del Sur",
-        ruc: "20555666777",
-        category: "Servicios Básicos",
-        defaultCreditDays: 0, // Contado
-        totalPurchased: 2500
-    }
-];
-
-const initialProducts: Product[] = [
-    {
-        id: "prod-10",
-        systemCode: 10,
-        barcode: "",
-        name: "Bravecto 365",
-        brand: "BRAVECTO",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        line: "CLINICA",
-        category: "Antiparasitarios",
-        subcategory: "Tabletas",
-        unit: "UND",
-        salePrice: 80,
-        costPrice: 58,
-        stockAccounting: 0,
-        stockAvailable: 0,
-        minStock: 2,
-        location: "General",
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    },
-    {
-        id: "prod-8",
-        systemCode: 8,
-        barcode: "2230559328739",
-        name: "Apoquel (Oclacitinib) comprimidos 5.4 mg",
-        brand: "ZOETIS",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        line: "FARMACIA",
-        category: "Medicamentos",
-        subcategory: "Comprimidos",
-        unit: "Caja",
-        salePrice: 7.9,
-        costPrice: 5.4,
-        stockAccounting: 13,
-        stockAvailable: 13,
-        minStock: 5,
-        location: "General",
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    },
-    {
-        id: "prod-5",
-        systemCode: 5,
-        barcode: "1894185441069",
-        name: "Royal Canin - Persian Kitten 2 KG",
-        brand: "ROYAL CANIN",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        line: "PET SHOP",
-        category: "Alimentos",
-        subcategory: "Alimento seco",
-        unit: "Bolsa",
-        salePrice: 169.9,
-        costPrice: 125,
-        stockAccounting: 20,
-        stockAvailable: 20,
-        minStock: 4,
-        location: "General",
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    },
-    {
-        id: "prod-4",
-        systemCode: 4,
-        barcode: "6066899651338",
-        name: "Cat Chow Adultos Delimix 3 KG",
-        brand: "PURINA",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        line: "PET SHOP",
-        category: "Alimentos",
-        subcategory: "Alimento seco",
-        unit: "Bolsa",
-        salePrice: 57.9,
-        costPrice: 42,
-        stockAccounting: 30,
-        stockAvailable: 30,
-        minStock: 6,
-        location: "General",
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    },
-    {
-        id: "prod-3",
-        systemCode: 3,
-        barcode: "1553668242545",
-        name: "Bravecto gatos (6.25 - 12.5 kg)",
-        brand: "BRAVECTO",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        line: "FARMACIA",
-        category: "Antiparasitarios",
-        subcategory: "Tabletas",
-        unit: "UND",
-        salePrice: 164.9,
-        costPrice: 119,
-        stockAccounting: 14,
-        stockAvailable: 14,
-        minStock: 4,
-        location: "General",
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    },
-    {
-        id: "prod-2",
-        systemCode: 2,
-        barcode: "5622608233663",
-        name: "Bravecto Gato Plus 1.2 a 2.8 kg. (12 semanas)",
-        brand: "BRAVECTO",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        line: "FARMACIA",
-        category: "Antiparasitarios",
-        subcategory: "Gotas",
-        unit: "UND",
-        salePrice: 154.9,
-        costPrice: 113,
-        stockAccounting: 13,
-        stockAvailable: 13,
-        minStock: 4,
-        location: "General",
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    },
-    {
-        id: "prod-1",
-        systemCode: 1,
-        barcode: "9446719976101",
-        name: "Simparica 20 mg / 5 a 10 kg X 3 Tabletas",
-        brand: "ZOETIS",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        line: "FARMACIA",
-        category: "Antiparasitarios",
-        subcategory: "Tabletas",
-        unit: "Caja",
-        salePrice: 167.2,
-        costPrice: 120,
-        stockAccounting: 11,
-        stockAvailable: 11,
-        minStock: 3,
-        location: "General",
-        status: "active",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-    },
-];
-
-const initialRequests: PurchaseRequest[] = [
-    {
-        id: "req-1",
-        providerId: "prov-1",
-        providerName: "Distribuidora Veterinaria SAC",
-        requestDate: new Date(),
-        description: "Reposición de stock vacunas séxtuple",
-        amount: 850.00,
-        location: "Principal",
-        priority: "high",
-        paymentCondition: 'credit',
-        status: "pending",
-        requesterName: "Jeny Quispes",
-        requesterInitials: "JQ"
-    }
-];
-
-const GUEST_USER: User = {
-  id: 'guest',
-  name: 'Invitado',
-  initials: 'IN',
-  role: 'manager',
-  status: 'active',
-  allSedes: true,
-};
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
   const [currentUser, setCurrentUser] = useState<User>(GUEST_USER);
-  const [transactions, setTransactions] = useState<Transaction[]>(initialTransactions);
+  const [transactions, setTransactions] = useState<Transaction[]>(EMPTY_INITIAL_TRANSACTIONS);
   const [invoices, setInvoices] = useState<InvoiceDraft[]>(() =>
-    APP_BACKEND === 'local' ? initialInvoices : []
+    APP_BACKEND === 'local' ? DEMO_INITIAL_INVOICES : []
   );
   /** En Supabase: arranca vacío para no volcar los 2 proveedores demo al KV con el primer autosave. En local: demo. */
   const [providers, setProviders] = useState<Provider[]>(() =>
-    (import.meta.env.VITE_BACKEND ?? 'supabase') === 'local' ? initialProviders : []
+    APP_BACKEND === 'local' ? DEMO_INITIAL_PROVIDERS : []
   );
   const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccountEntry[]>([]);
   const [openQuickProviderModal, setOpenQuickProviderModal] = useState(false);
   const [products, setProducts] = useState<Product[]>(() =>
-    APP_BACKEND === 'local' ? initialProducts : []
+    APP_BACKEND === 'local' ? DEMO_INITIAL_PRODUCTS : []
   );
   const [requests, setRequests] = useState<PurchaseRequest[]>(() =>
-    APP_BACKEND === 'local' ? initialRequests : []
+    APP_BACKEND === 'local' ? DEMO_INITIAL_REQUESTS : []
   );
   const [pettyCashTransactions, setPettyCashTransactions] = useState<PettyCashTransaction[]>([]);
   
   // Fee Receipts state - shared between Honorarios and Treasury
-  type FeeReceiptGlobal = {
-    id: string;
-    professionalId: string;
-    professionalName: string;
-    receiptNumber: string;
-    issueDate: Date;
-    amount: number;
-    description: string;
-    location?: string;
-    dueDate: Date;
-    paymentRequestedAt?: Date;
-    status: 'pending' | 'approved' | 'requested_payment' | 'paid' | 'rejected';
-    paymentDate?: Date;
-    fileUrl?: string;
-  };
   const [feeReceipts, setFeeReceipts] = useState<FeeReceiptGlobal[]>([]);
 
   const [fleetDataset, setFleetDataset] = useState<FleetDataset>(() => normalizeFleetDataset({}));
@@ -685,7 +443,7 @@ export default function App() {
   const pettyCashMetaKvChainRef = useRef(KV_CHAIN_IDLE);
 
   const transactionsKvChainRef = useRef(KV_CHAIN_IDLE);
-  const transactionsKvLatestRef = useRef<Transaction[]>(initialTransactions);
+  const transactionsKvLatestRef = useRef<Transaction[]>(EMPTY_INITIAL_TRANSACTIONS);
 
   const configKvChainRef = useRef(KV_CHAIN_IDLE);
   const configKvLatestRef = useRef<ConfigStructure>(initialStructure);
@@ -961,9 +719,9 @@ export default function App() {
     setTreasuryBankBalance,
     setTreasuryPaidHistory,
     GUEST_USER,
-    initialInvoices,
-    initialProducts,
-    initialRequests,
+    initialInvoices: DEMO_INITIAL_INVOICES,
+    initialProducts: DEMO_INITIAL_PRODUCTS,
+    initialRequests: DEMO_INITIAL_REQUESTS,
   });
 
   const getSqlRetryLatestSnapshot = useCallback(
@@ -2204,7 +1962,7 @@ export default function App() {
       cloudSyncPendingRef.current = 0;
       cloudSyncErrorRef.current = false;
       setCloudSyncPhase('idle');
-      setProviders((import.meta.env.VITE_BACKEND ?? 'supabase') === 'local' ? initialProviders : []);
+      setProviders(APP_BACKEND === 'local' ? DEMO_INITIAL_PROVIDERS : []);
       setPettyCashTransactions([]);
       setCanSaveUsers(true);
       setIsDataLoaded(false);
@@ -2844,6 +2602,24 @@ export default function App() {
     hasPermission("Gestión de Inventario") ||
     hasPermission("Asistencia");
 
+  const handleSelectView = useCallback(
+    (targetView: ViewType) => {
+      navigate(viewToPath(targetView));
+      setMobileMenuOpen(false);
+    },
+    [navigate]
+  );
+
+  const appNavigationValue = useMemo(
+    () => ({
+      activeView: view,
+      isSidebarCollapsed,
+      hasPermission,
+      onSelectView: handleSelectView,
+    }),
+    [view, isSidebarCollapsed, hasPermission, handleSelectView]
+  );
+
   // --- SEDE FILTERING HELPERS (memoizado: menos re-renders en vistas que filtran por sede) ---
   const catalogSedes = useMemo(() => getAllSedeNames(systemSettings), [systemSettings]);
   const enabledSedesForForms = useMemo(() => getEnabledSedeNames(systemSettings), [systemSettings]);
@@ -3238,64 +3014,14 @@ export default function App() {
     );
   }
 
-  const NavButton = ({ targetView, icon: Icon, label, iconColorClass, requiredModule }: { targetView: ViewType, icon: typeof LayoutDashboard, label: string, iconColorClass?: string, requiredModule?: string }) => {
-    // Hide if user doesn't have permission for this module
-    if (requiredModule && !hasPermission(requiredModule)) return null;
-    
-    const isActive = view === targetView;
-    return (
-    <div className="relative group/tooltip px-2">
-      <button
-        onClick={() => {
-          navigate(viewToPath(targetView));
-          setMobileMenuOpen(false);
-        }}
-        className={`relative flex items-center w-full py-2.5 transition-all duration-300 rounded-xl group/btn overflow-hidden
-        ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}
-        ${isActive 
-            ? 'text-white border border-cyan-500/30' 
-            : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
-        }`}
-        style={isActive ? {
-          background: 'linear-gradient(90deg, rgba(34,211,238,0.12) 0%, rgba(139,92,246,0.06) 100%)',
-          boxShadow: '0 0 20px rgba(34,211,238,0.08)'
-        } : {}}
-      >
-        {/* Active left glow bar */}
-        {isActive && !isSidebarCollapsed && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 rounded-full" style={{ background: 'linear-gradient(180deg, #22d3ee, #a855f7)', boxShadow: '0 0 8px rgba(34,211,238,0.8)' }} />
-        )}
-
-        <Icon className={`w-[19px] h-[19px] transition-all duration-300 shrink-0
-            ${isActive ? 'text-cyan-300' : (iconColorClass || 'text-slate-500 group-hover/btn:text-slate-200')} 
-            ${!isSidebarCollapsed ? 'mr-3' : ''}`}
-          style={isActive ? { filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.7))' } : {}}
-        />
-        
-        {!isSidebarCollapsed && (
-            <>
-                <span className={`text-[13px] flex-1 text-left tracking-wide truncate font-medium ${isActive ? 'text-cyan-50' : ''}`}>{label}</span>
-                {isActive && <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 mr-1 shrink-0" style={{ boxShadow: '0 0 8px rgba(34,211,238,0.9)' }} />}
-            </>
-        )}
-      </button>
-      
-      {/* Tooltip for collapsed mode */}
-      {isSidebarCollapsed && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-[#22203A] text-white text-xs font-semibold rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-all duration-200 whitespace-nowrap z-[60] shadow-xl border border-[#3D3B5C] translate-x-2 group-hover/tooltip:translate-x-0 pointer-events-none">
-          {label}
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1.5 border-4 border-transparent border-r-[#22203A]" />
-        </div>
-      )}
-    </div>
-    );
-  };
+  const NavButton = AppNavButton;
 
   const isDarkTheme = theme === 'dark';
   const surfaces = getModuleSurfaces(isDarkTheme);
   const moduleIdentity = getModuleIdentity(view);
 
   return (
+    <AppNavigationContext.Provider value={appNavigationValue}>
     <div
       className="min-h-screen bg-background text-foreground font-sans transition-colors duration-500 relative overflow-x-hidden"
       style={
@@ -4273,5 +3999,6 @@ export default function App() {
       <Toaster />
       </AppProvider>
     </div>
+    </AppNavigationContext.Provider>
   );
 }
