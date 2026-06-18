@@ -242,12 +242,6 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
       try {
 
-        latestRef.current = clean;
-
-        setInventoryDataset(clean);
-
-
-
         const kvResult = await withKvSaveTimeout(
 
           enqueueKvSerializedSave(
@@ -260,7 +254,9 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
             'data:inventory',
 
-            clean
+            clean,
+
+            { updateLatestRef: false }
 
           )
 
@@ -287,12 +283,6 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
           return false;
 
         }
-
-
-
-        cooldownUntilRef.current = Date.now() + 8000;
-
-        hydratedRef.current = true;
 
 
 
@@ -329,6 +319,16 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
           if (!sqlOk) return false;
 
         }
+
+
+
+        latestRef.current = clean;
+
+        setInventoryDataset(clean);
+
+        cooldownUntilRef.current = Date.now() + 8000;
+
+        hydratedRef.current = true;
 
 
 

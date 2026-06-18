@@ -115,6 +115,8 @@ export interface InitialDataKeys {
   __feeReceiptsKvFetchFailed?: boolean;
   /** Metadato interno: GET de configuración del sistema falló. */
   __systemSettingsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de asistencia dedicada falló. */
+  __asistenciaKvFetchFailed?: boolean;
   /** Metadato interno: GET de facturas tesorería falló. */
   __treasuryInvoicesKvFetchFailed?: boolean;
   /** Metadato interno: GET de saldo bancario tesorería falló. */
@@ -236,6 +238,7 @@ export const api = {
             else if (key === 'data:requests') result.__requestsKvFetchFailed = true;
             else if (key === 'data:feeReceipts') result.__feeReceiptsKvFetchFailed = true;
             else if (key === 'settings:system') result.__systemSettingsKvFetchFailed = true;
+            else if (key === 'settings:asistencia') result.__asistenciaKvFetchFailed = true;
             else if (key === 'data:treasuryInvoices') result.__treasuryInvoicesKvFetchFailed = true;
             else if (key === 'data:treasuryBankBalance') result.__treasuryBankBalanceKvFetchFailed = true;
             else if (key === 'data:treasuryPaidHistory') result.__treasuryPaidHistoryKvFetchFailed = true;

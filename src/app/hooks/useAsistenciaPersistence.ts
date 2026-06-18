@@ -17,7 +17,6 @@ import { ensureSqlSave } from '../utils/sqlAutosaveBackup';
 import { type KvSaveResult } from '../utils/kvSerializedSave';
 
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
-const SQL_ERROR_TOAST_MS = 10_000;
 
 export type UseAsistenciaPersistenceOptions = {
   isDataLoaded: boolean;
@@ -46,8 +45,6 @@ export function useAsistenciaPersistence(options: UseAsistenciaPersistenceOption
     lastSaveErrorAtRef,
   } = options;
 
-  const sqlErrorToastAtRef = useRef(0);
-
   const persistAsistenciaNow = useCallback(
     async (
       updater: (prev: AsistenciaSettings) => AsistenciaSettings,
@@ -61,40 +58,36 @@ export function useAsistenciaPersistence(options: UseAsistenciaPersistenceOption
       }
 
       const prevAsistencia = mergeAsistenciaSettings(asistenciaLatestRef.current);
+      const prevSettings = systemSettingsLatestRef.current;
       const nextAsistencia = mergeAsistenciaSettings(updater(prevAsistencia));
       const nextSettings = mergeAsistenciaIntoSystemSettings(
         systemSettingsLatestRef.current,
         nextAsistencia
       );
 
-      asistenciaLatestRef.current = nextAsistencia;
-      systemSettingsLatestRef.current = nextSettings;
-      setSystemSettings(nextSettings);
+      skipHydrateRef.current = true;
+      try {
+        const kvOk = await persistKvDomainNow({
+          kvKey: ASISTENCIA_SETTINGS_KV_KEY,
+          payload: nextAsistencia,
+          refs: {
+            hydratedFromKvRef: systemSettingsHydratedRef,
+            skipHydrateRef,
+            cooldownUntilRef,
+            chainRef: asistenciaChainRef,
+            latestRef: asistenciaLatestRef,
+          },
+          kvApplyGenerationRef,
+          lastSaveErrorAtRef,
+          errorMessage: 'No se pudo guardar la configuración de Asistencia en la nube.',
+        });
 
-      // 1) KV primero (rápido) — sin spinner global de la app
-      const kvOk = await persistKvDomainNow({
-        kvKey: ASISTENCIA_SETTINGS_KV_KEY,
-        payload: nextAsistencia,
-        refs: {
-          hydratedFromKvRef: systemSettingsHydratedRef,
-          skipHydrateRef,
-          cooldownUntilRef,
-          chainRef: asistenciaChainRef,
-          latestRef: asistenciaLatestRef,
-        },
-        kvApplyGenerationRef,
-        lastSaveErrorAtRef,
-        errorMessage: 'No se pudo guardar la configuración de Asistencia en la nube.',
-        successMessage,
-      });
+        if (!kvOk) {
+          asistenciaLatestRef.current = prevAsistencia;
+          return false;
+        }
 
-      if (!kvOk) return false;
-
-      cooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
-
-      // 2) SQL en segundo plano (no bloquea al usuario)
-      if (PRODUCTION_USE_SQL) {
-        void (async () => {
+        if (PRODUCTION_USE_SQL) {
           const { data: sess } = await getSupabaseClient().auth.getSession();
           const uid = sess.session?.user?.id ?? null;
           const sqlOk = await ensureSqlSave(
@@ -105,18 +98,20 @@ export function useAsistenciaPersistence(options: UseAsistenciaPersistenceOption
             'No se pudo guardar la configuración de Asistencia en SQL. Revisa sesión o permisos.'
           );
           if (!sqlOk) {
-            const now = Date.now();
-            if (now - sqlErrorToastAtRef.current > SQL_ERROR_TOAST_MS) {
-              sqlErrorToastAtRef.current = now;
-              toast.error(
-                'Asistencia guardada en la nube (KV) pero falló la réplica SQL. Reintenta guardar en unos segundos.'
-              );
-            }
+            asistenciaLatestRef.current = prevAsistencia;
+            return false;
           }
-        })();
-      }
+        }
 
-      return true;
+        asistenciaLatestRef.current = nextAsistencia;
+        systemSettingsLatestRef.current = nextSettings;
+        setSystemSettings(nextSettings);
+        cooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+        if (successMessage) toast.success(successMessage);
+        return true;
+      } finally {
+        skipHydrateRef.current = false;
+      }
     },
     [
       isDataLoaded,

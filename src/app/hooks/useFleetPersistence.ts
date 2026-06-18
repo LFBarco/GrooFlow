@@ -210,14 +210,12 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
       const nextSig = fleetChecklistSignature(cleanSections);
       if (prevSig === nextSig) return true;
 
-      const next: FleetDataset = { ...latestRef.current, checklistSections: cleanSections };
+      const prev = latestRef.current;
+      const next: FleetDataset = { ...prev, checklistSections: cleanSections };
 
       skipExplicitAutosaveRef.current = true;
       skipHydrateRef.current = true;
       try {
-        latestRef.current = next;
-        setFleetDataset(next);
-
         if (FLEET_USE_SQL) {
           const clResult = await saveFleetChecklistToSql(getSupabaseClient(), cleanSections, {
             knownTimestamps: sqlTimestampsRef.current,
@@ -251,6 +249,9 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
             latestRef.current = refreshed.data;
             setFleetDataset(refreshed.data);
             if (refreshed.timestamps) sqlTimestampsRef.current = refreshed.timestamps;
+          } else {
+            latestRef.current = next;
+            setFleetDataset(next);
           }
           extendFleetCooldown(cooldownUntilRef);
           hydratedRef.current = true;
@@ -281,6 +282,8 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
           return false;
         }
 
+        latestRef.current = next;
+        setFleetDataset(next);
         extendFleetCooldown(cooldownUntilRef);
         hydratedRef.current = true;
         if (!options?.silent) toast.success('Plantilla del checklist guardada.');
@@ -318,9 +321,6 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
       skipExplicitAutosaveRef.current = true;
       skipHydrateRef.current = true;
       try {
-        latestRef.current = clean;
-        setFleetDataset(clean);
-
         if (FLEET_USE_SQL) {
           const { ok, conflict } = await runFleetSqlSave(clean, { allowPruneWhenEmpty: true });
           if (!ok) {
@@ -329,6 +329,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
             }
             return false;
           }
+          await reloadFleetFromSql();
           hydratedRef.current = true;
           if (successMessage) toast.success(successMessage);
           return true;
@@ -355,6 +356,8 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
           return false;
         }
 
+        latestRef.current = clean;
+        setFleetDataset(clean);
         extendFleetCooldown(cooldownUntilRef);
         hydratedRef.current = true;
         if (successMessage) toast.success(successMessage);

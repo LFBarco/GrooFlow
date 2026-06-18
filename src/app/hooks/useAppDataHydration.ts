@@ -360,11 +360,16 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             }
             const merged = mergePettyCashMetaIntoSettings(mergedBase, resolvedMeta);
 
-            let asistenciaRemote = data[ASISTENCIA_SETTINGS_KV_KEY] as
-              | Partial<AsistenciaSettings>
-              | null
-              | undefined;
-            if (PRODUCTION_USE_SQL) {
+            if (data.__asistenciaKvFetchFailed) {
+              toast.error(
+                'No se pudo leer la configuración de Asistencia desde la nube. Se usará la copia embebida en sistema.'
+              );
+            }
+
+            let asistenciaRemote = data.__asistenciaKvFetchFailed
+              ? undefined
+              : (data[ASISTENCIA_SETTINGS_KV_KEY] as Partial<AsistenciaSettings> | null | undefined);
+            if (!data.__asistenciaKvFetchFailed && PRODUCTION_USE_SQL) {
               asistenciaRemote =
                 ((await resolveAppKvFromSql(
                   getSupabaseClient(),
