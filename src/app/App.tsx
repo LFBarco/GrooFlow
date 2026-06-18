@@ -109,7 +109,7 @@ import { hydrateTransactions } from "./utils/hydrateTransactions";
 import { labelsMatch } from "./utils/labelMatch";
 import { formatDateInputValue, parseTransactionDate } from "./utils/transactionDate";
 import { generateAlerts } from "./components/alerts/alertEngine";
-import { goLiveAlertSources } from "./config/goLive";
+import { canConfigureAsistencia } from "./utils/asistenciaAccess";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
 import {
@@ -3754,7 +3754,7 @@ export default function App() {
                   onPersistAsistenciaSettings={persistAsistenciaNow}
                   onPersistSystemSettings={persistSystemSettingsNow}
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
-                  canConfigure={isAdminAppUser(currentUser)}
+                  canConfigure={canConfigureAsistencia(currentUser, userRole)}
                 />
               </Suspense>
             </div>

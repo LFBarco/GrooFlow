@@ -5,12 +5,20 @@ import {
   Hexagon,
   Mail,
   MapPin,
+  Moon,
   Phone,
   Save,
+  Sun,
   User,
 } from 'lucide-react';
 
-import type { AsistenciaSedeProfile, AsistenciaStaffMember } from '../../types/asistencia';
+import type { AsistenciaSedeProfile, AsistenciaStaffMember, AsistenciaWorkShift } from '../../types/asistencia';
+import {
+  ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
+  ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME,
+  ASISTENCIA_WORK_SHIFT_LABELS,
+} from '../../types/asistencia';
+import { defaultExpectedTimeForShift } from '../../utils/asistenciaShift';
 import { defaultMatchHints } from '../../utils/asistenciaStaff';
 import { cargosForOrgColumn, type AsistenciaOrgColumn } from '../../utils/asistenciaOrgColumns';
 import { Button } from '../ui/button';
@@ -51,7 +59,8 @@ const emptyForm = (sedeName: string, defaultArea: string): AsistenciaStaffMember
   fullName: '',
   cargoLabel: 'Recepcionista',
   area: defaultArea,
-  expectedTime: '08:00',
+  expectedTime: ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
+  shift: 'day',
   isCritical: false,
   isManager: false,
 });
@@ -93,8 +102,20 @@ export function AsistenciaStaffDialog({
         next.matchArea = hints.matchArea;
         next.matchSpecialty = hints.matchSpecialty;
       }
-      if (partial.isManager) {
-        next.isManager = true;
+      if (partial.isManager !== undefined) {
+        next.isManager = partial.isManager;
+      }
+      if (partial.shift) {
+        const oldShift = f.shift ?? 'day';
+        const oldDefault = defaultExpectedTimeForShift(oldShift);
+        if (
+          !partial.expectedTime &&
+          (f.expectedTime === oldDefault ||
+            f.expectedTime === ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME ||
+            f.expectedTime === ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME)
+        ) {
+          next.expectedTime = defaultExpectedTimeForShift(partial.shift);
+        }
       }
       return next;
     });
@@ -107,7 +128,8 @@ export function AsistenciaStaffDialog({
       ...form,
       fullName: form.fullName.trim(),
       cargoLabel: form.cargoLabel.trim() || 'Personal',
-      expectedTime: form.expectedTime.trim() || '08:00',
+      expectedTime: form.expectedTime.trim() || defaultExpectedTimeForShift(form.shift ?? 'day'),
+      shift: form.shift ?? 'day',
       email: form.email?.trim() || undefined,
       phone: form.phone?.trim() || undefined,
       avatarUrl: form.avatarUrl?.trim() || undefined,
@@ -175,16 +197,29 @@ export function AsistenciaStaffDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label className="text-slate-300">Estado inicial</Label>
-              <Select value="ausente" disabled>
-                <SelectTrigger className="bg-slate-800 text-slate-400 border-slate-700">
-                  <SelectValue placeholder="Ausente" />
+              <Label className="text-slate-300 flex items-center gap-1">
+                {form.shift === 'night' ? (
+                  <Moon className="h-3.5 w-3.5" />
+                ) : (
+                  <Sun className="h-3.5 w-3.5" />
+                )}{' '}
+                Turno
+              </Label>
+              <Select
+                value={form.shift ?? 'day'}
+                onValueChange={(v) => patch({ shift: v as AsistenciaWorkShift })}
+              >
+                <SelectTrigger
+                  data-testid="asistencia-staff-shift"
+                  className="bg-white text-slate-900 border-0"
+                >
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ausente">Ausente</SelectItem>
+                  <SelectItem value="day">{ASISTENCIA_WORK_SHIFT_LABELS.day}</SelectItem>
+                  <SelectItem value="night">{ASISTENCIA_WORK_SHIFT_LABELS.night}</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-slate-500">Se actualiza en vivo con Buk</p>
             </div>
             <div className="space-y-2">
               <Label className="text-slate-300 flex items-center gap-1">
@@ -196,6 +231,27 @@ export function AsistenciaStaffDialog({
                 onChange={(e) => patch({ expectedTime: e.target.value })}
                 className="bg-white text-slate-900 border-0"
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Estado inicial</Label>
+              <Select value="ausente" disabled>
+                <SelectTrigger className="bg-slate-800 text-slate-400 border-slate-700">
+                  <SelectValue placeholder="Ausente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ausente">Ausente</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[10px] text-slate-500">Se actualiza en vivo con Buk</p>
+            </div>
+            <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+              <p className="text-[11px] text-slate-400 leading-snug">
+                Turno <strong className="text-slate-200">{ASISTENCIA_WORK_SHIFT_LABELS[form.shift ?? 'day']}</strong>:
+                se cruza con <code className="text-cyan-300">turno_noche</code> en Buk.
+              </p>
             </div>
           </div>
 
@@ -269,7 +325,7 @@ export function AsistenciaStaffDialog({
 
           <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-700 bg-slate-900/60 p-3">
             <div>
-              <p className="text-sm font-medium text-white">Gerente de sede</p>
+              <p className="text-sm font-medium text-white">Encargado de sede</p>
               <p className="text-xs text-slate-400">Aparece en la cima del organigrama en vivo.</p>
             </div>
             <Switch

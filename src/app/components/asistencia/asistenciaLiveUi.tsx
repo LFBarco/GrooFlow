@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 import type { AsistenciaLiveStatus } from '../../types/asistencia';
-import { ASISTENCIA_LIVE_STATUS_LABELS } from '../../types/asistencia';
+import { ASISTENCIA_LIVE_STATUS_LABELS, ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { isBuiltinOrgColumnId } from '../../utils/asistenciaOrgColumns';
 
 const BUILTIN_THEME = {
@@ -72,6 +72,7 @@ export function StaffLiveCard({
   editLayout,
   dragHandleRef,
   isDragging,
+  shiftLabel,
 }: {
   name: string;
   cargo: string;
@@ -84,6 +85,7 @@ export function StaffLiveCard({
   editLayout?: boolean;
   dragHandleRef?: (node: HTMLDivElement | null) => void;
   isDragging?: boolean;
+  shiftLabel?: string;
 }) {
   const absent = status === 'ausente';
   const detailHint = statusNote ?? (absent ? matchHint : undefined);
@@ -116,6 +118,9 @@ export function StaffLiveCard({
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white truncate">{name}</p>
             <p className="text-xs text-slate-400 truncate">{cargo}</p>
+            {shiftLabel ? (
+              <p className="text-[10px] text-indigo-300/90 truncate">{shiftLabel}</p>
+            ) : null}
           </div>
         </div>
         {absent ? (
@@ -147,7 +152,7 @@ export function ManagerPlaceholder() {
   return (
     <div className="rounded-xl border border-dashed border-slate-600 bg-slate-900/40 px-8 py-4 text-center">
       <Crown className="h-5 w-5 text-slate-500 mx-auto mb-1" />
-      <p className="text-sm text-slate-500">Sin Gerente Asignado</p>
+      <p className="text-sm text-slate-500">Sin encargado de sede asignado</p>
     </div>
   );
 }

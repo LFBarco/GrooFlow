@@ -13,6 +13,7 @@ import type {
   AsistenciaStaffMember,
   BukAsistenciaRecord,
 } from '../types/asistencia';
+import { normalizeStaffShift } from './asistenciaShift';
 
 export const DEFAULT_ASISTENCIA_AREA_KEYWORDS: AsistenciaAreaKeywords = {
   medica: [
@@ -52,7 +53,9 @@ export function mergeAsistenciaSettings(
     ...spread,
     buk: { ...base.buk, ...(partial.buk ?? {}) },
     requirements: Array.isArray(partial.requirements) ? partial.requirements : spread.requirements,
-    staff: Array.isArray(partial.staff) ? partial.staff : spread.staff ?? [],
+    staff: Array.isArray(partial.staff)
+      ? partial.staff.map(normalizeStaffShift)
+      : (spread.staff ?? []).map(normalizeStaffShift),
     sedeProfiles: Array.isArray(partial.sedeProfiles) ? partial.sedeProfiles : spread.sedeProfiles ?? [],
     areaKeywords: {
       medica:
@@ -74,8 +77,8 @@ export function mergeAsistenciaStaffLists(
   b?: AsistenciaStaffMember[] | null
 ): AsistenciaStaffMember[] {
   const map = new Map<string, AsistenciaStaffMember>();
-  for (const m of a ?? []) map.set(m.id, m);
-  for (const m of b ?? []) map.set(m.id, m);
+  for (const m of a ?? []) map.set(m.id, normalizeStaffShift(m));
+  for (const m of b ?? []) map.set(m.id, normalizeStaffShift(m));
   return [...map.values()];
 }
 

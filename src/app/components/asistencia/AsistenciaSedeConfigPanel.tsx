@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Building2, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import type { AsistenciaSettings, AsistenciaStaffMember } from '../../types/asistencia';
-import { ASISTENCIA_STAFF_AREA_LABELS } from '../../types/asistencia';
+import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import {
@@ -46,6 +46,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   const [editSede, setEditSede] = useState(false);
   const [scheduleStart, setScheduleStart] = useState(profile.scheduleStart ?? '08:00');
   const [scheduleEnd, setScheduleEnd] = useState(profile.scheduleEnd ?? '18:00');
+  const [scheduleNightStart, setScheduleNightStart] = useState(profile.scheduleNightStart ?? '20:00');
+  const [scheduleNightEnd, setScheduleNightEnd] = useState(profile.scheduleNightEnd ?? '08:00');
   const [bukCode, setBukCode] = useState(profile.bukRecintoCode ?? '');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<AsistenciaStaffMember | null>(null);
@@ -97,6 +99,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
             sedeName,
             scheduleStart,
             scheduleEnd,
+            scheduleNightStart,
+            scheduleNightEnd,
             bukRecintoCode: bukCode.trim() || undefined,
           },
         ],
@@ -218,6 +222,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 onClick={() => {
                   setScheduleStart(profile.scheduleStart ?? '08:00');
                   setScheduleEnd(profile.scheduleEnd ?? '18:00');
+                  setScheduleNightStart(profile.scheduleNightStart ?? '20:00');
+                  setScheduleNightEnd(profile.scheduleNightEnd ?? '08:00');
                   setBukCode(profile.bukRecintoCode ?? '');
                   setEditSede(true);
                 }}
@@ -233,16 +239,29 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
               <p className="text-xs text-slate-500 mb-1">Nombre de la Sede</p>
               <p className="text-lg font-semibold text-white">{sedeName}</p>
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 sm:col-span-2">
               <p className="text-xs text-slate-500 mb-1">Horario</p>
               {editSede ? (
-                <div className="flex items-center gap-2">
-                  <Input type="time" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} className="h-8 bg-slate-800 border-slate-700 text-white" />
-                  <span className="text-slate-500">-</span>
-                  <Input type="time" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} className="h-8 bg-slate-800 border-slate-700 text-white" />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase text-slate-500 w-12">Día</span>
+                    <Input type="time" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                    <span className="text-slate-500">-</span>
+                    <Input type="time" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase text-slate-500 w-12">Noche</span>
+                    <Input type="time" value={scheduleNightStart} onChange={(e) => setScheduleNightStart(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                    <span className="text-slate-500">-</span>
+                    <Input type="time" value={scheduleNightEnd} onChange={(e) => setScheduleNightEnd(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                  </div>
                 </div>
               ) : (
-                <p className="text-lg font-semibold text-white">{profile.scheduleStart} - {profile.scheduleEnd}</p>
+                <p className="text-sm font-semibold text-white">
+                  Día {profile.scheduleStart} - {profile.scheduleEnd}
+                  <span className="text-slate-500 font-normal mx-2">·</span>
+                  Noche {profile.scheduleNightStart ?? '20:00'} - {profile.scheduleNightEnd ?? '08:00'}
+                </p>
               )}
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
@@ -445,7 +464,10 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                       >
                         <div className="min-w-0">
                           <p className="font-medium text-white truncate">{member.fullName}</p>
-                          <p className="text-xs text-slate-400">{member.cargoLabel} · {member.expectedTime}</p>
+                          <p className="text-xs text-slate-400">
+                            {member.cargoLabel} · {member.expectedTime} ·{' '}
+                            {ASISTENCIA_WORK_SHIFT_LABELS[member.shift ?? 'day']}
+                          </p>
                           {member.isCritical ? (
                             <span className="text-[10px] text-amber-400">Puesto crítico</span>
                           ) : null}

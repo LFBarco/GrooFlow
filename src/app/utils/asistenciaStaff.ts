@@ -4,11 +4,19 @@ import type {
   AsistenciaLiveStatus,
   AsistenciaSettings,
   AsistenciaSedeProfile,
+  AsistenciaShiftFilter,
   AsistenciaStaffLiveState,
   AsistenciaStaffMember,
   BukAsistenciaRecord,
 } from '../types/asistencia';
 import { resolveOrgColumns } from './asistenciaOrgColumns';
+import {
+  isNightBukRecord,
+  isSedeLeaderCargo,
+  recordMatchesStaffShift,
+  scheduleLabelForShift,
+  staffMatchesShiftFilter,
+} from './asistenciaShift';
 import {
   formatBukEntradaDisplay,
   formatBukRecintoLabel,
@@ -149,7 +157,18 @@ export function diagnoseStaffBukMatch(input: {
     return `Buk no tiene marcación con RUT ${input.staff.rut?.trim()} el ${dateKey}.`;
   }
 
-  const atSede = byRutOnDate.filter((r) =>
+  const shiftMatches = byRutOnDate.filter((r) => recordMatchesStaffShift(r, input.staff));
+  if (shiftMatches.length === 0) {
+    const expected = input.staff.shift === 'night' ? 'noche' : 'día';
+    const bukShifts = [
+      ...new Set(
+        byRutOnDate.map((r) => (isNightBukRecord(r) ? 'noche' : 'día'))
+      ),
+    ];
+    return `Buk tiene marcación el ${dateKey}, pero en turno ${bukShifts.join('/')} y el personal está configurado como turno ${expected}. Ajusta el turno del personal o revisa turno_noche en Buk.`;
+  }
+
+  const atSede = shiftMatches.filter((r) =>
     recordMatchesSede(r, input.sedeName, profile, settings)
   );
   const bukCode = profile.bukRecintoCode?.trim();
@@ -182,7 +201,8 @@ function findBukRecordForStaff(
     (r) =>
       isRecordOnDate(r, date) &&
       recordMatchesSede(r, sedeName, profile, settings) &&
-      recordMatchesStaff(r, staff)
+      recordMatchesStaff(r, staff) &&
+      recordMatchesStaffShift(r, staff)
   );
 }
 
@@ -234,6 +254,8 @@ export function getSedeProfile(
     sedeName,
     scheduleStart: found?.scheduleStart ?? DEFAULT_SCHEDULE.start,
     scheduleEnd: found?.scheduleEnd ?? DEFAULT_SCHEDULE.end,
+    scheduleNightStart: found?.scheduleNightStart,
+    scheduleNightEnd: found?.scheduleNightEnd,
     bukRecintoCode: found?.bukRecintoCode ?? map?.bukRecintoCode,
     areaLabels: found?.areaLabels,
     areaOrder: found?.areaOrder,
@@ -243,10 +265,14 @@ export function getSedeProfile(
   };
 }
 
-export function staffForSede(settings: AsistenciaSettings, sedeName: string): AsistenciaStaffMember[] {
+export function staffForSede(
+  settings: AsistenciaSettings,
+  sedeName: string,
+  shiftFilter: AsistenciaShiftFilter = 'all'
+): AsistenciaStaffMember[] {
   const merged = mergeAsistenciaSettings(settings);
   return (merged.staff ?? [])
-    .filter((s) => s.sedeName === sedeName)
+    .filter((s) => s.sedeName === sedeName && staffMatchesShiftFilter(s, shiftFilter))
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.fullName.localeCompare(b.fullName));
 }
 
@@ -279,10 +305,12 @@ export function buildLiveSedeSummary(input: {
   settings: AsistenciaSettings;
   records: BukAsistenciaRecord[];
   date: Date;
+  shiftFilter?: AsistenciaShiftFilter;
 }): AsistenciaLiveSedeSummary {
+  const shiftFilter = input.shiftFilter ?? 'all';
   const settings = mergeAsistenciaSettings(input.settings);
   const profile = getSedeProfile(settings, input.sedeName);
-  const staffList = staffForSede(settings, input.sedeName);
+  const staffList = staffForSede(settings, input.sedeName, shiftFilter);
 
   const liveStates: AsistenciaStaffLiveState[] = staffList.map((staff) => {
     const buk = findBukRecordForStaff(
@@ -314,7 +342,7 @@ export function buildLiveSedeSummary(input: {
 
   const managerState =
     liveStates.find((s) => s.staff.isManager) ??
-    liveStates.find((s) => s.staff.cargoLabel.toLowerCase().includes('gerente')) ??
+    liveStates.find((s) => isSedeLeaderCargo(s.staff.cargoLabel)) ??
     null;
 
   const areas = areaOrderForProfile(profile)
@@ -341,7 +369,7 @@ export function buildLiveSedeSummary(input: {
     .filter((s) => s.staff.isCritical && s.status === 'ausente')
     .map((s) => s.staff);
 
-  const scheduleLabel = `${profile.scheduleStart ?? DEFAULT_SCHEDULE.start} - ${profile.scheduleEnd ?? DEFAULT_SCHEDULE.end}`;
+  const scheduleLabel = scheduleLabelForShift(shiftFilter, profile);
 
   return {
     sedeName: input.sedeName,
@@ -371,6 +399,7 @@ export function buildLiveConsolidatedSummary(input: {
   settings: AsistenciaSettings;
   records: BukAsistenciaRecord[];
   date: Date;
+  shiftFilter?: AsistenciaShiftFilter;
 }): AsistenciaLiveConsolidatedSummary {
   const sedes = input.sedeNames.map((sedeName) =>
     buildLiveSedeSummary({
@@ -378,6 +407,7 @@ export function buildLiveConsolidatedSummary(input: {
       settings: input.settings,
       records: input.records,
       date: input.date,
+      shiftFilter: input.shiftFilter,
     })
   );
   return {

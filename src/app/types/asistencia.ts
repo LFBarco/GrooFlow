@@ -24,6 +24,19 @@ export const ASISTENCIA_STAFF_AREAS: AsistenciaStaffArea[] = [
 
 export type AsistenciaLiveStatus = 'trabajando' | 'presente' | 'tarde' | 'ausente';
 
+/** Turno operativo del personal y del organigrama en vivo. */
+export type AsistenciaWorkShift = 'day' | 'night';
+
+export type AsistenciaShiftFilter = 'all' | AsistenciaWorkShift;
+
+export const ASISTENCIA_WORK_SHIFT_LABELS: Record<AsistenciaWorkShift, string> = {
+  day: 'Día',
+  night: 'Noche',
+};
+
+export const ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME = '08:00';
+export const ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME = '20:00';
+
 export const ASISTENCIA_LIVE_STATUS_LABELS: Record<AsistenciaLiveStatus, string> = {
   trabajando: 'Trabajando',
   presente: 'Presente',
@@ -41,6 +54,8 @@ export interface AsistenciaStaffMember {
   area: string;
   /** HH:mm esperado de llegada. */
   expectedTime: string;
+  /** Turno operativo (cruce con Buk `turno_noche` y filtro del organigrama). */
+  shift?: AsistenciaWorkShift;
   email?: string;
   phone?: string;
   avatarUrl?: string;
@@ -64,6 +79,9 @@ export interface AsistenciaSedeProfile {
   sedeName: string;
   scheduleStart?: string;
   scheduleEnd?: string;
+  /** Horario referencial del turno nocturno en esta sede. */
+  scheduleNightStart?: string;
+  scheduleNightEnd?: string;
   bukRecintoCode?: string;
   /** Columnas extra del organigrama. */
   customOrgColumns?: AsistenciaCustomOrgColumn[];
@@ -122,7 +140,7 @@ export interface AsistenciaLiveConsolidatedSummary {
 }
 
 export const ASISTENCIA_CARGO_PRESETS = [
-  'Gerente',
+  'Encargado de sede',
   'Recepcionista',
   'Counter',
   'Médico veterinario',
@@ -133,10 +151,20 @@ export const ASISTENCIA_CARGO_PRESETS = [
   'Mantenimiento',
 ] as const;
 
+/** Cargo visible del líder operativo en la cima del organigrama. */
+export const ASISTENCIA_SEDE_LEADER_CARGO = 'Encargado de sede';
+
 /** Cargos sugeridos por área built-in del organigrama. */
 export const ASISTENCIA_CARGOS_BY_BUILTIN_AREA: Record<AsistenciaStaffArea, string[]> = {
-  administracion: ['Gerente', 'Recepcionista', 'Counter', 'Limpieza', 'Mantenimiento'],
-  medica: ['Médico veterinario', 'Asistente veterinario'],
+  administracion: [
+    'Encargado de sede',
+    'Jefe de área',
+    'Recepcionista',
+    'Counter',
+    'Limpieza',
+    'Mantenimiento',
+  ],
+  medica: ['Jefe médico', 'Médico veterinario', 'Asistente veterinario'],
   peluqueria: ['Peluquero', 'Bañador'],
 };
 

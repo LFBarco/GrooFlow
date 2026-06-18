@@ -6,7 +6,9 @@ import type {
   AsistenciaLiveConsolidatedSummary,
   AsistenciaLiveSedeSummary,
   AsistenciaSettings,
+  AsistenciaShiftFilter,
 } from '../../types/asistencia';
+import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { AsistenciaLiveSedeBlock } from './AsistenciaLiveDnd';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -18,6 +20,7 @@ type LayoutPersist = (
 
 type Props = {
   mode: 'single' | 'consolidated';
+  shiftFilter?: AsistenciaShiftFilter;
   summary?: AsistenciaLiveSedeSummary;
   consolidated?: AsistenciaLiveConsolidatedSummary;
   editLayout: boolean;
@@ -58,6 +61,7 @@ function LiveHeaderBadges({
 
 export function AsistenciaLiveView({
   mode,
+  shiftFilter = 'all',
   summary,
   consolidated,
   editLayout,
@@ -72,10 +76,13 @@ export function AsistenciaLiveView({
   const absentCount = isConsolidated ? consolidated.absentCount : (summary?.absentCount ?? 0);
   const lateCount = isConsolidated ? consolidated.lateCount : (summary?.lateCount ?? 0);
 
+  const shiftLabel =
+    shiftFilter === 'all' ? 'Todos los turnos' : `Turno ${ASISTENCIA_WORK_SHIFT_LABELS[shiftFilter]}`;
+
   const title = isConsolidated ? 'Consolidado operativo en vivo' : 'Sede operativa en vivo';
   const description = isConsolidated
-    ? `Organigrama unificado — ${consolidated.sedes.length} sede(s)`
-    : `Organigrama en tiempo real — ${summary?.sedeName ?? ''}`;
+    ? `Organigrama unificado — ${consolidated.sedes.length} sede(s) · ${shiftLabel}`
+    : `Organigrama en tiempo real — ${summary?.sedeName ?? ''} · ${shiftLabel}`;
 
   const totalStaff = isConsolidated
     ? consolidated.sedes.reduce((n, s) => n + s.areas.reduce((a, b) => a + b.totalCount, 0), 0)

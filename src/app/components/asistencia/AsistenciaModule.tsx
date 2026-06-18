@@ -7,14 +7,17 @@ import {
   LayoutDashboard,
   LayoutGrid,
   Loader2,
+  Moon,
   RefreshCw,
   Settings2,
+  Sun,
   Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { SystemSettings } from '../../types';
-import type { AsistenciaSettings } from '../../types/asistencia';
+import type { AsistenciaSettings, AsistenciaShiftFilter } from '../../types/asistencia';
+import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { fetchBukAsistenciaAll, sanitizeBukBaseUrl } from '../../utils/bukAsistenciaApi';
 import {
@@ -70,6 +73,7 @@ export function AsistenciaModule({
   const [fetchProgress, setFetchProgress] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
   const [liveViewMode, setLiveViewMode] = useState<'single' | 'consolidated'>('single');
+  const [shiftFilter, setShiftFilter] = useState<AsistenciaShiftFilter>('all');
   const [editLayout, setEditLayout] = useState(false);
 
   const bukBaseUrl = sanitizeBukBaseUrl(asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
@@ -106,8 +110,9 @@ export function AsistenciaModule({
         settings: asistencia,
         records,
         date: dateObj,
+        shiftFilter,
       }),
-    [activeSede, asistencia, records, dateObj]
+    [activeSede, asistencia, records, dateObj, shiftFilter]
   );
 
   const consolidatedSummary = useMemo(
@@ -117,8 +122,9 @@ export function AsistenciaModule({
         settings: asistencia,
         records,
         date: dateObj,
+        shiftFilter,
       }),
-    [sedeOptions, asistencia, records, dateObj]
+    [sedeOptions, asistencia, records, dateObj, shiftFilter]
   );
 
   const hasAnyStaff = useMemo(
@@ -285,7 +291,34 @@ export function AsistenciaModule({
             {loading && fetchProgress ? fetchProgress : 'Actualizar Buk'}
           </Button>
           {mainTab === 'live' ? (
-            <Button
+            <>
+              <div className="flex rounded-lg border border-slate-700 overflow-hidden">
+                {(
+                  [
+                    { id: 'all' as const, label: 'Todos', icon: Users },
+                    { id: 'day' as const, label: ASISTENCIA_WORK_SHIFT_LABELS.day, icon: Sun },
+                    { id: 'night' as const, label: ASISTENCIA_WORK_SHIFT_LABELS.night, icon: Moon },
+                  ] as const
+                ).map(({ id, label, icon: Icon }) => (
+                  <Button
+                    key={id}
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    data-testid={`asistencia-shift-${id}`}
+                    className={
+                      shiftFilter === id
+                        ? 'rounded-none bg-indigo-600 hover:bg-indigo-500 text-white'
+                        : 'rounded-none text-slate-300 hover:bg-slate-800'
+                    }
+                    onClick={() => setShiftFilter(id)}
+                  >
+                    <Icon className="h-3.5 w-3.5 mr-1" />
+                    {label}
+                  </Button>
+                ))}
+              </div>
+              <Button
               type="button"
               variant={liveViewMode === 'consolidated' ? 'default' : 'outline'}
               className={
@@ -300,6 +333,7 @@ export function AsistenciaModule({
               <LayoutGrid className="h-4 w-4 mr-1" />
               {liveViewMode === 'consolidated' ? 'Consolidado' : 'Por sede'}
             </Button>
+            </>
           ) : null}
         </div>
         {cacheFetchedAt && records.length > 0 ? (
@@ -349,6 +383,7 @@ export function AsistenciaModule({
           ) : null}
           <AsistenciaLiveView
             mode={liveViewMode}
+            shiftFilter={shiftFilter}
             summary={liveViewMode === 'single' ? liveSummary : undefined}
             consolidated={liveViewMode === 'consolidated' ? consolidatedSummary : undefined}
             editLayout={editLayout}

@@ -8,6 +8,7 @@ import type {
   AsistenciaSettings,
   AsistenciaStaffLiveState,
 } from '../../types/asistencia';
+import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { applyAreaLayoutReorder, applyStaffLayoutMove } from '../../utils/asistenciaLayoutUtils';
 import { ManagerPlaceholder, StaffLiveCard, themeForColumnId } from './asistenciaLiveUi';
 
@@ -94,6 +95,7 @@ function DraggableStaffCard({
       critical={live.staff.isCritical}
       matchHint={live.matchHint}
       statusNote={live.statusNote}
+      shiftLabel={ASISTENCIA_WORK_SHIFT_LABELS[live.staff.shift ?? 'day']}
       editLayout={editLayout}
       dragHandleRef={ref}
       isDragging={isDragging}
@@ -318,6 +320,7 @@ export function AsistenciaLiveSedeBlock({
               critical={summary.manager.staff.isCritical}
               matchHint={summary.manager.matchHint}
               statusNote={summary.manager.statusNote}
+              shiftLabel={ASISTENCIA_WORK_SHIFT_LABELS[summary.manager.staff.shift ?? 'day']}
             />
           ) : (
             <ManagerPlaceholder />
