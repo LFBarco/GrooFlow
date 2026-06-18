@@ -393,7 +393,7 @@ export function InventoryModule({
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2">
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2" data-testid="inventory-module">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/25 bg-gradient-to-br from-slate-950/90 via-[#0f172a] to-slate-900/95 p-3 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-sky-500/15 p-2.5 border border-sky-500/30">
@@ -441,7 +441,7 @@ export function InventoryModule({
       <Tabs value={tab} onValueChange={(v) => setTab(v as InventoryTab)}>
         <TabsList className="grid w-full max-w-lg grid-cols-3">
           <TabsTrigger value="dashboard">Panel</TabsTrigger>
-          <TabsTrigger value="equipment">Equipos</TabsTrigger>
+          <TabsTrigger value="equipment" data-testid="inventory-tab-equipment">Equipos</TabsTrigger>
           <TabsTrigger value="maintenance">Mantenimientos</TabsTrigger>
         </TabsList>
 
@@ -613,7 +613,7 @@ export function InventoryModule({
                 <Settings2 className="h-4 w-4 mr-1" />
                 Categorías
               </Button>
-              <Button onClick={openNewEquipment}>
+              <Button onClick={openNewEquipment} data-testid="inventory-add-equipment">
                 <Plus className="h-4 w-4 mr-1" /> Nuevo Equipo
               </Button>
             </div>

@@ -362,7 +362,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0D0B1E]">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[#0D0B1E]" data-testid="product-workspace">
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Button type="button" variant="outline" size="sm" className="border-white/15" onClick={onClose}>
@@ -374,7 +374,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
             <div className="truncate text-lg font-semibold text-slate-100">{draft.name.trim() || 'Nuevo producto'}</div>
           </div>
         </div>
-        <Button type="button" className="bg-emerald-600 hover:bg-emerald-500" onClick={handleSave}>
+        <Button type="button" className="bg-emerald-600 hover:bg-emerald-500" onClick={handleSave} data-testid="product-save">
           <Plus className="mr-2 h-4 w-4" />
           Guardar cambios
         </Button>
@@ -408,7 +408,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="space-y-2">
                     <Label>Nombre del producto <span className="text-red-400">*</span></Label>
                     <IconField Icon={Package}>
-                      <Input className="border-white/10 bg-[#0D0B1E]" value={draft.name} onChange={(e) => patchDraft((p) => ({ ...p, name: e.target.value }))} />
+                      <Input className="border-white/10 bg-[#0D0B1E]" data-testid="product-name-input" value={draft.name} onChange={(e) => patchDraft((p) => ({ ...p, name: e.target.value }))} />
                     </IconField>
                   </div>
                   <div className="space-y-2">

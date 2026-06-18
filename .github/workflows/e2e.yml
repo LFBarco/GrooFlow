@@ -5,8 +5,14 @@ on:
   pull_request:
     paths:
       - 'src/app/components/users/**'
+      - 'src/app/components/products/**'
+      - 'src/app/components/inventory/**'
+      - 'src/app/components/asistencia/**'
+      - 'src/app/components/fleet/**'
       - 'src/app/hooks/useUsersRolesPersistence.ts'
       - 'src/app/hooks/useFleetPersistence.ts'
+      - 'src/app/hooks/useInventoryPersistence.ts'
+      - 'src/app/hooks/useAsistenciaPersistence.ts'
       - 'src/app/services/repository/fleetSql.ts'
       - 'e2e/**'
       - 'playwright.config.ts'
@@ -22,15 +28,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - name: Auth + fleet E2E
+      - name: E2E completo (con credenciales)
         if: ${{ secrets.E2E_EMAIL != '' && secrets.E2E_PASSWORD != '' }}
         env:
           E2E_EMAIL: ${{ secrets.E2E_EMAIL }}
           E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
           CI: true
         run: npm run test:e2e
-      - name: Smoke login (sin credenciales)
+      - name: Smoke sin credenciales (login + rutas protegidas)
         if: ${{ secrets.E2E_EMAIL == '' || secrets.E2E_PASSWORD == '' }}
         env:
           CI: true
-        run: npx playwright test e2e/auth.spec.ts e2e/users.spec.ts
+        run: npx playwright test e2e/auth.spec.ts e2e/routes.spec.ts

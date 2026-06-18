@@ -1,19 +1,10 @@
 import { test, expect } from '@playwright/test';
-
-const hasCreds = Boolean(process.env.E2E_EMAIL && process.env.E2E_PASSWORD);
-
-async function login(page: import('@playwright/test').Page) {
-  await page.goto('/');
-  await page.getByPlaceholder('usuario@empresa.com').fill(process.env.E2E_EMAIL!);
-  await page.getByPlaceholder('••••••••').fill(process.env.E2E_PASSWORD!);
-  await page.getByRole('button', { name: /Iniciar Sesion/i }).click();
-  await page.waitForURL(/\/(dashboard|inicio|flota|transacciones)/i, { timeout: 45_000 });
-}
+import { loginAsE2eUser, skipWithoutCredentials } from './helpers/auth';
 
 test.describe('Flota clínica E2E', () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(!hasCreds, 'Define E2E_EMAIL y E2E_PASSWORD para ejecutar flujos autenticados');
-    await login(page);
+    skipWithoutCredentials();
+    await loginAsE2eUser(page);
   });
 
   test('crear vehículo y persiste tras recarga', async ({ page }) => {

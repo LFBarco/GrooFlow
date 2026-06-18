@@ -1,10 +1,9 @@
 import { test, expect } from '@playwright/test';
+import { expectLoginScreen } from './helpers/auth';
 
 test.describe('Autenticación', () => {
-  test('muestra formulario de login', async ({ page }) => {
+  test('muestra formulario de login en la raíz', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByPlaceholder('usuario@empresa.com')).toBeVisible();
-    await expect(page.getByPlaceholder('••••••••')).toBeVisible();
-    await expect(page.getByRole('button', { name: /Iniciar Sesion/i })).toBeVisible();
+    await expectLoginScreen(page);
   });
 });

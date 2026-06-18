@@ -143,6 +143,7 @@ export function EquipmentFormDialog({
                 <FormField label="Nombre del equipo" required>
                   <Input
                     placeholder="Ej. Ecógrafo portátil, Bomba de infusión"
+                    data-testid="equipment-name-input"
                     value={equipment.name}
                     onChange={(e) => patch({ name: e.target.value })}
                   />
@@ -602,7 +603,7 @@ export function EquipmentFormDialog({
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancelar
             </Button>
-            <Button onClick={onSave}>
+            <Button onClick={onSave} data-testid="equipment-save">
               {isNew ? 'Registrar equipo' : 'Guardar cambios'}
             </Button>
           </div>

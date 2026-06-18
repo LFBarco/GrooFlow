@@ -132,6 +132,7 @@ export function AsistenciaStaffDialog({
           <div className="space-y-2">
             <Label className="text-slate-300">Nombre Completo *</Label>
             <Input
+              data-testid="asistencia-staff-name"
               value={form.fullName}
               onChange={(e) => patch({ fullName: e.target.value })}
               placeholder="Ej. Luis Barco"
@@ -225,6 +226,7 @@ export function AsistenciaStaffDialog({
           <div className="space-y-2">
             <Label className="text-slate-300">RUT Buk * (rut_trabajador)</Label>
             <Input
+              data-testid="asistencia-staff-rut"
               value={form.rut ?? ''}
               onChange={(e) => patch({ rut: e.target.value })}
               placeholder="12345678-9"
@@ -280,6 +282,7 @@ export function AsistenciaStaffDialog({
             <Button
               type="button"
               className="flex-1 bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white border-0"
+              data-testid="asistencia-staff-save"
               onClick={handleSubmit}
               disabled={!form.fullName.trim()}
             >

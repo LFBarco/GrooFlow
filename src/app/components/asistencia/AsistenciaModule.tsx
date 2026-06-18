@@ -241,7 +241,7 @@ export function AsistenciaModule({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="asistencia-module">
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 p-6 text-white">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-indigo-300">
@@ -332,7 +332,7 @@ export function AsistenciaModule({
             <LayoutDashboard className="h-4 w-4 mr-1" /> Dashboard Buk
           </TabsTrigger>
           {canConfigure ? (
-            <TabsTrigger value="config" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
+            <TabsTrigger value="config" data-testid="asistencia-tab-config" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
               <Settings2 className="h-4 w-4 mr-1" /> Configuración sede
             </TabsTrigger>
           ) : null}

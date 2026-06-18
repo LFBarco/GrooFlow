@@ -411,6 +411,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           {canConfigure ? (
             <Button
               className="bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white border-0"
+              data-testid="asistencia-add-staff"
               onClick={() => {
                 setEditingStaff(null);
                 setDialogOpen(true);

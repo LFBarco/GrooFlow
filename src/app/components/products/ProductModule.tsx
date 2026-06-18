@@ -287,7 +287,7 @@ export function ProductModule({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" data-testid="products-module">
       {workspace && (
         <ProductWorkspace
           open
@@ -342,7 +342,7 @@ export function ProductModule({
                 <Archive className="mr-2 h-4 w-4" />
                 Desactivar
               </Button>
-              <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={openCreateWorkspace}>
+              <Button className="bg-emerald-600 text-white hover:bg-emerald-500" onClick={openCreateWorkspace} data-testid="products-add">
                 <Plus className="mr-2 h-4 w-4" />
                 Crear nuevo producto
               </Button>
