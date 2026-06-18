@@ -58,6 +58,7 @@ export function CloudSyncIndicator({
   return (
     <div
       className={`flex items-center gap-1.5 rounded-lg px-2 py-1 ${compact ? 'text-[10px]' : 'text-xs'}`}
+      data-testid="cloud-sync-indicator"
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: `1px solid ${offline ? 'rgba(251,146,60,0.35)' : isError ? 'rgba(251,113,133,0.35)' : 'rgba(255,255,255,0.08)'}`,

@@ -596,7 +596,7 @@ export function PettyCashModule({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" data-testid="petty-cash-module">
             {sedeOptions.length === 0 && (
                 <Alert variant="destructive" className="border-amber-600/50 bg-amber-950/20">
                     <AlertTriangle className="h-4 w-4" />

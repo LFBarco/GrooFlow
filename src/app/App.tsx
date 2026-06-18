@@ -779,10 +779,12 @@ export default function App() {
     lastSaveErrorAtRef,
   });
 
-  usePettyCashTransactionsPersistence({
+  const { persistPettyCashNow } = usePettyCashTransactionsPersistence({
     isDataLoaded,
     transactions: pettyCashTransactions,
+    setPettyCashTransactions,
     hydratedRef: pettyCashHydratedFromKvRef,
+    skipHydrateRef: skipPettyCashHydrateRef,
     chainRef: pettyCashKvChainRef,
     latestRef: pettyCashKvLatestRef,
     cooldownUntilRef: pettyCashKvCooldownUntilRef,
@@ -2968,72 +2970,22 @@ export default function App() {
       );
       const newMovements = nextVisibleTransactions.filter((tx) => !prevVisibleIds.has(tx.id));
 
-      if (!isDataLoaded) {
-        toast.error(
-          'Los datos siguen cargando desde la nube. Espera el aviso «Datos sincronizados con la nube» e intenta de nuevo.'
-        );
-        return false;
-      }
-      if (!pettyCashHydratedFromKvRef.current) {
-        toast.error(
-          'Caja chica aún no terminó de sincronizar. Espera unos segundos antes de registrar gastos.'
-        );
-        return false;
-      }
+      const hiddenTransactions = pettyCashTransactions.filter(
+        (tx) => tx.location && !canSeeSede(tx.location)
+      );
+      const merged = [...nextVisibleTransactions, ...hiddenTransactions];
 
-      let merged: PettyCashTransaction[] = [];
-      setPettyCashTransactions((prev) => {
-        const hiddenTransactions = prev.filter(
-          (tx) => tx.location && !canSeeSede(tx.location)
-        );
-        merged = [...nextVisibleTransactions, ...hiddenTransactions];
-        pettyCashKvLatestRef.current = merged;
-        return merged;
-      });
-
-      skipPettyCashHydrateRef.current = true;
-      try {
-        const result = await enqueueKvSerializedSave(
-          pettyCashKvChainRef,
-          kvApplyGenerationRef,
-          pettyCashKvLatestRef,
-          'data:pettyCash',
-          merged
-        );
-        if (!kvSaveSucceeded(result)) {
-          toast.error(
-            'No se pudo guardar Caja chica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.'
-          );
-          return false;
-        }
-        pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
-        pettyCashHydratedFromKvRef.current = true;
-        if (PRODUCTION_USE_SQL) {
-          void backupDomainSqlAfterKvSave(
-            true,
-            'data:pettyCash',
-            merged,
-            savePettyCashToSql,
-            lastSaveErrorAtRef
-          );
-        }
-        if (newMovements.length > 0) {
-          void writeAuditLog(getSupabaseClient(), 'petty_cash_create', {
-            entity: 'Caja chica',
-            details: `Registró ${newMovements.length} movimiento(s)`,
-            count: newMovements.length,
-          });
-        }
-        return true;
-      } catch (e) {
-        console.warn('[GrooFlow] pettyCash persist:', e);
-        toast.error('Error al guardar caja chica en la nube.');
-        return false;
-      } finally {
-        skipPettyCashHydrateRef.current = false;
+      const ok = await persistPettyCashNow(merged);
+      if (ok && newMovements.length > 0) {
+        void writeAuditLog(getSupabaseClient(), 'petty_cash_create', {
+          entity: 'Caja chica',
+          details: `Registró ${newMovements.length} movimiento(s)`,
+          count: newMovements.length,
+        });
       }
+      return ok;
     },
-    [canSeeSede, isDataLoaded, pettyCashTransactions]
+    [canSeeSede, pettyCashTransactions, persistPettyCashNow]
   );
 
   const filteredRequestsBySede = useMemo(
@@ -3067,6 +3019,7 @@ export default function App() {
     <AppNavigationContext.Provider value={appNavigationValue}>
     <div
       className="min-h-screen bg-background text-foreground font-sans transition-colors duration-500 relative overflow-x-hidden"
+      data-testid="app-authenticated"
       style={
         {
           '--grooflow-sidebar-w': isSidebarCollapsed ? '76px' : '256px',

@@ -47,7 +47,7 @@ export function UserMenu({
                         <ChevronsUpDown className="ml-auto h-3.5 w-3.5" style={{ color: 'rgba(255,255,255,0.2)' }} />
                     </Button>
                 ) : (
-                    <Button variant="ghost" className="relative h-9 w-9 rounded-full transition-all hover:scale-105 active:scale-95" style={{ border: '1px solid rgba(139,92,246,0.2)' }}>
+                    <Button variant="ghost" className="relative h-9 w-9 rounded-full transition-all hover:scale-105 active:scale-95" style={{ border: '1px solid rgba(139,92,246,0.2)' }} data-testid="user-menu-trigger">
                         <Avatar className="h-8 w-8">
                             <AvatarImage src={getUserAvatarSrc(user)} alt={user.name} />
                             <AvatarFallback className="text-xs font-bold" style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}>{user.initials}</AvatarFallback>
@@ -94,6 +94,7 @@ export function UserMenu({
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator className="bg-white/10" />
                 <DropdownMenuItem
+                    data-testid="user-menu-logout"
                     onSelect={() => {
                         /** Defer hasta después del cierre del menú (Radix) para que signOut no compita con el desmontaje. */
                         setTimeout(() => {
