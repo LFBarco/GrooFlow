@@ -29,7 +29,8 @@ import { saveInventoryToSql } from '../services/repository/inventorySql';
 import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
 import { saveTransactionsToSql } from '../services/repository/transactionsSql';
 import { PETTY_CASH_META_KV_KEY, type PettyCashWeekMetaPayload } from './pettyCashMeta';
-import type { SqlRetryRunnerMap } from './sqlRetryProcessor';
+import type { AsistenciaSettings } from '../types/asistencia';
+import { ASISTENCIA_SETTINGS_KV_KEY } from './asistenciaPersistence';
 import { getSqlSaveQueue } from './sqlSaveQueue';
 
 export type FeeReceiptGlobal = {
@@ -59,6 +60,7 @@ export type SqlRetryLatestSnapshot = {
   fleet: FleetDataset;
   inventory: InventoryDataset;
   pettyCashMeta: PettyCashWeekMetaPayload;
+  asistencia: AsistenciaSettings;
 };
 
 export type BuildSqlRetryRunnersInput = {
@@ -104,6 +106,7 @@ export function buildSqlRetryRunners(input: BuildSqlRetryRunnersInput): SqlRetry
 
   runners['settings:config'] = appKv('settings:config', latest.config);
   runners['settings:system'] = appKv('settings:system', latest.systemSettings);
+  runners[ASISTENCIA_SETTINGS_KV_KEY] = appKv(ASISTENCIA_SETTINGS_KV_KEY, latest.asistencia);
   runners['settings:theme'] = appKv('settings:theme', latest.theme);
   runners['settings:alertThresholds'] = appKv('settings:alertThresholds', latest.alertThresholds);
   runners['data:providers'] = queuedRunner('data:providers', () =>

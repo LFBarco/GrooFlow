@@ -143,7 +143,13 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
 
   useEffect(() => {
     if (!isDataLoaded || !hydratedRef.current) return;
-    if (skipExplicitAutosaveRef.current) return;
+    if (skipExplicitAutosaveRef.current) {
+      if (sqlAutosaveTimerRef.current) {
+        clearTimeout(sqlAutosaveTimerRef.current);
+        sqlAutosaveTimerRef.current = null;
+      }
+      return;
+    }
 
     latestRef.current = fleetDataset;
 

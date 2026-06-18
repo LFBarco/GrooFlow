@@ -35,6 +35,11 @@ export function getSqlSaveQueue(storageKey: string): SqlSaveQueue {
   return queue;
 }
 
+/** Espera a que terminen todos los guardados SQL encolados (p. ej. antes de logout). */
+export function flushAllSqlSaveQueues(): Promise<void> {
+  return Promise.all([...queuesByKey.values()].map((q) => q.flush())).then(() => undefined);
+}
+
 /** Solo para tests — reinicia colas globales. */
 export function resetSqlSaveQueuesForTests(): void {
   queuesByKey.clear();

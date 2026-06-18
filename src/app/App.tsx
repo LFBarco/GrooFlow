@@ -157,6 +157,7 @@ import {
 } from "./utils/sqlAutosaveBackup";
 import { useProductionRealtimeSync } from "./hooks/useProductionRealtimeSync";
 import { enqueueKvSerializedSave, flushKvSaveChains, KV_CHAIN_IDLE, kvSaveSucceeded, type KvSaveResult } from "./utils/kvSerializedSave";
+import { flushAllSqlSaveQueues } from "./utils/sqlSaveQueue";
 import {
   autosaveKvDomain,
   createCloudSyncTracker,
@@ -987,6 +988,7 @@ export default function App() {
       fleet: fleetKvLatestRef.current,
       inventory: inventoryKvLatestRef.current,
       pettyCashMeta: pettyCashMetaKvLatestRef.current,
+      asistencia: asistenciaKvLatestRef.current,
     }),
     []
   );
@@ -1220,10 +1222,37 @@ export default function App() {
     cloudSync: cloudSyncTrackerRef.current,
   });
 
-  const handleProductsUpdate = useCallback((next: Product[]) => {
-    productsKvLatestRef.current = next;
-    setProducts(next);
-  }, []);
+  const handleProductsUpdate = useCallback(
+    async (next: Product[], successMessage?: string): Promise<boolean> => {
+      const prevRef = productsKvLatestRef.current;
+      const ok = await persistAppKvDomainNow({
+        kvKey: 'data:products',
+        payload: next,
+        refs: {
+          hydratedFromKvRef: productsHydratedFromKvRef,
+          skipHydrateRef: skipProductsHydrateRef,
+          cooldownUntilRef: productsKvCooldownUntilRef,
+          chainRef: productsKvChainRef,
+          latestRef: productsKvLatestRef,
+        },
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        cloudSync: cloudSyncTrackerRef.current,
+        errorMessage:
+          'No se pudo guardar el catálogo de productos en la nube. Revisa sesión/red y vuelve a intentar.',
+        successMessage,
+        isDataLoaded,
+        hydratedRef: productsHydratedFromKvRef,
+      });
+      if (ok) {
+        setProducts(next);
+      } else {
+        productsKvLatestRef.current = prevRef;
+      }
+      return ok;
+    },
+    [isDataLoaded]
+  );
 
   const handleInvoicesUpdate = useCallback((next: InvoiceDraft[]) => {
     invoicesKvLatestRef.current = next;
@@ -1553,6 +1582,7 @@ export default function App() {
         break;
       }
       case 'data:inventory': {
+        if (INVENTORY_USE_SQL) return;
         if (!inventoryHydratedFromKvRef.current) return;
         const next = normalizeInventoryDataset(value as Partial<InventoryDataset>);
         if (kvPayloadsEqual(inventoryKvLatestRef.current, next)) return;
@@ -2109,12 +2139,26 @@ export default function App() {
         transactionsKvChainRef,
         providersKvChainRef,
         pettyCashKvChainRef,
+        pettyCashMetaKvChainRef,
         fleetKvChainRef,
+        inventoryKvChainRef,
         configKvChainRef,
         invoicesKvChainRef,
+        requestsKvChainRef,
         usersKvChainRef,
+        rolesKvChainRef,
         systemSettingsKvChainRef,
+        asistenciaKvChainRef,
+        productsKvChainRef,
+        feeReceiptsKvChainRef,
+        chartOfAccountsKvChainRef,
+        alertThresholdsKvChainRef,
+        themeKvChainRef,
+        treasuryInvoicesKvChainRef,
+        treasuryBankBalanceKvChainRef,
+        treasuryPaidHistoryKvChainRef,
       ]);
+      await flushAllSqlSaveQueues();
       pendingHydrateRef.current = false;
       setIsAuthChecking(false);
       if (typeof window !== 'undefined') {

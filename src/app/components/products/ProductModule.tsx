@@ -45,7 +45,7 @@ const PAGE_SIZE = 10;
 interface ProductModuleProps {
   products: Product[];
   providers: Provider[];
-  onUpdateProducts: (products: Product[]) => void;
+  onUpdateProducts: (products: Product[], successMessage?: string) => Promise<boolean>;
   visibleSedes?: string[];
   currentUserName: string;
 }
@@ -160,42 +160,52 @@ export function ProductModule({
   }, []);
 
   const commitWorkspace = useCallback(
-    (saved: Product) => {
+    async (saved: Product) => {
       const duplicateReal = products.some((p) => p.systemCode === saved.systemCode && p.id !== saved.id);
       if (duplicateReal) {
         toast.error('El código de sistema ya existe');
         return;
       }
       const next = workspace?.isNew ? [saved, ...products] : products.map((p) => (p.id === saved.id ? saved : p));
-      onUpdateProducts(next);
-      setWorkspace(null);
+      const ok = await onUpdateProducts(
+        next,
+        workspace?.isNew ? 'Producto creado' : 'Producto guardado'
+      );
+      if (ok) setWorkspace(null);
     },
     [onUpdateProducts, products, workspace?.isNew],
   );
 
-  const handleDeleteProduct = (productId: string) => {
+  const handleDeleteProduct = async (productId: string) => {
+    if (!window.confirm('¿Eliminar este producto del catálogo?')) return;
     const product = products.find((item) => item.id === productId);
-    onUpdateProducts(products.filter((item) => item.id !== productId));
+    const next = products.filter((item) => item.id !== productId);
+    const ok = await onUpdateProducts(
+      next,
+      product ? `Producto eliminado: ${product.name}` : 'Producto eliminado'
+    );
+    if (!ok) return;
     setWorkspace((w) => (w?.draft.id === productId ? null : w));
     setSelectedIds((current) => {
-      const next = new Set(current);
-      next.delete(productId);
-      return next;
+      const nextIds = new Set(current);
+      nextIds.delete(productId);
+      return nextIds;
     });
-    toast.success(product ? `Producto eliminado: ${product.name}` : 'Producto eliminado');
   };
 
-  const handleBulkDeactivate = () => {
+  const handleBulkDeactivate = async () => {
     if (selectedIds.size === 0) {
       toast.info('Selecciona al menos un producto');
       return;
     }
-    onUpdateProducts(
+    const count = selectedIds.size;
+    const ok = await onUpdateProducts(
       products.map((product) =>
         selectedIds.has(product.id) ? { ...product, status: 'inactive' as const, updatedAt: new Date() } : product,
       ),
+      `${count} producto(s) desactivado(s)`
     );
-    toast.success(`${selectedIds.size} producto(s) desactivado(s)`);
+    if (!ok) return;
     setSelectedIds(new Set());
   };
 

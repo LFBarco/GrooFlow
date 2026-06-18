@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { getSqlSaveQueue, resetSqlSaveQueuesForTests } from './sqlSaveQueue';
+import { getSqlSaveQueue, resetSqlSaveQueuesForTests, flushAllSqlSaveQueues } from './sqlSaveQueue';
 
 describe('getSqlSaveQueue', () => {
   it('serializa saves del mismo dominio', async () => {
@@ -38,5 +38,20 @@ describe('getSqlSaveQueue', () => {
 
     await Promise.all([invoices, requests]);
     expect(invoicesDone).toBe(true);
+  });
+
+  it('flushAllSqlSaveQueues espera operaciones pendientes', async () => {
+    resetSqlSaveQueuesForTests();
+    const queue = getSqlSaveQueue('data:products');
+    let done = false;
+    const pending = queue.enqueue('save', async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      done = true;
+    });
+    const flushed = flushAllSqlSaveQueues();
+    expect(done).toBe(false);
+    await flushed;
+    await pending;
+    expect(done).toBe(true);
   });
 });
