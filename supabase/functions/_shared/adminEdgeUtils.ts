@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { getCorsHeaders, isCorsPreflightAllowed } from './corsUtils.ts'
 
-export const ADMIN_ROLES = new Set(['admin', 'super_admin'])
+export { getCorsHeaders, isCorsPreflightAllowed } from './corsUtils.ts'
 
 export function jsonResponse(
   corsHeaders: Record<string, string>,
@@ -13,24 +14,7 @@ export function jsonResponse(
   })
 }
 
-/** CORS restrictivo si ALLOWED_ORIGINS está definido (lista separada por comas). */
-export function getCorsHeaders(req: Request): Record<string, string> {
-  const allowed = (Deno.env.get('ALLOWED_ORIGINS') || '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const origin = req.headers.get('Origin') ?? ''
-  let allowOrigin = '*'
-  if (allowed.length > 0) {
-    allowOrigin = allowed.includes(origin) ? origin : allowed[0]
-  }
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers':
-      'authorization, x-client-info, apikey, content-type, x-supabase-api-version',
-  }
-}
+export const ADMIN_ROLES = new Set(['admin', 'super_admin'])
 
 export function getUserRole(user: {
   app_metadata?: Record<string, unknown>
@@ -94,7 +78,7 @@ export async function requireAdminCaller(req: Request): Promise<
   | { ok: true; ctx: AdminCallerContext; corsHeaders: Record<string, string> }
   | { ok: false; response: Response }
 > {
-  const corsHeaders = getCorsHeaders(req)
+  const corsHeaders = getCorsHeaders(req, 'POST, OPTIONS')
   const authHeader = req.headers.get('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
     return {

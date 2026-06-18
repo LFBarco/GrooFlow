@@ -3,20 +3,24 @@ import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import { createClient } from "npm:@supabase/supabase-js";
 import * as kv from "./kv_store.tsx";
+import { isOriginAllowed, parseAllowedOrigins } from "../_shared/corsUtils.ts";
 
 const app = new Hono();
 
 // Enable logger
 app.use('*', logger(console.log));
 
-// CORS: en producción defina ALLOWED_ORIGINS (ej. "https://midominio.com,https://app.midominio.com")
-const allowedOrigins = Deno.env.get("ALLOWED_ORIGINS");
-const corsOrigin = allowedOrigins ? allowedOrigins.split(",").map((o) => o.trim()) : "*";
+// CORS: en producción defina ALLOWED_ORIGINS (ej. "https://grooflow.vercel.app,http://localhost:5173")
+const allowedOriginsList = parseAllowedOrigins();
 
 app.use(
   "/*",
   cors({
-    origin: corsOrigin,
+    origin: (origin) => {
+      if (allowedOriginsList.length === 0) return origin ?? "*";
+      if (!origin) return allowedOriginsList[0];
+      return isOriginAllowed(origin, allowedOriginsList) ? origin : "";
+    },
     allowHeaders: [
       "Content-Type",
       "Authorization",

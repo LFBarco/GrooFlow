@@ -4,6 +4,7 @@
 import {
   findAuthUserByEmail,
   getCorsHeaders,
+  isCorsPreflightAllowed,
   jsonResponse,
   requireAdminCaller,
   validatePasswordPolicy,
@@ -11,10 +12,13 @@ import {
 } from '../_shared/adminEdgeUtils.ts'
 
 Deno.serve(async (req) => {
-  const corsHeaders = getCorsHeaders(req)
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders })
+    if (!isCorsPreflightAllowed(req)) {
+      return new Response(null, { status: 403 })
+    }
+    return new Response(null, { status: 204, headers: getCorsHeaders(req, 'POST, OPTIONS') })
   }
+  const corsHeaders = getCorsHeaders(req, 'POST, OPTIONS')
   if (req.method !== 'POST') {
     return jsonResponse(corsHeaders, 405, { error: 'Method not allowed' })
   }

@@ -21,7 +21,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { Checkbox } from "../components/ui/checkbox";
-import { supabase } from "../../../utils/supabase/client";
+import { tryDemoLogin } from '../config/demoLogin';
 
 /* ═══════════════════════════════════════════════════
    GrooFlow SVG Logo — "G" + EKG Heartbeat
@@ -116,7 +116,7 @@ function TypewriterText({ text, delay = 1500, speed = 60, color }: { text: strin
    ═══════════════════════════════════════════════════ */
 const loginSchema = z.object({
   email: z.string().email("Ingrese un correo valido"),
-  password: z.string().min(6, "La contrasena debe tener al menos 6 caracteres"),
+  password: z.string().min(1, "Ingrese su contraseña"),
   remember: z.boolean().optional(),
 });
 
@@ -334,8 +334,7 @@ export function LoginPage({
         );
       }
     } catch (error: any) {
-      const isSupabaseMode = (import.meta as any)?.env?.VITE_BACKEND === "supabase";
-      if (!isSupabaseMode && (data.email === "admin@grooflow.com" || data.email === "admin@vetflow.com") && data.password === "123456") {
+      if (tryDemoLogin(data.email, data.password)) {
         if (typeof window !== 'undefined') {
           window.sessionStorage.setItem('grooflow_local_session', '1');
         }
