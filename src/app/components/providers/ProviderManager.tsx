@@ -1265,7 +1265,7 @@ export function ProviderManager({
     };
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
+        <div className="space-y-4 animate-in fade-in duration-500 -mt-2" data-testid="providers-module">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3">
                 <div className="space-y-0.5 min-w-0">
                     <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
@@ -1290,10 +1290,10 @@ export function ProviderManager({
                     <Button variant="outline" onClick={() => setIsImportOpen(true)}>
                         <Upload className="w-4 h-4 mr-2" /> Importar Excel
                     </Button>
-                    <Button variant="secondary" onClick={openSimplePettyDialog} title="Registro corto para gastos de caja chica">
+                    <Button variant="secondary" onClick={openSimplePettyDialog} title="Registro corto para gastos de caja chica" data-testid="providers-simple-petty-open">
                         <Wallet className="w-4 h-4 mr-2" /> Caja chica (rápido)
                     </Button>
-                    <Button onClick={() => startEdit()} className="bg-primary text-primary-foreground shadow-sm hover:shadow-md transition-all">
+                    <Button onClick={() => startEdit()} className="bg-primary text-primary-foreground shadow-sm hover:shadow-md transition-all" data-testid="providers-new">
                         <Plus className="w-4 h-4 mr-2" /> Nuevo Proveedor
                     </Button>
                 </div>
@@ -1399,6 +1399,7 @@ export function ProviderManager({
             <Dialog open={isSimplePettyOpen} onOpenChange={setIsSimplePettyOpen}>
                 <DialogContent
                     className="w-[97vw] sm:max-w-[800px] h-auto max-h-[calc(100vh-2rem)] overflow-y-auto border-border/60 bg-background/95 text-foreground shadow-[0_32px_100px_rgba(0,0,0,0.45)] backdrop-blur-sm"
+                    data-testid="providers-simple-petty-dialog"
                 >
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -1450,6 +1451,7 @@ export function ProviderManager({
                             <Label>{simplePetty.docType} <span className="text-red-500">*</span></Label>
                             <Input
                                 className="font-mono"
+                                data-testid="provider-simple-ruc"
                                 placeholder={`${getDocIdentityDigitLimit(simplePetty.docType)} dígitos`}
                                 value={simplePetty.ruc}
                                 onChange={(e) =>
@@ -1466,6 +1468,7 @@ export function ProviderManager({
                         <div className="space-y-2">
                             <Label>Razón social <span className="text-red-500">*</span></Label>
                             <Input
+                                data-testid="provider-simple-name"
                                 value={simplePetty.name}
                                 onChange={(e) => setSimplePetty((s) => ({ ...s, name: e.target.value }))}
                                 placeholder="Razón social"
@@ -1577,7 +1580,7 @@ export function ProviderManager({
                         <Button variant="outline" className="h-11" onClick={() => setIsSimplePettyOpen(false)}>
                             Cancelar
                         </Button>
-                        <Button className="h-11 min-w-[140px] font-semibold" onClick={handleSaveSimplePetty}>Guardar</Button>
+                        <Button className="h-11 min-w-[140px] font-semibold" onClick={handleSaveSimplePetty} data-testid="provider-simple-save">Guardar</Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
@@ -2185,6 +2188,7 @@ export function ProviderManager({
             <div className="flex items-center gap-2 bg-card p-2 rounded-lg border border-border md:w-1/2 shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                 <Search className="w-4 h-4 text-muted-foreground ml-2" />
                 <Input 
+                    data-testid="providers-search"
                     placeholder="Buscar por nombre, RUC o categoría..." 
                     className="border-none shadow-none focus-visible:ring-0 bg-transparent"
                     value={searchTerm}
@@ -2198,7 +2202,7 @@ export function ProviderManager({
             </div>
 
             {/* Providers Table */}
-            <Card className="overflow-hidden border-t-4 border-t-primary/20 shadow-md">
+            <Card className="overflow-hidden border-t-4 border-t-primary/20 shadow-md" data-testid="providers-list">
                 <Table>
                     <TableHeader className="bg-muted/30">
                         <TableRow>

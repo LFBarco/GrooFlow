@@ -119,8 +119,26 @@ Cola en cliente: `sqlSaveQueue.ts`. En error persistente:
 
 - Auth Supabase ≠ lista `data:users` (roles/sedes/módulos).
 - Crear usuario: módulo **Usuarios** → Edge `admin-create-user`.
-- Reset password: `admin-update-password`.
+- Reset password (admin): Edge `admin-update-password`.
+- **Recuperación self-service:** login → «Olvidó su clave?» → correo → pantalla **Nueva contraseña** (`PasswordRecoveryPage`).
+- Super-admins configurados en `src/app/config/superAdmins.ts` (y opcional `VITE_SUPER_ADMIN_EMAILS`).
 - Ver `docs/DATOS_USUARIOS_Y_AUTH.md`.
+
+### Recuperar acceso super admin
+
+1. Supabase → **Authentication → Users** → verificar que el correo existe y no está baneado.
+2. En la app: **Olvidó su clave?** con el email, o **Send password recovery** en el panel Auth.
+3. Verificar filas en `app_user_profiles` y KV `data:users`: `role=super_admin`, `status=active`.
+4. Si el enlace abre la app pero no pide clave: confirmar deploy con `PasswordRecoveryPage` (hash `type=recovery`).
+
+---
+
+## 7b. Certificación go-live (Fase 6)
+
+1. Ejecutar matriz manual: `docs/QA_CERTIFICACION_FASE6.md` (columna **E2E** indica qué ya cubre CI).
+2. Local con credenciales: `E2E_EMAIL=... E2E_PASSWORD=... npm run test:e2e`.
+3. Marcar transversales T1–T8 y módulos go-live; registrar fila en «Registro de ejecución».
+4. **GO** solo si 100 % obligatorios + sin pérdida de datos tras F5.
 
 ---
 
@@ -128,7 +146,7 @@ Cola en cliente: `sqlSaveQueue.ts`. En error persistente:
 
 - Vercel: errores 5xx, tiempo de build
 - Supabase: logs Edge, uso DB, Auth
-- E2E CI: `.github/workflows/e2e.yml` (requiere secrets `E2E_EMAIL`, `E2E_PASSWORD`)
+- E2E CI: `.github/workflows/ci.yml` (smoke en cada push; suite completa en `main` si hay secrets `E2E_EMAIL`, `E2E_PASSWORD`). PR: `.github/workflows/e2e.yml`.
 
 ---
 

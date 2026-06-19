@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, Suspense, type CSSPr
 import { useLocation, useNavigate } from "react-router-dom";
 import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
+import { PasswordRecoveryPage, isPasswordRecoveryUrl } from "./pages/PasswordRecoveryPage";
 import { Transaction, Category, TransactionType, InvoiceDraft, Provider, Product, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, PettyCashFundDelivery, SystemAlert, AlertThresholds, ChartOfAccountEntry } from "./types";
 import {
   getAllSedeNames,
@@ -298,6 +299,8 @@ export default function App() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  /** Enlace de recuperación Supabase: mostrar formulario de nueva contraseña antes del login/app. */
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(() => isPasswordRecoveryUrl());
   /** En Supabase: solo true tras leer `data:users` del KV con HTTP 200 (evita pisar la nube si el GET falló). */
   const [canSaveUsers, setCanSaveUsers] = useState(true);
   /** Evita doble carga y, en Supabase, permite volver a cargar tras logout/login. */
@@ -1909,6 +1912,16 @@ export default function App() {
     void hydrateFromKvRef.current?.();
   };
 
+  useEffect(() => {
+    if (isPasswordRecoveryUrl()) setPasswordRecoveryMode(true);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecoveryMode(true);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
   const handleLogout = async () => {
       signingOutRef.current = true;
       try {
@@ -2973,6 +2986,19 @@ export default function App() {
     () => requests.filter((r) => !r.location || canSeeSede(r.location)),
     [requests, canSeeSede]
   );
+
+  if (passwordRecoveryMode) {
+    return (
+      <PasswordRecoveryPage
+        currentTheme={theme}
+        onToggleTheme={toggleTheme}
+        onComplete={() => {
+          setPasswordRecoveryMode(false);
+          void hydrateFromKvRef.current?.();
+        }}
+      />
+    );
+  }
 
   if (isAuthChecking) {
     return (

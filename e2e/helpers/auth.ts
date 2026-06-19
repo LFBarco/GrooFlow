@@ -25,7 +25,7 @@ export async function loginAsE2eUser(page: Page) {
   await page.getByPlaceholder('••••••••').fill(password);
   await page.getByRole('button', { name: /Iniciar Sesion/i }).click();
   await page.waitForURL(
-    /\/(dashboard|inicio|flota|transacciones|productos|alertas|asistencia|inventario)/i,
+    /\/(dashboard|inicio|flota|transacciones|productos|alertas|asistencia|inventario|proveedores|caja-chica)/i,
     { timeout: 45_000 }
   );
 }
