@@ -711,7 +711,9 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 getSupabaseClient(),
                 sessionEffective.user.id
               );
-              const merged = mergeUserWithSqlProfile(refreshedRow, profile);
+              const merged = applySuperAdminRoleFromConfig([
+                mergeUserWithSqlProfile(refreshedRow, profile),
+              ])[0]!;
               if (isUserSessionBlocked(merged)) {
                 await supabase.auth.signOut();
                 toast.error('Tu cuenta está desactivada. Contacta al Administrador.');

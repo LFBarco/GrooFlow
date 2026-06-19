@@ -35,6 +35,24 @@ describe('mergeUserWithSqlProfile', () => {
     expect(merged.sedes).toEqual(['Norte', 'Sur']);
     expect(merged.allSedes).toBe(true);
   });
+
+  it('mantiene super admin activo aunque el perfil SQL diga inactive', () => {
+    const superUser: User = {
+      ...baseUser,
+      email: 'luisfrancisco.barco@gmail.com',
+      role: 'super_admin',
+      allSedes: true,
+    };
+    const merged = mergeUserWithSqlProfile(superUser, {
+      role: 'manager',
+      status: 'inactive',
+      sedes: [],
+      all_sedes: false,
+    });
+    expect(merged.status).toBe('active');
+    expect(merged.role).toBe('super_admin');
+    expect(merged.allSedes).toBe(true);
+  });
 });
 
 describe('mapSqlRoleToAppRole', () => {

@@ -78,11 +78,19 @@ export async function loadSelfAppUserProfile(
  */
 export function mergeUserWithSqlProfile(user: User, profile: AppUserProfileRow | null): User {
   if (!profile) return user;
+  const privileged = getSuperAdminEmails();
+  const email = user.email?.trim().toLowerCase();
+  const isPrivileged = !!(email && privileged.has(email));
+  const statusFromProfile =
+    profile.status === 'inactive' && !isPrivileged ? 'inactive' : user.status ?? 'active';
   return {
     ...user,
-    status: profile.status === 'inactive' ? 'inactive' : user.status ?? 'active',
+    status: statusFromProfile,
     sedes: profile.sedes?.length ? profile.sedes : user.sedes,
-    allSedes: profile.all_sedes === true ? true : user.allSedes,
+    allSedes: profile.all_sedes === true || isPrivileged ? true : user.allSedes,
+    ...(isPrivileged
+      ? { role: 'super_admin' as const, allSedes: true, status: 'active' as const }
+      : {}),
   };
 }
 

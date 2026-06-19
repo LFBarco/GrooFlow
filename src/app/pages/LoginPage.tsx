@@ -22,6 +22,7 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { Checkbox } from "../components/ui/checkbox";
 import { tryDemoLogin } from '../config/demoLogin';
+import { supabase } from '../../../utils/supabase/client';
 
 /* ═══════════════════════════════════════════════════
    GrooFlow SVG Logo — "G" + EKG Heartbeat
@@ -290,6 +291,7 @@ export function LoginPage({
     register,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -315,8 +317,9 @@ export function LoginPage({
       localStorage.removeItem("grooflow_remember_email");
     }
     try {
+      const email = data.email.trim().toLowerCase();
       const { data: authData, error } = await supabase.auth.signInWithPassword({
-        email: data.email,
+        email,
         password: data.password,
       });
       if (error) throw error;
@@ -328,7 +331,7 @@ export function LoginPage({
           className: "bg-background border border-primary text-primary font-mono",
         });
         onLogin(
-          data.email,
+          email,
           authData.user?.user_metadata?.name,
           authData.user?.id
         );
@@ -359,13 +362,26 @@ export function LoginPage({
     }
   };
 
-  const handleForgotPassword = () => {
-    toast.info("RECUPERACION DE ACCESO", {
-      description: "Para restablecer tu contraseña, contacta al Administrador del sistema. El podrá asignarte una nueva contraseña.",
-      duration: 8000,
-      icon: <LockKeyhole className="w-5 h-5" />,
-      className: "bg-background border border-blue-500 text-blue-500 font-mono",
-    });
+  const handleForgotPassword = async () => {
+    const email = getValues('email')?.trim().toLowerCase();
+    if (!email) {
+      toast.error('Ingrese su correo arriba para enviar el enlace de recuperación.');
+      return;
+    }
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/`,
+      });
+      if (error) throw error;
+      toast.success('Enlace enviado', {
+        description: `Revisa la bandeja de ${email} (y spam) para restablecer tu contraseña.`,
+        duration: 10000,
+        icon: <LockKeyhole className="w-5 h-5" />,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'No se pudo enviar el enlace.';
+      toast.error('Recuperación de acceso', { description: message, duration: 8000 });
+    }
   };
 
   /* ─── RENDER ─── */
