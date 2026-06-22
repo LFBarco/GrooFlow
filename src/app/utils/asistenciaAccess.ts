@@ -24,9 +24,20 @@ export function isJefeLikeRole(role: Role | undefined | null): boolean {
  * Puede editar sede, personal y organigrama en el módulo Asistencia
  * (no implica acceso al módulo Configuración global).
  */
+function resolveUserRoleRecord(
+  user: User,
+  rolesOrRecord?: Role[] | Role | null
+): Role | undefined {
+  if (!rolesOrRecord) return undefined;
+  if (Array.isArray(rolesOrRecord)) {
+    return rolesOrRecord.find((r) => r.id === user.role);
+  }
+  return rolesOrRecord.id === user.role ? rolesOrRecord : undefined;
+}
+
 export function canConfigureAsistencia(
   user: User | null | undefined,
-  roles?: Role[] | null
+  rolesOrRecord?: Role[] | Role | null
 ): boolean {
   if (!user) return false;
   if (isAdminAppUser(user)) return true;
@@ -37,7 +48,7 @@ export function canConfigureAsistencia(
   const roleId = String(user.role || '').trim().toLowerCase();
   if (ASISTENCIA_CONFIG_APP_ROLES.has(roleId)) return true;
 
-  const roleRecord = roles?.find((r) => r.id === user.role);
+  const roleRecord = resolveUserRoleRecord(user, rolesOrRecord);
   if (roleRecord && isJefeLikeRole(roleRecord) && roleRecordHasModuleAccess(roleRecord, 'Asistencia')) {
     return true;
   }
