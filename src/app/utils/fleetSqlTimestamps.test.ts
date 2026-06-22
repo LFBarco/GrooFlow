@@ -9,12 +9,12 @@ describe('fleetSqlTimestamps', () => {
     expect(conflicts).toEqual([fleetRowKey('fleet_vehicles', 'v1')]);
   });
 
-  it('marca conflicto si la fila existe en SQL pero no estaba en la sesión', () => {
+  it('no marca conflicto si la fila existe en SQL pero no estaba en timestamps locales', () => {
     const known = new Map<string, string>();
     const live = new Map([[fleetRowKey('fleet_checklist', 'default'), '2026-06-10T11:00:00.000Z']]);
     expect(
       detectFleetSqlConflicts(known, live, [fleetRowKey('fleet_checklist', 'default')])
-    ).toEqual([fleetRowKey('fleet_checklist', 'default')]);
+    ).toEqual([]);
   });
 
   it('no marca conflicto en inserción nueva sin fila previa en SQL', () => {

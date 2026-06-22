@@ -273,7 +273,7 @@ export function FleetChecklistConfigurator({
       persistTimerRef.current = setTimeout(() => {
         persistTimerRef.current = null;
         void flushPersist();
-      }, 250);
+      }, 3_000);
     },
     [flushPersist]
   );

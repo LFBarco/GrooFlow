@@ -85,4 +85,4 @@ export function shouldApplyFleetRemoteSnapshot(
 }
 
 /** Tras guardar flota, ignorar SQL remoto unos segundos (réplica + Realtime). */
-export const FLEET_REMOTE_COOLDOWN_MS = 30_000;
+export const FLEET_REMOTE_COOLDOWN_MS = 8_000;
