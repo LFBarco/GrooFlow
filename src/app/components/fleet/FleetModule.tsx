@@ -83,6 +83,7 @@ import {
   FleetVehicleInspectionBar,
 } from './FleetInspectionComponents';
 import { FleetSedeField, useFleetSedeOptions } from './FleetSedeField';
+import { FleetFuelBulkImport } from './FleetFuelBulkImport';
 import { applyFleetDatasetChange, type FleetPersistFn } from '../../utils/fleetPersist';
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#64748b'];
@@ -1117,10 +1118,19 @@ function FleetFuelSection({
             {consVid != null ? `${consVid.toFixed(1)} L / 100 km` : 'Necesita 2 repostajes consecutivos'}
           </Badge>
         </div>
-        <Button onClick={openDialog} className="gap-2 bg-cyan-600 hover:bg-cyan-500">
-          <Fuel className="h-4 w-4" />
-          Registrar combustible
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <FleetFuelBulkImport
+            dataset={dataset}
+            setDataset={setDataset}
+            onPersistDataset={onPersistDataset}
+            visibleSedes={visibleSedes}
+            defaultHomeBase={defaultHomeBase}
+          />
+          <Button onClick={openDialog} className="gap-2 bg-cyan-600 hover:bg-cyan-500">
+            <Fuel className="h-4 w-4" />
+            Registrar combustible
+          </Button>
+        </div>
       </div>
 
       <div className="h-[260px] rounded-xl border border-white/10 bg-slate-950/80 p-2">
