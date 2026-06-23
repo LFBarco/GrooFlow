@@ -6,6 +6,9 @@ export type KvSaveResult = 'saved' | 'skipped' | 'failed';
 /** Promesa inicial de cadenas KV (no usar `true` — rompe kvSaveSucceeded). */
 export const KV_CHAIN_IDLE: Promise<KvSaveResult> = Promise.resolve('saved');
 
+/** Evita cadenas KV bloqueadas por red lenta (libera el indicador de nube). */
+export const KV_SAVE_OPERATION_TIMEOUT_MS = 12_000;
+
 let kvSavesInFlight = 0;
 
 /** Guardados KV encolados aún en vuelo (autosave + persist explícito). */
@@ -44,7 +47,12 @@ export function enqueueKvSerializedSave<T>(
       return 'skipped';
     }
     const toSave = options?.updateLatestRef === false ? snapshot : latestRef.current;
-    const ok = await api.saveKey(kvKey, toSave as unknown);
+    const ok = await Promise.race([
+      api.saveKey(kvKey, toSave as unknown),
+      new Promise<boolean>((resolve) => {
+        setTimeout(() => resolve(false), KV_SAVE_OPERATION_TIMEOUT_MS);
+      }),
+    ]);
     return ok ? 'saved' : 'failed';
   });
   void next.finally(() => {

@@ -8,7 +8,6 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 
-import { getAuthUserId } from '../services/productionSqlBridge';
 import {
   isFleetSqlEnabled,
   loadFleetFromSql,
@@ -31,16 +30,16 @@ import {
   type CloudSyncTracker,
   type KvDomainRefs,
 } from '../utils/kvDomainPersistence';
-import { backupDomainSqlAfterKvSave, ensureSqlSave } from '../utils/sqlAutosaveBackup';
+import { backupDomainSqlAfterKvSave } from '../utils/sqlAutosaveBackup';
 import {
   fleetRowKey,
   mergeFleetTimestampsFromDataset,
 } from '../utils/fleetSqlTimestamps';
 
 const FLEET_USE_SQL = isFleetSqlEnabled();
-const FLEET_KV_TIMEOUT_MS = 45_000;
-/** Autoguardado tras dejar de editar (3 s). Guardado explícito sigue siendo inmediato. */
-const FLEET_AUTOSAVE_DEBOUNCE_MS = 3_000;
+const FLEET_KV_TIMEOUT_MS = 12_000;
+/** Autoguardado rápido tras dejar de editar. */
+const FLEET_AUTOSAVE_DEBOUNCE_MS = 800;
 
 function withKvSaveTimeout(promise: Promise<KvSaveResult>): Promise<KvSaveResult> {
   return Promise.race([
@@ -196,11 +195,14 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
 
       skipExplicitAutosaveRef.current = true;
       skipHydrateRef.current = true;
+      let syncOpen = false;
       try {
         latestRef.current = next;
         setFleetDataset(next);
 
         const kvPayload = slimFleetDatasetForKv(next);
+        cloudSync.onStart();
+        syncOpen = true;
         const kvResult = await withKvSaveTimeout(
           enqueueKvSerializedSave(
             chainRef,
@@ -213,41 +215,53 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         );
 
         if (kvResult === 'skipped') {
+          cloudSync.onEnd(false, 'data:fleet');
+          syncOpen = false;
           if (!options?.silent) toast.error('Guardado interrumpido (recarga de sesión). Intenta de nuevo.');
           return false;
         }
         if (!kvSaveSucceeded(kvResult)) {
+          cloudSync.onEnd(false, 'data:fleet');
+          syncOpen = false;
           if (!options?.silent) {
             toast.error('No se guardó la plantilla del checklist en la nube. Revisa conexión e intenta de nuevo.');
           }
           return false;
         }
 
+        extendFleetCooldown(cooldownUntilRef);
+        hydratedRef.current = true;
+        cloudSync.onEnd(true, 'data:fleet');
+        syncOpen = false;
+
         if (FLEET_USE_SQL) {
-          const clResult = await saveFleetChecklistToSql(getSupabaseClient(), cleanSections, {
+          void saveFleetChecklistToSql(getSupabaseClient(), cleanSections, {
             skipOptimisticLock: true,
-          });
-          if (!clResult.ok) {
-            if (!options?.silent) {
+          }).then((clResult) => {
+            if (clResult.ok) {
+              sqlTimestampsRef.current.set(
+                fleetRowKey('fleet_checklist', 'default'),
+                new Date().toISOString()
+              );
+              return;
+            }
+            const now = Date.now();
+            const last = lastSaveErrorAtRef.current['data:fleet'] ?? 0;
+            if (now - last >= 8000 && !options?.silent) {
+              lastSaveErrorAtRef.current['data:fleet'] = now;
               toast.error(
                 clResult.errors[0] ??
                   'No se pudo guardar la plantilla del checklist en SQL. Revisa sesión o permisos.'
               );
             }
-            return false;
-          }
-          sqlTimestampsRef.current.set(
-            fleetRowKey('fleet_checklist', 'default'),
-            new Date().toISOString()
-          );
+          });
         }
 
-        extendFleetCooldown(cooldownUntilRef);
-        hydratedRef.current = true;
         if (!options?.silent) toast.success('Plantilla del checklist guardada.');
         return true;
       } catch (e) {
         console.warn('[GrooFlow] fleet checklist persist:', e);
+        if (syncOpen) cloudSync.onEnd(false, 'data:fleet');
         if (!options?.silent) {
           toast.error('Error de red al guardar la plantilla. Comprueba conexión e inténtalo de nuevo.');
         }
@@ -257,7 +271,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         skipExplicitAutosaveRef.current = false;
       }
     },
-    [isDataLoaded, setFleetDataset, cooldownUntilRef, sqlTimestampsRef]
+    [isDataLoaded, setFleetDataset, cooldownUntilRef, sqlTimestampsRef, cloudSync, lastSaveErrorAtRef]
   );
 
   const persistFleetNow = useCallback(
@@ -278,12 +292,14 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
 
       skipExplicitAutosaveRef.current = true;
       skipHydrateRef.current = true;
-      cloudSync.onStart();
+      let syncOpen = false;
       try {
         latestRef.current = clean;
         setFleetDataset(clean);
 
         const kvPayload = slimFleetDatasetForKv(clean);
+        cloudSync.onStart();
+        syncOpen = true;
         const kvResult = await withKvSaveTimeout(
           enqueueKvSerializedSave(
             chainRef,
@@ -297,62 +313,39 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
 
         if (kvResult === 'skipped') {
           cloudSync.onEnd(false, 'data:fleet');
+          syncOpen = false;
           toast.error('Guardado interrumpido (recarga de sesión). Intenta de nuevo.');
           return false;
         }
         if (!kvSaveSucceeded(kvResult)) {
           cloudSync.onEnd(false, 'data:fleet');
+          syncOpen = false;
           toast.error('No se guardó la flota en la nube. Revisa conexión e intenta de nuevo sin cerrar sesión.');
           return false;
         }
 
         extendFleetCooldown(cooldownUntilRef);
         hydratedRef.current = true;
+        cloudSync.onEnd(true, 'data:fleet');
+        syncOpen = false;
 
         if (FLEET_USE_SQL) {
-          const uid = await getAuthUserId();
-          if (!uid) {
-            cloudSync.onEnd(false, 'data:fleet');
-            toast.error('Sin sesión activa. Vuelve a iniciar sesión.');
-            return false;
-          }
-          const sqlOk = await ensureSqlSave(
-            true,
-            'data:fleet',
-            async () => {
-              const { ok, conflict, errors } = await saveFleetToSql(
-                getSupabaseClient(),
-                clean,
-                uid,
-                { allowPruneWhenEmpty: true, skipOptimisticLock: true }
-              );
-              if (conflict) {
-                await reloadFleetFromSql();
-                return { ok: false, errors: ['Conflicto de edición concurrente en flota.'] };
-              }
-              return { ok, errors };
-            },
-            lastSaveErrorAtRef
-          );
-          if (!sqlOk) {
-            cloudSync.onEnd(false, 'data:fleet');
-            return false;
-          }
-          sqlTimestampsRef.current = mergeFleetTimestampsFromDataset(
-            sqlTimestampsRef.current,
-            clean
-          );
+          void backupFleetSql(clean, true);
         }
 
-        cloudSync.onEnd(true, 'data:fleet');
         if (successMessage) toast.success(successMessage);
         return true;
+      } catch (e) {
+        console.warn('[GrooFlow] fleet persist:', e);
+        if (syncOpen) cloudSync.onEnd(false, 'data:fleet');
+        toast.error('Error de red al guardar la flota. Comprueba conexión e inténtalo de nuevo.');
+        return false;
       } finally {
         skipHydrateRef.current = false;
         skipExplicitAutosaveRef.current = false;
       }
     },
-    [isDataLoaded, setFleetDataset, cooldownUntilRef, lastSaveErrorAtRef, cloudSync, reloadFleetFromSql, sqlTimestampsRef]
+    [isDataLoaded, setFleetDataset, cooldownUntilRef, backupFleetSql, cloudSync]
   );
 
   const handleFleetDatasetUpdate = useCallback(

@@ -39,12 +39,23 @@ export interface CloudSyncTracker {
   onEnd: (ok: boolean, kvKey?: string) => void;
 }
 
+const CLOUD_SYNC_STALE_MS = 18_000;
+
 export function createCloudSyncTracker(
   pendingRef: MutableRefObject<number>,
   hasErrorRef: MutableRefObject<boolean>,
   setPhase: (phase: CloudSyncPhase) => void,
   errorKeyRef?: MutableRefObject<string | null>
 ): CloudSyncTracker {
+  let staleTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearStaleTimer = () => {
+    if (staleTimer) {
+      clearTimeout(staleTimer);
+      staleTimer = null;
+    }
+  };
+
   const recompute = () => {
     if (pendingRef.current > 0) {
       setPhase('saving');
@@ -53,12 +64,25 @@ export function createCloudSyncTracker(
     setPhase(hasErrorRef.current ? 'error' : 'synced');
   };
 
+  const armStaleWatchdog = () => {
+    clearStaleTimer();
+    staleTimer = setTimeout(() => {
+      if (pendingRef.current <= 0) return;
+      console.warn('[cloudSync] estado «Guardando» expirado; liberando indicador');
+      pendingRef.current = 0;
+      hasErrorRef.current = true;
+      recompute();
+    }, CLOUD_SYNC_STALE_MS);
+  };
+
   return {
     onStart: () => {
       pendingRef.current += 1;
       setPhase('saving');
+      armStaleWatchdog();
     },
     onEnd: (ok: boolean, kvKey?: string) => {
+      clearStaleTimer();
       pendingRef.current = Math.max(0, pendingRef.current - 1);
       if (!ok) {
         hasErrorRef.current = true;
@@ -97,16 +121,23 @@ export async function autosaveKvDomain<T>(options: {
   } = options;
 
   sync?.onStart();
-  const result = await enqueueKvSerializedSave(
-    refs.chainRef,
-    kvApplyGenerationRef,
-    refs.latestRef,
-    kvKey,
-    payload,
-    enqueueOptions
-  );
+  let result: KvSaveResult = 'failed';
+  try {
+    result = await enqueueKvSerializedSave(
+      refs.chainRef,
+      kvApplyGenerationRef,
+      refs.latestRef,
+      kvKey,
+      payload,
+      enqueueOptions
+    );
+  } catch (e) {
+    console.warn(`[kvDomain] autosave ${kvKey}`, e);
+    result = 'failed';
+  } finally {
+    sync?.onEnd(kvSaveSucceeded(result), kvKey);
+  }
   const ok = kvSaveSucceeded(result);
-  sync?.onEnd(ok, kvKey);
 
   if (ok) {
     refs.cooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;

@@ -279,7 +279,6 @@ export const api = {
       key === 'data:pettyCash' ||
       key === 'settings:system' ||
       key === 'settings:config' ||
-      key === 'data:fleet' ||
       key === 'data:inventory' ||
       key === 'data:chartOfAccounts' ||
       key === 'data:products' ||
