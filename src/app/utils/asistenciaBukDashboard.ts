@@ -1,11 +1,12 @@
-import type { AsistenciaSettings, BukAsistenciaRecord } from '../types/asistencia';
+import type { AsistenciaSettings, BukAsistenciaRecord, BukPunctualityStatus } from '../types/asistencia';
 import {
   formatBukEntradaDisplay,
   formatBukSalidaDisplay,
   hasBukEntradaMarcada,
   hasBukSalidaMarcadaOnDate,
+  resolveBukEntryPunctuality,
 } from './asistenciaData';
-import { filterBukRecordsForSedeDate } from './asistenciaStaff';
+import { filterBukRecordsForSedeDate, getSedeProfile } from './asistenciaStaff';
 
 export type BukDashboardRow = {
   id: number;
@@ -18,6 +19,9 @@ export type BukDashboardRow = {
   leftSameDay: boolean;
   entradaHora?: string;
   salidaHora?: string;
+  /** A tiempo / tardanza según horario sede (turno día 08:00 + tolerancia). */
+  punctuality: BukPunctualityStatus;
+  isDayShift: boolean;
 };
 
 export type BukDashboardSpecialtyGroup = {
@@ -26,6 +30,8 @@ export type BukDashboardSpecialtyGroup = {
   arrived: number;
   absent: number;
   leftSameDay: number;
+  onTime: number;
+  late: number;
   rows: BukDashboardRow[];
 };
 
@@ -35,6 +41,8 @@ export type BukDashboardAreaGroup = {
   arrived: number;
   absent: number;
   leftSameDay: number;
+  onTime: number;
+  late: number;
   rows: BukDashboardRow[];
 };
 
@@ -43,6 +51,8 @@ export type BukDashboardSummary = {
   arrived: number;
   absent: number;
   leftSameDay: number;
+  onTime: number;
+  late: number;
   rows: BukDashboardRow[];
   specialtyGroups: BukDashboardSpecialtyGroup[];
   areaGroups: BukDashboardAreaGroup[];
@@ -52,12 +62,24 @@ function apellidosFromRecord(r: BukAsistenciaRecord): string {
   return [r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ').trim();
 }
 
+function groupStats(rows: BukDashboardRow[]) {
+  return {
+    total: rows.length,
+    arrived: rows.filter((r) => r.arrived).length,
+    absent: rows.filter((r) => !r.arrived).length,
+    leftSameDay: rows.filter((r) => r.leftSameDay).length,
+    onTime: rows.filter((r) => r.punctuality === 'on_time').length,
+    late: rows.filter((r) => r.punctuality === 'late').length,
+  };
+}
+
 export function buildBukDashboardSummary(input: {
   records: BukAsistenciaRecord[];
   sedeName: string;
   settings: AsistenciaSettings;
   date: Date;
 }): BukDashboardSummary {
+  const profile = getSedeProfile(input.settings, input.sedeName);
   const filtered = filterBukRecordsForSedeDate(
     input.records,
     input.sedeName,
@@ -69,6 +91,7 @@ export function buildBukDashboardSummary(input: {
     .map((r) => {
       const arrived = hasBukEntradaMarcada(r);
       const leftSameDay = hasBukSalidaMarcadaOnDate(r, input.date);
+      const isDayShift = r.turno_noche !== true;
       return {
         id: r.id,
         nombre: (r.nombre || '').trim(),
@@ -84,6 +107,8 @@ export function buildBukDashboardSummary(input: {
         salidaHora: leftSameDay
           ? formatBukSalidaDisplay(r.salida_format, r.salida)
           : undefined,
+        punctuality: resolveBukEntryPunctuality(r, profile),
+        isDayShift,
       };
     })
     .sort((a, b) => {
@@ -95,6 +120,8 @@ export function buildBukDashboardSummary(input: {
 
   const arrived = rows.filter((r) => r.arrived).length;
   const leftSameDay = rows.filter((r) => r.leftSameDay).length;
+  const onTime = rows.filter((r) => r.punctuality === 'on_time').length;
+  const late = rows.filter((r) => r.punctuality === 'late').length;
 
   const bySpecialty = new Map<string, BukDashboardRow[]>();
   for (const row of rows) {
@@ -107,10 +134,7 @@ export function buildBukDashboardSummary(input: {
   const specialtyGroups: BukDashboardSpecialtyGroup[] = [...bySpecialty.entries()]
     .map(([especialidad, groupRows]) => ({
       especialidad,
-      total: groupRows.length,
-      arrived: groupRows.filter((r) => r.arrived).length,
-      absent: groupRows.filter((r) => !r.arrived).length,
-      leftSameDay: groupRows.filter((r) => r.leftSameDay).length,
+      ...groupStats(groupRows),
       rows: groupRows,
     }))
     .sort((a, b) => {
@@ -129,10 +153,7 @@ export function buildBukDashboardSummary(input: {
   const areaGroups: BukDashboardAreaGroup[] = [...byArea.entries()]
     .map(([area, groupRows]) => ({
       area,
-      total: groupRows.length,
-      arrived: groupRows.filter((r) => r.arrived).length,
-      absent: groupRows.filter((r) => !r.arrived).length,
-      leftSameDay: groupRows.filter((r) => r.leftSameDay).length,
+      ...groupStats(groupRows),
       rows: groupRows,
     }))
     .sort((a, b) => {
@@ -145,6 +166,8 @@ export function buildBukDashboardSummary(input: {
     arrived,
     absent: rows.length - arrived,
     leftSameDay,
+    onTime,
+    late,
     rows,
     specialtyGroups,
     areaGroups,

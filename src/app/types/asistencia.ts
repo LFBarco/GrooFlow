@@ -36,6 +36,10 @@ export const ASISTENCIA_WORK_SHIFT_LABELS: Record<AsistenciaWorkShift, string> =
 
 export const ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME = '08:00';
 export const ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME = '20:00';
+/** Tolerancia de llegada turno día (minutos después de scheduleStart). */
+export const ASISTENCIA_DEFAULT_DAY_TOLERANCE_MINUTES = 10;
+
+export type BukPunctualityStatus = 'on_time' | 'late' | 'pending';
 
 export const ASISTENCIA_LIVE_STATUS_LABELS: Record<AsistenciaLiveStatus, string> = {
   trabajando: 'Trabajando',
@@ -82,6 +86,8 @@ export interface AsistenciaSedeProfile {
   /** Horario referencial del turno nocturno en esta sede. */
   scheduleNightStart?: string;
   scheduleNightEnd?: string;
+  /** Minutos de tolerancia tras la hora de entrada (turno día). */
+  scheduleToleranceMinutes?: number;
   bukRecintoCode?: string;
   /** Columnas extra del organigrama. */
   customOrgColumns?: AsistenciaCustomOrgColumn[];

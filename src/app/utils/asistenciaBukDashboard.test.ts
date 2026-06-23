@@ -50,6 +50,42 @@ describe('asistenciaBukDashboard', () => {
     expect(summary.rows[0]?.nombre).toBe('ANDREA');
     expect(summary.rows[0]?.apellidos).toBe('CERVAN RAMIREZ');
     expect(summary.rows[0]?.entradaHora).toBe('08:06');
+    expect(summary.rows[0]?.punctuality).toBe('on_time');
+  });
+
+  it('marca tardanza después de tolerancia turno día', () => {
+    const settings = mergeAsistenciaSettings({
+      sedeProfiles: [
+        {
+          sedeName: '50.- La Molina',
+          bukRecintoCode: 'Petmax · Petmax Principal',
+          scheduleStart: '08:00',
+          scheduleToleranceMinutes: 10,
+        },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 3,
+        trab_id: 3,
+        rut_trabajador: '333',
+        nombre: 'TARDE',
+        apellido_paterno: 'USER',
+        codigo_recinto: 'Petmax',
+        nombre_recinto: 'Petmax Principal',
+        especialidad: 'COUNTER',
+        dia_entrada: '15/06/2026',
+        entrada_format: '2026/06/15 08:15:00',
+      },
+    ];
+    const summary = buildBukDashboardSummary({
+      records,
+      sedeName: '50.- La Molina',
+      settings,
+      date: new Date('2026-06-15T12:00:00'),
+    });
+    expect(summary.late).toBe(1);
+    expect(summary.rows[0]?.punctuality).toBe('late');
   });
 
   it('incluye hora de salida y agrupa por especialidad', () => {

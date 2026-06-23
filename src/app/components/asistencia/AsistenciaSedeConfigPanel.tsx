@@ -9,9 +9,13 @@ import {
   applyAddOrgColumn,
   applyOrgColumnLabels,
   applyRemoveOrgColumn,
+  cargosForOrgColumn,
+  cargoListToText,
   isBuiltinOrgColumnId,
+  parseCargoListText,
   resolveOrgColumns,
 } from '../../utils/asistenciaOrgColumns';
+import { Textarea } from '../ui/textarea';
 import { AsistenciaOrgConfigDialog } from './AsistenciaOrgConfigDialog';
 import { AsistenciaStaffDialog } from './AsistenciaStaffDialog';
 import { Button } from '../ui/button';
@@ -48,6 +52,9 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   const [scheduleEnd, setScheduleEnd] = useState(profile.scheduleEnd ?? '18:00');
   const [scheduleNightStart, setScheduleNightStart] = useState(profile.scheduleNightStart ?? '20:00');
   const [scheduleNightEnd, setScheduleNightEnd] = useState(profile.scheduleNightEnd ?? '08:00');
+  const [scheduleTolerance, setScheduleTolerance] = useState(
+    String(profile.scheduleToleranceMinutes ?? 10)
+  );
   const [bukCode, setBukCode] = useState(profile.bukRecintoCode ?? '');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<AsistenciaStaffMember | null>(null);
@@ -62,6 +69,15 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     return labels;
   });
   const [hideEmptyAreas, setHideEmptyAreas] = useState(profile.hideEmptyAreas ?? false);
+  const [cargoByColumnText, setCargoByColumnText] = useState<Record<string, string>>(() => {
+    const cols = resolveOrgColumns(profile);
+    return Object.fromEntries(
+      cols.map((c) => [
+        c.id,
+        cargoListToText(cargosForOrgColumn(profile, c.id)),
+      ])
+    );
+  });
   const [newColumnLabel, setNewColumnLabel] = useState('');
 
   const runSave = async (
@@ -88,6 +104,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   }, [staff, orgColumns]);
 
   const saveSedeProfile = async () => {
+    const tolerance = Math.max(0, Math.min(120, Number(scheduleTolerance) || 10));
     const ok = await runSave((prev) => {
       const rest = (prev.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
       const mappings = (prev.sedeMappings ?? []).filter((m) => m.sedeName !== sedeName);
@@ -101,6 +118,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
             scheduleEnd,
             scheduleNightStart,
             scheduleNightEnd,
+            scheduleToleranceMinutes: tolerance,
             bukRecintoCode: bukCode.trim() || undefined,
           },
         ],
@@ -113,9 +131,18 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   };
 
   const saveOrgLayout = async () => {
+    const cargoByColumn = Object.fromEntries(
+      areaOrder.map((columnId) => {
+        const text =
+          cargoByColumnText[columnId] ?? cargoListToText(cargosForOrgColumn(profile, columnId));
+        const cargos = parseCargoListText(text);
+        const fallback = cargosForOrgColumn({ ...profile, cargoByColumn: undefined }, columnId);
+        return [columnId, cargos.length > 0 ? cargos : fallback] as const;
+      })
+    );
     const ok = await runSave(
       (prev) =>
-        applyOrgColumnLabels(prev, sedeName, areaLabels, areaOrder, hideEmptyAreas),
+        applyOrgColumnLabels(prev, sedeName, areaLabels, areaOrder, hideEmptyAreas, cargoByColumn),
       'Estructura del organigrama guardada.'
     );
     return ok;
@@ -131,9 +158,15 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     if (ok) {
       setNewColumnLabel('');
       const next = applyAddOrgColumn(settings, sedeName, label);
-      const cols = resolveOrgColumns(getSedeProfile(next, sedeName));
+      const nextProfile = getSedeProfile(next, sedeName);
+      const cols = resolveOrgColumns(nextProfile);
       setAreaOrder(cols.map((c) => c.id));
       setAreaLabels(Object.fromEntries(cols.map((c) => [c.id, c.label])));
+      setCargoByColumnText(
+        Object.fromEntries(
+          cols.map((c) => [c.id, cargoListToText(cargosForOrgColumn(nextProfile, c.id))])
+        )
+      );
     }
   };
 
@@ -152,6 +185,11 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
       const cols = resolveOrgColumns(nextProfile);
       setAreaOrder(cols.map((c) => c.id));
       setAreaLabels(Object.fromEntries(cols.map((c) => [c.id, c.label])));
+      setCargoByColumnText(
+        Object.fromEntries(
+          cols.map((c) => [c.id, cargoListToText(cargosForOrgColumn(nextProfile, c.id))])
+        )
+      );
     }
   };
 
@@ -224,6 +262,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                   setScheduleEnd(profile.scheduleEnd ?? '18:00');
                   setScheduleNightStart(profile.scheduleNightStart ?? '20:00');
                   setScheduleNightEnd(profile.scheduleNightEnd ?? '08:00');
+                  setScheduleTolerance(String(profile.scheduleToleranceMinutes ?? 10));
                   setBukCode(profile.bukRecintoCode ?? '');
                   setEditSede(true);
                 }}
@@ -254,6 +293,18 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                     <Input type="time" value={scheduleNightStart} onChange={(e) => setScheduleNightStart(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
                     <span className="text-slate-500">-</span>
                     <Input type="time" value={scheduleNightEnd} onChange={(e) => setScheduleNightEnd(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase text-slate-500 w-12">Tol.</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={scheduleTolerance}
+                      onChange={(e) => setScheduleTolerance(e.target.value)}
+                      className="h-8 w-[72px] bg-slate-800 border-slate-700 text-white"
+                    />
+                    <span className="text-xs text-slate-500">min después de entrada turno día (ej. 08:00 + 10 = hasta 08:10)</span>
                   </div>
                 </div>
               ) : (
@@ -295,7 +346,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 Estructura del organigrama
               </CardTitle>
               <CardDescription className="text-slate-400">
-                Agrega columnas, renómbralas, ordénalas y define la dotación Buk por cargo.
+                Agrega columnas, renómbralas, ordénalas y define los cargos visibles en cada área.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -324,8 +375,9 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 return (
                   <div
                     key={columnId}
-                    className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/50 p-3"
+                    className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 space-y-3"
                   >
+                    <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-slate-500 w-24 shrink-0">
                       Columna {index + 1}
                     </span>
@@ -371,6 +423,25 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                       >
                         <ArrowDown className="h-3.5 w-3.5" />
                       </Button>
+                    </div>
+                    </div>
+                    <div className="space-y-1.5 pl-0 sm:pl-24">
+                      <Label className="text-xs text-slate-400">Cargos visibles en esta área</Label>
+                      <Textarea
+                        value={
+                          cargoByColumnText[columnId] ??
+                          cargoListToText(cargosForOrgColumn(profile, columnId))
+                        }
+                        onChange={(e) =>
+                          setCargoByColumnText((prev) => ({ ...prev, [columnId]: e.target.value }))
+                        }
+                        placeholder={'Un cargo por línea\nEj. Médico veterinario\nAsistente veterinario'}
+                        rows={3}
+                        className="text-sm bg-slate-800 border-slate-700 text-white resize-y min-h-[72px]"
+                      />
+                      <p className="text-[10px] text-slate-500">
+                        Estos cargos aparecen al agregar personal y en el organigrama en vivo.
+                      </p>
                     </div>
                   </div>
                 );

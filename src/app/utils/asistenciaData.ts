@@ -12,6 +12,7 @@ import type {
   AsistenciaSettings,
   AsistenciaStaffMember,
   BukAsistenciaRecord,
+  BukPunctualityStatus,
 } from '../types/asistencia';
 import { normalizeStaffShift } from './asistenciaShift';
 
@@ -219,6 +220,47 @@ export function formatBukEntradaDisplay(
 /** Hora de llegada válida en Buk (`entrada_format`). */
 export function isValidBukEntradaFormat(raw?: string | null): boolean {
   return parseBukEntradaFormatMinutes(raw) != null;
+}
+
+/** Convierte HH:mm a minutos desde medianoche. */
+export function parseScheduleTimeMinutes(hhmm?: string | null): number | null {
+  if (!hhmm) return null;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  return h * 60 + min;
+}
+
+/** Puntualidad de entrada Buk vs horario sede (día 08:00 + tolerancia; noche usa scheduleNightStart). */
+export function resolveBukEntryPunctuality(
+  record: BukAsistenciaRecord,
+  profile: Pick<
+    AsistenciaSedeProfile,
+    'scheduleStart' | 'scheduleNightStart' | 'scheduleToleranceMinutes'
+  >
+): BukPunctualityStatus {
+  if (!hasBukEntradaMarcada(record)) return 'pending';
+
+  let entradaMin = parseBukEntradaFormatMinutes(record.entrada_format);
+  if (entradaMin == null && record.entrada) {
+    const d = new Date(record.entrada);
+    if (!Number.isNaN(d.getTime())) entradaMin = d.getHours() * 60 + d.getMinutes();
+  }
+  if (entradaMin == null) return 'pending';
+
+  const isNight = record.turno_noche === true;
+  const expectedStart =
+    parseScheduleTimeMinutes(
+      isNight
+        ? profile.scheduleNightStart ?? '20:00'
+        : profile.scheduleStart ?? '08:00'
+    ) ?? (isNight ? 20 * 60 : 8 * 60);
+  const tolerance = profile.scheduleToleranceMinutes ?? 10;
+  const deadline = expectedStart + tolerance;
+
+  return entradaMin <= deadline ? 'on_time' : 'late';
 }
 
 /** Marca de entrada en Buk: entrada_format (fecha+hora) o timestamp entrada. */

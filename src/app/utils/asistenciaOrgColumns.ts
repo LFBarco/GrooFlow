@@ -70,6 +70,19 @@ export function cargosForOrgColumn(
   return ['Personal', 'Encargado'];
 }
 
+/** Parsea lista de cargos desde texto (una línea o coma por cargo). */
+export function parseCargoListText(text: string): string[] {
+  const items = text
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [...new Set(items)];
+}
+
+export function cargoListToText(cargos: string[]): string {
+  return cargos.join('\n');
+}
+
 export function applyAddOrgColumn(
   settings: AsistenciaSettings,
   sedeName: string,

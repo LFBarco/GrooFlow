@@ -256,6 +256,7 @@ export function getSedeProfile(
     scheduleEnd: found?.scheduleEnd ?? DEFAULT_SCHEDULE.end,
     scheduleNightStart: found?.scheduleNightStart,
     scheduleNightEnd: found?.scheduleNightEnd,
+    scheduleToleranceMinutes: found?.scheduleToleranceMinutes,
     bukRecintoCode: found?.bukRecintoCode ?? map?.bukRecintoCode,
     areaLabels: found?.areaLabels,
     areaOrder: found?.areaOrder,
