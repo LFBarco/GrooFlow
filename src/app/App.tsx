@@ -123,6 +123,7 @@ import { mergePettyCashFilterCatalog } from "./utils/providerCatalog";
 import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
 import { getFirstAllowedViewPath, roleRecordHasModuleAccess } from "./utils/rolePermissions";
 import { getSuperAdminEmails } from "./config/superAdmins";
+import { goLiveAlertSources } from "./config/goLive";
 import { isUserSessionBlocked } from "./utils/userSessionGuard";
 import { weekKeyMatches } from "./utils/pettyCashWeekKey";
 import type { FleetDataset } from "./types/fleet";
@@ -227,6 +228,7 @@ import { useAsistenciaPersistence } from "./hooks/useAsistenciaPersistence";
 import { mergeAsistenciaSettings } from "./utils/asistenciaData";
 import { useTransactionsPersistence } from "./hooks/useTransactionsPersistence";
 import { useAppDataHydration } from "./hooks/useAppDataHydration";
+import { useSessionRecoveryOnFocus } from "./hooks/useSessionRecoveryOnFocus";
 import { useProvidersPersistence } from "./hooks/useProvidersPersistence";
 import { useUsersRolesPersistence } from "./hooks/useUsersRolesPersistence";
 import { useOperationalDomainsPersistence } from "./hooks/useOperationalDomainsPersistence";
@@ -1822,6 +1824,7 @@ export default function App() {
 
   const handleCloudSyncRetry = useCallback(async () => {
     cloudSyncErrorRef.current = false;
+    resetKvSaveChains();
     try {
       await hydrateFromKvRef.current?.();
       await processPendingSqlRetryQueue(true);
@@ -1831,6 +1834,37 @@ export default function App() {
       setCloudSyncPhase('error');
     }
   }, [processPendingSqlRetryQueue]);
+
+  const releasePersistenceAfterIdle = useCallback(() => {
+    if (cloudSyncPendingRef.current > 0) {
+      console.warn('[GrooFlow] liberando indicador de nube tras volver a la pestaña');
+      cloudSyncPendingRef.current = 0;
+    }
+    cloudSyncErrorRef.current = false;
+    setCloudSyncPhase('synced');
+    skipProvidersHydrateRef.current = false;
+    skipTransactionsHydrateRef.current = false;
+    skipPettyCashHydrateRef.current = false;
+    skipConfigHydrateRef.current = false;
+    skipFleetHydrateRef.current = false;
+    skipInventoryHydrateRef.current = false;
+    skipAlertThresholdsHydrateRef.current = false;
+    skipChartOfAccountsHydrateRef.current = false;
+    skipProductsHydrateRef.current = false;
+    skipRolesHydrateRef.current = false;
+    skipInvoicesHydrateRef.current = false;
+    skipRequestsHydrateRef.current = false;
+    skipFeeReceiptsHydrateRef.current = false;
+    skipSystemSettingsHydrateRef.current = false;
+    skipTreasuryHydrateRef.current = false;
+    skipThemeHydrateRef.current = false;
+    skipUsersHydrateRef.current = false;
+  }, []);
+
+  useSessionRecoveryOnFocus({
+    enabled: isAuthenticated && isDataLoaded,
+    onRecover: releasePersistenceAfterIdle,
+  });
 
   // --- ALERTS ENGINE (diferido al idle: no bloquea el hilo al hidratar datos) ---
   useEffect(() => {

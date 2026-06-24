@@ -138,11 +138,10 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
       const token = first.data.session?.access_token;
       if (token && !isAccessTokenExpired(token)) return first.data.session;
       if (backend !== 'supabase') return first.data.session;
-      if (!first.data.session?.user) return first.data.session;
       try {
-        await refreshSessionWithTimeout();
+        await refreshSessionWithTimeout(4000);
       } catch {
-        // noop: tolerar carreras transitorias al refrescar la página.
+        // noop: tolerar carreras transitorias al refrescar la página o despertar la pestaña.
       }
       const second = await supabase.auth.getSession();
       return second.data.session;
@@ -206,7 +205,10 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           deps.setCanSaveUsers(true);
         }
 
-        deps.resetKvSaveChains();
+        /** Solo en la primera hidratación: re-hidratar (p. ej. retry manual) no debe invalidar guardados en curso. */
+        if (!deps.cloudDataHydratedRef.current) {
+          deps.resetKvSaveChains();
+        }
 
         let nextUsers: User[] = [];
         const usersFromKv = data['data:users'];
@@ -1125,8 +1127,8 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         /** No hacer KV full-hydrate en USER_UPDATED: Supabase puede emitirlo tras metadatos y pisa estado local
          *  antes del autosave (ej. proveedores recién cargados parecían «no guardarse»). */
         const shouldHydrate =
-          event === 'SIGNED_IN' ||
-          (event === 'INITIAL_SESSION' && !deps.cloudDataHydratedRef.current);
+          (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
+          !deps.cloudDataHydratedRef.current;
         if (shouldHydrate) {
           if (event === 'SIGNED_IN' && deps.hydrateRunningRef.current) return;
           await hydrateFromKv();
@@ -1169,7 +1171,16 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
       deps.authNullDebounceRef.current = setTimeout(async () => {
         deps.authNullDebounceRef.current = null;
         if (cancelled || deps.signingOutRef.current) return;
-        const s2 = await getStableSession();
+        let s2 = await getStableSession();
+        if (!s2?.user && backend === 'supabase') {
+          try {
+            await refreshSessionWithTimeout(5000);
+            const retry = await supabase.auth.getSession();
+            s2 = retry.data.session;
+          } catch {
+            /* intento extra tras idle / pestaña en segundo plano */
+          }
+        }
         if (s2?.user) {
           /** Sesión recuperada tras un null transitorio (refresh/red): no re-hidratar KV
            *  porque invalidaría colas de guardado y pisaría cambios locales recientes. */
@@ -1204,7 +1215,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         deps.setCloudSyncPhase('idle');
         deps.setCanSaveUsers(true);
         deps.setIsDataLoaded(false);
-      }, 250);
+      }, 600);
     });
 
     return () => {
