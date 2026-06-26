@@ -1,6 +1,7 @@
 import {
   getImportCell,
   inferPaymentMethod,
+  normalizeGatewayOperationNumber,
   normalizeOperationNumber,
   parseImportAmount,
   parseImportDate,
@@ -62,8 +63,11 @@ export const salesExcelConnector: ReconciliationConnector = {
         return;
       }
 
-      const { normalized, raw } = normalizeOperationNumber(opRaw);
       const paymentMethod = inferPaymentMethod(methodRaw, undefined);
+      const { normalized, raw } =
+        paymentMethod === 'mercado_pago' || paymentMethod === 'niubiz'
+          ? normalizeGatewayOperationNumber(opRaw)
+          : normalizeOperationNumber(opRaw);
 
       movements.push({
         sourceType: 'sales_erp',

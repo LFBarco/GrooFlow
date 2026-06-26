@@ -25,7 +25,56 @@ export function getImportCell(row: Record<string, unknown>, ...aliases: string[]
       if (v !== undefined && v !== null && String(v).trim() !== '') return v;
     }
   }
+  /** Encabezados largos tipo «Fecha de compra (date_created)». */
+  for (const alias of aliases) {
+    const target = normalizeImportKey(alias);
+    if (target.length < 4) continue;
+    for (const key of Object.keys(row)) {
+      const nk = normalizeImportKey(key);
+      if (nk.includes(target)) {
+        const v = row[key];
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+      }
+    }
+  }
   return undefined;
+}
+
+/** Valor por índice de columna (A=0, B=1, …) según orden del Excel exportado. */
+export function getImportCellByIndex(row: Record<string, unknown>, index: number): unknown {
+  const values = Object.values(row);
+  if (index < 0 || index >= values.length) return undefined;
+  const v = values[index];
+  if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+  return undefined;
+}
+
+/**
+ * Pasarelas (Mercado Pago, Niubiz): conservar el ID completo para cruce con ventas.
+ */
+export function normalizeGatewayOperationNumber(raw: unknown): { normalized: string; raw: string } {
+  const rawStr = String(raw ?? '').trim();
+  if (!rawStr) return { normalized: '', raw: '' };
+  const digits = rawStr.replace(/\D/g, '');
+  if (!digits) return { normalized: '', raw: rawStr };
+  return { normalized: digits, raw: rawStr };
+}
+
+export function isMercadoPagoApprovedStatus(status: unknown): boolean {
+  const s = String(status ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '');
+  if (!s) return false;
+  return (
+    s === 'approved' ||
+    s === 'aprobado' ||
+    s === 'aprovado' ||
+    s.startsWith('approved') ||
+    s.startsWith('aprobado') ||
+    s.startsWith('aprovado')
+  );
 }
 
 /**

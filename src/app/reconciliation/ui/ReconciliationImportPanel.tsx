@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { RECONCILIATION_CONNECTORS } from '../connectors';
 import { downloadSalesImportTemplate } from '../connectors/salesExcelConnector';
+import { downloadMercadoPagoColumnReference } from '../connectors/mercadoPagoConnector';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import { importReconciliationFile } from '../engines/reconciliationRunner';
 
@@ -55,8 +56,9 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{connector.label}</CardTitle>
             <CardDescription>
-              {connector.acceptedExtensions.join(', ')} — se agrega al lote del día sin reemplazar
-              importaciones anteriores.
+              {connector.sourceType === 'mercado_pago'
+                ? 'Exportación oficial MP: columnas A (fecha), G (N° operación), H (approved), K (importe).'
+                : `${connector.acceptedExtensions.join(', ')} — se agrega al lote del día sin reemplazar importaciones anteriores.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-2">
@@ -88,6 +90,12 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
               <Button type="button" variant="ghost" size="sm" onClick={() => downloadSalesImportTemplate()}>
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
                 Plantilla ventas
+              </Button>
+            )}
+            {connector.sourceType === 'mercado_pago' && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => downloadMercadoPagoColumnReference()}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Guía columnas MP
               </Button>
             )}
           </CardContent>
