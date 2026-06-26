@@ -291,7 +291,8 @@ export const api = {
       key === 'data:requests' ||
       key === 'data:feeReceipts' ||
       key === 'data:treasuryInvoices' ||
-      key === 'data:treasuryPaidHistory'
+      key === 'data:treasuryPaidHistory' ||
+      key === 'data:reconciliation'
         ? (backend === 'supabase' ? 6 : 3)
         : backend === 'supabase' ? 3 : 2;
 

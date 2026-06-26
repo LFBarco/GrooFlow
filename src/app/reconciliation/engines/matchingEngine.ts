@@ -58,6 +58,54 @@ function scoreAmountDateMatch(bank: CanonicalMovement, sales: CanonicalMovement,
   return 0.65;
 }
 
+function pickBestCandidate(
+  bank: CanonicalMovement,
+  salesList: CanonicalMovement[],
+  usedSales: Set<string>,
+  cfg: MatchingConfig
+): MatchCandidate | null {
+  let best: MatchCandidate | null = null;
+  for (const sales of salesList) {
+    if (usedSales.has(sales.id)) continue;
+    if (!sourceCompatible(bank, sales)) continue;
+    const opScore = scoreOperationMatch(bank, sales, cfg);
+    if (opScore >= 0.7) {
+      const cand: MatchCandidate = { bank, sales, confidence: opScore, strategy: 'operation_number' };
+      if (!best || cand.confidence > best.confidence) best = cand;
+      continue;
+    }
+    const adScore = scoreAmountDateMatch(bank, sales, cfg);
+    if (adScore >= 0.65) {
+      const cand: MatchCandidate = { bank, sales, confidence: adScore, strategy: 'amount_date' };
+      if (!best || cand.confidence > best.confidence) best = cand;
+    }
+  }
+  return best && best.confidence >= 0.65 ? best : null;
+}
+
+function indexSalesByOperation(sales: CanonicalMovement[]): Map<string, CanonicalMovement[]> {
+  const map = new Map<string, CanonicalMovement[]>();
+  for (const s of sales) {
+    if (!s.operationNumber) continue;
+    const list = map.get(s.operationNumber) ?? [];
+    list.push(s);
+    map.set(s.operationNumber, list);
+  }
+  return map;
+}
+
+/** Índice por monto (centavos) para fallback monto+fecha sin O(n²). */
+function indexSalesByAmount(sales: CanonicalMovement[]): Map<string, CanonicalMovement[]> {
+  const map = new Map<string, CanonicalMovement[]>();
+  for (const s of sales) {
+    const key = s.amount.toFixed(2);
+    const list = map.get(key) ?? [];
+    list.push(s);
+    map.set(key, list);
+  }
+  return map;
+}
+
 export function findMatchCandidates(
   bankMovements: CanonicalMovement[],
   salesMovements: CanonicalMovement[],
@@ -68,26 +116,25 @@ export function findMatchCandidates(
   const usedSales = new Set<string>();
 
   const pendingBank = bankMovements.filter((m) => isBankSide(m) && m.workflowStatus !== 'reconciled');
-  const pendingSales = salesMovements.filter((m) => m.side === 'sales_application' && m.workflowStatus !== 'reconciled');
+  const pendingSales = salesMovements.filter(
+    (m) => m.side === 'sales_application' && m.workflowStatus !== 'reconciled'
+  );
+
+  const salesByOp = indexSalesByOperation(pendingSales);
+  const salesByAmount = indexSalesByAmount(pendingSales);
 
   for (const bank of pendingBank) {
     let best: MatchCandidate | null = null;
-    for (const sales of pendingSales) {
-      if (usedSales.has(sales.id)) continue;
-      if (!sourceCompatible(bank, sales)) continue;
-      const opScore = scoreOperationMatch(bank, sales, cfg);
-      if (opScore >= 0.7) {
-        const cand: MatchCandidate = { bank, sales, confidence: opScore, strategy: 'operation_number' };
-        if (!best || cand.confidence > best.confidence) best = cand;
-        continue;
-      }
-      const adScore = scoreAmountDateMatch(bank, sales, cfg);
-      if (adScore >= 0.65) {
-        const cand: MatchCandidate = { bank, sales, confidence: adScore, strategy: 'amount_date' };
-        if (!best || cand.confidence > best.confidence) best = cand;
-      }
+
+    if (bank.operationNumber) {
+      best = pickBestCandidate(bank, salesByOp.get(bank.operationNumber) ?? [], usedSales, cfg);
     }
-    if (best && best.confidence >= 0.65) {
+
+    if (!best) {
+      best = pickBestCandidate(bank, salesByAmount.get(bank.amount.toFixed(2)) ?? [], usedSales, cfg);
+    }
+
+    if (best) {
       candidates.push(best);
       usedBank.add(best.bank.id);
       usedSales.add(best.sales.id);

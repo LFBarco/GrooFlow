@@ -7,6 +7,8 @@ import type { ReconciliationDataset } from '../domain/types';
 
 const KV_KEY = 'data:reconciliation';
 const AUTOSAVE_MS = 1200;
+const AUTOSAVE_LARGE_MS = 4000;
+const LARGE_DATASET_MOVEMENTS = 8000;
 
 export function useReconciliationDataset(enabled: boolean) {
   const [dataset, setDataset] = useState<ReconciliationDataset>(createEmptyDataset);
@@ -58,9 +60,11 @@ export function useReconciliationDataset(enabled: boolean) {
         const next = typeof updater === 'function' ? updater(prev) : updater;
         latestRef.current = next;
         if (timerRef.current) clearTimeout(timerRef.current);
+        const delay =
+          next.movements.length >= LARGE_DATASET_MOVEMENTS ? AUTOSAVE_LARGE_MS : AUTOSAVE_MS;
         timerRef.current = setTimeout(() => {
           void persist(next);
-        }, AUTOSAVE_MS);
+        }, delay);
         return next;
       });
     },

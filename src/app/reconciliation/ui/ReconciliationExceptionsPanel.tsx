@@ -23,7 +23,7 @@ export function ReconciliationExceptionsPanel({ dataset, onDatasetChange }: Prop
     <div className="space-y-6">
       <section>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Alertas ({openAlerts.length})
+          Alertas resumidas ({openAlerts.length})
         </h3>
         {openAlerts.length === 0 ? (
           <p className="text-sm text-muted-foreground">Sin alertas abiertas en esta sesión.</p>

@@ -14,6 +14,8 @@ const GATEWAY_METHOD: Record<string, PaymentMethodHint> = {
   bcp_bank: 'transfer_bcp',
 };
 
+const SUMMARY_SAMPLE_IDS = 40;
+
 function pushAlert(
   alerts: ReconciliationAlert[],
   sessionId: string,
@@ -38,119 +40,89 @@ function pushAlert(
   });
 }
 
+function pushSummaryAlert(
+  alerts: ReconciliationAlert[],
+  sessionId: string,
+  ruleCode: ReconciliationRuleCode,
+  severity: ReconciliationAlert['severity'],
+  label: string,
+  movementIds: string[]
+) {
+  if (movementIds.length === 0) return;
+  const sample = movementIds.slice(0, SUMMARY_SAMPLE_IDS);
+  const message =
+    movementIds.length === 1
+      ? `${label}: 1 movimiento — revisar pestaña Cruces.`
+      : `${label}: ${movementIds.length} movimiento(s) — revisar pestaña Cruces (muestra ${sample.length}).`;
+  pushAlert(alerts, sessionId, ruleCode, severity, message, sample);
+}
+
 export function applyPostMatchRules(dataset: ReconciliationDataset, sessionId?: string): ReconciliationDataset {
   const sid = sessionId ?? dataset.activeSessionId;
   const movements = sessionMovements(dataset, sid);
-  const alerts = [...dataset.alerts];
+  const alerts = dataset.alerts.filter((a) => a.resolved || a.sessionId !== sid);
   const reconciledKeys = new Set(dataset.reconciledOperationKeys);
   const movementMap = new Map(movements.map((m) => [m.id, m]));
 
-  const updatedMovements = movements.map((m) => ({ ...m, ruleCodes: [...m.ruleCodes] }));
+  const orphanBankIds: string[] = [];
+  const orphanSalesIds: string[] = [];
+  const partialIds: string[] = [];
+  const overpayIds: string[] = [];
+  const amountMismatchIds: string[] = [];
+  const duplicateGroups: string[][] = [];
 
-  const applyRules = (m: CanonicalMovement): CanonicalMovement => {
+  const opIndex = new Map<string, CanonicalMovement[]>();
+  for (const m of movements) {
+    if (!m.operationNumber) continue;
+    const key = `${m.operationNumber}|${m.amount.toFixed(2)}`;
+    const list = opIndex.get(key) ?? [];
+    list.push(m);
+    opIndex.set(key, list);
+  }
+  for (const group of opIndex.values()) {
+    if (group.length > 1) {
+      duplicateGroups.push(group.map((m) => m.id));
+    }
+  }
+
+  const updatedMovements = movements.map((m) => {
     const rules = new Set(m.ruleCodes);
 
     if (m.workflowStatus !== 'reconciled') {
       if (m.side === 'bank_or_gateway' || m.sourceType !== 'sales_erp') {
         rules.add('RULE-002');
-        m = { ...m, workflowStatus: m.workflowStatus === 'imported' ? 'pending' : m.workflowStatus };
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-002',
-          'warning',
-          `Movimiento banco/pasarela sin venta: S/ ${m.amount.toFixed(2)} (${m.operationNumberRaw || 'sin N°'})`,
-          [m.id]
-        );
+        orphanBankIds.push(m.id);
       } else {
         rules.add('RULE-003');
-        const slot = m.metadata?.erpOpCodeSlot;
-        const needsBankAmount = m.metadata?.erpAmountFromBank === true;
-        const message =
-          needsBankAmount && typeof slot === 'number' && slot > 1
-            ? `Cod. Op. Pago ${slot} sin medio en ERP (${m.documentNumber ?? 'doc'}) — cruce por N° ${m.operationNumberRaw || m.operationNumber || '—'}`
-            : `Venta sin movimiento bancario: ${m.documentNumber ?? 'doc'} — S/ ${m.amount.toFixed(2)}`;
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-003',
-          needsBankAmount ? 'info' : 'warning',
-          message,
-          [m.id]
-        );
+        orphanSalesIds.push(m.id);
       }
     }
 
     if (m.operationNumber) {
       const key = operationMatchKey(m.operationNumber, m.amount);
-      const duplicates = updatedMovements.filter(
-        (o) =>
-          o.id !== m.id &&
-          o.operationNumber === m.operationNumber &&
-          amountsEqual(o.amount, m.amount)
-      );
-      if (duplicates.length > 0) {
-        rules.add('RULE-004');
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-004',
-          'critical',
-          `Código de operación duplicado: ${m.operationNumberRaw || m.operationNumber}`,
-          [m.id, ...duplicates.map((d) => d.id)]
-        );
-      }
       if (reconciledKeys.has(key) && m.workflowStatus !== 'reconciled') {
         rules.add('RULE-004');
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-004',
-          'critical',
-          `N° operación ya conciliado previamente: ${m.operationNumberRaw || m.operationNumber}`,
-          [m.id]
-        );
       }
     }
 
     if (m.side === 'sales_application' && m.saleAmount != null && !amountsEqual(m.saleAmount, m.amount)) {
       if (m.amount < m.saleAmount) {
         rules.add('RULE-007');
-        m = { ...m, workflowStatus: 'difference' };
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-007',
-          'info',
-          `Pago parcial en ${m.documentNumber ?? 'documento'}: venta S/ ${m.saleAmount.toFixed(2)}, pago S/ ${m.amount.toFixed(2)}`,
-          [m.id]
-        );
-      } else if (m.amount > m.saleAmount) {
+        partialIds.push(m.id);
+        return { ...m, workflowStatus: 'difference' as const, ruleCodes: [...rules] };
+      }
+      if (m.amount > m.saleAmount) {
         rules.add('RULE-008');
-        m = { ...m, workflowStatus: 'difference' };
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-008',
-          'warning',
-          `Sobrepago en ${m.documentNumber ?? 'documento'}: venta S/ ${m.saleAmount.toFixed(2)}, pago S/ ${m.amount.toFixed(2)}`,
-          [m.id]
-        );
+        overpayIds.push(m.id);
+        return { ...m, workflowStatus: 'difference' as const, ruleCodes: [...rules] };
       }
     }
 
-  if (m.workflowStatus === 'reconciled' && m.matchedMovementId) {
+    if (m.workflowStatus === 'reconciled' && m.matchedMovementId) {
       const pair = movementMap.get(m.matchedMovementId);
       if (pair && !amountsEqual(m.amount, pair.amount)) {
         rules.add('RULE-005');
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-005',
-          'warning',
-          `Importe distinto entre par conciliado: S/ ${m.amount.toFixed(2)} vs S/ ${pair.amount.toFixed(2)}`,
-          [m.id, pair.id]
-        );
+        amountMismatchIds.push(m.id);
       }
       const expectedMethod = GATEWAY_METHOD[m.sourceType];
       if (
@@ -160,25 +132,53 @@ export function applyPostMatchRules(dataset: ReconciliationDataset, sessionId?: 
         m.paymentMethod !== 'unknown'
       ) {
         rules.add('RULE-006');
-        pushAlert(
-          alerts,
-          sid,
-          'RULE-006',
-          'info',
-          `Medio de pago distinto al esperado para la fuente emparejada (${m.documentNumber ?? m.id})`,
-          [m.id, m.matchedMovementId]
-        );
       }
     }
 
     return { ...m, ruleCodes: [...rules] };
-  };
+  });
 
-  const nextSessionMovements = updatedMovements.map(applyRules);
+  pushSummaryAlert(
+    alerts,
+    sid,
+    'RULE-002',
+    'warning',
+    'Banco/pasarela sin venta',
+    orphanBankIds
+  );
+  pushSummaryAlert(
+    alerts,
+    sid,
+    'RULE-003',
+    'warning',
+    'Venta sin movimiento bancario',
+    orphanSalesIds
+  );
+  pushSummaryAlert(alerts, sid, 'RULE-007', 'info', 'Pago parcial detectado', partialIds);
+  pushSummaryAlert(alerts, sid, 'RULE-008', 'warning', 'Sobrepago detectado', overpayIds);
+  pushSummaryAlert(
+    alerts,
+    sid,
+    'RULE-005',
+    'warning',
+    'Importe distinto en par conciliado',
+    amountMismatchIds
+  );
+
+  for (const ids of duplicateGroups.slice(0, 20)) {
+    pushAlert(
+      alerts,
+      sid,
+      'RULE-004',
+      'critical',
+      `Código de operación duplicado (${ids.length} registros)`,
+      ids.slice(0, SUMMARY_SAMPLE_IDS)
+    );
+  }
 
   const otherMovements = dataset.movements.filter((m) => m.sessionId !== sid);
   const newReconciledKeys = [...dataset.reconciledOperationKeys];
-  for (const m of nextSessionMovements) {
+  for (const m of updatedMovements) {
     if (m.workflowStatus === 'reconciled' && m.operationNumber) {
       newReconciledKeys.push(operationMatchKey(m.operationNumber, m.amount));
     }
@@ -186,7 +186,7 @@ export function applyPostMatchRules(dataset: ReconciliationDataset, sessionId?: 
 
   return {
     ...dataset,
-    movements: [...otherMovements, ...nextSessionMovements],
+    movements: [...otherMovements, ...updatedMovements],
     alerts,
     reconciledOperationKeys: [...new Set(newReconciledKeys)],
   };
@@ -200,49 +200,47 @@ export function detectCrossSourceMethodMismatches(
   const movements = sessionMovements(dataset, sid);
   const alerts = [...dataset.alerts];
   const salesPending = movements.filter(
-    (m) => m.side === 'sales_application' && m.workflowStatus !== 'reconciled' && m.operationNumber
+    (m) =>
+      m.side === 'sales_application' &&
+      m.workflowStatus !== 'reconciled' &&
+      m.operationNumber &&
+      m.paymentMethod !== 'unknown' &&
+      m.paymentMethod !== 'mercado_pago' &&
+      m.paymentMethod !== 'niubiz'
   );
   const bankAll = movements.filter((m) => isBankSide(m));
 
-  function isBankSide(m: CanonicalMovement): boolean {
-    return m.side === 'bank_or_gateway' || m.sourceType !== 'sales_erp';
+  const mpByOp = new Map<string, CanonicalMovement>();
+  const niubizByOp = new Map<string, CanonicalMovement>();
+  for (const b of bankAll) {
+    if (!b.operationNumber) continue;
+    if (b.sourceType === 'mercado_pago') mpByOp.set(b.operationNumber, b);
+    if (b.sourceType === 'niubiz') niubizByOp.set(b.operationNumber, b);
   }
 
+  const mismatchIds: string[] = [];
   for (const sales of salesPending) {
-    if (sales.paymentMethod === 'unknown') continue;
-    if (sales.paymentMethod === 'mercado_pago' || sales.paymentMethod === 'niubiz') continue;
-    const inMp = bankAll.find(
-      (b) =>
-        b.sourceType === 'mercado_pago' &&
-        b.operationNumber === sales.operationNumber &&
-        amountsEqual(b.amount, sales.amount)
-    );
-    const inNiubiz = bankAll.find(
-      (b) =>
-        b.sourceType === 'niubiz' &&
-        b.operationNumber === sales.operationNumber &&
-        amountsEqual(b.amount, sales.amount)
-    );
-    if (inMp) {
-      pushAlert(
-        alerts,
-        sid,
-        'RULE-006',
-        'warning',
-        `Posible medio incorrecto: registrado como ${sales.paymentMethod}, coincide en Mercado Pago (${sales.operationNumberRaw})`,
-        [sales.id, inMp.id]
-      );
-    } else if (inNiubiz) {
-      pushAlert(
-        alerts,
-        sid,
-        'RULE-006',
-        'warning',
-        `Posible medio incorrecto: registrado como ${sales.paymentMethod}, coincide en Niubiz (${sales.operationNumberRaw})`,
-        [sales.id, inNiubiz.id]
-      );
+    const inMp = mpByOp.get(sales.operationNumber);
+    const inNiubiz = niubizByOp.get(sales.operationNumber);
+    if (inMp && amountsEqual(inMp.amount, sales.amount)) {
+      mismatchIds.push(sales.id, inMp.id);
+    } else if (inNiubiz && amountsEqual(inNiubiz.amount, sales.amount)) {
+      mismatchIds.push(sales.id, inNiubiz.id);
     }
   }
 
+  pushSummaryAlert(
+    alerts,
+    sid,
+    'RULE-006',
+    'warning',
+    'Posible medio de pago incorrecto (coincide en otra pasarela)',
+    [...new Set(mismatchIds)]
+  );
+
   return { ...dataset, alerts };
+}
+
+function isBankSide(m: CanonicalMovement): boolean {
+  return m.side === 'bank_or_gateway' || m.sourceType !== 'sales_erp';
 }

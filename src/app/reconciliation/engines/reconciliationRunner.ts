@@ -23,15 +23,35 @@ export type ImportBatchResult = {
   skipped: number;
 };
 
+export type ImportOptions = {
+  /** Si false, solo importa movimientos sin ejecutar el motor de cruce. */
+  runEngine?: boolean;
+  onProgress?: (phase: string, percent: number) => void;
+};
+
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 export async function importReconciliationFile(
   dataset: ReconciliationDataset,
   sourceType: ReconciliationSourceType,
   file: File,
-  importedBy?: string
+  importedBy?: string,
+  options: ImportOptions = {}
 ): Promise<ImportBatchResult> {
+  const { runEngine = true, onProgress } = options;
   const connector = getConnectorBySource(sourceType);
   const buffer = await file.arrayBuffer();
+  onProgress?.('Leyendo archivo…', 10);
+  await yieldToMain();
+
   const rows = readSpreadsheetRows(buffer);
+  onProgress?.('Parseando filas…', 30);
+  await yieldToMain();
+
   const sessionId = dataset.activeSessionId;
   const batchId = newId('rb');
 
@@ -55,7 +75,10 @@ export async function importReconciliationFile(
   };
 
   const parsed = connector.parseRows(rows, ctx);
-  batch.errors = parsed.errors;
+  onProgress?.('Normalizando movimientos…', 60);
+  await yieldToMain();
+
+  batch.errors = parsed.errors.slice(0, 100);
   batch.recordCount = parsed.movements.length;
   batch.status = parsed.errors.length > 0 && parsed.movements.length === 0 ? 'failed' : 'completed';
 
@@ -75,7 +98,13 @@ export async function importReconciliationFile(
     movements: [...dataset.movements, ...newMovements],
   };
 
-  next = runReconciliationEngine(next, sessionId);
+  if (runEngine) {
+    onProgress?.('Ejecutando motor de conciliación…', 85);
+    await yieldToMain();
+    next = runReconciliationEngine(next, sessionId);
+  }
+
+  onProgress?.('Listo', 100);
 
   return {
     dataset: next,
@@ -93,12 +122,14 @@ export function runReconciliationEngine(
   const sid = sessionId ?? dataset.activeSessionId;
   let movements = sessionMovements(dataset, sid);
 
-  const candidates = findMatchCandidates(
-    movements.filter((m) => m.sourceType !== 'sales_erp' || m.side === 'bank_or_gateway'),
-    movements.filter((m) => m.side === 'sales_application')
+  const bankMovements = movements.filter(
+    (m) => m.sourceType !== 'sales_erp' || m.side === 'bank_or_gateway'
   );
+  const salesMovements = movements.filter((m) => m.side === 'sales_application');
 
-  const newMatches = [...dataset.matches];
+  const candidates = findMatchCandidates(bankMovements, salesMovements);
+
+  const newMatches = dataset.matches.filter((m) => m.sessionId !== sid);
   const movementById = new Map(movements.map((m) => [m.id, m]));
 
   for (const cand of candidates) {
@@ -118,7 +149,7 @@ export function runReconciliationEngine(
     ...dataset,
     movements: [...otherMovements, ...movements],
     matches: newMatches,
-    alerts: dataset.alerts.filter((a) => a.sessionId !== sid || a.resolved),
+    alerts: dataset.alerts.filter((a) => a.resolved || a.sessionId !== sid),
   };
 
   next = applyPostMatchRules(next, sid);
