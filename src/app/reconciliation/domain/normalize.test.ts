@@ -14,6 +14,8 @@ describe('reconciliation normalize', () => {
   it('parsea montos', () => {
     expect(parseImportAmount('50,00')).toBe(50);
     expect(parseImportAmount(40)).toBe(40);
+    expect(parseImportAmount('S/212.00')).toBe(212);
+    expect(parseImportAmount('S/0.00')).toBe(0);
   });
 
   it('parsea fechas dd/mm/yyyy', () => {

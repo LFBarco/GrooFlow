@@ -1,19 +1,33 @@
 import { describe, expect, it } from 'vitest';
 
-import { readAllOperationCodes, salesExcelConnector } from './salesExcelConnector';
+import {
+  readAllOperationCodes,
+  SALES_ERP_HEADERS,
+  salesExcelConnector,
+} from './salesExcelConnector';
 
 describe('salesExcelConnector', () => {
-  it('importa fila con columnas del reporte ERP PETMAX', () => {
+  it('define las 19 columnas del reporte ERP', () => {
+    expect(SALES_ERP_HEADERS).toHaveLength(19);
+    expect(SALES_ERP_HEADERS[7]).toBe('Importe con Impuestos');
+    expect(SALES_ERP_HEADERS[15]).toBe('Cod. Op. Pago 1');
+  });
+
+  it('importa fila con formato real S/ e Importe con Impuestos', () => {
     const row: Record<string, unknown> = {
-      Sucursal: 'Miraflores',
-      'Fecha de Venta': '2026-06-25',
-      Comprobante: 'B001-99',
-      'Importe con Impuesto': 150,
-      'Fecha de Pago': '2026-06-26',
-      'Tipo de Pago': 'Mercado Pago',
-      'Monto del Pago': 150,
-      'Usuario de Pago': 'jperez',
-      'Cod. Op. Pago 1': '9876543210123',
+      Sucursal: 'MA',
+      'Fecha de Venta': '01/01/2026',
+      Concepto: 'Ingreso',
+      Comprobante: 'B006-0008784',
+      'Nombre Paciente': 'Max',
+      'Importe con Impuestos': 'S/212.00',
+      Saldo: 'S/0.00',
+      'Fecha de Pago': '01/01/2026',
+      'Tipo de Pago': 'Yape',
+      'Monto del Pago': 'S/212.00',
+      'Usuario de Pago': 'Teresa Uceda',
+      'Fecha Registro de Pago': '01/01/2026 3:03 AM',
+      'Cod. Op. Pago 1': '02525188',
     };
 
     const result = salesExcelConnector.parseRows([row], {
@@ -23,21 +37,24 @@ describe('salesExcelConnector', () => {
 
     expect(result.errors).toHaveLength(0);
     expect(result.movements).toHaveLength(1);
-    expect(result.movements[0]?.documentNumber).toBe('B001-99');
-    expect(result.movements[0]?.amount).toBe(150);
-    expect(result.movements[0]?.operationNumber).toBe('9876543210123');
-    expect(result.movements[0]?.paymentMethod).toBe('mercado_pago');
-    expect(result.movements[0]?.branch).toBe('Miraflores');
-    expect(result.movements[0]?.registeredBy).toBe('jperez');
+    expect(result.movements[0]?.documentNumber).toBe('B006-0008784');
+    expect(result.movements[0]?.amount).toBe(212);
+    expect(result.movements[0]?.saleAmount).toBe(212);
+    expect(result.movements[0]?.operationNumber).toBe('2525188');
+    expect(result.movements[0]?.paymentMethod).toBe('yape');
+    expect(result.movements[0]?.branch).toBe('MA');
+    expect(result.movements[0]?.registeredBy).toBe('Teresa Uceda');
+    expect(result.movements[0]?.metadata.concept).toBe('Ingreso');
+    expect(result.movements[0]?.metadata.balance).toBe(0);
   });
 
   it('genera un movimiento por cada Cod. Op. Pago con medio solo en columna 1', () => {
     const row: Record<string, unknown> = {
-      Comprobante: 'B001-200',
-      'Importe con Impuesto': 200,
-      'Fecha de Pago': '2026-06-26',
+      Comprobante: 'B006-0008786',
+      'Importe con Impuestos': 'S/320.00',
+      'Fecha de Pago': '02/01/2026',
       'Tipo de Pago': 'Yape',
-      'Monto del Pago': 200,
+      'Monto del Pago': 'S/320.00',
       'Cod. Op. Pago 1': '1111111',
       'Cod. Op. Pago 2': '9876543210123',
       'Cod. Op. Pago 3': '2222222',
@@ -56,7 +73,7 @@ describe('salesExcelConnector', () => {
     const op3 = result.movements.find((m) => m.metadata.erpOpCodeSlot === 3);
 
     expect(op1?.paymentMethod).toBe('yape');
-    expect(op1?.amount).toBe(200);
+    expect(op1?.amount).toBe(320);
     expect(op1?.metadata.erpAmountFromBank).toBe(false);
 
     expect(op2?.paymentMethod).toBe('unknown');
@@ -83,8 +100,8 @@ describe('salesExcelConnector', () => {
   it('omite filas sin monto de pago', () => {
     const row: Record<string, unknown> = {
       Comprobante: 'B002-1',
-      'Importe con Impuesto': 80,
-      Saldo: 80,
+      'Importe con Impuestos': 'S/80.00',
+      Saldo: 'S/80.00',
     };
     const result = salesExcelConnector.parseRows([row], {
       sessionId: 's1',

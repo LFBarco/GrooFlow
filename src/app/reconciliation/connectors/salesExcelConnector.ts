@@ -13,16 +13,42 @@ import { downloadWorkbook } from './spreadsheetUtils';
 
 export const SALES_TEMPLATE_FILENAME = 'referencia_columnas_ventas_erp_grooflow.xlsx';
 
+/** Encabezados exactos del reporte ventas ERP (columnas A–S). */
+export const SALES_ERP_HEADERS = [
+  'Sucursal',
+  'Fecha de Venta',
+  'Concepto',
+  'Comprobante',
+  'Nombre Paciente',
+  'Nombre Cliente',
+  'Apellido Cliente',
+  'Importe con Impuestos',
+  'Saldo',
+  'Fecha de Pago',
+  'Tipo de Pago',
+  'Detalle Pago',
+  'Monto del Pago',
+  'Usuario de Pago',
+  'Fecha Registro de Pago',
+  'Cod. Op. Pago 1',
+  'Cod. Op. Pago 2',
+  'Cod. Op. Pago 3',
+  'Cod. Op. Pago 4',
+] as const;
+
 /** Índices columna reporte ventas ERP (PETMAX). */
 export const SALES_COL_BRANCH = 0; // A Sucursal
 export const SALES_COL_SALE_DATE = 1; // B Fecha de Venta
+export const SALES_COL_CONCEPT = 2; // C Concepto
 export const SALES_COL_DOCUMENT = 3; // D Comprobante
-export const SALES_COL_SALE_AMOUNT = 7; // H Importe con Impuesto
+export const SALES_COL_SALE_AMOUNT = 7; // H Importe con Impuestos
+export const SALES_COL_BALANCE = 8; // I Saldo
 export const SALES_COL_PAY_DATE = 9; // J Fecha de Pago
 export const SALES_COL_PAY_TYPE = 10; // K Tipo de Pago
 export const SALES_COL_PAY_DETAIL = 11; // L Detalle Pago
 export const SALES_COL_PAY_AMOUNT = 12; // M Monto del Pago
 export const SALES_COL_PAY_USER = 13; // N Usuario de Pago
+export const SALES_COL_PAY_REGISTERED = 14; // O Fecha Registro de Pago
 export const SALES_COL_OP_CODE_START = 15; // P…S Cod. Op. Pago 1–4
 
 const OP_CODE_SLOTS = [1, 2, 3, 4] as const;
@@ -72,7 +98,9 @@ export function readAllOperationCodes(row: Record<string, unknown>): SalesOperat
 
   for (const key of Object.keys(row)) {
     const nk = normalizeImportKey(key);
-    if (!nk.includes('codoppag') && !nk.includes('codoperacionpago')) continue;
+    if (!nk.includes('codoppag') && !nk.includes('codoperacionpago') && !nk.includes('codoppago')) {
+      continue;
+    }
     const raw = String(row[key] ?? '').trim();
     if (!raw) continue;
     const dedupe = raw.replace(/\D/g, '') || raw.toLowerCase();
@@ -112,7 +140,6 @@ function resolvePaymentMethodForSlot(
 function resolveAmountForSlot(
   slot: number,
   payAmount: number,
-  opCount: number,
   singleOpOnly: boolean
 ): { amount: number; erpAmountFromBank: boolean } {
   if (singleOpOnly) {
@@ -178,11 +205,19 @@ export const salesExcelConnector: ReconciliationConnector = {
         readSalesField(
           row,
           SALES_COL_SALE_AMOUNT,
+          'Importe con Impuestos',
           'Importe con Impuesto',
           'Importe con Imp',
+          'importe con impuestos',
           'importe con impuesto'
         )
       );
+      const balance = parseImportAmount(
+        readSalesField(row, SALES_COL_BALANCE, 'Saldo', 'saldo') ?? undefined
+      );
+      const concept = String(
+        readSalesField(row, SALES_COL_CONCEPT, 'Concepto', 'concepto') ?? ''
+      ).trim();
       const methodRaw = readSalesField(
         row,
         SALES_COL_PAY_TYPE,
@@ -213,6 +248,13 @@ export const salesExcelConnector: ReconciliationConnector = {
           'detalle pago'
         ) ?? ''
       ).trim();
+      const payRegisteredRaw = readSalesField(
+        row,
+        SALES_COL_PAY_REGISTERED,
+        'Fecha Registro de Pago',
+        'Fecha Registro de Pa',
+        'fecha registro de pago'
+      );
       const customerName = buildCustomerName(row);
       const saleDate = parseImportDate(
         readSalesField(row, SALES_COL_SALE_DATE, 'Fecha de Venta', 'Fecha de Ven', 'fecha de venta')
@@ -223,16 +265,13 @@ export const salesExcelConnector: ReconciliationConnector = {
       const singleOpOnly = operationCodes.length === 1;
 
       const slotsToImport =
-        operationCodes.length > 0
-          ? operationCodes
-          : [{ slot: 1, raw: '' }];
+        operationCodes.length > 0 ? operationCodes : [{ slot: 1, raw: '' }];
 
       for (const op of slotsToImport) {
         const paymentMethod = resolvePaymentMethodForSlot(op.slot, methodRaw, singleOpOnly);
         const { amount, erpAmountFromBank } = resolveAmountForSlot(
           op.slot,
           payAmount,
-          operationCodes.length,
           singleOpOnly
         );
         const { normalized, raw } = op.raw
@@ -258,7 +297,10 @@ export const salesExcelConnector: ReconciliationConnector = {
             rowIndex: rowNum,
             fileName: context.fileName,
             saleDate: saleDate ?? undefined,
+            concept: concept || undefined,
+            balance: balance ?? undefined,
             paymentType: methodRaw != null ? String(methodRaw) : undefined,
+            payRegisteredAt: payRegisteredRaw != null ? String(payRegisteredRaw) : undefined,
             erpOpCodeSlot: op.slot,
             erpMultiPaymentRow: multiPaymentRow,
             erpAmountFromBank,
@@ -278,32 +320,67 @@ function saleOpPrimarySlot(slot: number): boolean {
 export function buildSalesImportTemplateRows(): Record<string, unknown>[] {
   return [
     {
-      Sucursal: 'Miraflores',
-      'Fecha de Venta': '2026-06-26',
-      Concepto: 'Consulta',
-      Comprobante: 'B001-0001234',
-      'Nombre Paciente': 'Firulais',
-      'Importe con Impuesto': 150.0,
-      Saldo: 0,
-      'Fecha de Pago': '2026-06-26',
+      Sucursal: 'MA',
+      'Fecha de Venta': '01/01/2026',
+      Concepto: 'Ingreso',
+      Comprobante: 'B006-0008784',
+      'Nombre Paciente': 'Max',
+      'Nombre Cliente': 'Juan',
+      'Apellido Cliente': 'Pérez',
+      'Importe con Impuestos': 'S/212.00',
+      Saldo: 'S/0.00',
+      'Fecha de Pago': '01/01/2026',
       'Tipo de Pago': 'Yape',
-      'Monto del Pago': 150.0,
-      'Usuario de Pago': 'counter.ejemplo',
-      'Cod. Op. Pago 1': '1234567',
+      'Detalle Pago': '',
+      'Monto del Pago': 'S/212.00',
+      'Usuario de Pago': 'Teresa Uceda',
+      'Fecha Registro de Pago': '01/01/2026 3:03 AM',
+      'Cod. Op. Pago 1': '02525188',
+      'Cod. Op. Pago 2': '',
+      'Cod. Op. Pago 3': '',
+      'Cod. Op. Pago 4': '',
     },
     {
-      Sucursal: 'San Isidro',
-      'Fecha de Venta': '2026-06-26',
-      Comprobante: 'B001-0001235',
-      'Importe con Impuesto': 200.0,
-      Saldo: 0,
-      'Fecha de Pago': '2026-06-26',
+      Sucursal: 'SB',
+      'Fecha de Venta': '01/01/2026',
+      Concepto: 'Ingreso',
+      Comprobante: 'B006-0008785',
+      'Nombre Paciente': 'Luna',
+      'Nombre Cliente': 'María',
+      'Apellido Cliente': 'García',
+      'Importe con Impuestos': 'S/150.00',
+      Saldo: 'S/0.00',
+      'Fecha de Pago': '01/01/2026',
+      'Tipo de Pago': 'VISA',
+      'Detalle Pago': '',
+      'Monto del Pago': 'S/150.00',
+      'Usuario de Pago': 'Carolina Melendez',
+      'Fecha Registro de Pago': '01/01/2026 10:15 AM',
+      'Cod. Op. Pago 1': '01234567',
+      'Cod. Op. Pago 2': '',
+      'Cod. Op. Pago 3': '',
+      'Cod. Op. Pago 4': '',
+    },
+    {
+      Sucursal: 'LM',
+      'Fecha de Venta': '02/01/2026',
+      Concepto: 'Ingreso',
+      Comprobante: 'B006-0008786',
+      'Nombre Paciente': 'Rocky',
+      'Nombre Cliente': 'Carlos',
+      'Apellido Cliente': 'López',
+      'Importe con Impuestos': 'S/320.00',
+      Saldo: 'S/0.00',
+      'Fecha de Pago': '02/01/2026',
       'Tipo de Pago': 'Yape',
-      'Monto del Pago': 200.0,
-      'Usuario de Pago': 'counter.ejemplo',
+      'Detalle Pago': '',
+      'Monto del Pago': 'S/320.00',
+      'Usuario de Pago': 'Teresa Uceda',
+      'Fecha Registro de Pago': '02/01/2026 2:45 PM',
       'Cod. Op. Pago 1': '1111111',
       'Cod. Op. Pago 2': '9876543210123',
       'Cod. Op. Pago 3': '2222222',
+      'Cod. Op. Pago 4': '',
     },
   ];
 }
@@ -317,22 +394,29 @@ export function downloadSalesImportTemplate() {
     {
       name: 'Instrucciones',
       rows: [
-        { Columna: 'A', Campo: 'Sucursal', Uso: 'Sede del comprobante.' },
+        { Columna: 'A', Campo: 'Sucursal', Uso: 'Código sede (MA, SB, LM, etc.).' },
+        { Columna: 'B', Campo: 'Fecha de Venta', Uso: 'Fecha del comprobante.' },
+        { Columna: 'C', Campo: 'Concepto', Uso: 'Tipo de ingreso (ej. Ingreso).' },
         { Columna: 'D', Campo: 'Comprobante', Uso: 'Boleta / factura.' },
-        { Columna: 'H', Campo: 'Importe con Impuesto', Uso: 'Total de la venta (detecta parciales).' },
+        { Columna: 'E', Campo: 'Nombre Paciente', Uso: 'Mascota / paciente.' },
+        { Columna: 'F', Campo: 'Nombre Cliente', Uso: 'Nombre del titular.' },
+        { Columna: 'G', Campo: 'Apellido Cliente', Uso: 'Apellido del titular.' },
+        { Columna: 'H', Campo: 'Importe con Impuestos', Uso: 'Total venta con IGV (S/…).' },
+        { Columna: 'I', Campo: 'Saldo', Uso: 'Saldo pendiente del comprobante.' },
         { Columna: 'J', Campo: 'Fecha de Pago', Uso: 'Fecha del cobro para conciliación.' },
         {
           Columna: 'K',
           Campo: 'Tipo de Pago',
-          Uso: 'Solo aplica a Cod. Op. Pago 1. Los códigos 2–4 no traen medio en el ERP.',
+          Uso: 'Medio del Cod. Op. Pago 1 (Yape, VISA, Mercado Pago, etc.).',
         },
-        { Columna: 'M', Campo: 'Monto del Pago', Uso: 'Importe del pago principal (columna 1).' },
+        { Columna: 'L', Campo: 'Detalle Pago', Uso: 'Observación opcional del pago.' },
+        { Columna: 'M', Campo: 'Monto del Pago', Uso: 'Importe aplicado (S/…).' },
         { Columna: 'N', Campo: 'Usuario de Pago', Uso: 'Counter / recepcionista.' },
-        {
-          Columna: 'P–S',
-          Campo: 'Cod. Op. Pago 1–4',
-          Uso: 'Un movimiento por columna. Códigos 2–4 se cruzan solo por N° operación contra banco/pasarela.',
-        },
+        { Columna: 'O', Campo: 'Fecha Registro de Pago', Uso: 'Timestamp de registro en ERP.' },
+        { Columna: 'P', Campo: 'Cod. Op. Pago 1', Uso: 'Código principal — usa Tipo y Monto de pago.' },
+        { Columna: 'Q', Campo: 'Cod. Op. Pago 2', Uso: 'Código adicional — cruce solo por N° operación.' },
+        { Columna: 'R', Campo: 'Cod. Op. Pago 3', Uso: 'Código adicional — cruce solo por N° operación.' },
+        { Columna: 'S', Campo: 'Cod. Op. Pago 4', Uso: 'Código adicional — cruce solo por N° operación.' },
         {
           Columna: '—',
           Campo: 'Archivo',

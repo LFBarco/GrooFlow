@@ -94,6 +94,7 @@ export function parseImportAmount(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number' && Number.isFinite(value)) return Math.abs(value);
   let s = String(value).trim().replace(/\s/g, '');
+  s = s.replace(/^(S\/\.?|S\/|\$|USD|PEN)/i, '');
   if (/^\d+,\d{1,2}$/.test(s)) {
     s = s.replace(',', '.');
   } else {
