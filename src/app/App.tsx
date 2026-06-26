@@ -54,6 +54,7 @@ import {
   BookOpen,
   Truck,
   UserCheck,
+  GitCompare,
 } from "lucide-react";
 // Logo: coloque logo.png en la carpeta public/ para producción
 const logoUrl = '/logo.png';
@@ -81,6 +82,7 @@ import {
   FleetModule,
   InventoryModule,
   AsistenciaModule,
+  ReconciliationModule,
   Overview,
   CashFlowChart,
   UserProfileDialog,
@@ -3159,6 +3161,7 @@ export default function App() {
            <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Productos" />
            <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
+           <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Conciliación" />
            
            {(hasPermission('Usuarios') || hasPermission('Configuración')) && (
            <div className="mt-2 pt-2 space-y-0.5" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -3248,6 +3251,7 @@ export default function App() {
                     <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400" requiredModule="Estado de Resultados" />
                     <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400" requiredModule="Reportes" />
                     <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
+                    <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400" requiredModule="Conciliación" />
                     <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400" requiredModule="Caja Chica" />
                     <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" requiredModule="Honorarios" />
                     <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" requiredModule="Proveedores" />
@@ -3925,6 +3929,12 @@ export default function App() {
                 canViewAuditLogs={canViewAuditLogs}
                 currentUserEmail={currentUser.email}
             />
+          )}
+
+          {view === 'reconciliation' && (
+            <Suspense fallback={<RouteLoader />}>
+              <ReconciliationModule />
+            </Suspense>
           )}
 
           {view === 'pettycash' && (

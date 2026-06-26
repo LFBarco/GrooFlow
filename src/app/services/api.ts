@@ -86,6 +86,8 @@ export interface InitialDataKeys {
   /** Flota clínica veterinaria (vehículos, mantenimiento, combustible). */
   'data:fleet'?: unknown;
   'data:inventory'?: unknown;
+  /** Motor de conciliación de ingresos (batches, movimientos, matches). */
+  'data:reconciliation'?: unknown;
   /** Metadato interno: el GET HTTP a `data:users` falló (no confundir con lista vacía). */
   __usersKvFetchFailed?: boolean;
   /** Metadato interno: el GET HTTP de transacciones/marca falló; no autosobrescribir con estado local. */
@@ -175,6 +177,7 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'data:chartOfAccounts',
   'data:fleet',
   'data:inventory',
+  'data:reconciliation',
 ];
 
 // ─── api object ───────────────────────────────────────────────

@@ -22,7 +22,8 @@ export type ViewType =
   | 'products'
   | 'fleet'
   | 'inventory'
-  | 'asistencia';
+  | 'asistencia'
+  | 'reconciliation';
 
 /** Path por defecto (raíz) */
 export const DEFAULT_VIEW: ViewType = 'dashboard';
@@ -49,6 +50,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   fleet: '/flota-clinica',
   inventory: '/inventario-equipos',
   asistencia: '/asistencia',
+  reconciliation: '/conciliacion',
 };
 
 /** Path → vista (para leer la URL) */
@@ -90,6 +92,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   fleet: 'Gestión Vehicular',
   inventory: 'Gestión de Inventario',
   asistencia: 'Asistencia',
+  reconciliation: 'Conciliación',
 };
 
 /**
@@ -116,4 +119,5 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'fleet',
   'inventory',
   'asistencia',
+  'reconciliation',
 ];

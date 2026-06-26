@@ -88,6 +88,9 @@ export const InventoryModule = lazy(() =>
 export const AsistenciaModule = lazy(() =>
   import('./components/asistencia/AsistenciaModule').then((m) => ({ default: m.AsistenciaModule }))
 );
+export const ReconciliationModule = lazy(() =>
+  import('./reconciliation/ui/ReconciliationModule').then((m) => ({ default: m.ReconciliationModule }))
+);
 export const UserProfileDialog = lazy(() =>
   import('./components/users/UserProfileDialog').then((m) => ({ default: m.UserProfileDialog }))
 );

@@ -16,6 +16,7 @@ import {
   Package,
   ShoppingCart,
   Settings,
+  GitCompare,
 } from 'lucide-react';
 
 import type { ViewType } from '../routes';
@@ -228,6 +229,15 @@ export const MODULE_IDENTITY: Record<ViewType, ModuleIdentity> = {
     title: 'Inventario de Equipos',
     subtitle: 'Equipos, mantenimientos y disponibilidad.',
     icon: Package,
+  }),
+  reconciliation: id({
+    ambientA: GF_PALETTE.emerald,
+    ambientB: GF_PALETTE.blue,
+    accent: '#10b981',
+    accentGlow: 'rgba(16, 185, 129, 0.45)',
+    title: 'Conciliación de Ingresos',
+    subtitle: 'Ventas vs banco, pasarelas y excepciones.',
+    icon: GitCompare,
   }),
 };
 
