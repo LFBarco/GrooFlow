@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { RECONCILIATION_CONNECTORS } from '../connectors';
 import { downloadSalesImportTemplate } from '../connectors/salesExcelConnector';
 import { downloadMercadoPagoColumnReference } from '../connectors/mercadoPagoConnector';
+import { downloadBcpImportTemplate } from '../connectors/bcpBankConnector';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import { importReconciliationFile } from '../engines/reconciliationRunner';
 
@@ -58,7 +59,11 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
             <CardDescription>
               {connector.sourceType === 'mercado_pago'
                 ? 'Exportación oficial MP: columnas A (fecha), G (N° operación), H (approved), K (importe).'
-                : `${connector.acceptedExtensions.join(', ')} — se agrega al lote del día sin reemplazar importaciones anteriores.`}
+                : connector.sourceType === 'sales_erp'
+                  ? 'ERP: K solo para Cod. Op. Pago 1; códigos 2–4 se cruzan por N° operación contra banco/pasarela.'
+                  : connector.sourceType === 'bcp_bank'
+                    ? 'Extracto BCP: FECHA, DESCRIPCION, MONTO, OPERACION (8 díg.), TIPO — solo abonos.'
+                    : `${connector.acceptedExtensions.join(', ')} — se agrega al lote del día sin reemplazar importaciones anteriores.`}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-2">
@@ -89,7 +94,13 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
             {connector.sourceType === 'sales_erp' && (
               <Button type="button" variant="ghost" size="sm" onClick={() => downloadSalesImportTemplate()}>
                 <FileSpreadsheet className="mr-2 h-4 w-4" />
-                Plantilla ventas
+                Plantilla ventas ERP
+              </Button>
+            )}
+            {connector.sourceType === 'bcp_bank' && (
+              <Button type="button" variant="ghost" size="sm" onClick={() => downloadBcpImportTemplate()}>
+                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                Guía columnas BCP
               </Button>
             )}
             {connector.sourceType === 'mercado_pago' && (

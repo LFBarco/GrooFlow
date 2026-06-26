@@ -40,4 +40,27 @@ describe('matchingEngine', () => {
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.strategy).toBe('operation_number');
   });
+
+  it('empareja Cod. Op. Pago 2 sin medio usando solo N° operación e importe del banco', () => {
+    const bank = mov({
+      id: 'b2',
+      sourceType: 'mercado_pago',
+      side: 'bank_or_gateway',
+      amount: 80,
+      operationNumber: '9876543210123',
+      paymentMethod: 'mercado_pago',
+    });
+    const sales = mov({
+      id: 's2',
+      sourceType: 'sales_erp',
+      side: 'sales_application',
+      amount: 0,
+      operationNumber: '9876543210123',
+      paymentMethod: 'unknown',
+      metadata: { erpOpCodeSlot: 2, erpAmountFromBank: true },
+    });
+    const candidates = findMatchCandidates([bank], [sales]);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.sales.id).toBe('s2');
+  });
 });

@@ -1,4 +1,4 @@
-import { amountsEqual, daysBetween, operationMatchKey } from '../domain/normalize';
+import { amountsEqual, daysBetween, operationMatchKey, salesMovementNeedsBankAmount } from '../domain/normalize';
 import type {
   CanonicalMovement,
   MatchStrategy,
@@ -31,6 +31,7 @@ function isBankSide(m: CanonicalMovement): boolean {
 }
 
 function sourceCompatible(bank: CanonicalMovement, sales: CanonicalMovement): boolean {
+  if (sales.paymentMethod === 'unknown') return true;
   if (bank.sourceType === 'mercado_pago' && sales.paymentMethod !== 'mercado_pago') return false;
   if (bank.sourceType === 'niubiz' && sales.paymentMethod !== 'niubiz') return false;
   if (bank.sourceType === 'bcp_bank') {
@@ -42,10 +43,11 @@ function sourceCompatible(bank: CanonicalMovement, sales: CanonicalMovement): bo
 function scoreOperationMatch(bank: CanonicalMovement, sales: CanonicalMovement, cfg: MatchingConfig): number {
   if (!bank.operationNumber || !sales.operationNumber) return 0;
   if (bank.operationNumber !== sales.operationNumber) return 0;
-  if (!amountsEqual(bank.amount, sales.amount, cfg.amountTolerance)) return 0;
+  const needsBankAmount = salesMovementNeedsBankAmount(sales);
+  if (!needsBankAmount && !amountsEqual(bank.amount, sales.amount, cfg.amountTolerance)) return 0;
   const days = daysBetween(bank.transactionDate, sales.transactionDate);
-  if (days > cfg.maxDateDays) return 0.7;
-  return 0.98;
+  if (days > cfg.maxDateDays) return needsBankAmount ? 0.85 : 0.7;
+  return needsBankAmount ? 0.95 : 0.98;
 }
 
 function scoreAmountDateMatch(bank: CanonicalMovement, sales: CanonicalMovement, cfg: MatchingConfig): number {
@@ -119,6 +121,7 @@ export function applyMatchToMovements(
   match: ReconciliationMatch
 ): { bank: CanonicalMovement; sales: CanonicalMovement } {
   const ruleCodes: ReconciliationRuleCode[] = ['RULE-001'];
+  const resolvedAmount = salesMovementNeedsBankAmount(sales) ? bank.amount : sales.amount;
   return {
     bank: {
       ...bank,
@@ -129,6 +132,7 @@ export function applyMatchToMovements(
     },
     sales: {
       ...sales,
+      amount: resolvedAmount,
       workflowStatus: 'reconciled',
       matchedMovementId: bank.id,
       matchId: match.id,

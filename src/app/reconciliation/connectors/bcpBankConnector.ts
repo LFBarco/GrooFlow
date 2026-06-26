@@ -1,17 +1,48 @@
 import {
   getImportCell,
+  getImportCellByIndex,
   inferPaymentMethod,
   normalizeOperationNumber,
+  parseImportAmount,
   parseImportDate,
 } from '../domain/normalize';
-import type { ConnectorContext, ConnectorParseResult, ReconciliationConnector } from './types';
+import type { ConnectorParseResult, ReconciliationConnector } from './types';
+import { downloadWorkbook } from './spreadsheetUtils';
+
+export const BCP_TEMPLATE_FILENAME = 'referencia_columnas_bcp_grooflow.xlsx';
+
+/** Columnas extracto BCP (PETMAX). */
+export const BCP_COL_DATE = 0; // A FECHA
+export const BCP_COL_DESCRIPTION = 1; // B DESCRIPCION
+export const BCP_COL_AMOUNT = 2; // C MONTO
+export const BCP_COL_OPERATION = 3; // D OPERACION
+export const BCP_COL_TYPE = 4; // E TIPO
+
+function readBcpField(
+  row: Record<string, unknown>,
+  index: number,
+  ...aliases: string[]
+): unknown {
+  return getImportCell(row, ...aliases) ?? getImportCellByIndex(row, index);
+}
+
+function inferBcpPaymentMethod(tipo: string, description: string) {
+  const combined = `${tipo} ${description}`.toLowerCase();
+  if (combined.includes('yape')) return inferPaymentMethod('yape', undefined);
+  if (combined.includes('terc') || combined.includes('interbanc') || combined.includes('otro banco')) {
+    return inferPaymentMethod('interbancaria', undefined);
+  }
+  return inferPaymentMethod(combined, undefined);
+}
 
 function parseSignedAmount(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  const s = String(value).trim().replace(/\s/g, '').replace(/,/g, '');
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
+  const parsed = parseImportAmount(value);
+  if (parsed === null) return null;
+  const raw = String(value).trim();
+  if (raw.startsWith('-') || raw.startsWith('(')) return -parsed;
+  return parsed;
 }
 
 export const bcpBankConnector: ReconciliationConnector = {
@@ -25,23 +56,39 @@ export const bcpBankConnector: ReconciliationConnector = {
 
     rows.forEach((row, idx) => {
       const rowNum = idx + 2;
-      const dateRaw = getImportCell(row, 'Fecha', 'fecha operacion', 'fecha operación', 'date');
+
+      const dateRaw = readBcpField(row, BCP_COL_DATE, 'FECHA', 'Fecha', 'fecha');
       const date = parseImportDate(dateRaw);
       const amountSigned = parseSignedAmount(
-        getImportCell(row, 'Monto', 'importe', 'cargo/abono', 'abono', 'amount')
+        readBcpField(row, BCP_COL_AMOUNT, 'MONTO', 'Monto', 'importe', 'amount')
       );
       const description = String(
-        getImportCell(row, 'Descripción', 'Descripcion', 'detalle', 'concepto', 'description') ?? ''
+        readBcpField(
+          row,
+          BCP_COL_DESCRIPTION,
+          'DESCRIPCION',
+          'DESCRIPCIÓN',
+          'Descripcion',
+          'Descripción',
+          'detalle',
+          'concepto'
+        ) ?? ''
       ).trim();
-      const opRaw = getImportCell(
+      const tipo = String(
+        readBcpField(row, BCP_COL_TYPE, 'TIPO', 'Tipo', 'tipo', 'categoria', 'categoría') ?? ''
+      ).trim();
+      const opRaw = readBcpField(
         row,
+        BCP_COL_OPERATION,
+        'OPERACION',
+        'OPERACIÓN',
+        'Operacion',
+        'Operación',
         'Nro Operación',
         'Nro Operacion',
-        'Número operación',
         'numero operacion',
         'operacion',
-        'operation',
-        'referencia'
+        'operation'
       );
 
       if (!date && amountSigned === null && !description) {
@@ -49,11 +96,11 @@ export const bcpBankConnector: ReconciliationConnector = {
         return;
       }
       if (!date) {
-        errors.push(`Fila ${rowNum}: fecha inválida o vacía.`);
+        errors.push(`Fila ${rowNum}: fecha inválida o vacía (columna FECHA).`);
         return;
       }
       if (amountSigned === null) {
-        errors.push(`Fila ${rowNum}: monto inválido.`);
+        errors.push(`Fila ${rowNum}: monto inválido (columna MONTO).`);
         return;
       }
 
@@ -65,7 +112,7 @@ export const bcpBankConnector: ReconciliationConnector = {
 
       const amount = Math.abs(amountSigned);
       const { normalized, raw } = normalizeOperationNumber(opRaw);
-      const paymentMethod = inferPaymentMethod(`${description} ${raw}`, undefined);
+      const paymentMethod = inferBcpPaymentMethod(tipo, description);
 
       movements.push({
         sourceType: 'bcp_bank',
@@ -77,10 +124,76 @@ export const bcpBankConnector: ReconciliationConnector = {
         operationNumberRaw: raw,
         paymentMethod,
         description: description || undefined,
-        metadata: { rowIndex: rowNum, fileName: context.fileName },
+        metadata: {
+          rowIndex: rowNum,
+          fileName: context.fileName,
+          bcpTipo: tipo || undefined,
+          bcpDescription: description || undefined,
+        },
       });
     });
 
     return { movements, errors, skipped };
   },
 };
+
+export function buildBcpImportTemplateRows(): Record<string, unknown>[] {
+  return [
+    {
+      FECHA: '01/06/2026',
+      DESCRIPCION: 'TRAN.CTAS.TERC.BM',
+      MONTO: 510.0,
+      OPERACION: '05951775',
+      TIPO: 'TRANSFERENCIAS',
+    },
+    {
+      FECHA: '01/06/2026',
+      DESCRIPCION: 'Yape Evelyn Mor',
+      MONTO: 460.0,
+      OPERACION: '00235493',
+      TIPO: 'Yape',
+    },
+    {
+      FECHA: '01/06/2026',
+      DESCRIPCION: 'Yape Diego Val',
+      MONTO: 340.0,
+      OPERACION: '07540015',
+      TIPO: 'Yape',
+    },
+    {
+      FECHA: '01/06/2026',
+      DESCRIPCION: 'TRAN.CEL.BM.',
+      MONTO: 280.0,
+      OPERACION: '02838482',
+      TIPO: 'TRANSFERENCIAS',
+    },
+  ];
+}
+
+export function downloadBcpImportTemplate() {
+  downloadWorkbook(BCP_TEMPLATE_FILENAME, [
+    {
+      name: 'BCP',
+      rows: buildBcpImportTemplateRows(),
+    },
+    {
+      name: 'Instrucciones',
+      rows: [
+        { Columna: 'A', Campo: 'FECHA', Uso: 'Fecha del abono (DD/MM/AAAA).' },
+        { Columna: 'B', Campo: 'DESCRIPCION', Uso: 'Detalle del movimiento (Yape, transferencia, etc.).' },
+        { Columna: 'C', Campo: 'MONTO', Uso: 'Importe abonado (solo ingresos se importan).' },
+        {
+          Columna: 'D',
+          Campo: 'OPERACION',
+          Uso: 'N° operación BCP (8 dígitos; se normaliza a 7 para cruce con ventas).',
+        },
+        { Columna: 'E', Campo: 'TIPO', Uso: 'Yape, TRANSFERENCIAS, etc. — ayuda a inferir el medio.' },
+        {
+          Columna: '—',
+          Campo: 'Archivo',
+          Uso: 'Exporta el extracto BCP sin modificar encabezados y súbelo en Conciliación.',
+        },
+      ],
+    },
+  ]);
+}

@@ -149,6 +149,32 @@ export function inferPaymentMethod(text: unknown, sourceHint?: PaymentMethodHint
   return 'unknown';
 }
 
+/** Normaliza N° operación según medio conocido; si es unknown, infiere por longitud del código. */
+export function normalizeOperationForMovement(
+  raw: unknown,
+  paymentMethod: PaymentMethodHint
+): { normalized: string; raw: string } {
+  if (paymentMethod === 'mercado_pago' || paymentMethod === 'niubiz') {
+    return normalizeGatewayOperationNumber(raw);
+  }
+  if (paymentMethod !== 'unknown') {
+    return normalizeOperationNumber(raw);
+  }
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  if (digits.length > 7) return normalizeGatewayOperationNumber(raw);
+  return normalizeOperationNumber(raw);
+}
+
+/** Ventas ERP: códigos 2–4 no traen monto ni medio — el importe se toma del banco al conciliar. */
+export function salesMovementNeedsBankAmount(movement: {
+  paymentMethod: PaymentMethodHint;
+  amount: number;
+  metadata?: Record<string, unknown>;
+}): boolean {
+  if (movement.metadata?.erpAmountFromBank === true) return true;
+  return movement.paymentMethod === 'unknown' && movement.amount === 0;
+}
+
 export function operationMatchKey(operationNumber: string, amount: number): string {
   return `${operationNumber}|${amount.toFixed(2)}`;
 }

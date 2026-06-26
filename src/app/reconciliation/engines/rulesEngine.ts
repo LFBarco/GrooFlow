@@ -64,12 +64,18 @@ export function applyPostMatchRules(dataset: ReconciliationDataset, sessionId?: 
         );
       } else {
         rules.add('RULE-003');
+        const slot = m.metadata?.erpOpCodeSlot;
+        const needsBankAmount = m.metadata?.erpAmountFromBank === true;
+        const message =
+          needsBankAmount && typeof slot === 'number' && slot > 1
+            ? `Cod. Op. Pago ${slot} sin medio en ERP (${m.documentNumber ?? 'doc'}) — cruce por N° ${m.operationNumberRaw || m.operationNumber || '—'}`
+            : `Venta sin movimiento bancario: ${m.documentNumber ?? 'doc'} — S/ ${m.amount.toFixed(2)}`;
         pushAlert(
           alerts,
           sid,
           'RULE-003',
-          'warning',
-          `Venta sin movimiento bancario: ${m.documentNumber ?? 'doc'} — S/ ${m.amount.toFixed(2)}`,
+          needsBankAmount ? 'info' : 'warning',
+          message,
           [m.id]
         );
       }
@@ -203,6 +209,7 @@ export function detectCrossSourceMethodMismatches(
   }
 
   for (const sales of salesPending) {
+    if (sales.paymentMethod === 'unknown') continue;
     if (sales.paymentMethod === 'mercado_pago' || sales.paymentMethod === 'niubiz') continue;
     const inMp = bankAll.find(
       (b) =>
