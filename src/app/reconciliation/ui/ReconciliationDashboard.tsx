@@ -12,6 +12,7 @@ import { getActiveSession } from '../domain/dataset';
 import type { ReconciliationDataset } from '../domain/types';
 import { computeAuditSummary } from '../engines/auditQueries';
 import { computeReconciliationHealth, countByStatus } from '../engines/healthScore';
+import { ReconciliationImportStatus } from './ReconciliationImportStatus';
 
 type Props = {
   dataset: ReconciliationDataset;
@@ -50,6 +51,8 @@ export function ReconciliationDashboard({ dataset }: Props) {
   return (
     <TooltipProvider>
       <div className="space-y-4">
+        <ReconciliationImportStatus dataset={dataset} sessionId={session.id} compact />
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-2">
@@ -61,7 +64,8 @@ export function ReconciliationDashboard({ dataset }: Props) {
             <CardContent>
               <p className="text-2xl font-bold">{session.label}</p>
               <p className="text-xs text-muted-foreground">
-                {counts.total.toLocaleString('es-PE')} movimientos · {dataset.batches.length} importación(es)
+                {counts.total.toLocaleString('es-PE')} movimientos ·{' '}
+                {dataset.batches.filter((b) => b.sessionId === session.id).length} importación(es) en sesión
               </p>
             </CardContent>
           </Card>

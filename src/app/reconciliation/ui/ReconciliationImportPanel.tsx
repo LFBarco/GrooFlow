@@ -10,8 +10,10 @@ import { RECONCILIATION_CONNECTORS } from '../connectors';
 import { downloadSalesImportTemplate } from '../connectors/salesExcelConnector';
 import { downloadMercadoPagoColumnReference } from '../connectors/mercadoPagoConnector';
 import { downloadBcpImportTemplate } from '../connectors/bcpBankConnector';
+import { getActiveSession } from '../domain/dataset';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import { importReconciliationFile } from '../engines/reconciliationRunner';
+import { ReconciliationImportStatus } from './ReconciliationImportStatus';
 
 type Props = {
   dataset: ReconciliationDataset;
@@ -65,6 +67,8 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
 
   return (
     <div className="space-y-4">
+      <ReconciliationImportStatus dataset={dataset} sessionId={getActiveSession(dataset).id} />
+
       <Card>
         <CardContent className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
