@@ -82,7 +82,7 @@ export const STATUS_FILTER_OPTIONS: {
 }[] = [
   { id: 'all', label: 'Todos', description: 'Todos los movimientos de la sesión.' },
   { id: 'reconciled', label: 'Conciliados', description: 'Emparejados correctamente con la contraparte.' },
-  { id: 'pending', label: 'Pendientes', description: 'Sin par asignado aún.' },
+  { id: 'pending', label: 'Sin conciliar', description: 'Todo lo que aún no tiene par validado (banco sin venta, venta sin banco, etc.).' },
   { id: 'difference', label: 'Con diferencia', description: 'Par con importe distinto (parcial/sobrepago).' },
   { id: 'orphan_bank', label: 'Banco sin venta', description: 'Extracto/pasarela sin venta ERP.' },
   { id: 'orphan_sales', label: 'Venta sin banco', description: 'Venta ERP sin movimiento bancario.' },

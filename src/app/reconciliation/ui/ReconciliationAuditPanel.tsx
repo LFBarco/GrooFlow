@@ -5,7 +5,7 @@ import {
   HelpCircle,
   Search,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -105,9 +105,22 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
   );
 
   const pages = totalPages(filtered.length, PAGE_SIZE);
-  const safePage = Math.min(page, pages);
-  const pageRows = paginateRows(filtered, safePage, PAGE_SIZE);
+  const currentPage = Math.min(Math.max(1, page), pages);
+  const pageRows = paginateRows(filtered, currentPage, PAGE_SIZE);
   const pairsView = statusFilter === 'pairs' || statusFilter === 'reconciled';
+
+  useEffect(() => {
+    if (page !== currentPage) setPage(currentPage);
+  }, [page, currentPage]);
+
+  const clearFilters = () => {
+    setStatusFilter('all');
+    setSourceFilter('all');
+    setSearch('');
+    setDateFrom('');
+    setDateTo('');
+    setPage(1);
+  };
 
   return (
     <TooltipProvider>
@@ -231,6 +244,9 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
                   }}
                 />
               </div>
+              <Button type="button" variant="ghost" size="sm" onClick={clearFilters}>
+                Limpiar filtros
+              </Button>
             </div>
 
             <p className="text-xs text-muted-foreground">
@@ -318,14 +334,14 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
 
             <div className="flex items-center justify-between text-sm">
               <p className="text-muted-foreground">
-                Página {safePage} de {pages}
+                Página {currentPage} de {pages} · {filtered.length.toLocaleString('es-PE')} fila(s)
               </p>
               <div className="flex gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={safePage <= 1}
+                  disabled={currentPage <= 1}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -334,7 +350,7 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={safePage >= pages}
+                  disabled={currentPage >= pages}
                   onClick={() => setPage((p) => Math.min(pages, p + 1))}
                 >
                   <ChevronRight className="h-4 w-4" />

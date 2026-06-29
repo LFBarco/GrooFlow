@@ -1,6 +1,5 @@
 import { sessionMovements } from '../domain/dataset';
 import type { AuditStatusFilter } from '../domain/auditLabels';
-import { ruleCodesForFilter, statusMatchesFilter } from '../domain/auditLabels';
 import type {
   CanonicalMovement,
   MatchStrategy,
@@ -64,9 +63,46 @@ function inDateRange(date: string, from?: string, to?: string): boolean {
 function classifyMovement(m: CanonicalMovement): AuditPairRow['status'] {
   if (m.workflowStatus === 'reconciled') return 'reconciled';
   if (m.workflowStatus === 'difference') return 'difference';
-  if (m.ruleCodes.includes('RULE-002')) return 'orphan_bank';
-  if (m.ruleCodes.includes('RULE-003')) return 'orphan_sales';
+  if (m.sourceType !== 'sales_erp') return 'orphan_bank';
+  if (m.side === 'sales_application') return 'orphan_sales';
   return 'pending';
+}
+
+function rowMatchesSearch(row: AuditPairRow, search: string): boolean {
+  const q = search.trim().toLowerCase();
+  if (!q) return true;
+  const qDigits = q.replace(/\D/g, '');
+
+  const bankText = row.bank ? movementSearchText(row.bank) : '';
+  const salesText = row.sales ? movementSearchText(row.sales) : '';
+  if (bankText.includes(q) || salesText.includes(q)) return true;
+
+  if (qDigits.length >= 3) {
+    const bankOp = row.bank?.operationNumber ?? '';
+    const bankRaw = row.bank?.operationNumberRaw ?? '';
+    const salesOp = row.sales?.operationNumber ?? '';
+    const salesRaw = row.sales?.operationNumberRaw ?? '';
+    if (
+      bankOp.includes(qDigits) ||
+      bankRaw.includes(qDigits) ||
+      salesOp.includes(qDigits) ||
+      salesRaw.includes(qDigits)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function rowMatchesStatus(row: AuditPairRow, status: AuditStatusFilter): boolean {
+  if (status === 'all') return true;
+  if (status === 'pairs') return row.status === 'reconciled';
+  if (status === 'reconciled') return row.status === 'reconciled';
+  if (status === 'difference') return row.status === 'difference';
+  if (status === 'orphan_bank') return row.status === 'orphan_bank';
+  if (status === 'orphan_sales') return row.status === 'orphan_sales';
+  if (status === 'pending') return row.status !== 'reconciled';
+  return true;
 }
 
 export function buildAuditRows(
@@ -76,7 +112,6 @@ export function buildAuditRows(
   const sid = sessionId ?? dataset.activeSessionId;
   const movements = sessionMovements(dataset, sid);
   const byId = new Map(movements.map((m) => [m.id, m]));
-  const matchById = new Map(dataset.matches.filter((m) => m.sessionId === sid).map((m) => [m.id, m]));
   const seen = new Set<string>();
   const rows: AuditPairRow[] = [];
 
@@ -121,17 +156,9 @@ export function buildAuditRows(
 
 export function filterAuditRows(rows: AuditPairRow[], params: AuditFilterParams): AuditPairRow[] {
   const search = params.search?.trim().toLowerCase();
-  const ruleFilter = ruleCodesForFilter(params.status);
 
   return rows.filter((row) => {
-    if (params.status === 'pairs' && row.status !== 'reconciled') return false;
-    if (params.status !== 'all' && params.status !== 'pairs') {
-      if (params.status === 'orphan_bank' && row.status !== 'orphan_bank') return false;
-      if (params.status === 'orphan_sales' && row.status !== 'orphan_sales') return false;
-      if (params.status === 'reconciled' && row.status !== 'reconciled') return false;
-      if (params.status === 'pending' && row.status !== 'pending') return false;
-      if (params.status === 'difference' && row.status !== 'difference') return false;
-    }
+    if (!rowMatchesStatus(row, params.status)) return false;
 
     if (params.source && params.source !== 'all') {
       const bankOk = row.bank?.sourceType === params.source;
@@ -140,22 +167,10 @@ export function filterAuditRows(rows: AuditPairRow[], params: AuditFilterParams)
     }
 
     const date = row.bank?.transactionDate ?? row.sales?.transactionDate ?? '';
-    if (!inDateRange(date, params.dateFrom, params.dateTo)) return false;
+    if (date && !inDateRange(date, params.dateFrom, params.dateTo)) return false;
+    if (!date && (params.dateFrom || params.dateTo)) return false;
 
-    if (search) {
-      const bankText = row.bank ? movementSearchText(row.bank) : '';
-      const salesText = row.sales ? movementSearchText(row.sales) : '';
-      if (!bankText.includes(search) && !salesText.includes(search)) return false;
-    }
-
-    if (ruleFilter) {
-      const codes = [...(row.bank?.ruleCodes ?? []), ...(row.sales?.ruleCodes ?? [])];
-      if (!ruleFilter.some((r) => codes.includes(r))) return false;
-    }
-
-    if (params.status === 'reconciled' && !statusMatchesFilter(row.bank?.workflowStatus ?? row.sales?.workflowStatus ?? 'pending', 'reconciled')) {
-      return false;
-    }
+    if (search && !rowMatchesSearch(row, search)) return false;
 
     return true;
   });
