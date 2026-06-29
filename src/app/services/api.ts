@@ -177,7 +177,6 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'data:chartOfAccounts',
   'data:fleet',
   'data:inventory',
-  'data:reconciliation',
 ];
 
 // ─── api object ───────────────────────────────────────────────
@@ -267,6 +266,27 @@ export const api = {
     }
 
     return result;
+  },
+
+  /** Carga perezosa de una clave KV (p. ej. conciliación con muchos movimientos). */
+  async fetchKvKey<T = unknown>(key: string): Promise<T | null> {
+    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+    if (backend === 'supabase') {
+      try {
+        const { data } = await getSupabaseClient().auth.getSession();
+        const token = data.session?.access_token;
+        if (data.session?.user && (!token || isAccessTokenExpired(token))) {
+          await Promise.race([
+            getSupabaseClient().auth.refreshSession(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+          ]);
+        }
+      } catch {
+        /* noop */
+      }
+    }
+    const value = await repository.kv.get<T>(key);
+    return value ?? null;
   },
 
   /**

@@ -104,6 +104,17 @@ const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 const FLEET_USE_SQL = isFleetSqlEnabled();
 const INVENTORY_USE_SQL = isInventorySqlEnabled();
 const TRANSACTION_HISTORY_CLEAR_MARK = '2026-05-11-clear-transaction-history-v1';
+const AUTH_CHECK_MAX_MS = 18_000;
+const HYDRATE_FETCH_MAX_MS = 50_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label}: tiempo agotado (${ms / 1000}s)`)), ms)
+    ),
+  ]);
+}
 
 type FeeReceiptGlobal = {
   id: string;
@@ -125,6 +136,9 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
   useEffect(() => {
     let cancelled = false;
     const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+    const authWatchdog = setTimeout(() => {
+      if (!cancelled) deps.setIsAuthChecking(false);
+    }, AUTH_CHECK_MAX_MS);
 
     const refreshSessionWithTimeout = async (ms = 2200) => {
       return Promise.race([
@@ -175,14 +189,22 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           deps.setCanSaveUsers(true);
         }
 
-        let data = await api.fetchInitialData();
+        let data = await withTimeout(
+          api.fetchInitialData(),
+          HYDRATE_FETCH_MAX_MS,
+          'Carga inicial desde la nube'
+        );
         let attempt = 0;
         while (backend === 'supabase' && data.__usersKvFetchFailed && attempt < 3) {
           attempt += 1;
           if (cancelled) return;
           await new Promise((r) => setTimeout(r, 350 * attempt));
           await refreshSessionWithTimeout();
-          data = await api.fetchInitialData();
+          data = await withTimeout(
+            api.fetchInitialData(),
+            HYDRATE_FETCH_MAX_MS,
+            'Reintento carga inicial'
+          );
         }
 
         if (cancelled || deps.signingOutRef.current) return;
@@ -1220,6 +1242,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
 
     return () => {
       cancelled = true;
+      clearTimeout(authWatchdog);
       if (deps.authNullDebounceRef.current) {
         clearTimeout(deps.authNullDebounceRef.current);
         deps.authNullDebounceRef.current = null;

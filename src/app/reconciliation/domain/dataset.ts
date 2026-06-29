@@ -13,8 +13,12 @@ export function newId(prefix: string): string {
 function renormalizeMovementOperation(m: CanonicalMovement): CanonicalMovement {
   const source = m.operationNumberRaw || m.operationNumber;
   if (!source) return m;
+  const digits = String(source).replace(/\D/g, '');
+  if (!digits) return m;
+  const expected =
+    digits.length > 7 ? digits.slice(-7).padStart(7, '0') : digits.padStart(7, '0');
+  if (m.operationNumber === expected) return m;
   const { normalized, raw } = normalizeOperationNumber(source);
-  if (m.operationNumber === normalized && m.operationNumberRaw === raw) return m;
   return { ...m, operationNumber: normalized, operationNumberRaw: raw };
 }
 

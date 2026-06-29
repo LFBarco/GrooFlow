@@ -23,9 +23,8 @@ export function useReconciliationDataset(enabled: boolean) {
     let cancelled = false;
     void (async () => {
       try {
-        const data = await api.fetchInitialData();
+        const raw = await api.fetchKvKey(KV_KEY);
         if (cancelled) return;
-        const raw = (data as Record<string, unknown>)[KV_KEY];
         setDataset(normalizeDataset(raw));
       } catch (e) {
         console.warn('[reconciliation] load', e);
