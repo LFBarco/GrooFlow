@@ -115,12 +115,34 @@ export async function importReconciliationFile(
   };
 }
 
+export function resetSessionForMatching(
+  dataset: ReconciliationDataset,
+  sessionId: string
+): ReconciliationDataset {
+  return {
+    ...dataset,
+    movements: dataset.movements.map((m) =>
+      m.sessionId !== sessionId
+        ? m
+        : {
+            ...m,
+            workflowStatus: 'normalized',
+            matchedMovementId: undefined,
+            matchId: undefined,
+            ruleCodes: [],
+          }
+    ),
+    matches: dataset.matches.filter((m) => m.sessionId !== sessionId),
+  };
+}
+
 export function runReconciliationEngine(
   dataset: ReconciliationDataset,
   sessionId?: string
 ): ReconciliationDataset {
   const sid = sessionId ?? dataset.activeSessionId;
-  let movements = sessionMovements(dataset, sid);
+  let base = resetSessionForMatching(dataset, sid);
+  let movements = sessionMovements(base, sid);
 
   const bankMovements = movements.filter(
     (m) => m.sourceType !== 'sales_erp' || m.side === 'bank_or_gateway'
@@ -146,10 +168,10 @@ export function runReconciliationEngine(
   movements = [...movementById.values()];
 
   let next: ReconciliationDataset = {
-    ...dataset,
+    ...base,
     movements: [...otherMovements, ...movements],
     matches: newMatches,
-    alerts: dataset.alerts.filter((a) => a.resolved || a.sessionId !== sid),
+    alerts: base.alerts.filter((a) => a.resolved || a.sessionId !== sid),
   };
 
   next = applyPostMatchRules(next, sid);

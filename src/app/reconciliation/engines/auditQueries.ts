@@ -1,4 +1,5 @@
 import { sessionMovements } from '../domain/dataset';
+import { operationNumbersMatch } from '../domain/normalize';
 import type { AuditStatusFilter } from '../domain/auditLabels';
 import type {
   CanonicalMovement,
@@ -92,6 +93,13 @@ function rowStatusFromPair(
   bank?: CanonicalMovement,
   sales?: CanonicalMovement
 ): AuditPairRow['status'] {
+  if (bank && sales) {
+    const opOk = operationNumbersMatch(
+      bank.operationNumberRaw || bank.operationNumber,
+      sales.operationNumberRaw || sales.operationNumber
+    );
+    if (!opOk) return 'difference';
+  }
   if (bank?.workflowStatus === 'difference' || sales?.workflowStatus === 'difference') return 'difference';
   if (bank?.workflowStatus === 'reconciled' || sales?.workflowStatus === 'reconciled') return 'reconciled';
   if (bank && sales) return 'pending';

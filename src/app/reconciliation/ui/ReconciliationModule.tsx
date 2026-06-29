@@ -13,6 +13,7 @@ import {
 import { useReconciliationDataset } from '../hooks/useReconciliationDataset';
 import { runReconciliationEngine } from '../engines/reconciliationRunner';
 import { AUDIT_ALL_SESSIONS, type AuditSessionScope } from '../engines/auditQueries';
+import type { AuditNavRequest } from '../domain/auditLabels';
 import { ReconciliationAuditPanel } from './ReconciliationAuditPanel';
 import { ReconciliationDashboard } from './ReconciliationDashboard';
 import { ReconciliationExceptionsPanel } from './ReconciliationExceptionsPanel';
@@ -25,6 +26,8 @@ export function ReconciliationModule() {
   const { dataset, setDataset, loaded, saving } = useReconciliationDataset(true);
   const session = getActiveSession(dataset);
   const [auditScope, setAuditScope] = useState<AuditSessionScope>(dataset.activeSessionId);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [auditNav, setAuditNav] = useState<AuditNavRequest | null>(null);
 
   const movementCounts = useMemo(() => countMovementsBySession(dataset), [dataset]);
   const activeCount = movementCounts.get(dataset.activeSessionId) ?? 0;
@@ -113,7 +116,7 @@ export function ReconciliationModule() {
         </div>
       )}
 
-      <Tabs defaultValue="dashboard">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex h-auto flex-wrap">
           <TabsTrigger value="dashboard">Panel</TabsTrigger>
           <TabsTrigger value="audit">Cruces</TabsTrigger>
@@ -143,13 +146,25 @@ export function ReconciliationModule() {
               ))}
             </select>
           </div>
-          <ReconciliationAuditPanel dataset={dataset} sessionScope={auditScope} />
+          <ReconciliationAuditPanel
+            dataset={dataset}
+            sessionScope={auditScope}
+            navRequest={auditNav}
+            onNavConsumed={() => setAuditNav(null)}
+          />
         </TabsContent>
         <TabsContent value="import" className="mt-4">
           <ReconciliationImportPanel dataset={dataset} onDatasetChange={setDataset} />
         </TabsContent>
         <TabsContent value="exceptions" className="mt-4">
-          <ReconciliationExceptionsPanel dataset={dataset} onDatasetChange={setDataset} />
+          <ReconciliationExceptionsPanel
+            dataset={dataset}
+            onDatasetChange={setDataset}
+            onNavigateToAudit={(nav) => {
+              setAuditNav(nav);
+              setActiveTab('audit');
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CanonicalMovement } from '../domain/types';
-import { findMatchCandidates } from './matchingEngine';
+import { applyMatchToMovements, findMatchCandidates } from './matchingEngine';
 
 function mov(partial: Partial<CanonicalMovement> & Pick<CanonicalMovement, 'id' | 'sourceType' | 'side' | 'amount' | 'operationNumber'>): CanonicalMovement {
   return {
@@ -64,5 +64,37 @@ describe('matchingEngine', () => {
     const candidates = findMatchCandidates([bank], [sales]);
     expect(candidates).toHaveLength(1);
     expect(candidates[0]?.sales.id).toBe('s2');
+  });
+
+  it('no empareja si el N° operación (7 dígitos) no coincide', () => {
+    const bank = mov({
+      id: 'b3',
+      sourceType: 'mercado_pago',
+      side: 'bank_or_gateway',
+      amount: 60,
+      operationNumber: '8941125',
+      paymentMethod: 'mercado_pago',
+    });
+    const sales = mov({
+      id: 's3',
+      sourceType: 'sales_erp',
+      side: 'sales_application',
+      amount: 60,
+      operationNumber: '9302607',
+      paymentMethod: 'mercado_pago',
+    });
+    expect(findMatchCandidates([bank], [sales])).toHaveLength(0);
+    const applied = applyMatchToMovements(bank, sales, {
+      id: 'm',
+      sessionId: 's1',
+      bankMovementId: 'b3',
+      salesMovementId: 's3',
+      confidence: 1,
+      matchStrategy: 'operation_number',
+      ruleCode: 'RULE-001',
+      createdAt: '',
+    });
+    expect(applied.bank.workflowStatus).toBe('pending');
+    expect(applied.sales.workflowStatus).toBe('pending');
   });
 });

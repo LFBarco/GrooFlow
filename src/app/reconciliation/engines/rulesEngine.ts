@@ -1,4 +1,4 @@
-import { amountsEqual, operationMatchKey } from '../domain/normalize';
+import { amountsEqual, operationMatchKey, operationNumbersMatch } from '../domain/normalize';
 import type {
   CanonicalMovement,
   PaymentMethodHint,
@@ -74,7 +74,7 @@ export function applyPostMatchRules(dataset: ReconciliationDataset, sessionId?: 
   const opIndex = new Map<string, CanonicalMovement[]>();
   for (const m of movements) {
     if (!m.operationNumber) continue;
-    const key = `${m.operationNumber}|${m.amount.toFixed(2)}`;
+    const key = m.operationNumber;
     const list = opIndex.get(key) ?? [];
     list.push(m);
     opIndex.set(key, list);
@@ -120,6 +120,21 @@ export function applyPostMatchRules(dataset: ReconciliationDataset, sessionId?: 
 
     if (m.workflowStatus === 'reconciled' && m.matchedMovementId) {
       const pair = movementMap.get(m.matchedMovementId);
+      if (
+        pair &&
+        !operationNumbersMatch(
+          m.operationNumberRaw || m.operationNumber,
+          pair.operationNumberRaw || pair.operationNumber
+        )
+      ) {
+        rules.add('RULE-005');
+        amountMismatchIds.push(m.id);
+        return {
+          ...m,
+          workflowStatus: 'difference' as const,
+          ruleCodes: [...rules],
+        };
+      }
       if (pair && !amountsEqual(m.amount, pair.amount)) {
         rules.add('RULE-005');
         amountMismatchIds.push(m.id);

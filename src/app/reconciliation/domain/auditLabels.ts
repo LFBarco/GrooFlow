@@ -55,7 +55,7 @@ export const AUDIT_GLOSSARY = {
   },
   reconciled: {
     title: 'Conciliados',
-    body: 'Pares validados: mismo N° operación (o monto+fecha) entre extracto bancario/pasarela y registro de venta ERP.',
+    body: 'Pares con el mismo N° de operación (7 dígitos) entre ventas ERP y BCP/MP/Niubiz/Yape. El monto puede diferir (parcial/sobrepago).',
   },
   pending: {
     title: 'Pendientes',
@@ -88,6 +88,28 @@ export const STATUS_FILTER_OPTIONS: {
   { id: 'orphan_sales', label: 'Venta sin banco', description: 'Venta ERP sin movimiento bancario.' },
   { id: 'pairs', label: 'Vista de cruces', description: 'Solo pares conciliados lado a lado para validación.' },
 ];
+
+export type AuditNavRequest = {
+  statusFilter?: AuditStatusFilter;
+  search?: string;
+};
+
+export function statusFilterForRule(ruleCode: ReconciliationRuleCode): AuditStatusFilter {
+  switch (ruleCode) {
+    case 'RULE-002':
+      return 'orphan_bank';
+    case 'RULE-003':
+      return 'orphan_sales';
+    case 'RULE-005':
+    case 'RULE-007':
+    case 'RULE-008':
+      return 'difference';
+    case 'RULE-004':
+      return 'all';
+    default:
+      return 'pending';
+  }
+}
 
 export function ruleCodesForFilter(filter: AuditStatusFilter): ReconciliationRuleCode[] | null {
   if (filter === 'orphan_bank') return ['RULE-002'];

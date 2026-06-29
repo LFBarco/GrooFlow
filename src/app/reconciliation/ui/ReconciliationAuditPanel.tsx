@@ -18,9 +18,11 @@ import {
   PAYMENT_METHOD_LABELS,
   SOURCE_LABELS,
   STATUS_FILTER_OPTIONS,
+  type AuditNavRequest,
   type AuditStatusFilter,
 } from '../domain/auditLabels';
 import { getActiveSession } from '../domain/dataset';
+import { operationNumbersMatch } from '../domain/normalize';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import {
   AUDIT_ALL_SESSIONS,
@@ -36,6 +38,8 @@ import {
 type Props = {
   dataset: ReconciliationDataset;
   sessionScope: AuditSessionScope;
+  navRequest?: AuditNavRequest | null;
+  onNavConsumed?: () => void;
 };
 
 const PAGE_SIZE = 50;
@@ -90,7 +94,12 @@ function sessionScopeLabel(dataset: ReconciliationDataset, scope: AuditSessionSc
   return session?.label ?? getActiveSession(dataset).label;
 }
 
-export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
+export function ReconciliationAuditPanel({
+  dataset,
+  sessionScope,
+  navRequest,
+  onNavConsumed,
+}: Props) {
   const [statusFilter, setStatusFilter] = useState<AuditStatusFilter>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -132,6 +141,14 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
   useEffect(() => {
     setPage(1);
   }, [sessionScope]);
+
+  useEffect(() => {
+    if (!navRequest) return;
+    if (navRequest.statusFilter) setStatusFilter(navRequest.statusFilter);
+    if (navRequest.search !== undefined) setSearch(navRequest.search);
+    setPage(1);
+    onNavConsumed?.();
+  }, [navRequest, onNavConsumed]);
 
   useEffect(() => {
     if (page > pages) setPage(pages);
@@ -316,7 +333,15 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
                       </td>
                     </tr>
                   ) : (
-                    pageRows.map((row) => (
+                    pageRows.map((row) => {
+                      const opsMatch =
+                        row.bank &&
+                        row.sales &&
+                        operationNumbersMatch(
+                          row.bank.operationNumberRaw || row.bank.operationNumber,
+                          row.sales.operationNumberRaw || row.sales.operationNumber
+                        );
+                      return (
                       <tr key={row.id} className="border-t">
                         <td className="p-2">
                           <StatusBadge status={row.status} />
@@ -325,7 +350,9 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
                         <MovementCell side="sales" m={row.sales} />
                         <td className="p-2">
                           {row.bank && row.sales ? (
-                            row.amountDelta != null && Math.abs(row.amountDelta) > 0.05 ? (
+                            !opsMatch ? (
+                              <span className="font-medium text-red-600">N° op. distinto</span>
+                            ) : row.amountDelta != null && Math.abs(row.amountDelta) > 0.05 ? (
                               <span className="font-medium text-amber-600">{formatMoney(row.amountDelta)}</span>
                             ) : (
                               <span className="text-emerald-600">OK</span>
@@ -341,7 +368,8 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
                           {row.confidence != null ? `${(row.confidence * 100).toFixed(0)}%` : '—'}
                         </td>
                       </tr>
-                    ))
+                    );
+                    })
                   )}
                 </tbody>
               </table>
