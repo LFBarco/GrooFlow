@@ -62,6 +62,38 @@ export function sessionMovements(dataset: ReconciliationDataset, sessionId?: str
   return dataset.movements.filter((m) => m.sessionId === sid);
 }
 
+export function countMovementsBySession(dataset: ReconciliationDataset): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const m of dataset.movements) {
+    counts.set(m.sessionId, (counts.get(m.sessionId) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Sesión con más movimientos (útil si la activa quedó vacía tras «Nueva sesión»). */
+export function sessionWithMostMovements(
+  dataset: ReconciliationDataset
+): { sessionId: string; count: number } | null {
+  const counts = countMovementsBySession(dataset);
+  let bestId: string | null = null;
+  let bestCount = 0;
+  for (const [sid, count] of counts) {
+    if (count > bestCount) {
+      bestCount = count;
+      bestId = sid;
+    }
+  }
+  return bestId ? { sessionId: bestId, count: bestCount } : null;
+}
+
+export function setActiveSession(
+  dataset: ReconciliationDataset,
+  sessionId: string
+): ReconciliationDataset {
+  if (!dataset.sessions.some((s) => s.id === sessionId)) return dataset;
+  return { ...dataset, activeSessionId: sessionId };
+}
+
 export function startNewSession(dataset: ReconciliationDataset, label?: string): ReconciliationDataset {
   const session: ReconciliationSession = {
     id: newId('rs'),

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createEmptyDataset } from '../domain/dataset';
 import type { CanonicalMovement, ReconciliationDataset } from '../domain/types';
-import { buildAuditRows, computeAuditSummary, filterAuditRows } from './auditQueries';
+import { buildAuditRows, computeAuditSummary, filterAuditRows, AUDIT_ALL_SESSIONS } from './auditQueries';
 
 function mov(
   partial: Partial<CanonicalMovement> & Pick<CanonicalMovement, 'id' | 'sourceType' | 'side' | 'amount'>
@@ -191,5 +191,37 @@ describe('auditQueries', () => {
     const found = filterAuditRows(rows, { status: 'all', search: '2525188' });
     expect(found).toHaveLength(1);
     expect(found[0]?.bank?.id).toBe('b1');
+  });
+
+  it('agrega filas de todas las sesiones', () => {
+    const dataset: ReconciliationDataset = {
+      ...createEmptyDataset(),
+      activeSessionId: 's-empty',
+      sessions: [
+        { id: 's-empty', label: '2026-06-10', createdAt: '' },
+        { id: 's1', label: '2026-01', createdAt: '' },
+      ],
+      movements: [
+        mov({
+          id: 'b1',
+          sessionId: 's1',
+          sourceType: 'bcp_bank',
+          side: 'bank_or_gateway',
+          amount: 10,
+        }),
+        mov({
+          id: 'b2',
+          sessionId: 's-empty',
+          sourceType: 'bcp_bank',
+          side: 'bank_or_gateway',
+          amount: 5,
+        }),
+      ],
+      matches: [],
+    };
+    const all = buildAuditRows(dataset, AUDIT_ALL_SESSIONS);
+    expect(all).toHaveLength(2);
+    const onlyS1 = buildAuditRows(dataset, 's1');
+    expect(onlyS1).toHaveLength(1);
   });
 });

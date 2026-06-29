@@ -60,12 +60,15 @@ function inDateRange(date: string, from?: string, to?: string): boolean {
   return true;
 }
 
+function isSalesMovement(m: CanonicalMovement): boolean {
+  return m.sourceType === 'sales_erp' || m.side === 'sales_application';
+}
+
 function classifyMovement(m: CanonicalMovement): AuditPairRow['status'] {
   if (m.workflowStatus === 'reconciled') return 'reconciled';
   if (m.workflowStatus === 'difference') return 'difference';
-  if (m.sourceType !== 'sales_erp') return 'orphan_bank';
-  if (m.side === 'sales_application') return 'orphan_sales';
-  return 'pending';
+  if (isSalesMovement(m)) return 'orphan_sales';
+  return 'orphan_bank';
 }
 
 function rowMatchesSearch(row: AuditPairRow, search: string): boolean {
@@ -105,10 +108,31 @@ function rowMatchesStatus(row: AuditPairRow, status: AuditStatusFilter): boolean
   return true;
 }
 
+export const AUDIT_ALL_SESSIONS = '__all_sessions__' as const;
+export type AuditSessionScope = string | typeof AUDIT_ALL_SESSIONS;
+
 export function buildAuditRows(
   dataset: ReconciliationDataset,
-  sessionId?: string
+  sessionId?: AuditSessionScope
 ): AuditPairRow[] {
+  if (sessionId === AUDIT_ALL_SESSIONS) {
+    const sessionIds = [
+      ...new Set([
+        ...dataset.movements.map((m) => m.sessionId),
+        ...dataset.matches.map((m) => m.sessionId),
+      ]),
+    ];
+    const merged: AuditPairRow[] = [];
+    for (const sid of sessionIds) {
+      merged.push(...buildAuditRows(dataset, sid));
+    }
+    return merged.sort((a, b) => {
+      const da = a.bank?.transactionDate ?? a.sales?.transactionDate ?? '';
+      const db = b.bank?.transactionDate ?? b.sales?.transactionDate ?? '';
+      return db.localeCompare(da);
+    });
+  }
+
   const sid = sessionId ?? dataset.activeSessionId;
   const movements = sessionMovements(dataset, sid);
   const byId = new Map(movements.map((m) => [m.id, m]));
@@ -139,10 +163,11 @@ export function buildAuditRows(
 
   for (const m of movements) {
     if (seen.has(m.id)) continue;
+    const sales = isSalesMovement(m);
     rows.push({
       id: m.id,
-      bank: m.sourceType !== 'sales_erp' ? m : undefined,
-      sales: m.side === 'sales_application' ? m : undefined,
+      bank: sales ? undefined : m,
+      sales: sales ? m : undefined,
       status: classifyMovement(m),
     });
   }
@@ -176,7 +201,10 @@ export function filterAuditRows(rows: AuditPairRow[], params: AuditFilterParams)
   });
 }
 
-export function computeAuditSummary(dataset: ReconciliationDataset, sessionId?: string): AuditSummary {
+export function computeAuditSummary(
+  dataset: ReconciliationDataset,
+  sessionId?: AuditSessionScope
+): AuditSummary {
   const rows = buildAuditRows(dataset, sessionId);
   const byStrategy: Record<MatchStrategy, number> = {
     operation_number: 0,
@@ -216,7 +244,10 @@ export function computeAuditSummary(dataset: ReconciliationDataset, sessionId?: 
     }
   }
 
-  const movements = sessionMovements(dataset, sessionId);
+  const movements =
+    sessionId === AUDIT_ALL_SESSIONS
+      ? dataset.movements
+      : sessionMovements(dataset, sessionId);
   return {
     totalMovements: movements.length,
     reconciledPairs,

@@ -5,19 +5,12 @@ import {
   HelpCircle,
   Search,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
 import { TooltipProvider } from '../../components/ui/tooltip';
 import {
   AUDIT_GLOSSARY,
@@ -27,22 +20,29 @@ import {
   STATUS_FILTER_OPTIONS,
   type AuditStatusFilter,
 } from '../domain/auditLabels';
+import { getActiveSession } from '../domain/dataset';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import { WORKFLOW_STATUS_LABELS } from '../domain/types';
 import {
+  AUDIT_ALL_SESSIONS,
   buildAuditRows,
   computeAuditSummary,
   filterAuditRows,
   paginateRows,
   totalPages,
   type AuditPairRow,
+  type AuditSessionScope,
 } from '../engines/auditQueries';
 
 type Props = {
   dataset: ReconciliationDataset;
+  sessionScope: AuditSessionScope;
 };
 
 const PAGE_SIZE = 50;
+
+const nativeSelectClass =
+  'h-9 rounded-md border border-input bg-input-background px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
 function formatMoney(n: number): string {
   return `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -82,7 +82,13 @@ function MovementCell({ side, m }: { side: 'bank' | 'sales'; m?: AuditPairRow['b
   );
 }
 
-export function ReconciliationAuditPanel({ dataset }: Props) {
+function sessionScopeLabel(dataset: ReconciliationDataset, scope: AuditSessionScope): string {
+  if (scope === AUDIT_ALL_SESSIONS) return 'Todas las sesiones';
+  const session = dataset.sessions.find((s) => s.id === scope);
+  return session?.label ?? getActiveSession(dataset).label;
+}
+
+export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
   const [statusFilter, setStatusFilter] = useState<AuditStatusFilter>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -90,28 +96,45 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
 
-  const summary = useMemo(() => computeAuditSummary(dataset), [dataset]);
-  const allRows = useMemo(() => buildAuditRows(dataset), [dataset]);
+  const deferredSearch = useDeferredValue(search);
+
+  const summary = useMemo(
+    () => computeAuditSummary(dataset, sessionScope),
+    [dataset, sessionScope]
+  );
+  const allRows = useMemo(() => buildAuditRows(dataset, sessionScope), [dataset, sessionScope]);
   const filtered = useMemo(
     () =>
       filterAuditRows(allRows, {
         status: statusFilter,
         source: sourceFilter === 'all' ? undefined : (sourceFilter as ReconciliationSourceType),
-        search,
+        search: deferredSearch,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
       }),
-    [allRows, statusFilter, sourceFilter, search, dateFrom, dateTo]
+    [allRows, statusFilter, sourceFilter, deferredSearch, dateFrom, dateTo]
   );
 
   const pages = totalPages(filtered.length, PAGE_SIZE);
   const currentPage = Math.min(Math.max(1, page), pages);
   const pageRows = paginateRows(filtered, currentPage, PAGE_SIZE);
   const pairsView = statusFilter === 'pairs' || statusFilter === 'reconciled';
+  const isSearchPending = search !== deferredSearch;
+  const scopeLabel = sessionScopeLabel(dataset, sessionScope);
+  const hasActiveFilters =
+    statusFilter !== 'all' ||
+    sourceFilter !== 'all' ||
+    search.trim() !== '' ||
+    dateFrom !== '' ||
+    dateTo !== '';
 
   useEffect(() => {
-    if (page !== currentPage) setPage(currentPage);
-  }, [page, currentPage]);
+    setPage(1);
+  }, [sessionScope]);
+
+  useEffect(() => {
+    if (page > pages) setPage(pages);
+  }, [page, pages]);
 
   const clearFilters = () => {
     setStatusFilter('all');
@@ -169,49 +192,47 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
           <CardHeader>
             <CardTitle className="text-base">Explorador de cruces</CardTitle>
             <CardDescription>
-              {filtered.length.toLocaleString('es-PE')} resultado(s) de {allRows.length.toLocaleString('es-PE')} —{' '}
-              {summary.totalMovements.toLocaleString('es-PE')} movimientos en sesión
+              <span className="font-medium text-foreground">
+                {filtered.length.toLocaleString('es-PE')} resultado(s)
+              </span>{' '}
+              de {allRows.length.toLocaleString('es-PE')} filas · sesión «{scopeLabel}» ·{' '}
+              {summary.totalMovements.toLocaleString('es-PE')} movimientos
+              {isSearchPending ? ' · filtrando…' : ''}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Select
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className={`${nativeSelectClass} w-[200px]`}
                 value={statusFilter}
-                onValueChange={(v) => {
-                  setStatusFilter(v as AuditStatusFilter);
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as AuditStatusFilter);
                   setPage(1);
                 }}
+                aria-label="Filtrar por estado"
               >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUS_FILTER_OPTIONS.map((opt) => (
-                    <SelectItem key={opt.id} value={opt.id}>
-                      {opt.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
+                {STATUS_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className={`${nativeSelectClass} w-[160px]`}
                 value={sourceFilter}
-                onValueChange={(v) => {
-                  setSourceFilter(v);
+                onChange={(e) => {
+                  setSourceFilter(e.target.value);
                   setPage(1);
                 }}
+                aria-label="Filtrar por fuente"
               >
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder="Fuente" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las fuentes</SelectItem>
-                  {Object.entries(SOURCE_LABELS).map(([k, label]) => (
-                    <SelectItem key={k} value={k}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <option value="all">Todas las fuentes</option>
+                {Object.entries(SOURCE_LABELS).map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
+              </select>
               <Input
                 type="date"
                 value={dateFrom}
@@ -249,6 +270,25 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
               </Button>
             </div>
 
+            {hasActiveFilters && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Filtros activos:</span>
+                {statusFilter !== 'all' && (
+                  <Badge variant="secondary">
+                    {STATUS_FILTER_OPTIONS.find((o) => o.id === statusFilter)?.label}
+                  </Badge>
+                )}
+                {sourceFilter !== 'all' && (
+                  <Badge variant="secondary">
+                    {SOURCE_LABELS[sourceFilter as ReconciliationSourceType]}
+                  </Badge>
+                )}
+                {dateFrom && <Badge variant="outline">Desde {dateFrom}</Badge>}
+                {dateTo && <Badge variant="outline">Hasta {dateTo}</Badge>}
+                {search.trim() && <Badge variant="outline">«{search.trim()}»</Badge>}
+              </div>
+            )}
+
             <p className="text-xs text-muted-foreground">
               {STATUS_FILTER_OPTIONS.find((o) => o.id === statusFilter)?.description}
             </p>
@@ -281,7 +321,9 @@ export function ReconciliationAuditPanel({ dataset }: Props) {
                   {pageRows.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="p-6 text-center text-muted-foreground">
-                        Sin resultados para los filtros seleccionados.
+                        {allRows.length === 0
+                          ? 'No hay movimientos en la sesión seleccionada. Elija otra sesión arriba o importe archivos en la pestaña Importar.'
+                          : 'Sin resultados para los filtros seleccionados.'}
                       </td>
                     </tr>
                   ) : pairsView ? (
