@@ -193,6 +193,41 @@ describe('auditQueries', () => {
     expect(found[0]?.bank?.id).toBe('b1');
   });
 
+  it('agrupa conciliados por matchedMovementId en una sola fila', () => {
+    const sid = 's1';
+    const dataset: ReconciliationDataset = {
+      ...createEmptyDataset(),
+      activeSessionId: sid,
+      movements: [
+        mov({
+          id: 'b1',
+          sourceType: 'mercado_pago',
+          side: 'bank_or_gateway',
+          amount: 280,
+          workflowStatus: 'reconciled',
+          matchedMovementId: 's1',
+          operationNumber: '9276756',
+        }),
+        mov({
+          id: 's1',
+          sourceType: 'sales_erp',
+          side: 'sales_application',
+          amount: 280,
+          workflowStatus: 'reconciled',
+          matchedMovementId: 'b1',
+          operationNumber: '9276756',
+          documentNumber: 'B004-00114629',
+        }),
+      ],
+      matches: [],
+    };
+    const rows = buildAuditRows(dataset, sid);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.bank?.id).toBe('b1');
+    expect(rows[0]?.sales?.id).toBe('s1');
+    expect(rows[0]?.status).toBe('reconciled');
+  });
+
   it('agrega filas de todas las sesiones', () => {
     const dataset: ReconciliationDataset = {
       ...createEmptyDataset(),

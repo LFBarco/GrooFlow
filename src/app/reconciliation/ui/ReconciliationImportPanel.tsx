@@ -12,7 +12,7 @@ import { downloadMercadoPagoColumnReference } from '../connectors/mercadoPagoCon
 import { downloadBcpImportTemplate } from '../connectors/bcpBankConnector';
 import { getActiveSession } from '../domain/dataset';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
-import { importReconciliationFile } from '../engines/reconciliationRunner';
+import { importReconciliationFile, deleteReconciliationBatch } from '../engines/reconciliationRunner';
 import { ReconciliationImportStatus } from './ReconciliationImportStatus';
 
 type Props = {
@@ -67,7 +67,21 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
 
   return (
     <div className="space-y-4">
-      <ReconciliationImportStatus dataset={dataset} sessionId={getActiveSession(dataset).id} />
+      <ReconciliationImportStatus
+        dataset={dataset}
+        sessionId={getActiveSession(dataset).id}
+        onDeleteBatch={(batchId) => {
+          const batch = dataset.batches.find((b) => b.id === batchId);
+          if (!batch) return;
+          const count = dataset.movements.filter((m) => m.batchId === batchId).length;
+          const ok = window.confirm(
+            `¿Eliminar «${batch.fileName}» y sus ${count.toLocaleString('es-PE')} registro(s)?\n\nSe recalculará el cruce automáticamente.`
+          );
+          if (!ok) return;
+          onDatasetChange(deleteReconciliationBatch(dataset, batchId));
+          toast.success(`Archivo «${batch.fileName}» eliminado.`);
+        }}
+      />
 
       <Card>
         <CardContent className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">

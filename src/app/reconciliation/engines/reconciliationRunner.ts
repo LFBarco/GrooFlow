@@ -157,6 +157,50 @@ export function runReconciliationEngine(
   return next;
 }
 
+export function deleteReconciliationBatch(
+  dataset: ReconciliationDataset,
+  batchId: string
+): ReconciliationDataset {
+  const batch = dataset.batches.find((b) => b.id === batchId);
+  if (!batch) return dataset;
+
+  const removedIds = new Set(
+    dataset.movements.filter((m) => m.batchId === batchId).map((m) => m.id)
+  );
+
+  const sessionId = batch.sessionId;
+  const movements = dataset.movements
+    .filter((m) => m.batchId !== batchId)
+    .map((m) => {
+      if (m.matchedMovementId && removedIds.has(m.matchedMovementId)) {
+        return {
+          ...m,
+          workflowStatus: 'normalized' as const,
+          matchedMovementId: undefined,
+          matchId: undefined,
+          ruleCodes: [],
+        };
+      }
+      return m;
+    });
+
+  const matches = dataset.matches.filter(
+    (m) => !removedIds.has(m.bankMovementId) && !removedIds.has(m.salesMovementId)
+  );
+  const alerts = dataset.alerts.filter((a) => !a.movementIds.some((id) => removedIds.has(id)));
+  const batches = dataset.batches.filter((b) => b.id !== batchId);
+
+  const next: ReconciliationDataset = {
+    ...dataset,
+    batches,
+    movements,
+    matches,
+    alerts,
+  };
+
+  return runReconciliationEngine(next, sessionId);
+}
+
 export function resolveAlert(dataset: ReconciliationDataset, alertId: string): ReconciliationDataset {
   return {
     ...dataset,

@@ -22,7 +22,6 @@ import {
 } from '../domain/auditLabels';
 import { getActiveSession } from '../domain/dataset';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
-import { WORKFLOW_STATUS_LABELS } from '../domain/types';
 import {
   AUDIT_ALL_SESSIONS,
   buildAuditRows,
@@ -69,7 +68,10 @@ function MovementCell({ side, m }: { side: 'bank' | 'sales'; m?: AuditPairRow['b
     <td className="p-2 align-top">
       <div className="space-y-0.5">
         <p className="text-xs font-medium text-muted-foreground">{SOURCE_LABELS[m.sourceType]}</p>
-        <p className="font-mono text-xs">{m.operationNumberRaw || m.operationNumber || '—'}</p>
+        <p className="font-mono text-xs font-semibold">{m.operationNumber || '—'}</p>
+        {m.operationNumberRaw && m.operationNumberRaw.replace(/\D/g, '') !== m.operationNumber && (
+          <p className="font-mono text-[10px] text-muted-foreground">orig: {m.operationNumberRaw}</p>
+        )}
         <p className="font-semibold">{formatMoney(m.amount)}</p>
         <p className="text-xs">{m.transactionDate}</p>
         {side === 'sales' && m.documentNumber && (
@@ -118,7 +120,6 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
   const pages = totalPages(filtered.length, PAGE_SIZE);
   const currentPage = Math.min(Math.max(1, page), pages);
   const pageRows = paginateRows(filtered, currentPage, PAGE_SIZE);
-  const pairsView = statusFilter === 'pairs' || statusFilter === 'reconciled';
   const isSearchPending = search !== deferredSearch;
   const scopeLabel = sessionScopeLabel(dataset, sessionScope);
   const hasActiveFilters =
@@ -298,23 +299,11 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
                 <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="p-2">Estado</th>
-                    {pairsView ? (
-                      <>
-                        <th className="p-2">Banco / Pasarela</th>
-                        <th className="p-2">Venta ERP</th>
-                        <th className="p-2">Δ Monto</th>
-                        <th className="p-2">Estrategia</th>
-                        <th className="p-2">Conf.</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="p-2">Fuente</th>
-                        <th className="p-2">Fecha</th>
-                        <th className="p-2">N° Op.</th>
-                        <th className="p-2">Monto</th>
-                        <th className="p-2">Doc / Detalle</th>
-                      </>
-                    )}
+                    <th className="p-2">Banco / Pasarela</th>
+                    <th className="p-2">Venta ERP</th>
+                    <th className="p-2">Δ Monto</th>
+                    <th className="p-2">Estrategia</th>
+                    <th className="p-2">Conf.</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -326,7 +315,7 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
                           : 'Sin resultados para los filtros seleccionados.'}
                       </td>
                     </tr>
-                  ) : pairsView ? (
+                  ) : (
                     pageRows.map((row) => (
                       <tr key={row.id} className="border-t">
                         <td className="p-2">
@@ -335,10 +324,14 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
                         <MovementCell side="bank" m={row.bank} />
                         <MovementCell side="sales" m={row.sales} />
                         <td className="p-2">
-                          {row.amountDelta != null && Math.abs(row.amountDelta) > 0.05 ? (
-                            <span className="font-medium text-amber-600">{formatMoney(row.amountDelta)}</span>
+                          {row.bank && row.sales ? (
+                            row.amountDelta != null && Math.abs(row.amountDelta) > 0.05 ? (
+                              <span className="font-medium text-amber-600">{formatMoney(row.amountDelta)}</span>
+                            ) : (
+                              <span className="text-emerald-600">OK</span>
+                            )
                           ) : (
-                            <span className="text-emerald-600">OK</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </td>
                         <td className="p-2 text-xs">
@@ -349,26 +342,6 @@ export function ReconciliationAuditPanel({ dataset, sessionScope }: Props) {
                         </td>
                       </tr>
                     ))
-                  ) : (
-                    pageRows.map((row) => {
-                      const m = row.bank ?? row.sales!;
-                      return (
-                        <tr key={row.id} className="border-t">
-                          <td className="p-2">
-                            <StatusBadge status={row.status} />
-                          </td>
-                          <td className="p-2">{SOURCE_LABELS[m.sourceType]}</td>
-                          <td className="p-2 whitespace-nowrap">{m.transactionDate}</td>
-                          <td className="p-2 font-mono text-xs">
-                            {m.operationNumberRaw || m.operationNumber || '—'}
-                          </td>
-                          <td className="p-2">{formatMoney(m.amount)}</td>
-                          <td className="p-2 text-xs">
-                            {m.documentNumber ?? m.description ?? WORKFLOW_STATUS_LABELS[m.workflowStatus]}
-                          </td>
-                        </tr>
-                      );
-                    })
                   )}
                 </tbody>
               </table>

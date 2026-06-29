@@ -1,6 +1,7 @@
-import { CheckCircle2, CircleDashed, FileSpreadsheet, PlayCircle, XCircle } from 'lucide-react';
+import { CheckCircle2, CircleDashed, FileSpreadsheet, PlayCircle, Trash2, XCircle } from 'lucide-react';
 
 import { Badge } from '../../components/ui/badge';
+import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { SOURCE_LABELS } from '../domain/auditLabels';
 import { sessionMovements } from '../domain/dataset';
@@ -17,6 +18,7 @@ type Props = {
   dataset: ReconciliationDataset;
   sessionId: string;
   compact?: boolean;
+  onDeleteBatch?: (batchId: string) => void;
 };
 
 function formatWhen(iso: string): string {
@@ -32,7 +34,7 @@ function formatWhen(iso: string): string {
   }
 }
 
-export function ReconciliationImportStatus({ dataset, sessionId, compact }: Props) {
+export function ReconciliationImportStatus({ dataset, sessionId, compact, onDeleteBatch }: Props) {
   const movements = sessionMovements(dataset, sessionId);
   const batches = dataset.batches.filter((b) => b.sessionId === sessionId);
   const matches = dataset.matches.filter((m) => m.sessionId === sessionId);
@@ -77,8 +79,8 @@ export function ReconciliationImportStatus({ dataset, sessionId, compact }: Prop
         </CardTitle>
         {!compact && (
           <CardDescription>
-            Lista de importaciones en la sesión seleccionada. El cruce solo corre si hay ventas ERP y al menos un
-            extracto (BCP, MP o Niubiz).
+            Lista de importaciones en la sesión seleccionada. Puede eliminar un archivo y volver a subirlo si hubo
+            error.
           </CardDescription>
         )}
       </CardHeader>
@@ -107,11 +109,31 @@ export function ReconciliationImportStatus({ dataset, sessionId, compact }: Prop
                       {sourceBatches.length === 0 ? (
                         <span className="text-muted-foreground">No subido</span>
                       ) : (
-                        <ul className="space-y-0.5">
+                        <ul className="space-y-1">
                           {sourceBatches.map((b) => (
-                            <li key={b.id} title={formatWhen(b.importedAt)}>
-                              {b.fileName}{' '}
-                              <span className="text-muted-foreground">({b.recordCount.toLocaleString('es-PE')})</span>
+                            <li
+                              key={b.id}
+                              className="flex flex-wrap items-center justify-between gap-2"
+                              title={formatWhen(b.importedAt)}
+                            >
+                              <span>
+                                {b.fileName}{' '}
+                                <span className="text-muted-foreground">
+                                  ({b.recordCount.toLocaleString('es-PE')})
+                                </span>
+                              </span>
+                              {onDeleteBatch && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-destructive hover:text-destructive"
+                                  onClick={() => onDeleteBatch(b.id)}
+                                  title="Eliminar archivo importado"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
                             </li>
                           ))}
                         </ul>

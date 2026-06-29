@@ -71,6 +71,55 @@ function classifyMovement(m: CanonicalMovement): AuditPairRow['status'] {
   return 'orphan_bank';
 }
 
+function isLinkedPair(m: CanonicalMovement): boolean {
+  return (
+    Boolean(m.matchedMovementId) &&
+    (m.workflowStatus === 'reconciled' || m.workflowStatus === 'difference')
+  );
+}
+
+function pairFromMovements(
+  a: CanonicalMovement,
+  b: CanonicalMovement
+): { bank?: CanonicalMovement; sales?: CanonicalMovement } {
+  if (isSalesMovement(a) && !isSalesMovement(b)) return { bank: b, sales: a };
+  if (!isSalesMovement(a) && isSalesMovement(b)) return { bank: a, sales: b };
+  if (isSalesMovement(a)) return { sales: a };
+  return { bank: a };
+}
+
+function rowStatusFromPair(
+  bank?: CanonicalMovement,
+  sales?: CanonicalMovement
+): AuditPairRow['status'] {
+  if (bank?.workflowStatus === 'difference' || sales?.workflowStatus === 'difference') return 'difference';
+  if (bank?.workflowStatus === 'reconciled' || sales?.workflowStatus === 'reconciled') return 'reconciled';
+  if (bank && sales) return 'pending';
+  if (bank) return classifyMovement(bank);
+  if (sales) return classifyMovement(sales);
+  return 'pending';
+}
+
+function buildPairRow(
+  id: string,
+  bank?: CanonicalMovement,
+  sales?: CanonicalMovement,
+  match?: { id: string; matchStrategy?: MatchStrategy; confidence?: number }
+): AuditPairRow {
+  const amountDelta =
+    bank && sales ? Math.round((bank.amount - sales.amount) * 100) / 100 : undefined;
+  return {
+    id,
+    matchId: match?.id,
+    strategy: match?.matchStrategy,
+    confidence: match?.confidence,
+    bank,
+    sales,
+    status: rowStatusFromPair(bank, sales),
+    amountDelta,
+  };
+}
+
 function rowMatchesSearch(row: AuditPairRow, search: string): boolean {
   const q = search.trim().toLowerCase();
   if (!q) return true;
@@ -145,29 +194,36 @@ export function buildAuditRows(
     if (!bank && !sales) continue;
     seen.add(match.bankMovementId);
     seen.add(match.salesMovementId);
-    const amountDelta =
-      bank && sales ? Math.round((bank.amount - sales.amount) * 100) / 100 : undefined;
-    rows.push({
-      id: match.id,
-      matchId: match.id,
-      strategy: match.matchStrategy,
-      confidence: match.confidence,
-      bank,
-      sales,
-      status: bank?.workflowStatus === 'difference' || sales?.workflowStatus === 'difference'
-        ? 'difference'
-        : 'reconciled',
-      amountDelta,
-    });
+    rows.push(
+      buildPairRow(match.id, bank, sales, {
+        id: match.id,
+        matchStrategy: match.matchStrategy,
+        confidence: match.confidence,
+      })
+    );
   }
 
   for (const m of movements) {
     if (seen.has(m.id)) continue;
-    const sales = isSalesMovement(m);
+
+    if (isLinkedPair(m)) {
+      const partner = byId.get(m.matchedMovementId!);
+      if (partner && !seen.has(partner.id)) {
+        seen.add(m.id);
+        seen.add(partner.id);
+        const { bank, sales } = pairFromMovements(m, partner);
+        rows.push(
+          buildPairRow(m.matchId ?? `link_${m.id}_${partner.id}`, bank, sales, m.matchId ? { id: m.matchId } : undefined)
+        );
+        continue;
+      }
+    }
+
+    const salesSide = isSalesMovement(m);
     rows.push({
       id: m.id,
-      bank: sales ? undefined : m,
-      sales: sales ? m : undefined,
+      bank: salesSide ? undefined : m,
+      sales: salesSide ? m : undefined,
       status: classifyMovement(m),
     });
   }
