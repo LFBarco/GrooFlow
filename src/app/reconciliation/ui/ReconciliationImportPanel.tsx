@@ -77,6 +77,7 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
             </Label>
             <p className="text-xs text-muted-foreground">
               Recomendado para archivos grandes (+5.000 filas). Sube todas las fuentes y luego pulse «Re-ejecutar motor».
+              El cruce usa los <strong>últimos 7 dígitos</strong> del N° operación en todos los reportes.
             </p>
           </div>
           <Switch id="import-only" checked={importOnly} onCheckedChange={setImportOnly} />

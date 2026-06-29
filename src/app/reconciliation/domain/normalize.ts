@@ -49,15 +49,26 @@ export function getImportCellByIndex(row: Record<string, unknown>, index: number
   return undefined;
 }
 
+/** Longitud unificada de la clave de cruce entre BCP, MP, Niubiz y ventas ERP. */
+export const OPERATION_MATCH_DIGITS = 7;
+
 /**
- * Pasarelas (Mercado Pago, Niubiz): conservar el ID completo para cruce con ventas.
+ * Clave de cruce PETMAX: últimos 7 dígitos; si hay menos, ceros a la izquierda.
+ * Aplica a todos los reportes (BCP, Mercado Pago, Niubiz, ventas ERP).
  */
-export function normalizeGatewayOperationNumber(raw: unknown): { normalized: string; raw: string } {
+export function normalizeOperationNumber(raw: unknown): { normalized: string; raw: string } {
   const rawStr = String(raw ?? '').trim();
   if (!rawStr) return { normalized: '', raw: '' };
   const digits = rawStr.replace(/\D/g, '');
   if (!digits) return { normalized: '', raw: rawStr };
-  return { normalized: digits, raw: rawStr };
+  const last7 =
+    digits.length > OPERATION_MATCH_DIGITS ? digits.slice(-OPERATION_MATCH_DIGITS) : digits;
+  return { normalized: last7.padStart(OPERATION_MATCH_DIGITS, '0'), raw: rawStr };
+}
+
+/** @deprecated Usar normalizeOperationNumber — misma regla de 7 dígitos. */
+export function normalizeGatewayOperationNumber(raw: unknown): { normalized: string; raw: string } {
+  return normalizeOperationNumber(raw);
 }
 
 export function isMercadoPagoApprovedStatus(status: unknown): boolean {
@@ -75,19 +86,6 @@ export function isMercadoPagoApprovedStatus(status: unknown): boolean {
     s.startsWith('aprobado') ||
     s.startsWith('aprovado')
   );
-}
-
-/**
- * Regla PETMAX: si tiene más de 7 dígitos conservar últimos 7;
- * si tiene menos, completar con ceros a la izquierda.
- */
-export function normalizeOperationNumber(raw: unknown): { normalized: string; raw: string } {
-  const rawStr = String(raw ?? '').trim();
-  if (!rawStr) return { normalized: '', raw: '' };
-  const digits = rawStr.replace(/\D/g, '');
-  if (!digits) return { normalized: '', raw: rawStr };
-  const last7 = digits.length > 7 ? digits.slice(-7) : digits;
-  return { normalized: last7.padStart(7, '0'), raw: rawStr };
 }
 
 export function parseImportAmount(value: unknown): number | null {
@@ -150,20 +148,18 @@ export function inferPaymentMethod(text: unknown, sourceHint?: PaymentMethodHint
   return 'unknown';
 }
 
-/** Normaliza N° operación según medio conocido; si es unknown, infiere por longitud del código. */
+/** Normaliza N° operación a 7 dígitos para cruce (todos los medios y fuentes). */
 export function normalizeOperationForMovement(
   raw: unknown,
-  paymentMethod: PaymentMethodHint
+  _paymentMethod?: PaymentMethodHint
 ): { normalized: string; raw: string } {
-  if (paymentMethod === 'mercado_pago' || paymentMethod === 'niubiz') {
-    return normalizeGatewayOperationNumber(raw);
-  }
-  if (paymentMethod !== 'unknown') {
-    return normalizeOperationNumber(raw);
-  }
-  const digits = String(raw ?? '').replace(/\D/g, '');
-  if (digits.length > 7) return normalizeGatewayOperationNumber(raw);
   return normalizeOperationNumber(raw);
+}
+
+export function operationNumbersMatch(a: unknown, b: unknown): boolean {
+  const ka = normalizeOperationNumber(a).normalized;
+  const kb = normalizeOperationNumber(b).normalized;
+  return Boolean(ka && kb && ka === kb);
 }
 
 /** Ventas ERP: códigos 2–4 no traen monto ni medio — el importe se toma del banco al conciliar. */
@@ -176,8 +172,9 @@ export function salesMovementNeedsBankAmount(movement: {
   return movement.paymentMethod === 'unknown' && movement.amount === 0;
 }
 
-export function operationMatchKey(operationNumber: string, amount: number): string {
-  return `${operationNumber}|${amount.toFixed(2)}`;
+export function operationMatchKey(operationNumber: string, amount?: number): string {
+  const key = normalizeOperationNumber(operationNumber).normalized;
+  return amount === undefined ? key : `${key}|${amount.toFixed(2)}`;
 }
 
 export function amountsEqual(a: number, b: number, tolerance = 0.05): boolean {

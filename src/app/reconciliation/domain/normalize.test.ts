@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeOperationNumber, parseImportAmount, parseImportDate } from './normalize';
+import { normalizeOperationNumber, operationNumbersMatch, parseImportAmount, parseImportDate } from './normalize';
 
 describe('reconciliation normalize', () => {
   it('normaliza N° operación a 7 dígitos con ceros', () => {
@@ -9,6 +9,16 @@ describe('reconciliation normalize', () => {
       normalized: '5678901',
       raw: '12345678901',
     });
+    expect(normalizeOperationNumber('9876543210123')).toEqual({
+      normalized: '3210123',
+      raw: '9876543210123',
+    });
+  });
+
+  it('cruza códigos largos de MP y BCP por últimos 7 dígitos', () => {
+    expect(operationNumbersMatch('9876543210123', '00235493')).toBe(false);
+    expect(operationNumbersMatch('9876543210123', '3210123')).toBe(true);
+    expect(operationNumbersMatch('02525188', '2525188')).toBe(true);
   });
 
   it('parsea montos', () => {

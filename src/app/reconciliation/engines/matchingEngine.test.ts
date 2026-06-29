@@ -41,13 +41,14 @@ describe('matchingEngine', () => {
     expect(candidates[0]?.strategy).toBe('operation_number');
   });
 
-  it('empareja Cod. Op. Pago 2 sin medio usando solo N° operación e importe del banco', () => {
+  it('empareja Cod. Op. Pago 2 por últimos 7 dígitos del N° operación', () => {
     const bank = mov({
       id: 'b2',
       sourceType: 'mercado_pago',
       side: 'bank_or_gateway',
       amount: 80,
-      operationNumber: '9876543210123',
+      operationNumber: '3210123',
+      operationNumberRaw: '9876543210123',
       paymentMethod: 'mercado_pago',
     });
     const sales = mov({
@@ -55,7 +56,8 @@ describe('matchingEngine', () => {
       sourceType: 'sales_erp',
       side: 'sales_application',
       amount: 0,
-      operationNumber: '9876543210123',
+      operationNumber: '3210123',
+      operationNumberRaw: '9876543210123',
       paymentMethod: 'unknown',
       metadata: { erpOpCodeSlot: 2, erpAmountFromBank: true },
     });

@@ -2,7 +2,7 @@ import {
   getImportCell,
   getImportCellByIndex,
   isMercadoPagoApprovedStatus,
-  normalizeGatewayOperationNumber,
+  normalizeOperationNumber,
   parseImportAmount,
   parseImportDate,
 } from '../domain/normalize';
@@ -126,7 +126,7 @@ export const mercadoPagoConnector: ReconciliationConnector = {
         return;
       }
 
-      const { normalized, raw } = normalizeGatewayOperationNumber(opRaw);
+      const { normalized, raw } = normalizeOperationNumber(opRaw);
       movements.push({
         sourceType: 'mercado_pago',
         side: 'bank_or_gateway',
@@ -176,7 +176,7 @@ export function downloadMercadoPagoColumnReference() {
         {
           Columna: 'G',
           Campo: 'Número de operación de Mercado Pago (operation_id)',
-          Uso: 'Clave principal de cruce con ventas.',
+          Uso: 'Clave de cruce: últimos 7 dígitos (ej. 12345678901234 → 8901234).',
         },
         {
           Columna: 'H',

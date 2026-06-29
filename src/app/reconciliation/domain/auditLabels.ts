@@ -25,7 +25,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethodHint, string> = {
 };
 
 export const MATCH_STRATEGY_LABELS: Record<MatchStrategy, string> = {
-  operation_number: 'N° operación + monto',
+  operation_number: 'N° operación (7 dígitos)',
   amount_date: 'Monto + fecha (±3 días)',
   manual: 'Manual',
 };

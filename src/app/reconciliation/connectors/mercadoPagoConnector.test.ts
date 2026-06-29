@@ -33,7 +33,7 @@ describe('mercadoPagoConnector', () => {
     expect(result.errors).toHaveLength(0);
     expect(result.movements).toHaveLength(1);
     expect(result.movements[0]?.amount).toBe(150);
-    expect(result.movements[0]?.operationNumber).toBe('9876543210123');
+    expect(result.movements[0]?.operationNumber).toBe('3210123');
     expect(result.movements[0]?.transactionDate).toBe('2026-06-26');
   });
 

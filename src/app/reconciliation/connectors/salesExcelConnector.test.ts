@@ -79,7 +79,7 @@ describe('salesExcelConnector', () => {
     expect(op2?.paymentMethod).toBe('unknown');
     expect(op2?.amount).toBe(0);
     expect(op2?.metadata.erpAmountFromBank).toBe(true);
-    expect(op2?.operationNumber).toBe('9876543210123');
+    expect(op2?.operationNumber).toBe('3210123');
 
     expect(op3?.paymentMethod).toBe('unknown');
     expect(op3?.operationNumber).toBe('2222222');
