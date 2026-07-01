@@ -34,6 +34,33 @@ export const ASISTENCIA_WORK_SHIFT_LABELS: Record<AsistenciaWorkShift, string> =
   night: 'Noche',
 };
 
+/** Día de la semana para turno mixto (lunes = primer día laboral). */
+export type AsistenciaWeekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+
+export type AsistenciaWeekdayShift = AsistenciaWorkShift | 'off';
+
+export const ASISTENCIA_WEEKDAYS: AsistenciaWeekday[] = [
+  'mon',
+  'tue',
+  'wed',
+  'thu',
+  'fri',
+  'sat',
+  'sun',
+];
+
+export const ASISTENCIA_WEEKDAY_LABELS: Record<AsistenciaWeekday, string> = {
+  mon: 'Lun',
+  tue: 'Mar',
+  wed: 'Mié',
+  thu: 'Jue',
+  fri: 'Vie',
+  sat: 'Sáb',
+  sun: 'Dom',
+};
+
+export type AsistenciaShiftMode = 'fixed' | 'weekly';
+
 export const ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME = '08:00';
 export const ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME = '20:00';
 /** Tolerancia de llegada turno día (minutos después de scheduleStart). */
@@ -60,6 +87,12 @@ export interface AsistenciaStaffMember {
   expectedTime: string;
   /** Turno operativo (cruce con Buk `turno_noche` y filtro del organigrama). */
   shift?: AsistenciaWorkShift;
+  /** `fixed`: un solo turno; `weekly`: turno distinto por día (turno mixto). */
+  shiftMode?: AsistenciaShiftMode;
+  /** Turno por día cuando `shiftMode === 'weekly'`. `off` = no labora ese día. */
+  weeklyShifts?: Partial<Record<AsistenciaWeekday, AsistenciaWeekdayShift>>;
+  /** Hora esperada turno noche (opcional; default 20:00). */
+  expectedTimeNight?: string;
   email?: string;
   phone?: string;
   avatarUrl?: string;

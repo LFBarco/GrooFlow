@@ -1,6 +1,7 @@
 import {
   Check,
   CheckCircle2,
+  BarChart3,
   LayoutDashboard,
   Layers,
   List,
@@ -37,6 +38,7 @@ import {
   TableRow,
 } from '../ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { AsistenciaBukCharts } from './AsistenciaBukCharts';
 
 type Props = {
   records: BukAsistenciaRecord[];
@@ -153,7 +155,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
   const [arrivalFilter, setArrivalFilter] = useState<ArrivalFilter>('all');
   const [areaFilter, setAreaFilter] = useState(ALL_FILTER);
   const [specialtyFilter, setSpecialtyFilter] = useState(ALL_FILTER);
-  const [view, setView] = useState<'list' | 'specialty' | 'area'>('list');
+  const [view, setView] = useState<'list' | 'specialty' | 'area' | 'charts'>('list');
 
   const summary = useMemo(
     () =>
@@ -341,13 +343,19 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
             </Select>
           </div>
 
-          <Tabs value={view} onValueChange={(v) => setView(v as 'list' | 'specialty' | 'area')}>
+          <Tabs value={view} onValueChange={(v) => setView(v as 'list' | 'specialty' | 'area' | 'charts')}>
             <TabsList className="bg-slate-900 border border-slate-800">
               <TabsTrigger
                 value="list"
                 className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
               >
                 <List className="h-4 w-4 mr-1" /> Lista
+              </TabsTrigger>
+              <TabsTrigger
+                value="charts"
+                className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
+              >
+                <BarChart3 className="h-4 w-4 mr-1" /> Gráficos
               </TabsTrigger>
               <TabsTrigger
                 value="area"
@@ -362,6 +370,10 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                 <Layers className="h-4 w-4 mr-1" /> Por especialidad
               </TabsTrigger>
             </TabsList>
+
+            <TabsContent value="charts" className="mt-4">
+              <AsistenciaBukCharts summary={summary} areaGroups={filteredAreaGroups} />
+            </TabsContent>
 
             <TabsContent value="list" className="mt-4">
               <div className="rounded-xl border border-slate-800 overflow-hidden">

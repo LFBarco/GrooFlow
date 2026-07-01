@@ -14,6 +14,7 @@ import {
   isNightBukRecord,
   isSedeLeaderCargo,
   recordMatchesStaffShift,
+  resolveStaffShiftForDate,
   scheduleLabelForShift,
   staffMatchesShiftFilter,
 } from './asistenciaShift';
@@ -157,9 +158,15 @@ export function diagnoseStaffBukMatch(input: {
     return `Buk no tiene marcación con RUT ${input.staff.rut?.trim()} el ${dateKey}.`;
   }
 
-  const shiftMatches = byRutOnDate.filter((r) => recordMatchesStaffShift(r, input.staff));
+  const shiftMatches = byRutOnDate.filter((r) =>
+    recordMatchesStaffShift(r, input.staff, input.date)
+  );
   if (shiftMatches.length === 0) {
-    const expected = input.staff.shift === 'night' ? 'noche' : 'día';
+    const resolved = resolveStaffShiftForDate(input.staff, input.date);
+    if (resolved === null) {
+      return `El personal no tiene turno asignado este día (día libre en turno mixto).`;
+    }
+    const expected = resolved === 'night' ? 'noche' : 'día';
     const bukShifts = [
       ...new Set(
         byRutOnDate.map((r) => (isNightBukRecord(r) ? 'noche' : 'día'))
@@ -202,7 +209,7 @@ function findBukRecordForStaff(
       isRecordOnDate(r, date) &&
       recordMatchesSede(r, sedeName, profile, settings) &&
       recordMatchesStaff(r, staff) &&
-      recordMatchesStaffShift(r, staff)
+      recordMatchesStaffShift(r, staff, date)
   );
 }
 
@@ -269,11 +276,15 @@ export function getSedeProfile(
 export function staffForSede(
   settings: AsistenciaSettings,
   sedeName: string,
-  shiftFilter: AsistenciaShiftFilter = 'all'
+  shiftFilter: AsistenciaShiftFilter = 'all',
+  date?: Date
 ): AsistenciaStaffMember[] {
   const merged = mergeAsistenciaSettings(settings);
   return (merged.staff ?? [])
-    .filter((s) => s.sedeName === sedeName && staffMatchesShiftFilter(s, shiftFilter))
+    .filter(
+      (s) =>
+        s.sedeName === sedeName && staffMatchesShiftFilter(s, shiftFilter, date)
+    )
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.fullName.localeCompare(b.fullName));
 }
 
@@ -311,7 +322,7 @@ export function buildLiveSedeSummary(input: {
   const shiftFilter = input.shiftFilter ?? 'all';
   const settings = mergeAsistenciaSettings(input.settings);
   const profile = getSedeProfile(settings, input.sedeName);
-  const staffList = staffForSede(settings, input.sedeName, shiftFilter);
+  const staffList = staffForSede(settings, input.sedeName, shiftFilter, input.date);
 
   const liveStates: AsistenciaStaffLiveState[] = staffList.map((staff) => {
     const buk = findBukRecordForStaff(

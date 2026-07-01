@@ -12,13 +12,26 @@ import {
   User,
 } from 'lucide-react';
 
-import type { AsistenciaSedeProfile, AsistenciaStaffMember, AsistenciaWorkShift } from '../../types/asistencia';
+import type {
+  AsistenciaSedeProfile,
+  AsistenciaShiftMode,
+  AsistenciaStaffMember,
+  AsistenciaWeekday,
+  AsistenciaWeekdayShift,
+  AsistenciaWorkShift,
+} from '../../types/asistencia';
 import {
   ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
   ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME,
+  ASISTENCIA_WEEKDAY_LABELS,
+  ASISTENCIA_WEEKDAYS,
   ASISTENCIA_WORK_SHIFT_LABELS,
 } from '../../types/asistencia';
-import { defaultExpectedTimeForShift } from '../../utils/asistenciaShift';
+import {
+  createDefaultWeeklyShifts,
+  defaultExpectedTimeForShift,
+  formatWeeklyShiftSummary,
+} from '../../utils/asistenciaShift';
 import { defaultMatchHints } from '../../utils/asistenciaStaff';
 import { cargosForOrgColumn, type AsistenciaOrgColumn } from '../../utils/asistenciaOrgColumns';
 import { Button } from '../ui/button';
@@ -88,6 +101,33 @@ export function AsistenciaStaffDialog({
     [sedeProfile, form.area]
   );
 
+  const isWeekly = form.shiftMode === 'weekly';
+  const weeklySummary = useMemo(
+    () => (isWeekly ? formatWeeklyShiftSummary(form) : undefined),
+    [form, isWeekly]
+  );
+
+  const setShiftMode = (mode: AsistenciaShiftMode) => {
+    if (mode === 'weekly') {
+      patch({
+        shiftMode: 'weekly',
+        weeklyShifts: form.weeklyShifts ?? createDefaultWeeklyShifts(form.shift ?? 'day'),
+        expectedTimeNight:
+          form.expectedTimeNight?.trim() || ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME,
+      });
+    } else {
+      patch({ shiftMode: 'fixed', weeklyShifts: undefined });
+    }
+  };
+
+  const setWeekdayShift = (day: AsistenciaWeekday, value: AsistenciaWeekdayShift) => {
+    const base = form.weeklyShifts ?? createDefaultWeeklyShifts(form.shift ?? 'day');
+    patch({
+      shiftMode: 'weekly',
+      weeklyShifts: { ...base, [day]: value },
+    });
+  };
+
   const patch = (partial: Partial<AsistenciaStaffMember>) => {
     setForm((f) => {
       const next = { ...f, ...partial };
@@ -124,12 +164,17 @@ export function AsistenciaStaffDialog({
   const handleSubmit = () => {
     if (!form.fullName.trim()) return;
     if (!form.rut?.trim()) return;
+    const shiftMode = form.shiftMode === 'weekly' ? 'weekly' : 'fixed';
     onSave({
       ...form,
       fullName: form.fullName.trim(),
       cargoLabel: form.cargoLabel.trim() || 'Personal',
       expectedTime: form.expectedTime.trim() || defaultExpectedTimeForShift(form.shift ?? 'day'),
+      expectedTimeNight:
+        form.expectedTimeNight?.trim() || ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME,
       shift: form.shift ?? 'day',
+      shiftMode,
+      weeklyShifts: shiftMode === 'weekly' ? form.weeklyShifts : undefined,
       email: form.email?.trim() || undefined,
       phone: form.phone?.trim() || undefined,
       avatarUrl: form.avatarUrl?.trim() || undefined,
@@ -195,43 +240,119 @@ export function AsistenciaStaffDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label className="text-slate-300 flex items-center gap-1">
-                {form.shift === 'night' ? (
-                  <Moon className="h-3.5 w-3.5" />
-                ) : (
-                  <Sun className="h-3.5 w-3.5" />
-                )}{' '}
-                Turno
-              </Label>
-              <Select
-                value={form.shift ?? 'day'}
-                onValueChange={(v) => patch({ shift: v as AsistenciaWorkShift })}
-              >
-                <SelectTrigger
-                  data-testid="asistencia-staff-shift"
-                  className="bg-white text-slate-900 border-0"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="day">{ASISTENCIA_WORK_SHIFT_LABELS.day}</SelectItem>
-                  <SelectItem value="night">{ASISTENCIA_WORK_SHIFT_LABELS.night}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-slate-300 flex items-center gap-1">
-                <Clock className="h-3.5 w-3.5" /> Hora Esperada *
-              </Label>
-              <Input
-                type="time"
-                value={form.expectedTime}
-                onChange={(e) => patch({ expectedTime: e.target.value })}
-                className="bg-white text-slate-900 border-0"
+          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-white">Turno mixto</p>
+                <p className="text-xs text-slate-400">
+                  Día y noche distintos según el día de la semana (ej. lun–mié día, jue–vie noche).
+                </p>
+              </div>
+              <Switch
+                data-testid="asistencia-staff-weekly-toggle"
+                checked={isWeekly}
+                onCheckedChange={(v) => setShiftMode(v ? 'weekly' : 'fixed')}
               />
             </div>
+
+            {!isWeekly ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label className="text-slate-300 flex items-center gap-1">
+                    {form.shift === 'night' ? (
+                      <Moon className="h-3.5 w-3.5" />
+                    ) : (
+                      <Sun className="h-3.5 w-3.5" />
+                    )}{' '}
+                    Turno
+                  </Label>
+                  <Select
+                    value={form.shift ?? 'day'}
+                    onValueChange={(v) => patch({ shift: v as AsistenciaWorkShift })}
+                  >
+                    <SelectTrigger
+                      data-testid="asistencia-staff-shift"
+                      className="bg-white text-slate-900 border-0"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">{ASISTENCIA_WORK_SHIFT_LABELS.day}</SelectItem>
+                      <SelectItem value="night">{ASISTENCIA_WORK_SHIFT_LABELS.night}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-slate-300 flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" /> Hora esperada *
+                  </Label>
+                  <Input
+                    type="time"
+                    value={form.expectedTime}
+                    onChange={(e) => patch({ expectedTime: e.target.value })}
+                    className="bg-white text-slate-900 border-0"
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-7 gap-1.5">
+                  {ASISTENCIA_WEEKDAYS.map((day) => {
+                    const value =
+                      form.weeklyShifts?.[day] ??
+                      createDefaultWeeklyShifts(form.shift ?? 'day')[day] ??
+                      'off';
+                    return (
+                      <div key={day} className="space-y-1">
+                        <p className="text-[10px] text-center text-slate-400 font-medium">
+                          {ASISTENCIA_WEEKDAY_LABELS[day]}
+                        </p>
+                        <Select
+                          value={value}
+                          onValueChange={(v) => setWeekdayShift(day, v as AsistenciaWeekdayShift)}
+                        >
+                          <SelectTrigger className="h-8 px-1 text-[10px] bg-white text-slate-900 border-0">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="day">Día</SelectItem>
+                            <SelectItem value="night">Noche</SelectItem>
+                            <SelectItem value="off">Libre</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    );
+                  })}
+                </div>
+                {weeklySummary ? (
+                  <p className="text-[11px] text-indigo-300/90">{weeklySummary}</p>
+                ) : null}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-slate-300 flex items-center gap-1">
+                      <Sun className="h-3.5 w-3.5" /> Hora turno día
+                    </Label>
+                    <Input
+                      type="time"
+                      value={form.expectedTime}
+                      onChange={(e) => patch({ expectedTime: e.target.value })}
+                      className="bg-white text-slate-900 border-0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-slate-300 flex items-center gap-1">
+                      <Moon className="h-3.5 w-3.5" /> Hora turno noche
+                    </Label>
+                    <Input
+                      type="time"
+                      value={form.expectedTimeNight ?? ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME}
+                      onChange={(e) => patch({ expectedTimeNight: e.target.value })}
+                      className="bg-white text-slate-900 border-0"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -249,8 +370,20 @@ export function AsistenciaStaffDialog({
             </div>
             <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
               <p className="text-[11px] text-slate-400 leading-snug">
-                Turno <strong className="text-slate-200">{ASISTENCIA_WORK_SHIFT_LABELS[form.shift ?? 'day']}</strong>:
-                se cruza con <code className="text-cyan-300">turno_noche</code> en Buk.
+                {isWeekly ? (
+                  <>
+                    Turno mixto: se cruza con <code className="text-cyan-300">turno_noche</code> en Buk
+                    según el día seleccionado.
+                  </>
+                ) : (
+                  <>
+                    Turno{' '}
+                    <strong className="text-slate-200">
+                      {ASISTENCIA_WORK_SHIFT_LABELS[form.shift ?? 'day']}
+                    </strong>
+                    : se cruza con <code className="text-cyan-300">turno_noche</code> en Buk.
+                  </>
+                )}
               </p>
             </div>
           </div>

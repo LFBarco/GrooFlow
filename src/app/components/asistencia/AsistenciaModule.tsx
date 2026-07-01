@@ -384,6 +384,7 @@ export function AsistenciaModule({
           <AsistenciaLiveView
             mode={liveViewMode}
             shiftFilter={shiftFilter}
+            viewDate={dateObj}
             summary={liveViewMode === 'single' ? liveSummary : undefined}
             consolidated={liveViewMode === 'consolidated' ? consolidatedSummary : undefined}
             editLayout={editLayout}

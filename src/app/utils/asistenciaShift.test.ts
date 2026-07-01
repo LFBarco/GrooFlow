@@ -123,4 +123,61 @@ describe('asistenciaShift', () => {
     });
     expect(legacy.cargoLabel).toBe('Encargado de sede');
   });
+
+  it('turno mixto filtra por día de la semana', () => {
+    const mixed: AsistenciaStaffMember = {
+      id: 'mixed',
+      sedeName: 'Principal',
+      fullName: 'Luis Barco',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      expectedTimeNight: '20:00',
+      shift: 'day',
+      shiftMode: 'weekly',
+      weeklyShifts: {
+        mon: 'day',
+        tue: 'day',
+        wed: 'day',
+        thu: 'night',
+        fri: 'night',
+        sat: 'off',
+        sun: 'off',
+      },
+      isCritical: false,
+      rut: '333',
+    };
+
+    const settings = mergeAsistenciaSettings({
+      staff: [mixed],
+      sedeProfiles: [{ sedeName: 'Principal', bukRecintoCode: 'PRIN' }],
+    });
+
+    const monday = new Date('2026-07-06T12:00:00'); // lunes
+    const thursday = new Date('2026-07-09T12:00:00'); // jueves
+
+    expect(staffForSede(settings, 'Principal', 'day', monday)).toHaveLength(1);
+    expect(staffForSede(settings, 'Principal', 'night', monday)).toHaveLength(0);
+    expect(staffForSede(settings, 'Principal', 'night', thursday)).toHaveLength(1);
+    expect(staffForSede(settings, 'Principal', 'day', thursday)).toHaveLength(0);
+    expect(staffForSede(settings, 'Principal', 'all', monday)).toHaveLength(1);
+
+    const dayRecordMixed: BukAsistenciaRecord = {
+      ...dayRecord,
+      id: 3,
+      rut_trabajador: '333',
+      turno_noche: false,
+    };
+    const nightRecordMixed: BukAsistenciaRecord = {
+      ...nightRecord,
+      id: 4,
+      rut_trabajador: '333',
+      turno_noche: true,
+    };
+
+    expect(recordMatchesStaffShift(dayRecordMixed, mixed, monday)).toBe(true);
+    expect(recordMatchesStaffShift(nightRecordMixed, mixed, monday)).toBe(false);
+    expect(recordMatchesStaffShift(nightRecordMixed, mixed, thursday)).toBe(true);
+    expect(recordMatchesStaffShift(dayRecordMixed, mixed, thursday)).toBe(false);
+  });
 });

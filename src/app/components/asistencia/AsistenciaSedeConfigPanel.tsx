@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, Building2, LayoutGrid, Loader2, Pencil, Plus, Trash
 
 import type { AsistenciaSettings, AsistenciaStaffMember } from '../../types/asistencia';
 import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
+import { formatWeeklyShiftSummary } from '../../utils/asistenciaShift';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import {
@@ -537,7 +538,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                           <p className="font-medium text-white truncate">{member.fullName}</p>
                           <p className="text-xs text-slate-400">
                             {member.cargoLabel} · {member.expectedTime} ·{' '}
-                            {ASISTENCIA_WORK_SHIFT_LABELS[member.shift ?? 'day']}
+                            {formatWeeklyShiftSummary(member) ??
+                              ASISTENCIA_WORK_SHIFT_LABELS[member.shift ?? 'day']}
                           </p>
                           {member.isCritical ? (
                             <span className="text-[10px] text-amber-400">Puesto crítico</span>

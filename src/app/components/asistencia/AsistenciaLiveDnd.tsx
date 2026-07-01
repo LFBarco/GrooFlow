@@ -8,7 +8,7 @@ import type {
   AsistenciaSettings,
   AsistenciaStaffLiveState,
 } from '../../types/asistencia';
-import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
+import { shiftLabelForStaff } from '../../utils/asistenciaShift';
 import { applyAreaLayoutReorder, applyStaffLayoutMove } from '../../utils/asistenciaLayoutUtils';
 import { ManagerPlaceholder, StaffLiveCard, themeForColumnId } from './asistenciaLiveUi';
 
@@ -37,12 +37,14 @@ function DraggableStaffCard({
   area,
   index,
   editLayout,
+  viewDate,
 }: {
   live: AsistenciaStaffLiveState;
   sedeName: string;
   area: string;
   index: number;
   editLayout: boolean;
+  viewDate?: Date;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -95,7 +97,7 @@ function DraggableStaffCard({
       critical={live.staff.isCritical}
       matchHint={live.matchHint}
       statusNote={live.statusNote}
-      shiftLabel={ASISTENCIA_WORK_SHIFT_LABELS[live.staff.shift ?? 'day']}
+      shiftLabel={shiftLabelForStaff(live.staff, viewDate)}
       editLayout={editLayout}
       dragHandleRef={ref}
       isDragging={isDragging}
@@ -149,12 +151,14 @@ function DraggableAreaColumn({
   editLayout,
   onAreaReorder,
   onStaffDrop,
+  viewDate,
 }: {
   block: AsistenciaLiveAreaBlock;
   sedeName: string;
   editLayout: boolean;
   onAreaReorder: (dragArea: string, hoverArea: string) => void;
   onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: string) => void;
+  viewDate?: Date;
 }) {
   const headerRef = useRef<HTMLDivElement>(null);
   const theme = themeForColumnId(block.area);
@@ -237,6 +241,7 @@ function DraggableAreaColumn({
                 area={block.area}
                 index={idx}
                 editLayout={editLayout}
+                viewDate={viewDate}
               />
             </div>
           ))
@@ -260,6 +265,7 @@ type SedeBlockProps = {
   editLayout: boolean;
   onPersistLayout: LayoutPersist;
   compact?: boolean;
+  viewDate?: Date;
 };
 
 export function AsistenciaLiveSedeBlock({
@@ -267,6 +273,7 @@ export function AsistenciaLiveSedeBlock({
   editLayout,
   onPersistLayout,
   compact,
+  viewDate,
 }: SedeBlockProps) {
   const handleStaffDrop = useCallback(
     (item: StaffDragItem, toIndex: number, toArea: string) => {
@@ -320,7 +327,7 @@ export function AsistenciaLiveSedeBlock({
               critical={summary.manager.staff.isCritical}
               matchHint={summary.manager.matchHint}
               statusNote={summary.manager.statusNote}
-              shiftLabel={ASISTENCIA_WORK_SHIFT_LABELS[summary.manager.staff.shift ?? 'day']}
+              shiftLabel={shiftLabelForStaff(summary.manager.staff, viewDate)}
             />
           ) : (
             <ManagerPlaceholder />
@@ -344,6 +351,7 @@ export function AsistenciaLiveSedeBlock({
               editLayout={editLayout}
               onAreaReorder={handleAreaReorder}
               onStaffDrop={handleStaffDrop}
+              viewDate={viewDate}
             />
           ))}
         </div>

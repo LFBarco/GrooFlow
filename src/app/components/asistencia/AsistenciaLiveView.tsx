@@ -21,6 +21,7 @@ type LayoutPersist = (
 type Props = {
   mode: 'single' | 'consolidated';
   shiftFilter?: AsistenciaShiftFilter;
+  viewDate?: Date;
   summary?: AsistenciaLiveSedeSummary;
   consolidated?: AsistenciaLiveConsolidatedSummary;
   editLayout: boolean;
@@ -62,6 +63,7 @@ function LiveHeaderBadges({
 export function AsistenciaLiveView({
   mode,
   shiftFilter = 'all',
+  viewDate,
   summary,
   consolidated,
   editLayout,
@@ -176,6 +178,7 @@ export function AsistenciaLiveView({
                 editLayout={editLayout}
                 onPersistLayout={onPersistLayout}
                 compact
+                viewDate={viewDate}
               />
             ))
           ) : summary ? (
@@ -183,6 +186,7 @@ export function AsistenciaLiveView({
               summary={summary}
               editLayout={editLayout}
               onPersistLayout={onPersistLayout}
+              viewDate={viewDate}
             />
           ) : null}
         </CardContent>
