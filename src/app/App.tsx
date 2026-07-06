@@ -244,6 +244,7 @@ import {
   resolvePettyCashMeta,
   stripPettyCashMetaForSystemKv,
 } from "./utils/pettyCashMeta";
+import { reconcilePettyCashMeta } from "./utils/pettyCashMetaReconcile";
 import {
   loadPettyCashMetaFromSql,
   migratePettyCashMetaKvToSql,
@@ -1145,7 +1146,12 @@ export default function App() {
           const next = applyPettyCashMetaRemoteUpdate(
             prev,
             value,
-            pettyCashMetaKvLatestRef
+            pettyCashMetaKvLatestRef,
+            {
+              transactions: pettyCashKvLatestRef.current,
+              users: usersKvLatestRef.current,
+              globalFundLimit: prev.pettyCash?.totalFundLimit,
+            }
           );
           if (!next) return prev;
           systemSettingsKvLatestRef.current = next;
@@ -1522,6 +1528,19 @@ export default function App() {
     pettyCashKvLatestRef.current = items;
     pettyCashKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setPettyCashTransactions(items);
+    setSystemSettings((prev) => {
+      const reconciled = reconcilePettyCashMeta({
+        meta: pettyCashMetaKvLatestRef.current,
+        transactions: items,
+        users: usersKvLatestRef.current,
+        globalFundLimit: prev.pettyCash?.totalFundLimit ?? 1000,
+      });
+      if (kvPayloadsEqual(pettyCashMetaKvLatestRef.current, reconciled)) return prev;
+      pettyCashMetaKvLatestRef.current = reconciled;
+      const next = mergePettyCashMetaIntoSettings(prev, reconciled);
+      systemSettingsKvLatestRef.current = next;
+      return next;
+    });
   };
 
   const applyInvoicesRemoteRef = useRef<((items: InvoiceDraft[]) => void) | null>(null);

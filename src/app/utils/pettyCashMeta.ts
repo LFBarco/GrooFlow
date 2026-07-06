@@ -5,6 +5,7 @@ import type {
   PettyCashWeekPreClosure,
   SystemSettings,
 } from '../types';
+import { mergePettyCashMetaPayloads } from './pettyCashMetaReconcile';
 
 /** Metadatos operativos de caja chica (no incluye límites ni plantillas de impresión). */
 export type PettyCashWeekMetaPayload = {
@@ -53,13 +54,17 @@ export function isPettyCashMetaEmpty(meta: PettyCashWeekMetaPayload): boolean {
   );
 }
 
-/** Prioriza SQL/KV meta; si vacío, usa arrays legacy en settings:system. */
+/** Prioriza meta remoto; si ambos tienen datos, une sin perder registros. */
 export function resolvePettyCashMeta(
   remoteMeta: PettyCashWeekMetaPayload,
   legacyFromSettings: PettyCashWeekMetaPayload
 ): PettyCashWeekMetaPayload {
-  if (!isPettyCashMetaEmpty(remoteMeta)) return remoteMeta;
-  return legacyFromSettings;
+  if (isPettyCashMetaEmpty(remoteMeta) && isPettyCashMetaEmpty(legacyFromSettings)) {
+    return { ...EMPTY_META };
+  }
+  if (isPettyCashMetaEmpty(remoteMeta)) return legacyFromSettings;
+  if (isPettyCashMetaEmpty(legacyFromSettings)) return remoteMeta;
+  return mergePettyCashMetaPayloads(legacyFromSettings, remoteMeta);
 }
 
 export function mergePettyCashMetaIntoSettings(

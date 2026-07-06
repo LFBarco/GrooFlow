@@ -31,10 +31,40 @@ describe('pettyCashMeta', () => {
     expect(stripped.pettyCash.totalFundLimit).toBe(withMeta.pettyCash.totalFundLimit);
   });
 
-  it('resolve prioriza meta remoto si no está vacío', () => {
-    const remote = extractPettyCashMeta({ ...initialSystemSettings.pettyCash, weekClosures: [{ id: 'r', custodianId: 'u', weekNumber: '2', closedAt: '', openingFund: 0, expensesTotal: 0, closingBalance: 0, carriedForward: 0 }] });
-    const legacy = extractPettyCashMeta(initialSystemSettings.pettyCash);
+  it('resolve une meta remoto y legacy sin perder registros', () => {
+    const remote = extractPettyCashMeta({
+      ...initialSystemSettings.pettyCash,
+      weekClosures: [
+        {
+          id: 'r',
+          custodianId: 'u',
+          weekNumber: '2026-W02',
+          closedAt: '',
+          openingFund: 0,
+          expensesTotal: 0,
+          closingBalance: 0,
+          carriedForward: 0,
+        },
+      ],
+    });
+    const legacy = extractPettyCashMeta({
+      ...initialSystemSettings.pettyCash,
+      fundDeliveries: [
+        {
+          id: 'l',
+          custodianId: 'u',
+          weekNumber: '2026-W01',
+          configuredAmount: 100,
+          deliveredAmount: 100,
+          deliveredAt: '',
+          deliveredByUserId: 'a',
+        },
+      ],
+    });
     const out = resolvePettyCashMeta(remote, legacy);
+    expect(out.weekClosures).toHaveLength(1);
+    expect(out.fundDeliveries).toHaveLength(1);
     expect(out.weekClosures[0]?.id).toBe('r');
+    expect(out.fundDeliveries[0]?.id).toBe('l');
   });
 });

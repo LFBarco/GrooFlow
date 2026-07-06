@@ -81,6 +81,10 @@ import {
   resolvePettyCashMeta,
 } from '../utils/pettyCashMeta';
 import {
+  pettyCashMetaReconcileChanged,
+  reconcilePettyCashMeta,
+} from '../utils/pettyCashMetaReconcile';
+import {
   ASISTENCIA_SETTINGS_KV_KEY,
   asistenciaSettingsHasContent,
   mergeAsistenciaIntoSystemSettings,
@@ -1104,6 +1108,30 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             deps.inventoryKvLatestRef.current = nextInventory;
             deps.setInventoryDataset(nextInventory);
             deps.inventoryHydratedFromKvRef.current = true;
+          }
+        }
+
+        if (
+          deps.systemSettingsHydratedFromKvRef.current &&
+          deps.pettyCashHydratedFromKvRef.current &&
+          deps.pettyCashKvLatestRef.current.length > 0
+        ) {
+          const currentSettings = deps.systemSettingsKvLatestRef.current;
+          const currentMeta = deps.pettyCashMetaKvLatestRef.current;
+          const reconciled = reconcilePettyCashMeta({
+            meta: currentMeta,
+            transactions: deps.pettyCashKvLatestRef.current,
+            users: nextUsers,
+            globalFundLimit: currentSettings.pettyCash?.totalFundLimit ?? 1000,
+          });
+          if (pettyCashMetaReconcileChanged(currentMeta, reconciled)) {
+            const mergedAfterReconcile = mergePettyCashMetaIntoSettings(
+              currentSettings,
+              reconciled
+            );
+            deps.pettyCashMetaKvLatestRef.current = reconciled;
+            deps.systemSettingsKvLatestRef.current = mergedAfterReconcile;
+            deps.setSystemSettings(mergedAfterReconcile);
           }
         }
 

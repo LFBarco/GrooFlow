@@ -1,4 +1,4 @@
-import { getWeek, getWeekYear, setWeek, setWeekYear, subWeeks } from 'date-fns';
+import { addWeeks, getWeek, getWeekYear, setWeek, setWeekYear, subWeeks } from 'date-fns';
 
 const WEEK_OPTS = { weekStartsOn: 1 as const };
 
@@ -64,5 +64,25 @@ export function getPreviousWeekKey(key: string): string | null {
   let d = setWeekYear(new Date(parsed.year, 0, 4), parsed.year, WEEK_OPTS);
   d = setWeek(d, parsed.week, WEEK_OPTS);
   return getPettyCashWeekKey(subWeeks(d, 1));
+}
+
+export function getNextWeekKey(key: string): string | null {
+  const parsed = parsePettyCashWeekKey(key);
+  if (parsed.week == null) return null;
+  if (parsed.year == null) {
+    const next = parsed.week + 1;
+    return next <= 53 ? String(next) : null;
+  }
+  let d = setWeekYear(new Date(parsed.year, 0, 4), parsed.year, WEEK_OPTS);
+  d = setWeek(d, parsed.week, WEEK_OPTS);
+  return getPettyCashWeekKey(addWeeks(d, 1));
+}
+
+/** Orden cronológico ascendente (semana antigua primero). */
+export function comparePettyCashWeekKeys(a: string, b: string): number {
+  const pa = parsePettyCashWeekKey(a);
+  const pb = parsePettyCashWeekKey(b);
+  if (pa.year != null && pb.year != null && pa.year !== pb.year) return pa.year - pb.year;
+  return (pa.week ?? 0) - (pb.week ?? 0);
 }
 

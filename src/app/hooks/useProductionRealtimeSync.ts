@@ -18,9 +18,14 @@ import { loadPettyCashFromSql } from '../services/repository/businessDomainsSql'
 import { loadPettyCashMetaFromSql } from '../services/repository/pettyCashMetaSql';
 import {
   extractPettyCashMeta,
+  isPettyCashMetaEmpty,
   mergePettyCashMetaIntoSettings,
   type PettyCashWeekMetaPayload,
 } from '../utils/pettyCashMeta';
+import {
+  mergePettyCashMetaPayloads,
+  reconcilePettyCashMeta,
+} from '../utils/pettyCashMetaReconcile';
 
 import { loadInvoicesFromSql } from '../services/repository/businessDomainsSql';
 
@@ -342,15 +347,45 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
       const result = await loadPettyCashMetaFromSql(client);
 
-      if (!result.ok || !result.data || kvPayloadsEqual(metaLatest.current, result.data)) return;
+      if (!result.ok || !result.data) return;
 
-      const merged = mergePettyCashMetaIntoSettings(settingsLatest.current, result.data);
+      const local = metaLatest.current;
 
-      metaLatest.current = result.data;
+      const remote = result.data;
 
-      settingsLatest.current = merged;
+      if (isPettyCashMetaEmpty(remote) && !isPettyCashMetaEmpty(local)) return;
 
-      h.current?.(merged);
+      const merged = isPettyCashMetaEmpty(remote)
+        ? local
+        : isPettyCashMetaEmpty(local)
+          ? remote
+          : mergePettyCashMetaPayloads(local, remote);
+
+      const pettyCashTxs = handlers.pettyCashLatest?.current ?? [];
+
+      const reconciled =
+        pettyCashTxs.length > 0
+          ? reconcilePettyCashMeta({
+              meta: merged,
+              transactions: pettyCashTxs,
+              users: handlers.usersLatest?.current ?? [],
+              globalFundLimit:
+                settingsLatest.current.pettyCash?.totalFundLimit ?? 1000,
+            })
+          : merged;
+
+      if (kvPayloadsEqual(metaLatest.current, reconciled)) return;
+
+      const mergedSettings = mergePettyCashMetaIntoSettings(
+        settingsLatest.current,
+        reconciled
+      );
+
+      metaLatest.current = reconciled;
+
+      settingsLatest.current = mergedSettings;
+
+      h.current?.(mergedSettings);
 
     };
 

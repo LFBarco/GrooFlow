@@ -2,7 +2,7 @@ import { useEffect, type MutableRefObject } from 'react';
 
 import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
-import type { SystemSettings } from '../types';
+import type { PettyCashTransaction, SystemSettings, User } from '../types';
 import { backupDomainSqlAfterKvSave } from '../utils/sqlAutosaveBackup';
 import {
   autosaveKvDomain,
@@ -10,12 +10,17 @@ import {
 } from '../utils/kvDomainPersistence';
 import {
   extractPettyCashMeta,
+  isPettyCashMetaEmpty,
   mergePettyCashMetaIntoSettings,
   normalizePettyCashMeta,
   PETTY_CASH_META_KV_KEY,
   type PettyCashWeekMetaPayload,
 } from '../utils/pettyCashMeta';
 import { kvPayloadsEqual } from '../utils/kvCrossTabSync';
+import {
+  mergePettyCashMetaPayloads,
+  reconcilePettyCashMeta,
+} from '../utils/pettyCashMetaReconcile';
 
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 
@@ -91,10 +96,40 @@ export function usePettyCashMetaPersistence(options: UsePettyCashMetaPersistence
 export function applyPettyCashMetaRemoteUpdate(
   currentSettings: SystemSettings,
   remoteRaw: unknown,
-  latestRef: MutableRefObject<PettyCashWeekMetaPayload>
+  latestRef: MutableRefObject<PettyCashWeekMetaPayload>,
+  options?: {
+    transactions?: PettyCashTransaction[];
+    users?: User[];
+    globalFundLimit?: number;
+  }
 ): SystemSettings | null {
-  const meta = normalizePettyCashMeta(remoteRaw);
-  if (kvPayloadsEqual(latestRef.current, meta)) return null;
-  latestRef.current = meta;
-  return mergePettyCashMetaIntoSettings(currentSettings, meta);
+  const remote = normalizePettyCashMeta(remoteRaw);
+  const local = latestRef.current;
+
+  if (isPettyCashMetaEmpty(remote) && !isPettyCashMetaEmpty(local)) {
+    return null;
+  }
+
+  const merged = isPettyCashMetaEmpty(remote)
+    ? local
+    : isPettyCashMetaEmpty(local)
+      ? remote
+      : mergePettyCashMetaPayloads(local, remote);
+
+  const reconciled =
+    options?.transactions && options.transactions.length > 0
+      ? reconcilePettyCashMeta({
+          meta: merged,
+          transactions: options.transactions,
+          users: options.users ?? [],
+          globalFundLimit:
+            options.globalFundLimit ??
+            currentSettings.pettyCash?.totalFundLimit ??
+            1000,
+        })
+      : merged;
+
+  if (kvPayloadsEqual(latestRef.current, reconciled)) return null;
+  latestRef.current = reconciled;
+  return mergePettyCashMetaIntoSettings(currentSettings, reconciled);
 }
