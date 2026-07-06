@@ -124,7 +124,7 @@ export function ReconciliationModule() {
           <TabsTrigger value="exceptions">Excepciones</TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard" className="mt-4">
-          <ReconciliationDashboard dataset={dataset} />
+          <ReconciliationDashboard dataset={dataset} onDatasetChange={setDataset} />
         </TabsContent>
         <TabsContent value="audit" className="mt-4">
           <div className="mb-3 flex flex-wrap items-center gap-2">

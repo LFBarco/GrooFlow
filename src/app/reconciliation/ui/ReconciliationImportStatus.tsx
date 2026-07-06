@@ -19,6 +19,7 @@ type Props = {
   sessionId: string;
   compact?: boolean;
   onDeleteBatch?: (batchId: string) => void;
+  onDeleteAllForSource?: (sourceType: ReconciliationSourceType) => void;
 };
 
 function formatWhen(iso: string): string {
@@ -34,10 +35,17 @@ function formatWhen(iso: string): string {
   }
 }
 
-export function ReconciliationImportStatus({ dataset, sessionId, compact, onDeleteBatch }: Props) {
+export function ReconciliationImportStatus({
+  dataset,
+  sessionId,
+  compact,
+  onDeleteBatch,
+  onDeleteAllForSource,
+}: Props) {
   const movements = sessionMovements(dataset, sessionId);
   const batches = dataset.batches.filter((b) => b.sessionId === sessionId);
   const matches = dataset.matches.filter((m) => m.sessionId === sessionId);
+  const canDelete = Boolean(onDeleteBatch);
 
   const hasBank = movements.some((m) => m.sourceType !== 'sales_erp');
   const hasSales = movements.some((m) => m.sourceType === 'sales_erp');
@@ -79,8 +87,8 @@ export function ReconciliationImportStatus({ dataset, sessionId, compact, onDele
         </CardTitle>
         {!compact && (
           <CardDescription>
-            Lista de importaciones en la sesión seleccionada. Puede eliminar un archivo y volver a subirlo si hubo
-            error.
+            Lista de importaciones en la sesión seleccionada. Puede eliminar un archivo o todos los de una fuente y
+            volver a subirlos si hubo error.
           </CardDescription>
         )}
       </CardHeader>
@@ -93,6 +101,7 @@ export function ReconciliationImportStatus({ dataset, sessionId, compact, onDele
                 <th className="p-2">Archivo(s)</th>
                 <th className="p-2 text-right">Registros</th>
                 <th className="p-2 text-right">Conciliados</th>
+                {canDelete && <th className="p-2 text-right">Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -111,29 +120,11 @@ export function ReconciliationImportStatus({ dataset, sessionId, compact, onDele
                       ) : (
                         <ul className="space-y-1">
                           {sourceBatches.map((b) => (
-                            <li
-                              key={b.id}
-                              className="flex flex-wrap items-center justify-between gap-2"
-                              title={formatWhen(b.importedAt)}
-                            >
-                              <span>
-                                {b.fileName}{' '}
-                                <span className="text-muted-foreground">
-                                  ({b.recordCount.toLocaleString('es-PE')})
-                                </span>
+                            <li key={b.id} title={formatWhen(b.importedAt)}>
+                              {b.fileName}{' '}
+                              <span className="text-muted-foreground">
+                                ({b.recordCount.toLocaleString('es-PE')})
                               </span>
-                              {onDeleteBatch && (
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 px-2 text-destructive hover:text-destructive"
-                                  onClick={() => onDeleteBatch(b.id)}
-                                  title="Eliminar archivo importado"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
                             </li>
                           ))}
                         </ul>
@@ -155,6 +146,41 @@ export function ReconciliationImportStatus({ dataset, sessionId, compact, onDele
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
+                    {canDelete && (
+                      <td className="p-2 text-right">
+                        {sourceBatches.length === 0 ? (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        ) : (
+                          <div className="flex flex-col items-end gap-1">
+                            {sourceBatches.map((b) => (
+                              <Button
+                                key={b.id}
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                onClick={() => onDeleteBatch?.(b.id)}
+                                title={`Eliminar ${b.fileName}`}
+                              >
+                                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                                Eliminar
+                              </Button>
+                            ))}
+                            {sourceBatches.length > 1 && onDeleteAllForSource && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 border-destructive/40 px-2 text-xs text-destructive hover:bg-destructive/10"
+                                onClick={() => onDeleteAllForSource(source)}
+                              >
+                                Eliminar todos ({sourceBatches.length})
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

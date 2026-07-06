@@ -9,13 +9,20 @@ import {
 } from '../../components/ui/tooltip';
 import { AUDIT_GLOSSARY, SOURCE_LABELS } from '../domain/auditLabels';
 import { getActiveSession } from '../domain/dataset';
-import type { ReconciliationDataset } from '../domain/types';
+import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import { computeAuditSummary } from '../engines/auditQueries';
 import { computeReconciliationHealth, countByStatus } from '../engines/healthScore';
+import {
+  confirmDeleteAllSourceBatches,
+  confirmDeleteReconciliationBatch,
+} from './reconciliationImportActions';
 import { ReconciliationImportStatus } from './ReconciliationImportStatus';
 
 type Props = {
   dataset: ReconciliationDataset;
+  onDatasetChange: (
+    updater: ReconciliationDataset | ((prev: ReconciliationDataset) => ReconciliationDataset)
+  ) => void;
 };
 
 const RISK_LABEL = {
@@ -41,17 +48,37 @@ function formatMoney(n: number): string {
   return `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export function ReconciliationDashboard({ dataset }: Props) {
+export function ReconciliationDashboard({ dataset, onDatasetChange }: Props) {
   const session = getActiveSession(dataset);
   const health = computeReconciliationHealth(dataset);
   const audit = computeAuditSummary(dataset);
   const counts = countByStatus(dataset);
   const risk = RISK_LABEL[health.riskLevel];
 
+  const handleDeleteBatch = (batchId: string) => {
+    confirmDeleteReconciliationBatch(dataset, batchId, onDatasetChange);
+  };
+
+  const handleDeleteAllForSource = (sourceType: ReconciliationSourceType) => {
+    confirmDeleteAllSourceBatches(
+      dataset,
+      session.id,
+      sourceType,
+      SOURCE_LABELS[sourceType],
+      onDatasetChange
+    );
+  };
+
   return (
     <TooltipProvider>
       <div className="space-y-4">
-        <ReconciliationImportStatus dataset={dataset} sessionId={session.id} compact />
+        <ReconciliationImportStatus
+          dataset={dataset}
+          sessionId={session.id}
+          compact
+          onDeleteBatch={handleDeleteBatch}
+          onDeleteAllForSource={handleDeleteAllForSource}
+        />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card>

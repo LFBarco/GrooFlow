@@ -223,6 +223,23 @@ export function deleteReconciliationBatch(
   return runReconciliationEngine(next, sessionId);
 }
 
+/** Elimina todos los lotes importados de una fuente en la sesión indicada. */
+export function deleteAllBatchesForSourceInSession(
+  dataset: ReconciliationDataset,
+  sessionId: string,
+  sourceType: ReconciliationSourceType
+): ReconciliationDataset {
+  const batchIds = dataset.batches
+    .filter((b) => b.sessionId === sessionId && b.sourceType === sourceType)
+    .map((b) => b.id);
+  if (batchIds.length === 0) return dataset;
+  let next = dataset;
+  for (const batchId of batchIds) {
+    next = deleteReconciliationBatch(next, batchId);
+  }
+  return next;
+}
+
 export function resolveAlert(dataset: ReconciliationDataset, alertId: string): ReconciliationDataset {
   return {
     ...dataset,

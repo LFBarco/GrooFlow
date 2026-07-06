@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { FileSpreadsheet, Loader2, Upload } from 'lucide-react';
+import { FileSpreadsheet, Loader2, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '../../components/ui/button';
@@ -7,17 +7,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Label } from '../../components/ui/label';
 import { Switch } from '../../components/ui/switch';
 import { RECONCILIATION_CONNECTORS } from '../connectors';
+import { SOURCE_LABELS } from '../domain/auditLabels';
 import { downloadSalesImportTemplate } from '../connectors/salesExcelConnector';
 import { downloadMercadoPagoColumnReference } from '../connectors/mercadoPagoConnector';
 import { downloadBcpImportTemplate } from '../connectors/bcpBankConnector';
 import { getActiveSession } from '../domain/dataset';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
-import { importReconciliationFile, deleteReconciliationBatch } from '../engines/reconciliationRunner';
+import { importReconciliationFile } from '../engines/reconciliationRunner';
+import {
+  confirmDeleteAllSourceBatches,
+  confirmDeleteReconciliationBatch,
+} from './reconciliationImportActions';
 import { ReconciliationImportStatus } from './ReconciliationImportStatus';
 
 type Props = {
   dataset: ReconciliationDataset;
-  onDatasetChange: (next: ReconciliationDataset) => void;
+  onDatasetChange: (
+    updater: ReconciliationDataset | ((prev: ReconciliationDataset) => ReconciliationDataset)
+  ) => void;
   disabled?: boolean;
 };
 
@@ -26,6 +33,21 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
   const [loading, setLoading] = useState<ReconciliationSourceType | null>(null);
   const [importOnly, setImportOnly] = useState(false);
   const [progress, setProgress] = useState<{ label: string; percent: number } | null>(null);
+  const sessionId = getActiveSession(dataset).id;
+
+  const handleDeleteBatch = (batchId: string) => {
+    confirmDeleteReconciliationBatch(dataset, batchId, onDatasetChange);
+  };
+
+  const handleDeleteAllForSource = (sourceType: ReconciliationSourceType) => {
+    confirmDeleteAllSourceBatches(
+      dataset,
+      sessionId,
+      sourceType,
+      SOURCE_LABELS[sourceType],
+      onDatasetChange
+    );
+  };
 
   const handleFile = async (sourceType: ReconciliationSourceType, file: File | undefined) => {
     if (!file || disabled) return;
@@ -69,18 +91,9 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
     <div className="space-y-4">
       <ReconciliationImportStatus
         dataset={dataset}
-        sessionId={getActiveSession(dataset).id}
-        onDeleteBatch={(batchId) => {
-          const batch = dataset.batches.find((b) => b.id === batchId);
-          if (!batch) return;
-          const count = dataset.movements.filter((m) => m.batchId === batchId).length;
-          const ok = window.confirm(
-            `¿Eliminar «${batch.fileName}» y sus ${count.toLocaleString('es-PE')} registro(s)?\n\nSe recalculará el cruce automáticamente.`
-          );
-          if (!ok) return;
-          onDatasetChange(deleteReconciliationBatch(dataset, batchId));
-          toast.success(`Archivo «${batch.fileName}» eliminado.`);
-        }}
+        sessionId={sessionId}
+        onDeleteBatch={handleDeleteBatch}
+        onDeleteAllForSource={handleDeleteAllForSource}
       />
 
       <Card>
@@ -114,7 +127,12 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
-        {RECONCILIATION_CONNECTORS.map((connector) => (
+        {RECONCILIATION_CONNECTORS.map((connector) => {
+          const sourceBatches = dataset.batches.filter(
+            (b) => b.sessionId === sessionId && b.sourceType === connector.sourceType
+          );
+
+          return (
           <Card key={connector.sourceType}>
             <CardHeader className="pb-2">
               <CardTitle className="text-base">{connector.label}</CardTitle>
@@ -128,7 +146,8 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
                       : `${connector.acceptedExtensions.join(', ')} — se agrega al lote del día sin reemplazar importaciones anteriores.`}
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-wrap items-center gap-2">
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
               <input
                 ref={(el) => {
                   inputRefs.current[connector.sourceType] = el;
@@ -171,9 +190,55 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
                   Guía columnas MP
                 </Button>
               )}
+              </div>
+
+              {sourceBatches.length > 0 && (
+                <div className="rounded-md border bg-muted/20 p-2">
+                  <p className="mb-1 text-xs font-medium text-muted-foreground">Archivos en esta sesión</p>
+                  <ul className="space-y-1">
+                    {sourceBatches.map((b) => (
+                      <li
+                        key={b.id}
+                        className="flex items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="truncate" title={b.fileName}>
+                          {b.fileName}{' '}
+                          <span className="text-muted-foreground">
+                            ({b.recordCount.toLocaleString('es-PE')})
+                          </span>
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 shrink-0 px-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          disabled={disabled || loading !== null}
+                          onClick={() => handleDeleteBatch(b.id)}
+                        >
+                          <Trash2 className="mr-1 h-3.5 w-3.5" />
+                          Eliminar
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                  {sourceBatches.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 h-7 w-full border-destructive/40 text-xs text-destructive hover:bg-destructive/10"
+                      disabled={disabled || loading !== null}
+                      onClick={() => handleDeleteAllForSource(connector.sourceType)}
+                    >
+                      Eliminar todos los archivos de {connector.label}
+                    </Button>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
