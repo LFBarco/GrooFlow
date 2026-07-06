@@ -4,11 +4,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import {
+  closeMonthlySession,
   countMovementsBySession,
+  ensureMonthlySession,
   getActiveSession,
+  isMonthSessionLabel,
+  monthSessionLabel,
   sessionWithMostMovements,
   setActiveSession,
-  startNewSession,
+  startNewMonthlySession,
 } from '../domain/dataset';
 import { useReconciliationDataset } from '../hooks/useReconciliationDataset';
 import { runReconciliationEngine } from '../engines/reconciliationRunner';
@@ -38,6 +42,11 @@ export function ReconciliationModule() {
     setAuditScope(dataset.activeSessionId);
   }, [dataset.activeSessionId]);
 
+  useEffect(() => {
+    if (!loaded) return;
+    setDataset((d) => ensureMonthlySession(d));
+  }, [loaded, setDataset]);
+
   if (!loaded) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground text-sm">
@@ -52,7 +61,9 @@ export function ReconciliationModule() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Conciliación de ingresos</h1>
           <p className="text-sm text-muted-foreground">
-            Cruce ventas vs BCP, Mercado Pago y Niubiz — sesión activa {session.label}
+            Cruce ventas vs BCP, Mercado Pago y Niubiz — mes activo{' '}
+            <strong>{session.label}</strong>
+            {session.closedAt ? ' (cerrado)' : ''}
             {saving ? ' · Guardando…' : ''}
           </p>
         </div>
@@ -65,27 +76,43 @@ export function ReconciliationModule() {
           >
             {dataset.sessions.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.label} ({(movementCounts.get(s.id) ?? 0).toLocaleString('es-PE')} movs)
+                {isMonthSessionLabel(s.label) ? s.label : s.label} (
+                {(movementCounts.get(s.id) ?? 0).toLocaleString('es-PE')} movs)
+                {s.closedAt ? ' · cerrado' : ''}
               </option>
             ))}
           </select>
+          <input
+            type="month"
+            className={`${nativeSelectClass} w-[140px]`}
+            defaultValue={monthSessionLabel()}
+            aria-label="Crear o abrir mes"
+            onChange={(e) => {
+              const label = e.target.value;
+              if (!label) return;
+              setDataset((d) => startNewMonthlySession(d, label));
+            }}
+          />
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={() => setDataset((d) => runReconciliationEngine(d))}
+            title="Solo re-cruza pendientes; los conciliados se conservan"
           >
             <RefreshCw className="mr-2 h-4 w-4" />
             Re-ejecutar motor
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => setDataset((d) => startNewSession(d))}
-          >
-            Nueva sesión (día)
-          </Button>
+          {!session.closedAt && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setDataset((d) => closeMonthlySession(d, session.id))}
+            >
+              Cerrar mes
+            </Button>
+          )}
         </div>
       </div>
 

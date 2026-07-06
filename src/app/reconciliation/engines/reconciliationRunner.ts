@@ -2,6 +2,7 @@ import { getConnectorBySource } from '../connectors';
 import { readSpreadsheetRows } from '../connectors/spreadsheetUtils';
 import type { ConnectorContext } from '../connectors/types';
 import { newId, sessionMovements } from '../domain/dataset';
+import { isLockedReconciledMovement } from '../domain/salesMovementIdentity';
 import type {
   CanonicalMovement,
   ReconciliationBatch,
@@ -15,6 +16,10 @@ import {
   findMatchCandidates,
 } from './matchingEngine';
 import { applyPostMatchRules, detectCrossSourceMethodMismatches } from './rulesEngine';
+import {
+  mergeSalesMovementsIncremental,
+  type SalesImportMergeStats,
+} from './salesIncrementalImport';
 
 export type ImportBatchResult = {
   dataset: ReconciliationDataset;
@@ -22,6 +27,7 @@ export type ImportBatchResult = {
   imported: number;
   errors: string[];
   skipped: number;
+  mergeStats?: SalesImportMergeStats;
 };
 
 export type ImportOptions = {
@@ -83,20 +89,41 @@ export async function importReconciliationFile(
   batch.recordCount = parsed.movements.length;
   batch.status = parsed.errors.length > 0 && parsed.movements.length === 0 ? 'failed' : 'completed';
 
-  const newMovements: CanonicalMovement[] = parsed.movements.map((partial) => ({
+  const incomingPartials = parsed.movements.map((partial) => ({
     ...partial,
-    id: newId('mv'),
-    batchId,
-    sessionId,
-    workflowStatus: 'normalized',
-    ruleCodes: [],
     metadata: { ...partial.metadata },
   }));
+
+  let mergeStats: SalesImportMergeStats | undefined;
+  let movements: CanonicalMovement[];
+  let newAlerts = dataset.alerts;
+
+  if (sourceType === 'sales_erp') {
+    onProgress?.('Fusionando con ventas existentes…', 70);
+    await yieldToMain();
+    const merged = mergeSalesMovementsIncremental(dataset, sessionId, batchId, incomingPartials);
+    movements = merged.movements;
+    mergeStats = merged.stats;
+    if (merged.newAlerts.length > 0) {
+      newAlerts = [...merged.newAlerts, ...dataset.alerts];
+    }
+  } else {
+    const newMovements: CanonicalMovement[] = incomingPartials.map((partial) => ({
+      ...partial,
+      id: newId('mv'),
+      batchId,
+      sessionId,
+      workflowStatus: 'normalized',
+      ruleCodes: [],
+    }));
+    movements = [...dataset.movements, ...newMovements];
+  }
 
   let next: ReconciliationDataset = {
     ...dataset,
     batches: [batch, ...dataset.batches],
-    movements: [...dataset.movements, ...newMovements],
+    movements,
+    alerts: newAlerts,
   };
 
   if (runEngine) {
@@ -107,12 +134,17 @@ export async function importReconciliationFile(
 
   onProgress?.('Listo', 100);
 
+  const importedCount = mergeStats
+    ? mergeStats.added + mergeStats.updated + mergeStats.needsReview
+    : incomingPartials.length;
+
   return {
     dataset: next,
     batch,
-    imported: newMovements.length,
+    imported: importedCount,
     errors: parsed.errors,
     skipped: parsed.skipped,
+    mergeStats,
   };
 }
 
@@ -137,12 +169,52 @@ export function resetSessionForMatching(
   };
 }
 
+/** Conserva cruces conciliados; solo resetea pendientes para re-matching parcial. */
+export function prepareSessionForPartialMatching(
+  dataset: ReconciliationDataset,
+  sessionId: string
+): ReconciliationDataset {
+  const sessionMovs = sessionMovements(dataset, sessionId);
+  const preservedIds = new Set(
+    sessionMovs.filter(isLockedReconciledMovement).map((m) => m.id)
+  );
+
+  const preservedMatches = dataset.matches.filter((m) => {
+    if (m.sessionId !== sessionId) return false;
+    if (!preservedIds.has(m.bankMovementId)) return false;
+    const salesIds = m.salesMovementIds ?? [m.salesMovementId];
+    return salesIds.every((id) => preservedIds.has(id));
+  });
+
+  const movements = dataset.movements.map((m) => {
+    if (m.sessionId !== sessionId || preservedIds.has(m.id)) return m;
+    return {
+      ...m,
+      workflowStatus: 'normalized' as const,
+      matchedMovementId: undefined,
+      matchId: undefined,
+      ruleCodes: [],
+    };
+  });
+
+  const otherMatches = dataset.matches.filter((m) => m.sessionId !== sessionId);
+
+  return {
+    ...dataset,
+    movements,
+    matches: [...otherMatches, ...preservedMatches],
+  };
+}
+
 export function runReconciliationEngine(
   dataset: ReconciliationDataset,
-  sessionId?: string
+  sessionId?: string,
+  options: { fullReset?: boolean } = {}
 ): ReconciliationDataset {
   const sid = sessionId ?? dataset.activeSessionId;
-  let base = resetSessionForMatching(dataset, sid);
+  let base = options.fullReset
+    ? resetSessionForMatching(dataset, sid)
+    : prepareSessionForPartialMatching(dataset, sid);
   let movements = sessionMovements(base, sid);
 
   const bankMovements = movements.filter(
@@ -152,7 +224,8 @@ export function runReconciliationEngine(
 
   const candidates = findMatchCandidates(bankMovements, salesMovements);
 
-  const newMatches = dataset.matches.filter((m) => m.sessionId !== sid);
+  const sessionMatches = base.matches.filter((m) => m.sessionId === sid);
+  const newMatches = [...sessionMatches];
   const movementById = new Map(movements.map((m) => [m.id, m]));
 
   for (const cand of candidates) {
@@ -174,13 +247,16 @@ export function runReconciliationEngine(
     }
   }
 
-  const otherMovements = dataset.movements.filter((m) => m.sessionId !== sid);
+  const otherMovements = base.movements.filter((m) => m.sessionId !== sid);
   movements = [...movementById.values()];
 
   let next: ReconciliationDataset = {
     ...base,
     movements: [...otherMovements, ...movements],
-    matches: newMatches,
+    matches: [
+      ...base.matches.filter((m) => m.sessionId !== sid),
+      ...newMatches,
+    ],
     alerts: base.alerts.filter((a) => a.resolved || a.sessionId !== sid),
   };
 

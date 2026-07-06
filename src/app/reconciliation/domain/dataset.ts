@@ -26,11 +26,22 @@ export function todaySessionLabel(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Etiqueta mensual YYYY-MM para sesiones de conciliación. */
+export function monthSessionLabel(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+export function isMonthSessionLabel(label: string): boolean {
+  return /^\d{4}-\d{2}$/.test(label);
+}
+
 export function createEmptyDataset(): ReconciliationDataset {
   const sessionId = newId('rs');
   const session: ReconciliationSession = {
     id: sessionId,
-    label: todaySessionLabel(),
+    label: monthSessionLabel(),
     createdAt: new Date().toISOString(),
   };
   return {
@@ -110,12 +121,45 @@ export function setActiveSession(
 export function startNewSession(dataset: ReconciliationDataset, label?: string): ReconciliationDataset {
   const session: ReconciliationSession = {
     id: newId('rs'),
-    label: label ?? todaySessionLabel(),
+    label: label ?? monthSessionLabel(),
     createdAt: new Date().toISOString(),
   };
   return {
     ...dataset,
     activeSessionId: session.id,
     sessions: [session, ...dataset.sessions],
+  };
+}
+
+/** Activa la sesión del mes indicado o la crea si no existe. */
+export function ensureMonthlySession(
+  dataset: ReconciliationDataset,
+  monthLabel: string = monthSessionLabel()
+): ReconciliationDataset {
+  const existing = dataset.sessions.find((s) => s.label === monthLabel);
+  if (existing) {
+    if (dataset.activeSessionId === existing.id) return dataset;
+    return setActiveSession(dataset, existing.id);
+  }
+  return startNewSession(dataset, monthLabel);
+}
+
+/** Crea o activa sesión mensual (alias de ensureMonthlySession). */
+export function startNewMonthlySession(
+  dataset: ReconciliationDataset,
+  monthLabel?: string
+): ReconciliationDataset {
+  return ensureMonthlySession(dataset, monthLabel ?? monthSessionLabel());
+}
+
+export function closeMonthlySession(
+  dataset: ReconciliationDataset,
+  sessionId: string
+): ReconciliationDataset {
+  return {
+    ...dataset,
+    sessions: dataset.sessions.map((s) =>
+      s.id === sessionId ? { ...s, closedAt: s.closedAt ?? new Date().toISOString() } : s
+    ),
   };
 }

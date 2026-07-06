@@ -59,8 +59,24 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
         onProgress: (label, percent) => setProgress({ label, percent }),
       });
       onDatasetChange(result.dataset);
-      if (result.imported === 0) {
+      if (result.imported === 0 && !result.mergeStats) {
         toast.warning(`Sin registros importados (${result.skipped} omitidos).`);
+      } else if (result.mergeStats) {
+        const { added, updated, unchanged, needsReview } = result.mergeStats;
+        const parts = [
+          added > 0 ? `${added.toLocaleString('es-PE')} nuevos` : null,
+          updated > 0 ? `${updated.toLocaleString('es-PE')} actualizados` : null,
+          unchanged > 0 ? `${unchanged.toLocaleString('es-PE')} sin cambio` : null,
+          needsReview > 0 ? `${needsReview.toLocaleString('es-PE')} en revisión` : null,
+        ].filter(Boolean);
+        toast.success(
+          parts.length > 0 ? `ERP: ${parts.join(' · ')}` : 'ERP: sin cambios respecto a la importación anterior.',
+          needsReview > 0
+            ? { description: 'Ventas conciliadas modificadas en el ERP — revise Excepciones.' }
+            : importOnly
+              ? { description: 'Ejecute «Re-ejecutar motor» para conciliar pendientes.' }
+              : undefined
+        );
       } else if (importOnly) {
         toast.success(
           `${result.imported.toLocaleString('es-PE')} registro(s) importados. Ejecute «Re-ejecutar motor» para conciliar.`
@@ -140,7 +156,7 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
                 {connector.sourceType === 'mercado_pago'
                   ? 'Exportación oficial MP: columnas A (fecha), G (N° operación), H (approved), K (importe).'
                   : connector.sourceType === 'sales_erp'
-                    ? 'ERP: K solo para Cod. Op. Pago 1; códigos 2–4 se cruzan por N° operación contra banco/pasarela.'
+                    ? 'ERP: re-importación inteligente por comprobante. Conciliados sin cambios se omiten; correcciones de código op. o medio de pago pasan a revisión.'
                     : connector.sourceType === 'bcp_bank'
                       ? 'Extracto BCP: FECHA, DESCRIPCION, MONTO, OPERACION (8 díg.), TIPO — solo abonos.'
                       : `${connector.acceptedExtensions.join(', ')} — se agrega al lote del día sin reemplazar importaciones anteriores.`}
