@@ -20,6 +20,12 @@ const irisUser: User = {
   pettyCashFundLimit: 800,
 };
 
+const irisWithOpeningCarry: User = {
+  ...irisUser,
+  pettyCashOpeningCarrySuggested: 54.05,
+  pettyCashOpeningCarryConsumedAt: '2026-01-02T10:00:00.000Z',
+};
+
 function fundDeliveryTx(overrides: Partial<PettyCashTransaction> = {}): PettyCashTransaction {
   return {
     id: 'fd-800',
@@ -119,6 +125,30 @@ describe('pettyCashMetaReconcile', () => {
     );
     expect(balance).not.toBeCloseTo(-839.4, 2);
     expect(balance).toBeCloseTo(-39.4, 2);
+  });
+
+  it('incluye saldo de apertura (arrastre) al reconstruir dotación de periodo', () => {
+    const transactions = [fundDeliveryTx(), expenseTx('e1', 100)];
+    const out = reconcilePettyCashMeta({
+      meta: { weekClosures: [], weekPreClosures: [], fundDeliveries: [] },
+      transactions,
+      users: [irisWithOpeningCarry],
+      globalFundLimit: 1000,
+    });
+    const delivery = findFundDeliveryForWeek(IRIS_ID, '2026-W01', out.fundDeliveries);
+    expect(delivery?.isPeriodOpening).toBe(true);
+    expect(delivery?.openingCarryAmount).toBeCloseTo(54.05, 2);
+
+    const opening = getPettyCashWeekBalance(
+      transactions,
+      IRIS_ID,
+      '2026-W01',
+      out.weekClosures,
+      800,
+      out.fundDeliveries,
+      { suggested: 54.05, consumed: true, availableSuggested: 0 }
+    );
+    expect(opening).toBeCloseTo(754.05, 2);
   });
 
   it('merge une KV y SQL sin perder registros distintos por semana', () => {
