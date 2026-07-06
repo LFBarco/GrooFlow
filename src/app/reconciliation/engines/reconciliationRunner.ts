@@ -9,6 +9,7 @@ import type {
   ReconciliationSourceType,
 } from '../domain/types';
 import {
+  applyGroupMatchToMovements,
   applyMatchToMovements,
   buildMatchFromCandidate,
   findMatchCandidates,
@@ -158,10 +159,19 @@ export function runReconciliationEngine(
     const match = buildMatchFromCandidate(cand, sid);
     newMatches.push(match);
     const bank = movementById.get(cand.bank.id)!;
-    const sales = movementById.get(cand.sales.id)!;
-    const applied = applyMatchToMovements(bank, sales, match);
-    movementById.set(bank.id, applied.bank);
-    movementById.set(sales.id, applied.sales);
+    if (cand.sales.length > 1) {
+      const salesList = cand.sales.map((s) => movementById.get(s.id)!);
+      const applied = applyGroupMatchToMovements(bank, salesList, match);
+      movementById.set(bank.id, applied.bank);
+      for (const s of applied.sales) {
+        movementById.set(s.id, s);
+      }
+    } else {
+      const sales = movementById.get(cand.sales[0]!.id)!;
+      const applied = applyMatchToMovements(bank, sales, match);
+      movementById.set(bank.id, applied.bank);
+      movementById.set(sales.id, applied.sales);
+    }
   }
 
   const otherMovements = dataset.movements.filter((m) => m.sessionId !== sid);
@@ -207,7 +217,10 @@ export function deleteReconciliationBatch(
     });
 
   const matches = dataset.matches.filter(
-    (m) => !removedIds.has(m.bankMovementId) && !removedIds.has(m.salesMovementId)
+    (m) =>
+      !removedIds.has(m.bankMovementId) &&
+      !removedIds.has(m.salesMovementId) &&
+      !(m.salesMovementIds?.some((id) => removedIds.has(id)))
   );
   const alerts = dataset.alerts.filter((a) => !a.movementIds.some((id) => removedIds.has(id)));
   const batches = dataset.batches.filter((b) => b.id !== batchId);

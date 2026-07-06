@@ -15,6 +15,8 @@ export type AuditPairRow = {
   confidence?: number;
   bank?: CanonicalMovement;
   sales?: CanonicalMovement;
+  /** Varias ventas ERP agrupadas por el mismo N° de operación. */
+  salesGroup?: CanonicalMovement[];
   status: 'reconciled' | 'orphan_bank' | 'orphan_sales' | 'difference' | 'pending';
   amountDelta?: number;
 };
@@ -112,20 +114,37 @@ function buildPairRow(
   id: string,
   bank?: CanonicalMovement,
   sales?: CanonicalMovement,
-  match?: { id: string; matchStrategy?: MatchStrategy; confidence?: number }
+  match?: { id: string; matchStrategy?: MatchStrategy; confidence?: number },
+  salesGroup?: CanonicalMovement[]
 ): AuditPairRow {
+  const group = salesGroup && salesGroup.length > 1 ? salesGroup : undefined;
+  const salesTotal = group
+    ? Math.round(group.reduce((acc, s) => acc + (Number(s.amount) || 0), 0) * 100) / 100
+    : sales?.amount;
   const amountDelta =
-    bank && sales ? Math.round((bank.amount - sales.amount) * 100) / 100 : undefined;
+    bank && salesTotal != null
+      ? Math.round((bank.amount - salesTotal) * 100) / 100
+      : undefined;
   return {
     id,
     matchId: match?.id,
     strategy: match?.matchStrategy,
     confidence: match?.confidence,
     bank,
-    sales,
-    status: rowStatusFromPair(bank, sales),
+    sales: sales ?? group?.[0],
+    salesGroup: group,
+    status: rowStatusFromPair(bank, sales ?? group?.[0]),
     amountDelta,
   };
+}
+
+function salesIdsForMatch(match: {
+  salesMovementId: string;
+  salesMovementIds?: string[];
+}): string[] {
+  return match.salesMovementIds?.length
+    ? match.salesMovementIds
+    : [match.salesMovementId];
 }
 
 function rowMatchesSearch(row: AuditPairRow, search: string): boolean {
@@ -135,7 +154,8 @@ function rowMatchesSearch(row: AuditPairRow, search: string): boolean {
 
   const bankText = row.bank ? movementSearchText(row.bank) : '';
   const salesText = row.sales ? movementSearchText(row.sales) : '';
-  if (bankText.includes(q) || salesText.includes(q)) return true;
+  const groupText = (row.salesGroup ?? []).map(movementSearchText).join(' ');
+  if (bankText.includes(q) || salesText.includes(q) || groupText.includes(q)) return true;
 
   if (qDigits.length >= 3) {
     const bankOp = row.bank?.operationNumber ?? '';
@@ -198,16 +218,20 @@ export function buildAuditRows(
 
   for (const match of dataset.matches.filter((m) => m.sessionId === sid)) {
     const bank = byId.get(match.bankMovementId);
-    const sales = byId.get(match.salesMovementId);
-    if (!bank && !sales) continue;
-    seen.add(match.bankMovementId);
-    seen.add(match.salesMovementId);
+    const salesIds = salesIdsForMatch(match);
+    const salesList = salesIds
+      .map((id) => byId.get(id))
+      .filter((m): m is CanonicalMovement => Boolean(m));
+    if (!bank && salesList.length === 0) continue;
+    for (const id of [match.bankMovementId, ...salesIds]) {
+      seen.add(id);
+    }
     rows.push(
-      buildPairRow(match.id, bank, sales, {
+      buildPairRow(match.id, bank, salesList[0], {
         id: match.id,
         matchStrategy: match.matchStrategy,
         confidence: match.confidence,
-      })
+      }, salesList.length > 1 ? salesList : undefined)
     );
   }
 
@@ -272,6 +296,7 @@ export function computeAuditSummary(
   const rows = buildAuditRows(dataset, sessionId);
   const byStrategy: Record<MatchStrategy, number> = {
     operation_number: 0,
+    operation_number_grouped: 0,
     amount_date: 0,
     manual: 0,
   };

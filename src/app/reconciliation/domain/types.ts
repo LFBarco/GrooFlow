@@ -39,7 +39,11 @@ export type ReconciliationRuleCode =
   | 'RULE-007'
   | 'RULE-008';
 
-export type MatchStrategy = 'operation_number' | 'amount_date' | 'manual';
+export type MatchStrategy =
+  | 'operation_number'
+  | 'operation_number_grouped'
+  | 'amount_date'
+  | 'manual';
 
 export interface CanonicalMovement {
   id: string;
@@ -83,6 +87,8 @@ export interface ReconciliationMatch {
   sessionId: string;
   bankMovementId: string;
   salesMovementId: string;
+  /** Varias ventas ERP con el mismo N° de operación que suman al abono bancario. */
+  salesMovementIds?: string[];
   confidence: number;
   matchStrategy: MatchStrategy;
   ruleCode: ReconciliationRuleCode;

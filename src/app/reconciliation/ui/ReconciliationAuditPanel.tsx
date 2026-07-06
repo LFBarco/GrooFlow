@@ -23,7 +23,7 @@ import {
 } from '../domain/auditLabels';
 import { getActiveSession } from '../domain/dataset';
 import { operationNumbersMatch } from '../domain/normalize';
-import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
+import type { CanonicalMovement, ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import {
   AUDIT_ALL_SESSIONS,
   buildAuditRows,
@@ -66,7 +66,44 @@ function StatusBadge({ status }: { status: AuditPairRow['status'] }) {
   return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
 }
 
-function MovementCell({ side, m }: { side: 'bank' | 'sales'; m?: AuditPairRow['bank'] }) {
+function MovementCell({
+  side,
+  m,
+  salesGroup,
+}: {
+  side: 'bank' | 'sales';
+  m?: AuditPairRow['bank'];
+  salesGroup?: CanonicalMovement[];
+}) {
+  if (side === 'sales' && salesGroup && salesGroup.length > 1) {
+    const total = salesGroup.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+    return (
+      <td className="p-2 align-top">
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Ventas (ERP) · {salesGroup.length} documentos
+          </p>
+          {salesGroup.map((line) => (
+            <div key={line.id} className="rounded border border-border/60 bg-muted/20 p-2">
+              <p className="font-mono text-xs font-semibold">{line.operationNumber || '—'}</p>
+              <p className="font-semibold">{formatMoney(line.amount)}</p>
+              <p className="text-xs">{line.transactionDate}</p>
+              {line.documentNumber && (
+                <p className="text-xs text-muted-foreground">Doc: {line.documentNumber}</p>
+              )}
+              {line.registeredBy && (
+                <p className="text-xs text-muted-foreground">{line.registeredBy}</p>
+              )}
+            </div>
+          ))}
+          <p className="text-xs font-medium text-emerald-600">
+            Total ERP: {formatMoney(total)}
+          </p>
+        </div>
+      </td>
+    );
+  }
+
   if (!m) return <td className="p-2 text-muted-foreground">—</td>;
   return (
     <td className="p-2 align-top">
@@ -200,6 +237,7 @@ export function ReconciliationAuditPanel({
             </CardHeader>
             <CardContent className="space-y-1 text-xs">
               <p>N° operación: {summary.byStrategy.operation_number}</p>
+              <p>N° operación (suma ERP): {summary.byStrategy.operation_number_grouped}</p>
               <p>Monto + fecha: {summary.byStrategy.amount_date}</p>
               <p>Manual: {summary.byStrategy.manual}</p>
             </CardContent>
@@ -347,10 +385,16 @@ export function ReconciliationAuditPanel({
                           <StatusBadge status={row.status} />
                         </td>
                         <MovementCell side="bank" m={row.bank} />
-                        <MovementCell side="sales" m={row.sales} />
+                        <MovementCell side="sales" m={row.sales} salesGroup={row.salesGroup} />
                         <td className="p-2">
-                          {row.bank && row.sales ? (
-                            !opsMatch ? (
+                          {row.bank && (row.sales || row.salesGroup?.length) ? (
+                            row.salesGroup && row.salesGroup.length > 1 ? (
+                              row.amountDelta != null && Math.abs(row.amountDelta) > 0.05 ? (
+                                <span className="font-medium text-amber-600">{formatMoney(row.amountDelta)}</span>
+                              ) : (
+                                <span className="text-emerald-600">OK</span>
+                              )
+                            ) : !opsMatch ? (
                               <span className="font-medium text-red-600">N° op. distinto</span>
                             ) : row.amountDelta != null && Math.abs(row.amountDelta) > 0.05 ? (
                               <span className="font-medium text-amber-600">{formatMoney(row.amountDelta)}</span>

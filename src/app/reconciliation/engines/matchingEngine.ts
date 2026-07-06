@@ -26,7 +26,7 @@ export const DEFAULT_MATCHING_CONFIG: MatchingConfig = {
 
 export type MatchCandidate = {
   bank: CanonicalMovement;
-  sales: CanonicalMovement;
+  sales: CanonicalMovement[];
   confidence: number;
   strategy: MatchStrategy;
 };
@@ -51,8 +51,18 @@ function operationMatchKeyForMovement(m: CanonicalMovement): string {
   return normalizeOperationNumber(m.operationNumberRaw || m.operationNumber).normalized;
 }
 
+function salesAmountForGroupSum(sales: CanonicalMovement): number {
+  if (salesMovementNeedsBankAmount(sales)) return 0;
+  return Math.max(0, Number(sales.amount) || 0);
+}
+
 function scoreOperationMatch(bank: CanonicalMovement, sales: CanonicalMovement, cfg: MatchingConfig): number {
-  if (!operationNumbersMatch(bank.operationNumberRaw || bank.operationNumber, sales.operationNumberRaw || sales.operationNumber)) {
+  if (
+    !operationNumbersMatch(
+      bank.operationNumberRaw || bank.operationNumber,
+      sales.operationNumberRaw || sales.operationNumber
+    )
+  ) {
     return 0;
   }
   const needsBankAmount = salesMovementNeedsBankAmount(sales);
@@ -66,7 +76,7 @@ function scoreOperationMatch(bank: CanonicalMovement, sales: CanonicalMovement, 
   return needsBankAmount ? 0.97 : 0.99;
 }
 
-function pickBestCandidate(
+function pickBestSingleCandidate(
   bank: CanonicalMovement,
   salesList: CanonicalMovement[],
   usedSales: Set<string>,
@@ -78,11 +88,41 @@ function pickBestCandidate(
     if (!sourceCompatible(bank, sales)) continue;
     const opScore = scoreOperationMatch(bank, sales, cfg);
     if (opScore >= 0.82) {
-      const cand: MatchCandidate = { bank, sales, confidence: opScore, strategy: 'operation_number' };
+      const cand: MatchCandidate = {
+        bank,
+        sales: [sales],
+        confidence: opScore,
+        strategy: 'operation_number',
+      };
       if (!best || cand.confidence > best.confidence) best = cand;
     }
   }
   return best;
+}
+
+function pickGroupCandidate(
+  bank: CanonicalMovement,
+  salesList: CanonicalMovement[],
+  usedSales: Set<string>,
+  cfg: MatchingConfig
+): MatchCandidate | null {
+  const group = salesList.filter(
+    (s) => !usedSales.has(s.id) && sourceCompatible(bank, s)
+  );
+  if (group.length < 2) return null;
+
+  const total = Math.round(group.reduce((acc, s) => acc + salesAmountForGroupSum(s), 0) * 100) / 100;
+  if (!amountsEqual(total, bank.amount, cfg.amountTolerance)) return null;
+
+  const maxDays = Math.max(...group.map((s) => daysBetween(bank.transactionDate, s.transactionDate)));
+  if (maxDays > cfg.maxDateDays) return null;
+
+  return {
+    bank,
+    sales: group,
+    confidence: maxDays === 0 ? 0.99 : 0.97,
+    strategy: 'operation_number_grouped',
+  };
 }
 
 function indexSalesByOperation(sales: CanonicalMovement[]): Map<string, CanonicalMovement[]> {
@@ -117,10 +157,19 @@ export function findMatchCandidates(
   for (const bank of pendingBank) {
     const opKey = operationMatchKeyForMovement(bank);
     if (!opKey) continue;
-    const best = pickBestCandidate(bank, salesByOp.get(opKey) ?? [], usedSales, cfg);
+    const opSales = salesByOp.get(opKey) ?? [];
+
+    const grouped = pickGroupCandidate(bank, opSales, usedSales, cfg);
+    if (grouped) {
+      candidates.push(grouped);
+      for (const s of grouped.sales) usedSales.add(s.id);
+      continue;
+    }
+
+    const best = pickBestSingleCandidate(bank, opSales, usedSales, cfg);
     if (best) {
       candidates.push(best);
-      usedSales.add(best.sales.id);
+      usedSales.add(best.sales[0]!.id);
     }
   }
 
@@ -131,11 +180,15 @@ export function buildMatchFromCandidate(
   candidate: MatchCandidate,
   sessionId: string
 ): ReconciliationMatch {
+  const primarySales = candidate.sales[0]!;
   return {
     id: newId('rm'),
     sessionId,
     bankMovementId: candidate.bank.id,
-    salesMovementId: candidate.sales.id,
+    salesMovementId: primarySales.id,
+    ...(candidate.sales.length > 1
+      ? { salesMovementIds: candidate.sales.map((s) => s.id) }
+      : {}),
     confidence: candidate.confidence,
     matchStrategy: candidate.strategy,
     ruleCode: 'RULE-001',
@@ -182,6 +235,37 @@ export function applyMatchToMovements(
       ruleCodes: [...new Set([...sales.ruleCodes, ...ruleCodes])],
     },
   };
+}
+
+export function applyGroupMatchToMovements(
+  bank: CanonicalMovement,
+  salesGroup: CanonicalMovement[],
+  match: ReconciliationMatch
+): { bank: CanonicalMovement; sales: CanonicalMovement[] } {
+  const primary = salesGroup[0]!;
+  const ruleCodes: ReconciliationRuleCode[] = ['RULE-001'];
+
+  const nextBank: CanonicalMovement = {
+    ...bank,
+    workflowStatus: 'reconciled',
+    matchedMovementId: primary.id,
+    matchId: match.id,
+    ruleCodes: [...new Set([...bank.ruleCodes, ...ruleCodes])],
+  };
+
+  const nextSales = salesGroup.map((sales) => {
+    const needsBankAmount = salesMovementNeedsBankAmount(sales);
+    return {
+      ...sales,
+      amount: needsBankAmount ? bank.amount : sales.amount,
+      workflowStatus: 'reconciled' as const,
+      matchedMovementId: bank.id,
+      matchId: match.id,
+      ruleCodes: [...new Set([...sales.ruleCodes, ...ruleCodes])],
+    };
+  });
+
+  return { bank: nextBank, sales: nextSales };
 }
 
 export { operationMatchKey };

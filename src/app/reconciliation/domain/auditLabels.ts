@@ -26,6 +26,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethodHint, string> = {
 
 export const MATCH_STRATEGY_LABELS: Record<MatchStrategy, string> = {
   operation_number: 'N° operación (7 dígitos)',
+  operation_number_grouped: 'N° operación (suma ERP)',
   amount_date: 'Monto + fecha (±3 días)',
   manual: 'Manual',
 };
