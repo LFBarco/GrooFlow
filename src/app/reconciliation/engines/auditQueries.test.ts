@@ -228,6 +228,74 @@ describe('auditQueries', () => {
     expect(rows[0]?.status).toBe('reconciled');
   });
 
+  it('agrupa varias ventas ERP contra un abono en una fila', () => {
+    const sid = 's1';
+    const dataset: ReconciliationDataset = {
+      ...createEmptyDataset(),
+      activeSessionId: sid,
+      movements: [
+        mov({
+          id: 'b1',
+          sourceType: 'mercado_pago',
+          side: 'bank_or_gateway',
+          amount: 55,
+          workflowStatus: 'reconciled',
+          matchedMovementId: 's-a',
+          operationNumber: '3938867',
+          operationNumberRaw: '166413938867',
+          matchId: 'm-group',
+        }),
+        mov({
+          id: 's-a',
+          sourceType: 'sales_erp',
+          side: 'sales_application',
+          amount: 20,
+          workflowStatus: 'reconciled',
+          matchedMovementId: 'b1',
+          operationNumber: '3938867',
+          operationNumberRaw: '166413938867',
+          documentNumber: 'B004-00115955',
+          matchId: 'm-group',
+        }),
+        mov({
+          id: 's-b',
+          sourceType: 'sales_erp',
+          side: 'sales_application',
+          amount: 35,
+          workflowStatus: 'reconciled',
+          matchedMovementId: 'b1',
+          operationNumber: '3938867',
+          operationNumberRaw: '166413938867',
+          documentNumber: 'B004-00115956',
+          matchId: 'm-group',
+        }),
+      ],
+      matches: [
+        {
+          id: 'm-group',
+          sessionId: sid,
+          bankMovementId: 'b1',
+          salesMovementId: 's-a',
+          salesMovementIds: ['s-a', 's-b'],
+          confidence: 0.95,
+          matchStrategy: 'operation_number_grouped',
+          ruleCode: 'RULE-001',
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    };
+
+    const rows = buildAuditRows(dataset, sid);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.salesGroup).toHaveLength(2);
+    expect(rows[0]?.status).toBe('reconciled');
+    expect(rows[0]?.amountDelta).toBe(0);
+
+    const summary = computeAuditSummary(dataset, sid);
+    expect(summary.reconciledPairs).toBe(1);
+    expect(summary.byStrategy.operation_number_grouped).toBe(1);
+  });
+
   it('agrega filas de todas las sesiones', () => {
     const dataset: ReconciliationDataset = {
       ...createEmptyDataset(),

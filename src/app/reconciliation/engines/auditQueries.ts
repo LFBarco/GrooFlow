@@ -1,5 +1,10 @@
 import { sessionMovements } from '../domain/dataset';
-import { operationNumbersMatch } from '../domain/normalize';
+import { amountsEqual, operationNumbersMatch } from '../domain/normalize';
+import {
+  isSalesMovement as isSalesSideMovement,
+  resolveSalesGroupForMatch,
+  salesGroupTotal,
+} from '../domain/reconciliationGrouping';
 import type { AuditStatusFilter } from '../domain/auditLabels';
 import type {
   CanonicalMovement,
@@ -64,7 +69,7 @@ function inDateRange(date: string, from?: string, to?: string): boolean {
 }
 
 function isSalesMovement(m: CanonicalMovement): boolean {
-  return m.sourceType === 'sales_erp' || m.side === 'sales_application';
+  return isSalesSideMovement(m);
 }
 
 function classifyMovement(m: CanonicalMovement): AuditPairRow['status'] {
@@ -93,8 +98,26 @@ function pairFromMovements(
 
 function rowStatusFromPair(
   bank?: CanonicalMovement,
-  sales?: CanonicalMovement
+  sales?: CanonicalMovement,
+  salesGroup?: CanonicalMovement[]
 ): AuditPairRow['status'] {
+  const group = salesGroup && salesGroup.length > 1 ? salesGroup : undefined;
+
+  if (bank && group) {
+    const opOk = group.every((s) =>
+      operationNumbersMatch(
+        bank.operationNumberRaw || bank.operationNumber,
+        s.operationNumberRaw || s.operationNumber
+      )
+    );
+    if (!opOk) return 'difference';
+    if (!amountsEqual(bank.amount, salesGroupTotal(group))) return 'difference';
+    if (group.some((s) => s.workflowStatus === 'difference') || bank.workflowStatus === 'difference') {
+      return 'difference';
+    }
+    return 'reconciled';
+  }
+
   if (bank && sales) {
     const opOk = operationNumbersMatch(
       bank.operationNumberRaw || bank.operationNumber,
@@ -119,7 +142,7 @@ function buildPairRow(
 ): AuditPairRow {
   const group = salesGroup && salesGroup.length > 1 ? salesGroup : undefined;
   const salesTotal = group
-    ? Math.round(group.reduce((acc, s) => acc + (Number(s.amount) || 0), 0) * 100) / 100
+    ? salesGroupTotal(group)
     : sales?.amount;
   const amountDelta =
     bank && salesTotal != null
@@ -133,7 +156,7 @@ function buildPairRow(
     bank,
     sales: sales ?? group?.[0],
     salesGroup: group,
-    status: rowStatusFromPair(bank, sales ?? group?.[0]),
+    status: rowStatusFromPair(bank, sales ?? group?.[0], group),
     amountDelta,
   };
 }
@@ -223,15 +246,23 @@ export function buildAuditRows(
       .map((id) => byId.get(id))
       .filter((m): m is CanonicalMovement => Boolean(m));
     if (!bank && salesList.length === 0) continue;
-    for (const id of [match.bankMovementId, ...salesIds]) {
+    const salesGroup = resolveSalesGroupForMatch(movements, bank, match.salesMovementIds);
+    const primarySales = salesGroup?.[0] ?? salesList[0];
+    for (const id of [match.bankMovementId, ...(salesGroup?.map((s) => s.id) ?? salesIds)]) {
       seen.add(id);
     }
     rows.push(
-      buildPairRow(match.id, bank, salesList[0], {
-        id: match.id,
-        matchStrategy: match.matchStrategy,
-        confidence: match.confidence,
-      }, salesList.length > 1 ? salesList : undefined)
+      buildPairRow(
+        match.id,
+        bank,
+        primarySales,
+        {
+          id: match.id,
+          matchStrategy: match.matchStrategy,
+          confidence: match.confidence,
+        },
+        salesGroup
+      )
     );
   }
 
@@ -241,11 +272,22 @@ export function buildAuditRows(
     if (isLinkedPair(m)) {
       const partner = byId.get(m.matchedMovementId!);
       if (partner && !seen.has(partner.id)) {
+        const { bank, sales } = pairFromMovements(m, partner);
+        const salesGroup = bank ? resolveSalesGroupForMatch(movements, bank) : undefined;
+        const primarySales = salesGroup?.[0] ?? sales;
         seen.add(m.id);
         seen.add(partner.id);
-        const { bank, sales } = pairFromMovements(m, partner);
+        if (salesGroup) {
+          for (const s of salesGroup) seen.add(s.id);
+        }
         rows.push(
-          buildPairRow(m.matchId ?? `link_${m.id}_${partner.id}`, bank, sales, m.matchId ? { id: m.matchId } : undefined)
+          buildPairRow(
+            m.matchId ?? `link_${m.id}_${partner.id}`,
+            bank,
+            primarySales,
+            m.matchId ? { id: m.matchId } : undefined,
+            salesGroup
+          )
         );
         continue;
       }
@@ -275,7 +317,9 @@ export function filterAuditRows(rows: AuditPairRow[], params: AuditFilterParams)
 
     if (params.source && params.source !== 'all') {
       const bankOk = row.bank?.sourceType === params.source;
-      const salesOk = row.sales?.sourceType === params.source;
+      const salesOk =
+        row.sales?.sourceType === params.source ||
+        row.salesGroup?.some((s) => s.sourceType === params.source);
       if (!bankOk && !salesOk) return false;
     }
 
@@ -323,7 +367,10 @@ export function computeAuditSummary(
         break;
       case 'orphan_sales':
         orphanSales += 1;
-        totalAmountOrphanSales += row.sales?.amount ?? 0;
+        totalAmountOrphanSales +=
+          row.salesGroup?.reduce((acc, s) => acc + (s.amount || 0), 0) ??
+          row.sales?.amount ??
+          0;
         break;
       case 'difference':
         difference += 1;

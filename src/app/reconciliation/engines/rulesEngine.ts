@@ -1,4 +1,10 @@
 import { amountsEqual, operationMatchKey, operationNumbersMatch } from '../domain/normalize';
+import {
+  bankSalesAmountsMatch,
+  isBankMovement,
+  isSalesMovement,
+  salesLinkedToBank,
+} from '../domain/reconciliationGrouping';
 import type {
   CanonicalMovement,
   PaymentMethodHint,
@@ -135,10 +141,26 @@ export function applyPostMatchRules(dataset: ReconciliationDataset, sessionId?: 
           ruleCodes: [...rules],
         };
       }
-      if (pair && !amountsEqual(m.amount, pair.amount)) {
+
+      const bank = isBankMovement(m) ? m : pair;
+      const salesGroup =
+        bank && isSalesMovement(m) && m.matchedMovementId === bank.id
+          ? salesLinkedToBank(movements, bank.id)
+          : bank
+            ? salesLinkedToBank(movements, bank.id)
+            : [];
+
+      if (bank && salesGroup.length > 0) {
+        if (!bankSalesAmountsMatch(bank, salesGroup)) {
+          rules.add('RULE-005');
+          amountMismatchIds.push(m.id);
+          if (pair) amountMismatchIds.push(pair.id);
+        }
+      } else if (pair && !amountsEqual(m.amount, pair.amount)) {
         rules.add('RULE-005');
         amountMismatchIds.push(m.id);
       }
+
       const expectedMethod = GATEWAY_METHOD[m.sourceType];
       if (
         expectedMethod &&
