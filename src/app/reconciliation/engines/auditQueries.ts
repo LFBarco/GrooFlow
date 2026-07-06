@@ -338,6 +338,14 @@ export function computeAuditSummary(
   sessionId?: AuditSessionScope
 ): AuditSummary {
   const rows = buildAuditRows(dataset, sessionId);
+  const movements =
+    sessionId === AUDIT_ALL_SESSIONS
+      ? dataset.movements
+      : sessionMovements(dataset, sessionId);
+  return summarizeAuditRows(rows, movements.length);
+}
+
+export function summarizeAuditRows(rows: AuditPairRow[], totalMovements: number): AuditSummary {
   const byStrategy: Record<MatchStrategy, number> = {
     operation_number: 0,
     operation_number_grouped: 0,
@@ -380,12 +388,8 @@ export function computeAuditSummary(
     }
   }
 
-  const movements =
-    sessionId === AUDIT_ALL_SESSIONS
-      ? dataset.movements
-      : sessionMovements(dataset, sessionId);
   return {
-    totalMovements: movements.length,
+    totalMovements,
     reconciledPairs,
     orphanBank,
     orphanSales,

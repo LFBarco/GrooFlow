@@ -15,19 +15,20 @@ import { TooltipProvider } from '../../components/ui/tooltip';
 import {
   AUDIT_GLOSSARY,
   MATCH_STRATEGY_LABELS,
+  SOURCE_LABELS,
   STATUS_FILTER_OPTIONS,
   type AuditNavRequest,
   type AuditStatusFilter,
 } from '../domain/auditLabels';
-import { getActiveSession } from '../domain/dataset';
+import { sessionMovements } from '../domain/dataset';
 import { operationNumbersMatch } from '../domain/normalize';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import {
   AUDIT_ALL_SESSIONS,
   buildAuditRows,
-  computeAuditSummary,
   filterAuditRows,
   paginateRows,
+  summarizeAuditRows,
   totalPages,
   type AuditPairRow,
   type AuditSessionScope,
@@ -80,7 +81,12 @@ function StatusBadge({
 function sessionScopeLabel(dataset: ReconciliationDataset, scope: AuditSessionScope): string {
   if (scope === AUDIT_ALL_SESSIONS) return 'Todas las sesiones';
   const session = dataset.sessions.find((s) => s.id === scope);
-  return session?.label ?? getActiveSession(dataset).label;
+  return session?.label ?? dataset.sessions[0]?.label ?? '—';
+}
+
+function countScopeMovements(dataset: ReconciliationDataset, scope: AuditSessionScope): number {
+  if (scope === AUDIT_ALL_SESSIONS) return dataset.movements.length;
+  return sessionMovements(dataset, scope).length;
 }
 
 export function ReconciliationAuditPanel({
@@ -98,11 +104,24 @@ export function ReconciliationAuditPanel({
 
   const deferredSearch = useDeferredValue(search);
 
-  const summary = useMemo(
-    () => computeAuditSummary(dataset, sessionScope),
+  const deferredDataset = useDeferredValue(dataset);
+  const deferredScope = useDeferredValue(sessionScope);
+  const isComputing =
+    deferredDataset !== dataset || deferredScope !== sessionScope;
+
+  const scopeMovementCount = useMemo(
+    () => countScopeMovements(dataset, sessionScope),
     [dataset, sessionScope]
   );
-  const allRows = useMemo(() => buildAuditRows(dataset, sessionScope), [dataset, sessionScope]);
+
+  const { allRows, summary } = useMemo(() => {
+    const rows = buildAuditRows(deferredDataset, deferredScope);
+    const movements = countScopeMovements(deferredDataset, deferredScope);
+    return {
+      allRows: rows,
+      summary: summarizeAuditRows(rows, movements),
+    };
+  }, [deferredDataset, deferredScope]);
   const filtered = useMemo(
     () =>
       filterAuditRows(allRows, {
@@ -155,6 +174,20 @@ export function ReconciliationAuditPanel({
   return (
     <TooltipProvider>
       <div className="space-y-4">
+        {isComputing && (
+          <div className="rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-muted-foreground">
+            Calculando cruces ({scopeMovementCount.toLocaleString('es-PE')} movimientos)…
+          </div>
+        )}
+        {scopeMovementCount > 15000 && sessionScope === AUDIT_ALL_SESSIONS && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+            <p>
+              Hay {scopeMovementCount.toLocaleString('es-PE')} movimientos en total. Para mejor rendimiento,
+              filtre por un mes específico en lugar de «Todas las sesiones».
+            </p>
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="pb-1">

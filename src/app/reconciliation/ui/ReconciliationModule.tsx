@@ -154,6 +154,8 @@ export function ReconciliationModule() {
           <ReconciliationDashboard dataset={dataset} onDatasetChange={setDataset} />
         </TabsContent>
         <TabsContent value="audit" className="mt-4">
+          {activeTab === 'audit' && (
+          <>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">Ver cruces de:</span>
             <select
@@ -179,6 +181,8 @@ export function ReconciliationModule() {
             navRequest={auditNav}
             onNavConsumed={() => setAuditNav(null)}
           />
+          </>
+          )}
         </TabsContent>
         <TabsContent value="import" className="mt-4">
           <ReconciliationImportPanel dataset={dataset} onDatasetChange={setDataset} />
