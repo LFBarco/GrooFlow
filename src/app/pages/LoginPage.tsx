@@ -22,6 +22,7 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { Checkbox } from "../components/ui/checkbox";
 import { tryDemoLogin } from '../config/demoLogin';
+import { describeAuthOrNetworkError } from '../utils/authErrors';
 import { supabase } from '../../../utils/supabase/client';
 
 /* ═══════════════════════════════════════════════════
@@ -350,6 +351,12 @@ export function LoginPage({
       let errorMessage = error.message;
       if (errorMessage === "Invalid login credentials") {
         errorMessage = "Credenciales incorrectas. Intente nuevamente.";
+      } else if (
+        errorMessage?.toLowerCase().includes('failed to fetch') ||
+        error?.name === 'AuthRetryableFetchError'
+      ) {
+        console.error("Login error:", error);
+        errorMessage = describeAuthOrNetworkError(error);
       } else {
         console.error("Login error:", error);
         errorMessage = errorMessage || "Error al iniciar sesion";

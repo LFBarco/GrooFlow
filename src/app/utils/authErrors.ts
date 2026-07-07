@@ -8,11 +8,14 @@ export function describeAuthOrNetworkError(err: unknown): string {
   if (
     lower.includes("failed to fetch") ||
     lower.includes("networkerror") ||
+    lower.includes("authretryablefetcherror") ||
     raw === "TypeError: Failed to fetch"
   ) {
     return (
-      "Sin conexión a Supabase. Comprueba .env (URL y clave anon completas; no dejes líneas vacías), " +
-      "proyecto activo en el panel, internet y firewall. Ver docs/DEPURAR_CONEXION_SUPABASE.md"
+      "No se pudo conectar con Supabase (servidor de autenticación). " +
+      "Comprueba que el proyecto esté activo en supabase.com/dashboard (no pausado), " +
+      "revisa status.supabase.com e intenta de nuevo en unos minutos. " +
+      "Si persiste, reinicia el proyecto en Supabase → Settings → Infrastructure."
     );
   }
 
