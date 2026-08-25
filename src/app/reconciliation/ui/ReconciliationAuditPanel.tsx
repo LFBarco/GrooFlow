@@ -16,6 +16,7 @@ import {
   AUDIT_GLOSSARY,
   MATCH_STRATEGY_LABELS,
   SOURCE_LABELS,
+  sourceLabel,
   STATUS_FILTER_OPTIONS,
   type AuditNavRequest,
   type AuditStatusFilter,
@@ -321,7 +322,7 @@ export function ReconciliationAuditPanel({
                 )}
                 {sourceFilter !== 'all' && (
                   <Badge variant="secondary">
-                    {SOURCE_LABELS[sourceFilter as ReconciliationSourceType]}
+                    {sourceLabel(sourceFilter)}
                   </Badge>
                 )}
                 {dateFrom && <Badge variant="outline">Desde {dateFrom}</Badge>}

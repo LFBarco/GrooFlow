@@ -22,8 +22,6 @@ export function getUserRole(user: {
 }) {
   const appRole = user.app_metadata?.role
   if (typeof appRole === 'string' && appRole.trim()) return appRole.trim().toLowerCase()
-  const userRole = user.user_metadata?.role
-  if (typeof userRole === 'string' && userRole.trim()) return userRole.trim().toLowerCase()
   return ''
 }
 

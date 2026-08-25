@@ -13,6 +13,14 @@ export const SOURCE_LABELS: Record<ReconciliationSourceType, string> = {
   sales_erp: 'Ventas (ERP)',
 };
 
+export function sourceLabel(sourceType: string | null | undefined): string {
+  if (sourceType && Object.prototype.hasOwnProperty.call(SOURCE_LABELS, sourceType)) {
+    return SOURCE_LABELS[sourceType as ReconciliationSourceType];
+  }
+  const raw = (sourceType ?? '').trim();
+  return raw !== '' ? raw : 'Fuente';
+}
+
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethodHint, string> = {
   yape: 'Yape',
   transfer_bcp: 'Transferencia BCP',

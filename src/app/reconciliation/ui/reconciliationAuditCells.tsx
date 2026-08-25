@@ -1,5 +1,5 @@
 import type { CanonicalMovement } from '../domain/types';
-import { SOURCE_LABELS } from '../domain/auditLabels';
+import { sourceLabel } from '../domain/auditLabels';
 import { PAYMENT_METHOD_LABELS } from '../domain/auditLabels';
 import { salesGroupTotal } from '../domain/reconciliationGrouping';
 
@@ -60,7 +60,7 @@ export function ReconciliationMovementCell({ side, m, salesGroup }: MovementCell
   return (
     <td className="p-2 align-top">
       <div className="space-y-0.5">
-        <p className="text-xs font-medium text-muted-foreground">{SOURCE_LABELS[m.sourceType]}</p>
+        <p className="text-xs font-medium text-muted-foreground">{sourceLabel(m.sourceType)}</p>
         <p className="font-mono text-xs font-semibold">{m.operationNumber || '—'}</p>
         {m.operationNumberRaw && m.operationNumberRaw.replace(/\D/g, '') !== m.operationNumber && (
           <p className="font-mono text-[10px] text-muted-foreground">orig: {m.operationNumberRaw}</p>

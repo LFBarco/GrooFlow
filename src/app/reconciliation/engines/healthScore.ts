@@ -1,17 +1,11 @@
 import { sessionMovements } from '../domain/dataset';
+import { sourceLabel } from '../domain/auditLabels';
 import type {
   ReconciliationDataset,
   ReconciliationHealth,
   ReconciliationHealthBreakdown,
   ReconciliationSourceType,
 } from '../domain/types';
-
-const SOURCE_LABELS: Record<ReconciliationSourceType, string> = {
-  bcp_bank: 'BCP',
-  mercado_pago: 'Mercado Pago',
-  niubiz: 'Niubiz',
-  sales_erp: 'Ventas (ERP)',
-};
 
 function breakdownFor(
   movements: ReturnType<typeof sessionMovements>,
@@ -23,7 +17,7 @@ function breakdownFor(
   const percent = total === 0 ? 100 : Math.round((reconciled / total) * 10000) / 100;
   return {
     sourceType,
-    label: SOURCE_LABELS[sourceType],
+    label: sourceLabel(sourceType),
     total,
     reconciled,
     percent,

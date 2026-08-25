@@ -3,7 +3,7 @@ import { CheckCircle2, CircleDashed, FileSpreadsheet, PlayCircle, Trash2, XCircl
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
-import { SOURCE_LABELS } from '../domain/auditLabels';
+import { sourceLabel } from '../domain/auditLabels';
 import { sessionMovements } from '../domain/dataset';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 
@@ -113,7 +113,7 @@ export function ReconciliationImportStatus({
 
                 return (
                   <tr key={source} className="border-t">
-                    <td className="p-2 font-medium">{SOURCE_LABELS[source]}</td>
+                    <td className="p-2 font-medium">{sourceLabel(source)}</td>
                     <td className="p-2 text-xs">
                       {sourceBatches.length === 0 ? (
                         <span className="text-muted-foreground">No subido</span>

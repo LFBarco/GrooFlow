@@ -41,8 +41,6 @@ const ADMIN_ROLES = new Set(["admin", "super_admin"]);
 function getRoleFromUser(user: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> }) {
   const appRole = user.app_metadata?.role;
   if (typeof appRole === "string" && appRole.trim()) return appRole.trim().toLowerCase();
-  const userRole = user.user_metadata?.role;
-  if (typeof userRole === "string" && userRole.trim()) return userRole.trim().toLowerCase();
   return "";
 }
 
@@ -440,7 +438,7 @@ function sanitizeBukBaseUrl(raw: string): string {
       if (!path.includes("/api/v2")) return DEFAULT_BUK_BASE_URL;
       return `${u.origin}${path}`;
     }
-    return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
+    return DEFAULT_BUK_BASE_URL;
   } catch {
     return DEFAULT_BUK_BASE_URL;
   }
@@ -481,7 +479,7 @@ async function fetchBukAsistencia(targetUrl: string, apiToken: string): Promise<
 
 for (const base of KV_PATH_BASES) {
   app.post(`${base}/buk/test`, async (c) => {
-    const auth = await requireAuthenticatedRequest(c);
+    const auth = await requireAdminRequest(c, "Solo administradores pueden probar la API Buk.");
     if (auth.response) return auth.response;
     try {
       const body = await c.req.json();
@@ -536,7 +534,7 @@ for (const base of KV_PATH_BASES) {
   });
 
   app.post(`${base}/buk/fetch`, async (c) => {
-    const auth = await requireAuthenticatedRequest(c);
+    const auth = await requireAdminRequest(c, "Solo administradores pueden consultar Buk.");
     if (auth.response) return auth.response;
     try {
       const body = await c.req.json();
@@ -579,7 +577,7 @@ for (const base of KV_PATH_BASES) {
 
   /** Descarga todas las páginas en el servidor (una sola petición desde el navegador). */
   app.post(`${base}/buk/fetch-all`, async (c) => {
-    const auth = await requireAuthenticatedRequest(c);
+    const auth = await requireAdminRequest(c, "Solo administradores pueden consultar Buk.");
     if (auth.response) return auth.response;
     try {
       const body = await c.req.json();

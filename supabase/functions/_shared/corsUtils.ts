@@ -1,9 +1,17 @@
-/** Orígenes permitidos (lista separada por comas en ALLOWED_ORIGINS). Vacío = permitir cualquiera. */
+/** Orígenes permitidos (lista separada por comas en ALLOWED_ORIGINS). Vacío = hosts conocidos, no cualquiera. */
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4200',
+  'https://gestionveterinariagroomers.com',
+]
+
 export function parseAllowedOrigins(): string[] {
-  return (Deno.env.get('ALLOWED_ORIGINS') || '')
+  const fromEnv = (Deno.env.get('ALLOWED_ORIGINS') || '')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean)
+  return fromEnv.length > 0 ? fromEnv : DEFAULT_ALLOWED_ORIGINS
 }
 
 function normalizeOrigin(origin: string): string {

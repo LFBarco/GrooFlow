@@ -2732,6 +2732,7 @@ export default function App() {
     "Honorarios",
     "Cuentas por Pagar",
     "Caja Chica",
+    "Reportes",
   ] as const;
   const canSeeFinanzasNavGroup = FINANCE_NAV_MODULES.some((m) => hasPermission(m));
 
@@ -2743,7 +2744,8 @@ export default function App() {
     hasPermission("Auditoría") ||
     hasPermission("Gestión Vehicular") ||
     hasPermission("Gestión de Inventario") ||
-    hasPermission("Asistencia");
+    hasPermission("Asistencia") ||
+    hasPermission("Conciliación");
 
   const handleSelectView = useCallback(
     (targetView: ViewType) => {

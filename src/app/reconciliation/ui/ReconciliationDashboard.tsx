@@ -7,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '../../components/ui/tooltip';
-import { AUDIT_GLOSSARY, SOURCE_LABELS } from '../domain/auditLabels';
+import { AUDIT_GLOSSARY, SOURCE_LABELS, sourceLabel } from '../domain/auditLabels';
 import { getActiveSession } from '../domain/dataset';
 import type { ReconciliationDataset, ReconciliationSourceType } from '../domain/types';
 import { computeAuditSummary } from '../engines/auditQueries';
@@ -64,7 +64,7 @@ export function ReconciliationDashboard({ dataset, onDatasetChange }: Props) {
       dataset,
       session.id,
       sourceType,
-      SOURCE_LABELS[sourceType],
+      sourceLabel(sourceType),
       onDatasetChange
     );
   };

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Label } from '../../components/ui/label';
 import { Switch } from '../../components/ui/switch';
 import { RECONCILIATION_CONNECTORS } from '../connectors';
-import { SOURCE_LABELS } from '../domain/auditLabels';
+import { sourceLabel } from '../domain/auditLabels';
 import { downloadSalesImportTemplate } from '../connectors/salesExcelConnector';
 import { downloadMercadoPagoColumnReference } from '../connectors/mercadoPagoConnector';
 import { downloadBcpImportTemplate } from '../connectors/bcpBankConnector';
@@ -44,7 +44,7 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
       dataset,
       sessionId,
       sourceType,
-      SOURCE_LABELS[sourceType],
+      sourceLabel(sourceType),
       onDatasetChange
     );
   };

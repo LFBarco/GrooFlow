@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
-import { SOURCE_LABELS, statusFilterForRule, type AuditNavRequest } from '../domain/auditLabels';
+import { sourceLabel, statusFilterForRule, type AuditNavRequest } from '../domain/auditLabels';
 import { sessionMovements } from '../domain/dataset';
 import {
   RULE_LABELS,
@@ -124,7 +124,7 @@ export function ReconciliationExceptionsPanel({ dataset, onDatasetChange, onNavi
                               title="Clic para abrir en Cruces"
                             >
                               <td className="p-2 whitespace-nowrap">{m.transactionDate}</td>
-                              <td className="p-2">{SOURCE_LABELS[m.sourceType]}</td>
+                              <td className="p-2">{sourceLabel(m.sourceType)}</td>
                               <td className="p-2 font-mono font-semibold">{m.operationNumber || '—'}</td>
                               <td className="p-2">S/ {m.amount.toFixed(2)}</td>
                               <td className="p-2 text-muted-foreground">
@@ -184,7 +184,7 @@ export function ReconciliationExceptionsPanel({ dataset, onDatasetChange, onNavi
                     title="Clic para ver en Cruces"
                   >
                     <td className="p-2 whitespace-nowrap">{m.transactionDate}</td>
-                    <td className="p-2">{SOURCE_LABELS[m.sourceType]}</td>
+                    <td className="p-2">{sourceLabel(m.sourceType)}</td>
                     <td className="p-2 font-mono text-xs font-semibold">{m.operationNumber || '—'}</td>
                     <td className="p-2">S/ {m.amount.toFixed(2)}</td>
                     <td className="p-2">{WORKFLOW_STATUS_LABELS[m.workflowStatus]}</td>
