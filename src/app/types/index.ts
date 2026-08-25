@@ -163,6 +163,8 @@ export interface User {
   status?: 'active' | 'inactive'; // Estado del usuario
   /** Foto de perfil (data URL JPEG optimizado). */
   avatarUrl?: string;
+  /** Preferencia de tema (grooflow_perfiles.extra_json / settings:theme). */
+  theme?: 'dark' | 'light';
 }
 
 export interface PurchaseRequest {

@@ -99,6 +99,13 @@ import {
   resolveAsistenciaSettings,
 } from '../utils/asistenciaPersistence';
 import { parseTransactionDate } from '../utils/transactionDate';
+import {
+  persistAndApplyTheme,
+  readStoredTheme,
+  resolveTheme,
+  themeLatestForAutosave,
+  parseTheme,
+} from '../utils/themePreference';
 import type { AsistenciaSettings } from '../types/asistencia';
 import {
   applySuperAdminRoleFromConfig,
@@ -919,30 +926,42 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         }
 
         {
-          const allowThemeRemote = shouldAllowKvRemoteHydrate(
-            data.__themeKvFetchFailed,
-            deps.skipThemeHydrateRef,
-            deps.themeKvCooldownUntilRef
-          );
-          if (data.__themeKvFetchFailed) {
-            deps.themeHydratedFromKvRef.current = false;
-            toast.error('No se pudo leer el tema desde la nube. Se detuvo el autoguardado.');
-          } else if (allowThemeRemote) {
-            const remote = data['settings:theme'];
-            const sessionUserId = sessionEffective?.user?.id ?? null;
-            const resolved = PRODUCTION_USE_SQL
-              ? ((await resolveAppKvFromSql(
-                  sqlClient!,
-                  'settings:theme',
-                  remote,
-                  sessionUserId,
-                  (v) => v == null
-                )) as 'dark' | 'light' | null | undefined) ?? remote
-              : remote;
-            const next: 'dark' | 'light' = resolved === 'light' ? 'light' : 'dark';
+          if (backend === 'rest') {
+            const next = resolveTheme(readStoredTheme(), sessionUserRow?.theme);
+            persistAndApplyTheme(next);
             deps.themeKvLatestRef.current = next;
             deps.setTheme(next);
             deps.themeHydratedFromKvRef.current = true;
+            if (next !== parseTheme(sessionUserRow?.theme)) {
+              void repository.auth.setOwnTheme?.(next);
+            }
+          } else {
+            const allowThemeRemote = shouldAllowKvRemoteHydrate(
+              data.__themeKvFetchFailed,
+              deps.skipThemeHydrateRef,
+              deps.themeKvCooldownUntilRef
+            );
+            if (data.__themeKvFetchFailed) {
+              deps.themeHydratedFromKvRef.current = false;
+              toast.error('No se pudo leer el tema desde la nube. Se detuvo el autoguardado.');
+            } else if (allowThemeRemote) {
+              const remote = data['settings:theme'];
+              const sessionUserId = sessionEffective?.user?.id ?? null;
+              const resolved = PRODUCTION_USE_SQL
+                ? ((await resolveAppKvFromSql(
+                    sqlClient!,
+                    'settings:theme',
+                    remote,
+                    sessionUserId,
+                    (v) => v == null
+                  )) as 'dark' | 'light' | null | undefined) ?? remote
+                : remote;
+              const next = resolveTheme(readStoredTheme(), sessionUserRow?.theme, resolved);
+              persistAndApplyTheme(next);
+              deps.themeKvLatestRef.current = themeLatestForAutosave(next, parseTheme(resolved));
+              deps.setTheme(next);
+              deps.themeHydratedFromKvRef.current = true;
+            }
           }
         }
 

@@ -49,7 +49,7 @@ export function AppNavButton({
         onClick={() => onSelectView(targetView)}
         onPointerEnter={() => prefetchView(targetView)}
         onFocus={() => prefetchView(targetView)}
-        className={`relative flex items-center w-full py-2.5 transition-colors duration-150 rounded-xl group/btn overflow-hidden
+        className={`relative flex items-center w-full min-h-11 py-2.5 transition-colors duration-150 rounded-xl group/btn overflow-hidden
         ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}
         ${
           isActive

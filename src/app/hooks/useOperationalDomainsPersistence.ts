@@ -7,6 +7,7 @@ import {
   saveInvoicesToSql,
   savePurchaseRequestsToSql,
 } from '../services/repository/businessDomainsSql';
+import { isRestBackend } from '../config/backend';
 import type {
   AlertThresholds,
   ChartOfAccountEntry,
@@ -145,7 +146,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   });
 
   useKvAppKeyAutosave({
-    isDataLoaded: o.isDataLoaded,
+    isDataLoaded: o.isDataLoaded && !isRestBackend(),
     hydratedRef: o.themeHydratedRef,
     kvKey: 'settings:theme',
     data: o.theme,

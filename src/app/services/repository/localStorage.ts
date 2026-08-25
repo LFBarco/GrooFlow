@@ -81,6 +81,10 @@ class LocalAuthRepository implements IAuthRepository {
     // no-op for local adapter
   }
 
+  async setOwnTheme(_theme: 'dark' | 'light'): Promise<void> {
+    // Preferencia local; no hay servidor
+  }
+
   onAuthStateChange(_callback: (user: AuthUser | null) => void): () => void {
     // Local adapter has no real-time events
     return () => {};

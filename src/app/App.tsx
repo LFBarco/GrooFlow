@@ -48,6 +48,7 @@ import {
   ShoppingCart,
   Package,
   Menu,
+  X,
   Coins,
   TrendingUp,
   Landmark,
@@ -98,10 +99,11 @@ import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./components/ui/dialog";
 import { api, setKvSessionFatalHandler, repository } from "./services/api";
-import { getGrooflowBackend, isSupabaseBackend } from "./config/backend";
+import { getGrooflowBackend, isRestBackend, isSupabaseBackend } from "./config/backend";
 import { getGrooflowToken } from "./services/repository/apiBase";
 import { isLocalDemoSessionActive } from "./config/demoLogin";
 import { clearCachedAppUser, readCachedAppUser, writeCachedAppUser } from "./utils/sessionCache";
+import { persistAndApplyTheme, readInitialTheme } from "./utils/themePreference";
 import { getSupabaseClientLazy } from "./services/repository/supabaseLazy";
 import { isFleetSqlEnabled, type FleetSqlTimestamps } from "./services/repository/fleetSql";
 import { isInventorySqlEnabled } from "./services/repository/inventorySql";
@@ -315,7 +317,7 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const safeCurrentDate = isValid(currentDate) ? currentDate : new Date();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [theme, setTheme] = useState<'dark' | 'light'>(readInitialTheme);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(() => APP_BACKEND === 'supabase');
@@ -448,7 +450,7 @@ export default function App() {
   const skipThemeHydrateRef = useRef(false);
   const themeKvCooldownUntilRef = useRef(0);
   const themeKvChainRef = useRef(KV_CHAIN_IDLE);
-  const themeKvLatestRef = useRef<'dark' | 'light'>('dark');
+  const themeKvLatestRef = useRef<'dark' | 'light'>(readInitialTheme());
   /** Lista de usuarios (data:users). */
   const usersHydratedFromKvRef = useRef(false);
   const skipUsersHydrateRef = useRef(false);
@@ -1179,13 +1181,14 @@ export default function App() {
         break;
       }
       case 'settings:theme': {
-        if (PRODUCTION_USE_SQL) return;
+        if (PRODUCTION_USE_SQL || isRestBackend()) return;
         if (!themeHydratedFromKvRef.current) return;
         if (value !== 'dark' && value !== 'light') return;
         if (kvPayloadsEqual(themeKvLatestRef.current, value)) return;
         themeKvLatestRef.current = value;
         themeKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         markCrossTabEchoWindow(key);
+        persistAndApplyTheme(value);
         setTheme(value);
         applied = true;
         break;
@@ -1743,6 +1746,7 @@ export default function App() {
 
   const applyThemeRemoteRef = useRef<((t: 'dark' | 'light') => void) | null>(null);
   applyThemeRemoteRef.current = (t) => {
+    if (isRestBackend()) return;
     if (!isDataLoaded || signingOutRef.current || !themeHydratedFromKvRef.current) return;
     if (
       !shouldApplyValueRemoteSnapshot(themeKvLatestRef.current, t, themeKvCooldownUntilRef.current)
@@ -1751,6 +1755,7 @@ export default function App() {
     }
     themeKvLatestRef.current = t;
     themeKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+    persistAndApplyTheme(t);
     setTheme(t);
   };
 
@@ -1959,15 +1964,17 @@ export default function App() {
   };
 
 
-  // Handle Theme Effect
   useEffect(() => {
-    const root = window.document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(theme);
+    persistAndApplyTheme(theme);
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      persistAndApplyTheme(next);
+      void repository.auth.setOwnTheme?.(next);
+      return next;
+    });
   };
 
   const handlePrevMonth = () =>
@@ -2771,6 +2778,23 @@ export default function App() {
   );
 
   useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    const closeOnDesktop = () => {
+      if (window.innerWidth >= 768) setMobileMenuOpen(false);
+    };
+    window.addEventListener('resize', closeOnDesktop);
+    return () => window.removeEventListener('resize', closeOnDesktop);
+  }, []);
+
+  useEffect(() => {
     if (!isAuthenticated || !isDataLoaded) return;
     const win = window as Window & {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
@@ -2792,6 +2816,13 @@ export default function App() {
       onSelectView: handleSelectView,
     }),
     [urlView, isSidebarCollapsed, hasPermission, handleSelectView]
+  );
+  const appNavigationMobileValue = useMemo(
+    () => ({
+      ...appNavigationValue,
+      isSidebarCollapsed: false,
+    }),
+    [appNavigationValue]
   );
 
   // --- SEDE FILTERING HELPERS (memoizado: menos re-renders en vistas que filtran por sede) ---
@@ -3156,9 +3187,9 @@ export default function App() {
       )}
       <AmbientBackground moduleId={view} isDark={isDarkTheme} />
 
-      {/* Sidebar */}
+      {/* Sidebar — escritorio / tablet ancha */}
       <div 
-        className={`sidebar-hybrid ${isSidebarCollapsed ? 'w-[76px]' : 'w-[256px]'} fixed inset-y-0 left-0 z-50 flex flex-col`}
+        className={`sidebar-hybrid hidden md:flex ${isSidebarCollapsed ? 'w-[76px]' : 'w-[256px]'} fixed inset-y-0 left-0 z-50 flex-col`}
         style={{
           transition: 'width 180ms cubic-bezier(0.2, 0, 0, 1)',
           background: 'var(--gf-sidebar-bg)',
@@ -3274,23 +3305,33 @@ export default function App() {
       </div>
 
       {/* Mobile Header */}
-      <div className="md:hidden h-14 flex items-center px-4 justify-between sticky top-0 z-40 shadow-lg"
+      <div className="md:hidden sticky top-0 z-40 flex items-center px-3 sm:px-4 justify-between min-h-14 pt-[env(safe-area-inset-top)] shadow-lg"
         style={
           theme === 'light'
             ? { background: 'rgba(255,255,255,0.96)', backdropFilter: 'blur(16px)', borderBottom: '1px solid #CBD5E1', boxShadow: '0 4px 20px -6px rgba(15,23,42,0.08)' }
             : { background: 'rgba(13,11,30,0.95)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(139,92,246,0.15)' }
         }
       >
-        <div className="flex items-center">
-             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mr-3 p-2 rounded-xl hover:bg-white/8 active:scale-95 transition-all">
-                 <Menu className="h-5 w-5" style={{ color: 'var(--gf-sidebar-icon)' }} />
+        <div className="flex items-center min-w-0">
+             <button
+               type="button"
+               aria-label={mobileMenuOpen ? 'Cerrar menú' : 'Abrir menú'}
+               aria-expanded={mobileMenuOpen}
+               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+               className="mr-2 p-2.5 rounded-xl min-h-11 min-w-11 flex items-center justify-center hover:bg-white/8 active:scale-95 transition-all"
+             >
+                 {mobileMenuOpen ? (
+                   <X className="h-5 w-5" style={{ color: 'var(--gf-sidebar-icon)' }} />
+                 ) : (
+                   <Menu className="h-5 w-5" style={{ color: 'var(--gf-sidebar-icon)' }} />
+                 )}
              </button>
             <div className="w-7 h-7 mr-2 rounded-lg overflow-hidden flex-shrink-0" style={{ border: '1px solid rgba(34,211,238,0.25)' }}>
               <GrooflowBrandLogo customSrc={systemSettings.businessLogo} className="w-full h-full object-contain" />
             </div>
-            <span className="text-base font-bold tracking-tight gradient-text-cyber truncate max-w-[150px]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{systemSettings.businessName || 'GrooFlow'}</span>
+            <span className="text-base font-bold tracking-tight gradient-text-cyber truncate max-w-[42vw]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{systemSettings.businessName || 'GrooFlow'}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           {isAuthenticated && isDataLoaded && (
             <CloudSyncIndicator
               phase={cloudSyncPhase}
@@ -3309,44 +3350,75 @@ export default function App() {
         </div>
       </div>
 
-       {/* Mobile Menu Dropdown */}
+       {/* Mobile Menu Drawer */}
        {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-30 backdrop-blur-sm" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setMobileMenuOpen(false)}>
-            <div className="fixed inset-y-0 left-0 w-64 shadow-2xl p-4 pt-20 overflow-y-auto sidebar-hybrid" style={{ background: 'var(--gf-sidebar-bg)', borderRight: '1px solid var(--gf-sidebar-border)' }} onClick={e => e.stopPropagation()}>
-                <nav className="space-y-0.5">
+        <div className="md:hidden fixed inset-0 z-[60] backdrop-blur-sm" style={{ background: 'rgba(15,23,42,0.55)' }} onClick={() => setMobileMenuOpen(false)}>
+            <div
+              className="fixed top-0 bottom-0 left-0 h-dvh w-[min(18.75rem,calc(100vw-2.25rem))] shadow-2xl overscroll-contain sidebar-hybrid flex flex-col overflow-hidden"
+              style={{
+                background: 'var(--gf-sidebar-bg)',
+                borderRight: '1px solid var(--gf-sidebar-border)',
+                paddingTop: 'env(safe-area-inset-top)',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between px-4 h-14 shrink-0" style={{ borderBottom: '1px solid var(--gf-sidebar-divider)' }}>
+                  <span className="text-sm font-bold tracking-tight gradient-text-cyber" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>Menú</span>
+                  <button
+                    type="button"
+                    aria-label="Cerrar menú"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="p-2 rounded-xl min-h-11 min-w-11 flex items-center justify-center"
+                    style={{ color: 'var(--gf-sidebar-icon)' }}
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+                <AppNavigationContext.Provider value={appNavigationMobileValue}>
+                <nav className="flex-1 overflow-y-auto px-1 py-3 space-y-0.5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                    <div className="px-3 pb-1 pt-0.5">
+                      <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Principal</span>
+                    </div>
                     <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400" requiredModule="Dashboard" />
                     <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400" requiredModule="Alertas" />
-                    <NavButton targetView="analytics" icon={Brain} label="Analítica AI" iconColorClass="text-violet-400" requiredModule="Analítica" />
+                    <NavButton targetView="analytics" icon={Brain} label="Analítica" iconColorClass="text-violet-400" requiredModule="Analítica" />
+                    <div className="px-3 pb-1 pt-3">
+                      <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Finanzas</span>
+                    </div>
                     <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400" requiredModule="Tesorería" />
                     <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400" requiredModule="Transacciones" />
                     <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400" requiredModule="Flujo de Caja" />
                     <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400" requiredModule="Estado de Resultados" />
                     <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400" requiredModule="Reportes" />
-                    <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
-                    <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400" requiredModule="Conciliación" />
                     <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400" requiredModule="Caja Chica" />
                     <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" requiredModule="Honorarios" />
+                    <div className="px-3 pb-1 pt-3">
+                      <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Gestión</span>
+                    </div>
                     <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" requiredModule="Proveedores" />
                     <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400" requiredModule="Contabilidad" />
                     <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400" requiredModule="Gestión Vehicular" />
                     <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400" requiredModule="Gestión de Inventario" />
                     <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400" requiredModule="Asistencia" />
                     <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400" requiredModule="Productos" />
-                    <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" requiredModule="Compras" />
-                    <div className="pt-4 border-t border-border mt-4 space-y-2">
-                        <NavButton targetView="users" icon={Users} label="Usuarios y Roles" requiredModule="Usuarios" />
-                        <NavButton targetView="config" icon={Settings} label="Configuración" requiredModule="Configuración" />
+                    <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400" requiredModule="Compras" />
+                    <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
+                    <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400" requiredModule="Conciliación" />
+                    <div className="pt-3 mt-2 space-y-0.5" style={{ borderTop: '1px solid var(--gf-sidebar-divider)' }}>
+                        <NavButton targetView="users" icon={Users} label="Usuarios y Roles" iconColorClass="text-lime-400" requiredModule="Usuarios" />
+                        <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400" requiredModule="Configuración" />
                     </div>
                 </nav>
+                </AppNavigationContext.Provider>
             </div>
         </div>
        )}
 
       {/* Main Content */}
-      <main className={`min-h-screen relative z-10 pt-6 md:pt-0 ${isSidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[256px]'}`}
+      <main className={`min-h-dvh relative z-10 min-w-0 ${isSidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[256px]'}`}
         style={{ transition: 'padding-left 180ms cubic-bezier(0.2, 0, 0, 1)' }}
       >
-        <div className={`w-full ${view !== 'treasury' ? 'px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 lg:py-8' : ''}`}>
+        <div className={`w-full min-w-0 ${view !== 'treasury' ? 'px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-4 sm:py-6 lg:py-8' : ''}`}>
           {/* Header fuera de Suspense: no desaparece al cambiar de módulo */}
           {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
             <ModuleHeader

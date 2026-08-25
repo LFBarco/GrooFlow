@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getSupabaseClientLazy } from '../../services/repository/supabaseLazy';
-import { loadAuditLogs, mapAuditRowToEntry, type AuditLogEntry } from '../../services/repository/auditLogSql';
+import { loadAuditLogsForApp, mapAuditRowToEntry, type AuditLogEntry } from '../../services/repository/auditLogSql';
 import { Transaction, InvoiceDraft } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
@@ -61,19 +60,11 @@ export function AuditPanel({
     }
     let cancelled = false;
     setAuditLogsLoading(true);
-    void getSupabaseClientLazy().then((client) => {
+    void loadAuditLogsForApp(80).then(({ ok, rows }) => {
       if (cancelled) return;
-      if (!client) {
-        setAuditLogsLoading(false);
-        setAuditLogs([]);
-        return;
-      }
-      return loadAuditLogs(client, 80).then(({ ok, rows }) => {
-        if (cancelled) return;
-        setAuditLogsLoading(false);
-        if (!ok) return;
-        setAuditLogs(rows.map((r) => mapAuditRowToEntry(r, currentUserEmail)));
-      });
+      setAuditLogsLoading(false);
+      if (!ok) return;
+      setAuditLogs(rows.map((r) => mapAuditRowToEntry(r, currentUserEmail)));
     });
     return () => {
       cancelled = true;

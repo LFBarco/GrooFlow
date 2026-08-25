@@ -421,7 +421,7 @@ export function LoginPage({
   /* ─── RENDER ─── */
   return (
     <div
-      className="flex min-h-screen w-full overflow-hidden font-sans relative selection:bg-cyan-500/30 selection:text-cyan-300"
+      className="flex min-h-dvh w-full overflow-x-hidden font-sans relative selection:bg-cyan-500/30 selection:text-cyan-300"
       style={{ background: t.pageBg, color: t.pageText, transition: 'background 500ms ease, color 500ms ease' }}
     >
       {/* ══════════════════════════════════════════════════
@@ -443,13 +443,13 @@ export function LoginPage({
       {/* ══════════════════════════════════════════════════
           MAIN LAYOUT
           ══════════════════════════════════════════════════ */}
-      <div className="flex flex-col lg:flex-row w-full h-screen relative z-10">
+      <div className="flex flex-col lg:flex-row w-full min-h-dvh relative z-10">
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             LEFT PANEL — SPLASH HERO
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <div
-          className="lg:w-[58%] relative flex flex-col justify-center items-center overflow-hidden"
+          className="relative flex flex-col justify-center items-center overflow-hidden px-5 py-8 sm:px-8 sm:py-10 lg:w-[58%] lg:min-h-dvh lg:px-10 lg:py-12"
           style={{ background: t.leftBg, transition: 'background 500ms ease' }}
         >
           {/* 3D Perspective Cyber Grid */}
@@ -537,14 +537,14 @@ export function LoginPage({
           </motion.div>
 
           {/* ─── SPLASH CONTENT ─── */}
-          <div className="relative z-30 flex flex-col items-center justify-center p-10 splash-entrance">
+          <div className="relative z-30 flex flex-col items-center justify-center w-full max-w-xl px-1 sm:px-4 lg:p-6 splash-entrance">
 
             {/* Animated SVG Logo */}
             <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ delay: 0.2, duration: 1, ease: [0.16, 1, 0.3, 1] }}
-              className="w-36 h-36 md:w-48 md:h-48 lg:w-56 lg:h-56 mb-6 relative splash-heartbeat"
+              className="w-[4.75rem] h-[4.75rem] sm:w-28 sm:h-28 md:w-40 md:h-40 lg:w-56 lg:h-56 mb-3 sm:mb-5 lg:mb-6 relative splash-heartbeat"
             >
               <GrooFlowLogo isDark={isDark} />
             </motion.div>
@@ -559,7 +559,7 @@ export function LoginPage({
               <h1
                 className="tracking-tighter mb-2 select-none"
                 style={{
-                  fontSize: 'clamp(4.5rem, 9vw, 7rem)',
+                  fontSize: 'clamp(2.35rem, 10vw, 7rem)',
                   fontFamily: "'Outfit', 'Space Grotesk', sans-serif",
                   fontWeight: 700,
                   lineHeight: 0.9,
@@ -574,8 +574,8 @@ export function LoginPage({
               <div className="h-px w-full my-4" style={{ background: t.dividerBg, opacity: 0.5 }} />
 
               {/* Subtitle */}
-              <p className="mb-6" style={{
-                fontSize: '1.05rem', color: t.subtitleColor,
+              <p className="mb-4 sm:mb-6 px-2" style={{
+                fontSize: 'clamp(0.8rem, 2.6vw, 1.05rem)', color: t.subtitleColor,
                 fontWeight: 300, letterSpacing: '0.03em', maxWidth: '420px'
               }}>
                 Sistema Financiero Veterinario de{" "}
@@ -587,7 +587,7 @@ export function LoginPage({
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.9, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-wrap justify-center gap-2.5 mb-8"
+                className="flex flex-wrap justify-center gap-1.5 sm:gap-2.5 mb-4 sm:mb-8"
               >
                 {FEATURES.map((feat, i) => {
                   const Icon = feat.icon;
@@ -599,7 +599,7 @@ export function LoginPage({
                       animate={{ y: 0, opacity: 1 }}
                       transition={{ delay: 1.0 + i * 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                       whileHover={{ scale: 1.06, y: -2 }}
-                      className={`splash-pill-shimmer flex items-center gap-2 px-4 py-2 rounded-full cursor-default`}
+                      className={`splash-pill-shimmer flex items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-full cursor-default`}
                       style={{
                         background: isDark
                           ? `rgba(255,255,255,0.03)`
@@ -638,7 +638,7 @@ export function LoginPage({
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1.2, duration: 0.6 }}
-                className="flex items-center justify-center gap-3 text-xs tracking-[0.15em] uppercase"
+                className="relative z-10 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] sm:text-xs tracking-[0.15em] uppercase"
                 style={{ color: t.statusMuted, fontFamily: "'JetBrains Mono', monospace" }}
               >
                 <div
@@ -652,8 +652,8 @@ export function LoginPage({
             </motion.div>
 
             {/* Reflection effect */}
-            <div className="splash-reflection mt-[-8px] pointer-events-none select-none" aria-hidden="true">
-              <h1
+            <div className="splash-reflection mt-[-8px] pointer-events-none select-none hidden lg:block" aria-hidden="true">
+              <p
                 className="tracking-tighter"
                 style={{
                   fontSize: 'clamp(4.5rem, 9vw, 7rem)',
@@ -665,22 +665,22 @@ export function LoginPage({
                 }}
               >
                 GrooFlow
-              </h1>
+              </p>
             </div>
           </div>
 
-          {/* Corner tech brackets with pulse */}
-          <div className="absolute top-8 left-8 w-6 h-6 z-40 splash-bracket" style={{ borderTop: `2px solid ${t.bracketCyan}`, borderLeft: `2px solid ${t.bracketCyan}` }} />
-          <div className="absolute bottom-8 left-8 w-6 h-6 z-40 splash-bracket" style={{ borderBottom: `2px solid ${t.bracketCyan}`, borderLeft: `2px solid ${t.bracketCyan}`, animationDelay: '1s' }} />
-          <div className="absolute top-8 right-8 w-6 h-6 z-40 splash-bracket" style={{ borderTop: `2px solid ${t.bracketViolet}`, borderRight: `2px solid ${t.bracketViolet}`, animationDelay: '2s' }} />
-          <div className="absolute bottom-8 right-8 w-6 h-6 z-40 splash-bracket" style={{ borderBottom: `2px solid ${t.bracketViolet}`, borderRight: `2px solid ${t.bracketViolet}`, animationDelay: '3s' }} />
+          {/* Corner tech brackets with pulse — solo escritorio, evitan solapes en móvil */}
+          <div className="hidden lg:block absolute top-8 left-8 w-6 h-6 z-40 splash-bracket" style={{ borderTop: `2px solid ${t.bracketCyan}`, borderLeft: `2px solid ${t.bracketCyan}` }} />
+          <div className="hidden lg:block absolute bottom-8 left-8 w-6 h-6 z-40 splash-bracket" style={{ borderBottom: `2px solid ${t.bracketCyan}`, borderLeft: `2px solid ${t.bracketCyan}`, animationDelay: '1s' }} />
+          <div className="hidden lg:block absolute top-8 right-8 w-6 h-6 z-40 splash-bracket" style={{ borderTop: `2px solid ${t.bracketViolet}`, borderRight: `2px solid ${t.bracketViolet}`, animationDelay: '2s' }} />
+          <div className="hidden lg:block absolute bottom-8 right-8 w-6 h-6 z-40 splash-bracket" style={{ borderBottom: `2px solid ${t.bracketViolet}`, borderRight: `2px solid ${t.bracketViolet}`, animationDelay: '3s' }} />
 
           {/* Footer typewriter text */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: isDark ? 0.4 : 0.6 }}
             transition={{ delay: 1.5, duration: 1 }}
-            className="absolute bottom-6 z-40 text-xs tracking-[0.2em]"
+            className="hidden lg:block absolute bottom-6 z-40 text-xs tracking-[0.2em]"
             style={{ fontFamily: "'JetBrains Mono', monospace" }}
           >
             <TypewriterText
@@ -696,19 +696,19 @@ export function LoginPage({
             RIGHT PANEL — LOGIN FORM
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <div
-          className="lg:w-[42%] relative flex flex-col justify-center p-8 lg:p-14 z-40 overflow-y-auto"
+          className="relative z-40 flex flex-1 flex-col justify-center overflow-y-auto px-5 py-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8 lg:w-[42%] lg:min-h-dvh lg:p-14 max-lg:border-t lg:border-l"
           style={{
             background: t.rightBg,
-            borderLeft: t.rightBorder,
+            borderColor: isDark ? 'rgba(139,92,246,0.18)' : 'rgba(109,40,217,0.12)',
             boxShadow: t.rightShadow,
             transition: 'background 500ms ease, border-color 500ms ease, box-shadow 500ms ease',
           }}
         >
           {/* Cyber border left glow */}
-          <div className="absolute left-0 inset-y-0 w-px" style={{ background: t.rightGlowLine }} />
+          <div className="hidden lg:block absolute left-0 inset-y-0 w-px" style={{ background: t.rightGlowLine, borderLeft: t.rightBorder }} />
 
           {/* Top right controls */}
-          <div className="absolute top-6 right-6 flex items-center gap-3">
+          <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-20 flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
@@ -727,7 +727,7 @@ export function LoginPage({
             </div>
           </div>
 
-          <div className="max-w-sm w-full mx-auto relative z-10 my-auto">
+          <div className="max-w-sm w-full mx-auto relative z-10 my-auto pt-8 lg:pt-0">
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -747,7 +747,7 @@ export function LoginPage({
                     ACCESO AL SISTEMA
                   </span>
                 </div>
-                <h2 className="text-3xl mb-2" style={{ color: t.headingColor, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700 }}>
+                <h2 className="text-[1.75rem] sm:text-3xl mb-2" style={{ color: t.headingColor, fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700 }}>
                   Bienvenido
                 </h2>
                 <p className="text-sm" style={{ color: t.subHeadingColor }}>
@@ -811,7 +811,7 @@ export function LoginPage({
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between pt-1">
+                  <div className="flex flex-col gap-2.5 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between pt-1">
                     <div className="flex items-center gap-2">
                       <Checkbox
                         id="remember"

@@ -1,11 +1,15 @@
 /**
- * Registro y lectura de security_audit_logs (producción).
+ * Registro y lectura de auditoría (REST MySQL o Supabase).
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+import { getGrooflowBackend } from '../../config/backend';
 
 export type AuditLogRow = {
   id: number;
   actor_user_id: string | null;
+  actor_email?: string | null;
+  actor_name?: string | null;
   action: string;
   target_user_id: string | null;
   metadata: Record<string, unknown>;
@@ -59,7 +63,11 @@ export function mapAuditRowToEntry(row: AuditLogRow, actorEmail?: string): Audit
 
   return {
     id: String(row.id),
-    user: actorEmail ?? (row.actor_user_id ? row.actor_user_id.slice(0, 8) : 'Sistema'),
+    user:
+      row.actor_email ||
+      row.actor_name ||
+      actorEmail ||
+      (row.actor_user_id ? row.actor_user_id.slice(0, 8) : 'Sistema'),
     action: actionLabel(row.action),
     entity,
     details,
@@ -97,6 +105,14 @@ export function writeAuditLogLazy(
   metadata: Record<string, unknown>,
   targetUserId?: string | null
 ): void {
+  const backend = getGrooflowBackend();
+  if (backend === 'rest') {
+    void import('./rest')
+      .then(({ restWriteAudit }) => restWriteAudit(action, metadata, targetUserId))
+      .catch((e) => console.warn('[audit] REST write failed', action, e));
+    return;
+  }
+  if (backend === 'local') return;
   void import('./supabaseLazy').then(async ({ getSupabaseClientLazy }) => {
     const client = await getSupabaseClientLazy();
     if (!client) return;
@@ -119,4 +135,27 @@ export async function loadAuditLogs(
     return { ok: false, rows: [] };
   }
   return { ok: true, rows: (data ?? []) as AuditLogRow[] };
+}
+
+export async function loadAuditLogsForApp(
+  limit = 80
+): Promise<{ ok: boolean; rows: AuditLogRow[] }> {
+  const backend = getGrooflowBackend();
+  if (backend === 'rest') {
+    try {
+      const { restLoadAudit } = await import('./rest');
+      const rows = await restLoadAudit(limit);
+      return { ok: true, rows };
+    } catch (e) {
+      console.warn('[audit] REST load failed', e);
+      return { ok: false, rows: [] };
+    }
+  }
+  if (backend === 'local') {
+    return { ok: true, rows: [] };
+  }
+  const { getSupabaseClientLazy } = await import('./supabaseLazy');
+  const client = await getSupabaseClientLazy();
+  if (!client) return { ok: false, rows: [] };
+  return loadAuditLogs(client, limit);
 }

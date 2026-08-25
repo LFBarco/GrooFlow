@@ -70,7 +70,7 @@ export function FleetDecisionAssistant({ dataset, onOpenFleet }: FleetDecisionAs
 
   return (
     <div
-      className={`rounded-2xl p-5 space-y-4 ${s.isDark ? '' : 'gf-glass-card'}`}
+      className={`rounded-2xl p-4 sm:p-5 space-y-4 ${s.isDark ? '' : 'gf-glass-card'}`}
       style={{
         background: a.background,
         border: a.border,

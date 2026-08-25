@@ -151,6 +151,17 @@ class RestAuthRepository implements IAuthRepository {
     });
   }
 
+  async setOwnTheme(theme: 'dark' | 'light'): Promise<void> {
+    try {
+      await restFetch('/auth/theme', {
+        method: 'POST',
+        body: JSON.stringify({ theme }),
+      });
+    } catch {
+      /* el tema ya quedó en localStorage y en grooflow_perfiles.extra_json */
+    }
+  }
+
   onAuthStateChange(callback: AuthListener): () => void {
     listeners.add(callback);
     void this.getSession().then(callback);
@@ -257,3 +268,32 @@ export const restRepository: IDataRepository = {
   roles: new RestCollectionRepository('roles'),
   requisitions: new RestCollectionRepository('requisitions'),
 };
+
+export type RestAuditRow = {
+  id: number;
+  actor_user_id: string | null;
+  actor_email?: string | null;
+  actor_name?: string | null;
+  action: string;
+  target_user_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function restWriteAudit(
+  action: string,
+  metadata: Record<string, unknown>,
+  targetUserId?: string | null
+): Promise<void> {
+  await restFetch('/audit', {
+    method: 'POST',
+    body: JSON.stringify({ action, metadata, targetUserId: targetUserId ?? null }),
+  });
+}
+
+export async function restLoadAudit(limit = 80): Promise<RestAuditRow[]> {
+  const data = await restFetch<{ rows?: RestAuditRow[] }>(
+    `/audit?limit=${encodeURIComponent(String(limit))}`
+  );
+  return Array.isArray(data.rows) ? data.rows : [];
+}

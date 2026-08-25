@@ -32,7 +32,7 @@ export function ModuleHeader({
   return (
     <div
       className={cn(
-        'mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-5',
+        'mb-5 sm:mb-8 flex flex-col xl:flex-row xl:items-center justify-between gap-3 sm:gap-4 pb-4 sm:pb-5',
         !isDark && 'gf-module-header',
         className,
       )}
@@ -41,7 +41,7 @@ export function ModuleHeader({
         <div className="flex items-start gap-4">
           <div
             className={cn(
-              'gf-module-header-icon p-3 rounded-2xl shrink-0',
+              'gf-module-header-icon p-2.5 sm:p-3 rounded-2xl shrink-0',
               !isDark && 'gf-glass-icon-wrap',
             )}
             style={
@@ -51,7 +51,7 @@ export function ModuleHeader({
             }
           >
             <Icon
-              className="w-8 h-8"
+              className="w-6 h-6 sm:w-8 sm:h-8"
               style={{
                 color: accent,
                 filter: isDark ? `drop-shadow(0 0 10px ${accentGlow})` : undefined,
@@ -61,8 +61,7 @@ export function ModuleHeader({
           <div className="space-y-1 min-w-0">
             <h1
               className={cn(
-                'gf-module-title font-extrabold tracking-tight',
-                isDark ? 'text-[1.75rem]' : 'text-[1.85rem]',
+                'gf-module-title font-extrabold tracking-tight text-[1.35rem] sm:text-[1.75rem] lg:text-[1.85rem]',
               )}
               style={{ color: isDark ? '#F0EEFF' : '#0f172a', letterSpacing: '-0.02em' }}
             >

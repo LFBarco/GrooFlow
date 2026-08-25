@@ -159,7 +159,7 @@ export function Overview({
   }) => {
     const kpi = chartTheme.kpi[kind];
     return (
-    <div className={`relative overflow-hidden rounded-2xl p-5 group cursor-default ${kpi.className ?? ''}`}
+    <div className={`relative overflow-hidden rounded-2xl p-4 sm:p-5 group cursor-default ${kpi.className ?? ''}`}
       style={{
         background: kpi.background,
         border: kpi.border,
@@ -203,7 +203,7 @@ export function Overview({
         </div>
         <div>
           <p className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: kpi.labelColor, letterSpacing: '0.12em' }}>{label}</p>
-          <p className="text-2xl font-bold tracking-tight" style={{ color: kpi.valueColor, fontFamily: "'JetBrains Mono', monospace" }}>{value}</p>
+          <p className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: kpi.valueColor, fontFamily: "'JetBrains Mono', monospace" }}>{value}</p>
         </div>
       </div>
     </div>
@@ -271,7 +271,7 @@ export function Overview({
             boxShadow: chartTheme.chartCard.boxShadow,
           }}
         >
-          <div className="flex items-center justify-between mb-5 pb-4" style={{ borderBottom: `1px solid ${chartTheme.divider}` }}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4" style={{ borderBottom: `1px solid ${chartTheme.divider}` }}>
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <div className="p-1.5 rounded-lg" style={{ background: `${chartTheme.INCOME}18`, border: `1px solid ${chartTheme.INCOME}35` }}>

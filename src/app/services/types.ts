@@ -64,6 +64,9 @@ export interface IAuthRepository {
   /** Habilita o deshabilita login Auth (admin only — ban/unban) */
   setUserAuthEnabled(userIdOrEmail: string, enabled: boolean): Promise<void>;
 
+  /** Guarda el tema del usuario autenticado en BD (REST). */
+  setOwnTheme?(theme: 'dark' | 'light'): Promise<void>;
+
   /**
    * Subscribe to auth state changes.
    * Returns an unsubscribe function.
