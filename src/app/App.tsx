@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo, Suspense, type CSSProperties } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense, useTransition, type CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
@@ -294,8 +294,15 @@ export default function App() {
   const [treasuryPaidHistory, setTreasuryPaidHistory] = useState<any[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
-  const view = pathToView(location.pathname);
-  const setView = (v: ViewType) => navigate(viewToPath(v));
+  const urlView = pathToView(location.pathname);
+  const [view, setRenderedView] = useState<ViewType>(urlView);
+  const [, startViewTransition] = useTransition();
+  useEffect(() => {
+    if (urlView === view) return;
+    startViewTransition(() => {
+      setRenderedView(urlView);
+    });
+  }, [urlView, view]);
   const [config, setConfig] = useState<ConfigStructure>(initialStructure);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(initialSystemSettings);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -2705,16 +2712,16 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || !isDataLoaded) return;
     if (isSuperAdmin) return;
-    const mod = VIEW_REQUIRED_MODULE[view];
+    const mod = VIEW_REQUIRED_MODULE[urlView];
     if (!mod) return;
     if (roleRecordHasModuleAccess(userRole, mod)) return;
     const targetPath = getFirstAllowedViewPath(userRole, isSuperAdmin);
-    if (targetPath === viewToPath(view)) {
+    if (targetPath === viewToPath(urlView)) {
       return;
     }
     navigate(targetPath, { replace: true });
     toast.error('No tienes permiso para acceder a esta sección. Se redirigió a un módulo permitido.');
-  }, [isAuthenticated, isDataLoaded, isSuperAdmin, view, userRole, navigate]);
+  }, [isAuthenticated, isDataLoaded, isSuperAdmin, urlView, userRole, navigate]);
 
   const FINANCE_NAV_MODULES = [
     "Finanzas",
@@ -2763,12 +2770,12 @@ export default function App() {
 
   const appNavigationValue = useMemo(
     () => ({
-      activeView: view,
+      activeView: urlView,
       isSidebarCollapsed,
       hasPermission,
       onSelectView: handleSelectView,
     }),
-    [view, isSidebarCollapsed, hasPermission, handleSelectView]
+    [urlView, isSidebarCollapsed, hasPermission, handleSelectView]
   );
 
   // --- SEDE FILTERING HELPERS (memoizado: menos re-renders en vistas que filtran por sede) ---
