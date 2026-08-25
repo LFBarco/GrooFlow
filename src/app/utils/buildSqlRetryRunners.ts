@@ -15,6 +15,8 @@ import type { ConfigStructure } from '../data/initialData';
 import type { Role } from '../components/users/types';
 import type { FleetDataset } from '../types/fleet';
 import type { InventoryDataset } from '../types/inventory';
+import type { AlertReadState } from '../hooks/alertReadPersistenceBridge';
+import type { ReconciliationDataset } from '../reconciliation/domain/types';
 import { saveAppKvKey } from '../services/repository/appKvSql';
 import {
   saveAppUsersToSql,
@@ -32,6 +34,7 @@ import { PETTY_CASH_META_KV_KEY, type PettyCashWeekMetaPayload } from './pettyCa
 import type { AsistenciaSettings } from '../types/asistencia';
 import { ASISTENCIA_SETTINGS_KV_KEY } from './asistenciaPersistence';
 import { getSqlSaveQueue } from './sqlSaveQueue';
+import type { SqlRetryRunnerMap } from './sqlRetryProcessor';
 
 export type FeeReceiptGlobal = {
   id: string;
@@ -63,6 +66,8 @@ export type SqlRetryLatestSnapshot = {
   inventory: InventoryDataset;
   pettyCashMeta: PettyCashWeekMetaPayload;
   asistencia: AsistenciaSettings;
+  reconciliation: ReconciliationDataset;
+  alertReadState: AlertReadState;
 };
 
 export type BuildSqlRetryRunnersInput = {
@@ -150,6 +155,11 @@ export function buildSqlRetryRunners(input: BuildSqlRetryRunnersInput): SqlRetry
   runners['data:treasuryBankMovements'] = appKv(
     'data:treasuryBankMovements',
     latest.treasuryBankMovements
+  );
+  runners['data:reconciliation'] = appKv('data:reconciliation', latest.reconciliation);
+  runners['settings:alertReadState'] = appKv(
+    'settings:alertReadState',
+    latest.alertReadState
   );
 
   return runners;

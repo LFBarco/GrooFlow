@@ -81,6 +81,7 @@ export function kvKeyDisplayLabel(key: string): string {
     'settings:system': 'Configuración del sistema',
     'settings:theme': 'Tema',
     'settings:alertThresholds': 'Umbrales de alertas',
+    'settings:alertReadState': 'Alertas leídas',
     'data:transactions': 'Transacciones',
     'data:providers': 'Proveedores',
     'data:pettyCash': 'Caja chica',

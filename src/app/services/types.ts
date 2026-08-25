@@ -177,6 +177,7 @@ export const KV_KEYS = {
   CHART_OF_ACCOUNTS:    'data:chartOfAccounts',
   FLEET:                'data:fleet',
   RECONCILIATION:       'data:reconciliation',
+  ALERT_READ_STATE:     'settings:alertReadState',
 } as const;
 
 export type KVKey = typeof KV_KEYS[keyof typeof KV_KEYS];

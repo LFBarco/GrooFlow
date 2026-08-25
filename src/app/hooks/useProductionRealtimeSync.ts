@@ -194,6 +194,10 @@ export type ProductionRealtimeHandlers = {
 
   treasuryBankMovementsLatest?: MutableRefObject<unknown[]>;
 
+  reconciliation?: MutableRefObject<((value: unknown) => void) | null>;
+
+  alertReadState?: MutableRefObject<((value: unknown) => void) | null>;
+
 };
 
 
@@ -245,6 +249,10 @@ const APP_KV_KEYS = [
   'data:treasurySubscriptions',
 
   'data:treasuryBankMovements',
+
+  'data:reconciliation',
+
+  'settings:alertReadState',
 
 ] as const;
 
@@ -771,6 +779,22 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
           latest.current = result.data;
 
           h.current?.(result.data);
+
+          break;
+
+        }
+
+        case 'data:reconciliation': {
+
+          handlers.reconciliation?.current?.(result.data);
+
+          break;
+
+        }
+
+        case 'settings:alertReadState': {
+
+          handlers.alertReadState?.current?.(result.data);
 
           break;
 

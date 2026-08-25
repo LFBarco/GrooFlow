@@ -47,6 +47,7 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     ['data:treasurySubscriptions', []],
     ['data:treasuryBankMovements', []],
     ['data:reconciliation', null],
+    ['settings:alertReadState', { readIds: [], updatedAt: new Date().toISOString() }],
     ['data:fleet', emptyFleet],
     ['data:inventory', emptyInventory],
   ];
@@ -96,6 +97,16 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     { label: 'treasurySubscriptions', run: () => saveAppKvKey(client, 'data:treasurySubscriptions', [], userId) },
     { label: 'treasuryBankMovements', run: () => saveAppKvKey(client, 'data:treasuryBankMovements', [], userId) },
     { label: 'reconciliation', run: () => saveAppKvKey(client, 'data:reconciliation', null, userId) },
+    {
+      label: 'alertReadState',
+      run: () =>
+        saveAppKvKey(
+          client,
+          'settings:alertReadState',
+          { readIds: [], updatedAt: new Date().toISOString() },
+          userId
+        ),
+    },
   );
 
   if (isFleetSqlEnabled()) {

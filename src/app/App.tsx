@@ -225,6 +225,8 @@ import {
   shouldApplyValueRemoteSnapshot,
 } from "./utils/listRemoteSyncGuard";
 import { writeAuditLogLazy } from "./services/repository/auditLogSql";
+import { applyReconciliationRemote, getReconciliationRetrySnapshot } from "./reconciliation/hooks/reconciliationPersistenceBridge";
+import { applyAlertReadRemote, getAlertReadRetrySnapshot } from "./hooks/alertReadPersistenceBridge";
 import { generateEntityId } from "./utils/generateEntityId";
 import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
 import { useAlertReadPersistence } from "./hooks/useAlertReadPersistence";
@@ -803,6 +805,8 @@ export default function App() {
       inventory: inventoryKvLatestRef.current,
       pettyCashMeta: pettyCashMetaKvLatestRef.current,
       asistencia: asistenciaKvLatestRef.current,
+      reconciliation: getReconciliationRetrySnapshot(),
+      alertReadState: getAlertReadRetrySnapshot(),
     }),
     []
   );
@@ -1505,6 +1509,16 @@ export default function App() {
         applied = true;
         break;
       }
+      case 'data:reconciliation': {
+        applyReconciliationRemote(value);
+        applied = true;
+        break;
+      }
+      case 'settings:alertReadState': {
+        applyAlertReadRemote(value);
+        applied = true;
+        break;
+      }
       default:
         return;
     }
@@ -1953,6 +1967,16 @@ export default function App() {
     setTreasuryBankMovements(remote);
   };
 
+  const applyReconciliationRealtimeRef = useRef<((value: unknown) => void) | null>(null);
+  applyReconciliationRealtimeRef.current = (value) => {
+    applyReconciliationRemote(value);
+  };
+
+  const applyAlertReadRealtimeRef = useRef<((value: unknown) => void) | null>(null);
+  applyAlertReadRealtimeRef.current = (value) => {
+    applyAlertReadRemote(value);
+  };
+
   const productionRealtimeHandlers = useMemo(
     () => ({
       providers: applyProvidersRemoteRef,
@@ -1995,6 +2019,8 @@ export default function App() {
       treasurySubscriptionsLatest: treasurySubscriptionsKvLatestRef,
       treasuryBankMovements: applyTreasuryBankMovementsRemoteRef,
       treasuryBankMovementsLatest: treasuryBankMovementsKvLatestRef,
+      reconciliation: applyReconciliationRealtimeRef,
+      alertReadState: applyAlertReadRealtimeRef,
     }),
     []
   );

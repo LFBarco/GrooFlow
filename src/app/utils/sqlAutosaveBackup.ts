@@ -27,6 +27,8 @@ export const SQL_BACKUP_ERROR_MESSAGES: Record<string, string> = {
   'settings:theme': 'No se pudo guardar el tema en SQL. Revisa sesión o permisos.',
   'settings:alertThresholds':
     'No se pudieron guardar los umbrales de alertas en SQL. Revisa sesión o permisos.',
+  'settings:alertReadState':
+    'No se pudo guardar el estado de alertas leídas en SQL. Revisa sesión o permisos.',
   'data:transactions':
     'No se pudieron guardar las transacciones en SQL. Revisa sesión o permisos antes de cerrar.',
   'data:providers':

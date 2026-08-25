@@ -369,7 +369,8 @@ export const api = {
       key === 'data:treasuryPaidHistory' ||
       key === 'data:treasurySubscriptions' ||
       key === 'data:treasuryBankMovements' ||
-      key === 'data:reconciliation'
+      key === 'data:reconciliation' ||
+      key === 'settings:alertReadState'
         ? (backend === 'supabase' ? 6 : 3)
         : backend === 'supabase' ? 3 : 2;
 

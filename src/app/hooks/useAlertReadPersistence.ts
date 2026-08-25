@@ -3,15 +3,21 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { SystemAlert } from '../types';
 import { api } from '../services/api';
 import { repository } from '../services/repository';
-import { backupAppKvAfterKvSave } from '../utils/sqlAutosaveBackup';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
+import {
+  markCrossTabEchoWindow,
+  subscribeKvCrossTab,
+} from '../utils/kvCrossTabSync';
+import { backupAppKvAfterKvSave } from '../utils/sqlAutosaveBackup';
+import {
+  getAlertReadRetrySnapshot,
+  setAlertReadRemoteApply,
+  setAlertReadRetrySnapshot,
+  type AlertReadState,
+} from './alertReadPersistenceBridge';
 
 export const ALERT_READ_STATE_KV_KEY = 'settings:alertReadState';
-
-export type AlertReadState = {
-  readIds: string[];
-  updatedAt: string;
-};
+export type { AlertReadState };
 
 const MAX_STORED_READ_IDS = 500;
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
@@ -23,8 +29,42 @@ const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 export function useAlertReadPersistence(isDataLoaded: boolean) {
   const readIdsRef = useRef<Set<string>>(new Set());
   const loadedRef = useRef(false);
+  const dirtyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaveErrorAtRef = useRef<Record<string, number>>({});
+
+  const buildPayload = useCallback((): AlertReadState => {
+    const payload: AlertReadState = {
+      readIds: [...readIdsRef.current].slice(-MAX_STORED_READ_IDS),
+      updatedAt: new Date().toISOString(),
+    };
+    setAlertReadRetrySnapshot(payload);
+    return payload;
+  }, []);
+
+  const persistNow = useCallback(async () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (!dirtyRef.current) return;
+    const payload = buildPayload();
+    try {
+      const ok = await api.saveKey(ALERT_READ_STATE_KV_KEY, payload);
+      if (ok) {
+        dirtyRef.current = false;
+        markCrossTabEchoWindow(ALERT_READ_STATE_KV_KEY);
+        void backupAppKvAfterKvSave(
+          PRODUCTION_USE_SQL,
+          ALERT_READ_STATE_KV_KEY,
+          payload,
+          lastSaveErrorAtRef
+        );
+      }
+    } catch {
+      /* reintento vía cola SQL si aplica */
+    }
+  }, [buildPayload]);
 
   useEffect(() => {
     if (!isDataLoaded || loadedRef.current) return;
@@ -34,6 +74,10 @@ export function useAlertReadPersistence(isDataLoaded: boolean) {
         const raw = await repository.kv.get<AlertReadState>(ALERT_READ_STATE_KV_KEY);
         if (raw?.readIds?.length) {
           readIdsRef.current = new Set(raw.readIds.slice(-MAX_STORED_READ_IDS));
+          setAlertReadRetrySnapshot({
+            readIds: [...readIdsRef.current],
+            updatedAt: raw.updatedAt || new Date().toISOString(),
+          });
         }
       } catch {
         /* primer uso sin clave */
@@ -41,25 +85,56 @@ export function useAlertReadPersistence(isDataLoaded: boolean) {
     })();
   }, [isDataLoaded]);
 
+  const applyRemotePayload = useCallback((value: unknown) => {
+    if (dirtyRef.current) return;
+    const raw = value as AlertReadState | null;
+    if (!raw || !Array.isArray(raw.readIds)) return;
+    readIdsRef.current = new Set(raw.readIds.slice(-MAX_STORED_READ_IDS));
+    setAlertReadRetrySnapshot({
+      readIds: [...readIdsRef.current],
+      updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    setAlertReadRemoteApply(applyRemotePayload);
+    const unsub = subscribeKvCrossTab((msg) => {
+      if (msg.key !== ALERT_READ_STATE_KV_KEY) return;
+      applyRemotePayload(msg.value);
+    });
+    return () => {
+      setAlertReadRemoteApply(null);
+      unsub();
+    };
+  }, [isDataLoaded, applyRemotePayload]);
+
   const schedulePersist = useCallback(() => {
+    dirtyRef.current = true;
+    buildPayload();
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const payload: AlertReadState = {
-        readIds: [...readIdsRef.current].slice(-MAX_STORED_READ_IDS),
-        updatedAt: new Date().toISOString(),
-      };
-      void api.saveKey(ALERT_READ_STATE_KV_KEY, payload).then((ok) => {
-        if (ok) {
-          void backupAppKvAfterKvSave(
-            PRODUCTION_USE_SQL,
-            ALERT_READ_STATE_KV_KEY,
-            payload,
-            lastSaveErrorAtRef
-          );
-        }
-      });
+      saveTimerRef.current = null;
+      void persistNow();
     }, 700);
-  }, []);
+  }, [buildPayload, persistNow]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    const onPageHide = () => {
+      void persistNow();
+    };
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') void persistNow();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onHidden);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onHidden);
+      void persistNow();
+    };
+  }, [isDataLoaded, persistNow]);
 
   const applyReadState = useCallback((alerts: SystemAlert[]): SystemAlert[] => {
     const read = readIdsRef.current;
@@ -85,5 +160,10 @@ export function useAlertReadPersistence(isDataLoaded: boolean) {
     [schedulePersist]
   );
 
-  return { applyReadState, markAlertRead, markAllAlertsRead };
+  return {
+    applyReadState,
+    markAlertRead,
+    markAllAlertsRead,
+    getLatest: getAlertReadRetrySnapshot,
+  };
 }
