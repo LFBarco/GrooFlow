@@ -17,7 +17,7 @@ import {
 import { Transaction, SystemAlert } from "../../types";
 import type { FleetDataset } from "../../types/fleet";
 import { FleetDecisionAssistant } from "../fleet/FleetDecisionAssistant";
-import { format, subMonths, isSameMonth } from "date-fns";
+import { format, subMonths, isSameMonth, getDate, getDaysInMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import { 
     TrendingUp, 
@@ -72,13 +72,17 @@ export function Overview({
     const expense = calcTotal(currentMonthTxs, 'expense');
     const lastIncome = calcTotal(lastMonthTxs, 'income');
     const lastExpense = calcTotal(lastMonthTxs, 'expense');
+    const day = getDate(now);
+    const daysInMonth = getDaysInMonth(now);
+    const projectedIncome = day > 0 ? (income / day) * daysInMonth : income;
 
     return {
         income, expense,
         net: income - expense,
         incomeGrowth: lastIncome > 0 ? ((income - lastIncome) / lastIncome) * 100 : 0,
         expenseGrowth: lastExpense > 0 ? ((expense - lastExpense) / lastExpense) * 100 : 0,
-        margin: income > 0 ? ((income - expense) / income) * 100 : 0
+        margin: income > 0 ? ((income - expense) / income) * 100 : 0,
+        projectedIncome,
     };
   }, [transactions]);
 
@@ -251,9 +255,9 @@ export function Overview({
         <KpiCard
           kind="projection"
           label="Proyección Cierre"
-          value={formatMoney(currentMonthStats.income * 1.1)}
-          badge="+10% Est."
-          badgePositive={true}
+          value={formatMoney(currentMonthStats.projectedIncome)}
+          badge="Proy. lineal"
+          badgePositive={currentMonthStats.projectedIncome >= currentMonthStats.income}
           icon={Target}
           accentColor={chartTheme.PROJECTION}
           gradient={`linear-gradient(90deg, ${chartTheme.PROJECTION}, ${chartTheme.BLUE})`}

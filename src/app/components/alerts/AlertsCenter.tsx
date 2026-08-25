@@ -101,7 +101,14 @@ export function AlertsCenter({
             { name: 'Sistema', value: alerts.filter(a => a.category === 'system').length },
         ];
 
-        return { total, unread, critical, resolved, bySeverity, byCategory };
+        const latest = alerts.reduce<Date | null>((acc, a) => {
+            const d = a.date instanceof Date ? a.date : new Date(a.date);
+            if (Number.isNaN(d.getTime())) return acc;
+            if (!acc || d > acc) return d;
+            return acc;
+        }, null);
+
+        return { total, unread, critical, resolved, bySeverity, byCategory, latestDate: latest };
     }, [alerts]);
 
     // --- Render Helpers ---
@@ -216,8 +223,14 @@ export function AlertsCenter({
                                 <Calendar className="h-4 w-4 text-muted-foreground" />
                             </CardHeader>
                             <CardContent>
-                                <div className="text-2xl font-bold text-sm pt-1">Hace unos instantes</div>
-                                <p className="text-xs text-muted-foreground mt-1">Monitorización en tiempo real</p>
+                                <div className="text-2xl font-bold text-sm pt-1">
+                                    {metrics.latestDate
+                                      ? formatDistanceToNow(metrics.latestDate, { addSuffix: true, locale: es })
+                                      : 'Sin eventos'}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    {metrics.latestDate ? 'Última alerta registrada' : 'El monitor está activo'}
+                                </p>
                             </CardContent>
                         </Card>
                     </div>

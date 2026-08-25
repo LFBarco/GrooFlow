@@ -5,16 +5,16 @@ import {
   Calendar as CalendarIcon, 
   CheckSquare, 
   AlertCircle, 
-  Filter, 
   Download, 
   Search,
-  Clock,
   FileText
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { formatCurrencyEs, formatPercentEs } from '../../utils/numberFormat';
+import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 
 interface PaymentWorkbenchProps {
   invoices: Invoice[];
@@ -70,12 +70,48 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
 
   // Liquidity Projection Bar Logic
   // We want to show how much of the liquidity is "committed" by selection
-  const liquidityPercent = Math.min(100, (totalSelected / bankBalance) * 100);
-  
-  const handleExportBatch = (format: 'bcp' | 'bbva' | 'excel') => {
-    // Mock export logic
-    const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, '');
-    alert(`Generando archivo ${format.toUpperCase()} para ${selectedIds.size} pagos...`);
+  const liquidityPercent = bankBalance > 0
+    ? Math.min(100, (totalSelected / bankBalance) * 100)
+    : totalSelected > 0 ? 100 : 0;
+
+  const selectedInvoices = useMemo(
+    () => pendingInvoices.filter(inv => selectedIds.has(inv.id)),
+    [pendingInvoices, selectedIds]
+  );
+
+  const exportPaymentsExcel = (filename: string, sheetName: string) => {
+    const rows = selectedInvoices.length > 0 ? selectedInvoices : pendingInvoices;
+    if (rows.length === 0) {
+      toast.error('No hay pagos para exportar.');
+      return;
+    }
+    const aoa = [
+      ['Proveedor', 'RUC', 'Tipo doc.', 'N° documento', 'Categoría', 'Importe', 'Vencimiento', 'Sede', 'Descripción'],
+      ...rows.map((inv) => [
+        inv.providerName,
+        inv.providerRuc,
+        inv.documentType,
+        inv.documentNumber,
+        inv.category,
+        inv.amount,
+        format(inv.dueDate, 'yyyy-MM-dd'),
+        inv.branchId,
+        inv.description,
+      ]),
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), sheetName);
+    XLSX.writeFile(wb, filename);
+    toast.success(`Excel generado (${rows.length} ${rows.length === 1 ? 'pago' : 'pagos'})`);
+  };
+
+  const handleExportBatch = (kind: 'bcp' | 'bbva' | 'excel') => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    if (kind === 'excel') {
+      exportPaymentsExcel(`tesoreria_pagos_${dateStr}.xlsx`, 'Pagos');
+      return;
+    }
+    exportPaymentsExcel(`plantilla_${kind}_${dateStr}.xlsx`, kind.toUpperCase());
   };
 
   return (
@@ -206,11 +242,11 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
           />
         </div>
         <div className="flex gap-2 w-full md:w-auto">
-          <button className="flex-1 md:flex-none px-4 h-11 text-sm font-medium text-foreground bg-background border border-input rounded-lg hover:bg-accent flex items-center justify-center gap-2 shadow-sm transition-colors">
-            <Filter className="w-4 h-4" />
-            Filtros
-          </button>
-          <button className="flex-1 md:flex-none px-4 h-11 text-sm font-medium text-foreground bg-background border border-input rounded-lg hover:bg-accent flex items-center justify-center gap-2 shadow-sm transition-colors">
+          <button
+            type="button"
+            onClick={() => handleExportBatch('excel')}
+            className="flex-1 md:flex-none px-4 h-11 text-sm font-medium text-foreground bg-background border border-input rounded-lg hover:bg-accent flex items-center justify-center gap-2 shadow-sm transition-colors"
+          >
             <Download className="w-4 h-4" />
             Exportar Excel
           </button>

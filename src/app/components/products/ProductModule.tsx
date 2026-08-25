@@ -13,6 +13,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 import type { Product, Provider } from '../../types';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { Badge } from '../ui/badge';
@@ -238,17 +239,10 @@ export function ProductModule({
       product.stockAvailable,
       product.status,
     ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `productos-${new Date().toISOString().slice(0, 10)}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast.success('Catalogo exportado');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rows]), 'Productos');
+    XLSX.writeFile(wb, `productos-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success('Catálogo exportado');
   };
 
   const handleAudit = () => {

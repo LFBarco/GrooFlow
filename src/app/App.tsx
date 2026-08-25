@@ -3534,12 +3534,14 @@ export default function App() {
                    return next;
                  });
                }}
-               treasuryInvoices={treasuryInvoices.length > 0 ? treasuryInvoices : undefined}
+               treasuryInvoices={treasuryInvoices}
                onUpdateTreasuryInvoices={handleTreasuryInvoicesUpdate}
                bankBalance={treasuryBankBalance}
                onUpdateBankBalance={handleTreasuryBankBalanceUpdate}
-               paidHistory={treasuryPaidHistory.length > 0 ? treasuryPaidHistory : undefined}
+               paidHistory={treasuryPaidHistory}
                onUpdatePaidHistory={handleTreasuryPaidHistoryUpdate}
+               sedeCount={enabledSedesForForms.length}
+               userInitials={currentUser.initials}
              />
           )}
 
@@ -3547,7 +3549,7 @@ export default function App() {
              <ProfessionalFeesModule 
                 providers={providers}
                 onUpdateProviders={handleUpdateProviders}
-                receipts={feeReceipts.length > 0 ? (feeReceipts as any[]) : undefined}
+                receipts={feeReceipts as any[]}
                 onUpdateReceipts={(receipts) => handleFeeReceiptsUpdate(receipts as FeeReceiptGlobal[])}
                 onSendToTreasury={(receipts) => {
                   setFeeReceipts((prev) => {

@@ -77,6 +77,7 @@ import {
 import { Textarea } from '../ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 import {
   FleetChecklistConfigurator,
   FleetInspectionsGlobalTable,
@@ -1290,49 +1291,36 @@ function FleetReportsSection({ dataset }: { dataset: FleetDataset }) {
 
 function FleetExportCsv({ dataset }: { dataset: FleetDataset }) {
   const run = () => {
-    const lines: string[] = [];
-    lines.push(['Tipo', 'Vehículo', 'Campo', 'Valor'].map(csvEsc).join(','));
+    const rows: (string | number)[][] = [['Tipo', 'Vehículo', 'Campo', 'Valor']];
     for (const v of dataset.vehicles) {
-      lines.push(csvRow(['VEHICULO', v.plate, 'marca', v.brand]));
-      lines.push(csvRow(['VEHICULO', v.plate, 'km', String(v.currentOdometerKm)]));
-      lines.push(csvRow(['VEHICULO', v.plate, 'estado', v.status]));
+      rows.push(['VEHICULO', v.plate, 'marca', v.brand]);
+      rows.push(['VEHICULO', v.plate, 'km', v.currentOdometerKm]);
+      rows.push(['VEHICULO', v.plate, 'estado', v.status]);
     }
     for (const r of dataset.maintenance) {
       const pl = dataset.vehicles.find((x)=>x.id===r.vehicleId)?.plate ?? r.vehicleId;
-      lines.push(csvRow(['MANT', pl, 'fecha', r.date]));
-      lines.push(csvRow(['MANT', pl, 'tipo', r.kind]));
-      lines.push(csvRow(['MANT', pl, 'total', String((r.laborCost||0)+(r.partsCost||0))]));
-      lines.push(csvRow(['MANT', pl, 'desc', r.description]));
+      rows.push(['MANT', pl, 'fecha', r.date]);
+      rows.push(['MANT', pl, 'tipo', r.kind]);
+      rows.push(['MANT', pl, 'total', (r.laborCost||0)+(r.partsCost||0)]);
+      rows.push(['MANT', pl, 'desc', r.description]);
     }
     for (const r of dataset.fuelEntries) {
       const pl = dataset.vehicles.find((x)=>x.id===r.vehicleId)?.plate ?? r.vehicleId;
-      lines.push(csvRow(['COMBUSTIBLE', pl, 'fecha', r.date]));
-      lines.push(csvRow(['COMBUSTIBLE', pl, 'litros', String(r.liters)]));
-      lines.push(csvRow(['COMBUSTIBLE', pl, 'costo', String(r.totalCost)]));
+      rows.push(['COMBUSTIBLE', pl, 'fecha', r.date]);
+      rows.push(['COMBUSTIBLE', pl, 'litros', r.liters]);
+      rows.push(['COMBUSTIBLE', pl, 'costo', r.totalCost]);
     }
     for (const ins of dataset.inspections ?? []) {
       const pl = dataset.vehicles.find((x)=>x.id===ins.vehicleId)?.plate ?? ins.vehicleId;
-      lines.push(csvRow(['INSPECCION', pl, 'fecha', ins.dateTime]));
-      lines.push(csvRow(['INSPECCION', pl, 'cumplimiento_pct', String(ins.compliancePercent)]));
-      lines.push(csvRow(['INSPECCION', pl, 'chofer', ins.driverName]));
-      lines.push(csvRow(['INSPECCION', pl, 'supervisor', ins.supervisorName || '']));
+      rows.push(['INSPECCION', pl, 'fecha', ins.dateTime]);
+      rows.push(['INSPECCION', pl, 'cumplimiento_pct', ins.compliancePercent]);
+      rows.push(['INSPECCION', pl, 'chofer', ins.driverName]);
+      rows.push(['INSPECCION', pl, 'supervisor', ins.supervisorName || '']);
     }
-    const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `fleet_report_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('CSV generado.');
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Flota');
+    XLSX.writeFile(wb, `fleet_report_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+    toast.success('Excel generado.');
   };
-  return <Button variant="secondary" size="sm" className="gap-1" onClick={run}><FileSpreadsheet className="h-3.5 w-3.5" />Export CSV</Button>;
-}
-
-function csvEsc(cell: string) {
-  const s = cell.replace(/"/g, '""');
-  return `"${s}"`;
-}
-function csvRow(cells: string[]) {
-  return cells.map(csvEsc).join(',');
+  return <Button variant="secondary" size="sm" className="gap-1" onClick={run}><FileSpreadsheet className="h-3.5 w-3.5" />Exportar Excel</Button>;
 }

@@ -457,7 +457,7 @@ export function InventoryModule({
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard icon={Box} label="Total Equipos" value={String(kpis.total)} sub={`En ${kpis.sedeCount} sedes activas`} trend="↗ 3% vs mes anterior" trendUp />
+            <KpiCard icon={Box} label="Total Equipos" value={String(kpis.total)} sub={`En ${kpis.sedeCount} sedes activas`} />
             <KpiCard icon={CheckCircle2} label="Operativos" value={String(kpis.active)} sub={`${kpis.operationalPct}% del inventario`} />
             <KpiCard icon={Wrench} label="En Mantenimiento" value={String(kpis.inMaintenance)} sub={`${kpis.overdueMaintenance} vencido · ${kpis.scheduledMaintenance} programados`} />
             <KpiCard
@@ -469,8 +469,6 @@ export function InventoryModule({
                   ? `${kpis.consignmentCount} en consignación · Deprec. ${formatCompactCurrency(kpis.totalDepreciation)}`
                   : `Depreciación: ${formatCompactCurrency(kpis.totalDepreciation)} acumulada`
               }
-              trend="↘ 8% depreciación anual"
-              trendDown
             />
           </div>
 

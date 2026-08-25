@@ -21,6 +21,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 import type { Product, ProductLotRow, ProductStatus, Provider } from '../../types';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { Button } from '../ui/button';
@@ -272,17 +273,12 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
   const exportKardexCsv = useCallback(() => {
     const rows = ex.kardex ?? [];
     const header = ['Fecha', 'Documento', 'Tipo', 'Almacén', 'Stock ini', 'Entrada', 'Salida', 'Stock fin', 'Lote'];
-    const body = rows.map((r) =>
-      [r.date, r.referenceDoc, r.operationType, r.warehouse, r.stockInitial, r.qtyIn, r.qtyOut, r.stockFinal, r.batchNo ?? ''].join(','),
-    );
-    const csv = [header.join(','), ...body].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `kardex-${draft.systemCode}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const body = rows.map((r) => [
+      r.date, r.referenceDoc, r.operationType, r.warehouse, r.stockInitial, r.qtyIn, r.qtyOut, r.stockFinal, r.batchNo ?? '',
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...body]), 'Kardex');
+    XLSX.writeFile(wb, `kardex-${draft.systemCode}-${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast.success('Kardex exportado');
   }, [draft.systemCode, ex.kardex]);
 

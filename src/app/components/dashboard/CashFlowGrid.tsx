@@ -1304,7 +1304,7 @@ export function CashFlowGrid({
     }
     const monthLabel = format(safeCurrentDate, 'yyyy-MM', { locale: es });
     downloadCashFlowCsv({
-      filename: `flujo-caja-${monthLabel}.csv`,
+      filename: `flujo-caja-${monthLabel}.xlsx`,
       columns,
       matrixDaily,
       visibility,
@@ -1313,7 +1313,7 @@ export function CashFlowGrid({
       endBalances,
       initialBalance,
     });
-    toast.success('CSV exportado correctamente');
+    toast.success('Excel exportado correctamente');
   };
 
   return (

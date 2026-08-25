@@ -1400,14 +1400,14 @@ ${signatures}
             )}
             
             {custodians.length === 0 && (
-                 <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                                <div className="bg-amber-500/10 border-l-4 border-amber-500 p-4 rounded-md">
                     <div className="flex">
                         <div className="flex-shrink-0">
-                            <AlertCircle className="h-5 w-5 text-yellow-400" aria-hidden="true" />
+                            <AlertCircle className="h-5 w-5 text-amber-500" aria-hidden="true" />
                         </div>
                         <div className="ml-3">
-                            <p className="text-sm text-yellow-700">
-                                No hay usuarios configurados con fondo de caja chica. Por favor, asigne límites en Configuración &gt; Contabilidad.
+                            <p className="text-sm text-foreground">
+                                No hay usuarios configurados con fondo de caja chica. Asigna límites en Configuración → Contabilidad.
                             </p>
                         </div>
                     </div>

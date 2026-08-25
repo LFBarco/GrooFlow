@@ -20,79 +20,6 @@ import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 
-const INITIAL_TREASURY_INVOICES: Invoice[] = [
-  {
-    id: 'inv-001',
-    documentNumber: 'F001-4390',
-    documentType: 'Factura',
-    providerName: 'Distribuidora Farmavet S.A.C.',
-    providerRuc: '20556789012',
-    amount: 1250.00,
-    currency: 'PEN',
-    issueDate: new Date(2023, 10, 15),
-    dueDate: new Date(2023, 10, 25),
-    tentativePaymentDate: new Date(2023, 10, 24),
-    category: 'Insumos Médicos',
-    status: 'pending',
-    branchId: 'Sede Central',
-    description: 'Compra mensual antibióticos',
-    fileUrl: '#'
-  },
-  {
-    id: 'inv-002',
-    documentNumber: 'RxH-E001-22',
-    documentType: 'RxH',
-    providerName: 'Dr. Carlos Mendez',
-    providerRuc: '10445566778',
-    amount: 3500.00,
-    currency: 'PEN',
-    issueDate: new Date(2023, 10, 20),
-    dueDate: new Date(2023, 10, 30),
-    tentativePaymentDate: new Date(2023, 10, 28),
-    category: 'Honorarios Médicos',
-    status: 'pending',
-    branchId: 'Sede Norte',
-    description: 'Servicios cardiología',
-    fileUrl: '#'
-  },
-  {
-    id: 'inv-003',
-    documentNumber: 'S003-112',
-    documentType: 'Factura',
-    providerName: 'Luz del Sur S.A.A.',
-    providerRuc: '20100156789',
-    amount: 845.20,
-    currency: 'PEN',
-    issueDate: new Date(2023, 10, 10),
-    dueDate: new Date(2023, 10, 22),
-    tentativePaymentDate: new Date(2023, 10, 21),
-    category: 'Servicios Básicos',
-    status: 'in_transit',
-    branchId: 'Sede Sur',
-    description: 'Consumo eléctrico Octubre',
-    fileUrl: '#'
-  }
-];
-
-const INITIAL_BANK_MOVEMENTS: BankMovement[] = [
-  {
-    id: 'mov-001',
-    operationNumber: '0089221',
-    description: 'Pago de Servicios - Luz del Sur',
-    amount: -845.20,
-    date: new Date(2023, 10, 21),
-    status: 'unmatched',
-  },
-  {
-    id: 'mov-002',
-    operationNumber: '0089225',
-    description: 'Transferencia Interbancaria - C. Mendez',
-    amount: -3500.00,
-    date: new Date(2023, 10, 28),
-    status: 'unmatched',
-  }
-];
-
 interface TreasuryModuleProps {
   pendingFeeReceipts?: Array<{
     id: string;
@@ -112,6 +39,8 @@ interface TreasuryModuleProps {
   onUpdateBankBalance?: (balance: number) => void;
   paidHistory?: Invoice[];
   onUpdatePaidHistory?: (history: Invoice[]) => void;
+  sedeCount?: number;
+  userInitials?: string;
 }
 
 export const TreasuryModule: React.FC<TreasuryModuleProps> = ({ 
@@ -123,10 +52,12 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
   onUpdateBankBalance,
   paidHistory: externalPaidHistory,
   onUpdatePaidHistory,
+  sedeCount = 0,
+  userInitials,
 }) => {
   const [activeTab, setActiveTab] = useState<'ingest' | 'workbench' | 'conciliation' | 'subscriptions' | 'history'>('workbench');
   
-  const [bankBalance, setBankBalanceState] = useState<number>(externalBankBalance ?? 54230.50);
+  const [bankBalance, setBankBalanceState] = useState<number>(externalBankBalance ?? 0);
   const setBankBalance = (updater: number | ((prev: number) => number)) => {
     setBankBalanceState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
@@ -144,7 +75,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
     });
   };
 
-  const [invoices, setInvoicesState] = useState<Invoice[]>(externalInvoices ?? INITIAL_TREASURY_INVOICES);
+  const [invoices, setInvoicesState] = useState<Invoice[]>(externalInvoices ?? []);
   const setInvoices = (updater: Invoice[] | ((prev: Invoice[]) => Invoice[])) => {
     setInvoicesState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
@@ -158,7 +89,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
   React.useEffect(() => { if (externalBankBalance !== undefined) setBankBalanceState(externalBankBalance); }, [externalBankBalance]);
   React.useEffect(() => { if (externalPaidHistory) setPaidHistoryState(externalPaidHistory); }, [externalPaidHistory]);
 
-  const [bankMovements, setBankMovements] = useState<BankMovement[]>(INITIAL_BANK_MOVEMENTS);
+  const [bankMovements, setBankMovements] = useState<BankMovement[]>([]);
 
   const handleIngestComplete = (newInvoices: Invoice[]) => {
     setInvoices(prev => [...prev, ...newInvoices]);
@@ -253,7 +184,9 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
             <Building2 className="w-6 h-6 sm:w-8 sm:h-8 text-orange-500" />
             Tesorería Centralizada
           </h1>
-          <p className="text-muted-foreground text-xs sm:text-sm">GrooFlow Finance Suite • 5 Sedes Conectadas</p>
+          <p className="text-muted-foreground text-xs sm:text-sm">
+            {sedeCount === 1 ? '1 sede conectada' : `${sedeCount} sedes conectadas`}
+          </p>
         </div>
         
         <div className="flex items-center gap-3 sm:gap-6">
@@ -261,9 +194,11 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
              <Landmark className="w-4 h-4" />
              <span className="text-xs sm:text-sm font-semibold">Caja Global: {formatCurrencyEs(bankBalance)}</span>
            </div>
-           <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground border border-border">
-             JD
-           </div>
+           {userInitials ? (
+             <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-muted flex items-center justify-center text-sm font-bold text-muted-foreground border border-border">
+               {userInitials}
+             </div>
+           ) : null}
         </div>
       </header>
 
@@ -292,11 +227,6 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
                 activeTab === tab.id ? "text-indigo-600 dark:text-indigo-400" : "text-muted-foreground group-hover:text-foreground"
               )} />
               {tab.name}
-              {tab.id === 'ingest' && (
-                <span className="ml-2 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 py-0.5 px-2 rounded-full text-[10px] font-bold uppercase tracking-wide">
-                  Nuevo
-                </span>
-              )}
             </button>
           ))}
         </nav>
@@ -355,6 +285,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
                 movements={bankMovements}
                 systemPayments={invoices}
                 onConciliate={handleConciliation}
+                onImportMovements={(imported) => setBankMovements((prev) => [...imported, ...prev])}
               />
             )}
             

@@ -52,7 +52,7 @@ import { toast } from 'sonner';
 import { Provider } from '../../types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
-import { read, utils } from 'xlsx';
+import { read, utils, writeFile } from 'xlsx';
 import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
 
 interface FeeReceipt {
@@ -71,45 +71,6 @@ interface FeeReceipt {
   paymentRequestedAt?: Date;
 }
 
-const MOCK_RECEIPTS: FeeReceipt[] = [
-  {
-    id: 'rx-001',
-    professionalId: 'prof-1',
-    professionalName: 'Dr. Carlos Mendez',
-    receiptNumber: 'E001-45',
-    issueDate: new Date(2024, 2, 10),
-    dueDate: new Date(2024, 2, 25),
-    amount: 1500.00,
-    description: 'Servicios de Cardiología - Marzo 1ra Quincena',
-    status: 'pending',
-    location: 'Principal'
-  },
-  {
-    id: 'rx-002',
-    professionalId: 'prof-1',
-    professionalName: 'Dr. Carlos Mendez',
-    receiptNumber: 'E001-44',
-    issueDate: new Date(2024, 1, 25),
-    dueDate: new Date(2024, 2, 10),
-    amount: 2000.00,
-    description: 'Servicios de Cardiología - Febrero 2da Quincena',
-    status: 'paid',
-    location: 'Norte'
-  },
-  {
-    id: 'rx-003',
-    professionalId: 'prof-2',
-    professionalName: 'Dra. Ana Torres',
-    receiptNumber: 'E001-12',
-    issueDate: new Date(2024, 2, 12),
-    dueDate: new Date(2024, 2, 27),
-    amount: 1200.00,
-    description: 'Cirugía de Tejidos Blandos - Caso "Max"',
-    status: 'approved',
-    location: 'Principal'
-  }
-];
-
 interface ProfessionalFeesModuleProps {
   providers?: Provider[];
   onUpdateProviders?: (providers: Provider[]) => boolean | Promise<boolean>;
@@ -127,7 +88,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'professionals' | 'detail' | 'analytics'>('detail');
   const [searchTerm, setSearchTerm] = useState('');
-  const [receipts, setReceiptsInternal] = useState<FeeReceipt[]>(externalReceipts ?? MOCK_RECEIPTS);
+  const [receipts, setReceiptsInternal] = useState<FeeReceipt[]>(externalReceipts ?? []);
 
   const setReceipts = (updater: FeeReceipt[] | ((prev: FeeReceipt[]) => FeeReceipt[])) => {
     setReceiptsInternal(prev => {
@@ -349,15 +310,47 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
   const analyticsSummary = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
-    
-    // KPI Data
+    const currentMonth = now.getMonth();
+    const paidRefDate = (r: FeeReceipt) => r.paymentDate ?? r.issueDate;
+
     const totalPaidYTD = receipts
-      .filter(r => r.status === 'paid' && r.issueDate.getFullYear() === currentYear)
+      .filter(r => r.status === 'paid' && paidRefDate(r).getFullYear() === currentYear)
+      .reduce((acc, curr) => acc + curr.amount, 0);
+
+    const totalPaidLastYear = receipts
+      .filter(r => r.status === 'paid' && paidRefDate(r).getFullYear() === currentYear - 1)
       .reduce((acc, curr) => acc + curr.amount, 0);
 
     const pendingAmount = receipts
       .filter(r => r.status === 'pending' || r.status === 'approved')
       .reduce((acc, curr) => acc + curr.amount, 0);
+
+    const paidThisMonth = receipts
+      .filter(r => r.status === 'paid' && paidRefDate(r).getMonth() === currentMonth && paidRefDate(r).getFullYear() === currentYear)
+      .reduce((acc, curr) => acc + curr.amount, 0);
+
+    const lastMonthDate = new Date(currentYear, currentMonth - 1, 1);
+    const paidLastMonth = receipts
+      .filter(r => r.status === 'paid' && paidRefDate(r).getMonth() === lastMonthDate.getMonth() && paidRefDate(r).getFullYear() === lastMonthDate.getFullYear())
+      .reduce((acc, curr) => acc + curr.amount, 0);
+
+    const momPaidLabel = paidLastMonth > 0
+      ? `${paidThisMonth - paidLastMonth >= 0 ? '+' : ''}${formatNumberEs(((paidThisMonth - paidLastMonth) / paidLastMonth) * 100, 0)}% vs mes anterior`
+      : paidThisMonth > 0
+        ? 'Sin dato mes anterior'
+        : 'Sin pagos este mes';
+
+    const yoyPaidLabel = totalPaidLastYear > 0
+      ? `${totalPaidYTD - totalPaidLastYear >= 0 ? '+' : ''}${formatNumberEs(((totalPaidYTD - totalPaidLastYear) / totalPaidLastYear) * 100, 0)}% vs año anterior`
+      : totalPaidYTD > 0
+        ? 'Sin dato año anterior'
+        : 'Sin pagos este año';
+
+    const paidWithDates = receipts.filter(r => r.status === 'paid' && r.paymentDate && r.dueDate);
+    const onTime = paidWithDates.filter(r => r.paymentDate! <= r.dueDate);
+    const paymentEfficiencyPct = paidWithDates.length > 0
+      ? Math.round((onTime.length / paidWithDates.length) * 100)
+      : null;
       
     // Find top earner (paid receipts)
     const earningsByProf: Record<string, number> = {};
@@ -365,7 +358,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
        earningsByProf[r.professionalName] = (earningsByProf[r.professionalName] || 0) + r.amount;
     });
     const topEarnerEntry = Object.entries(earningsByProf).sort((a, b) => b[1] - a[1])[0];
-    const topEarner = topEarnerEntry ? { name: topEarnerEntry[0], amount: topEarnerEntry[1] } : { name: 'N/A', amount: 0 };
+    const topEarner = topEarnerEntry ? { name: topEarnerEntry[0], amount: topEarnerEntry[1] } : { name: 'Sin pagos', amount: 0 };
 
     // Monthly Trend (Last 6 months)
     const trendData = [];
@@ -390,7 +383,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
       });
     }
 
-    return { totalPaidYTD, pendingAmount, topEarner, trendData };
+    return { totalPaidYTD, pendingAmount, topEarner, trendData, paidThisMonth, momPaidLabel, yoyPaidLabel, paymentEfficiencyPct };
   }, [receipts]);
 
   const COLORS = ['#8b5cf6', '#a78bfa', '#c4b5fd', '#ddd6fe', '#ede9fe'];
@@ -498,18 +491,10 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
       "1380.00"
     ];
 
-    const csvContent = "data:text/csv;charset=utf-8," + 
-      headers.map(h => `"${h}"`).join(",") + "\n" + 
-      exampleRow.map(c => `"${c}"`).join(",");
-      
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "plantilla_carga_masiva_rxh.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Plantilla descargada correctamente");
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, utils.aoa_to_sheet([headers, exampleRow]), 'Plantilla RxH');
+    writeFile(wb, 'plantilla_carga_masiva_rxh.xlsx');
+    toast.success("Plantilla Excel descargada");
   };
 
   const handleFileDrop = (e: React.DragEvent) => {
@@ -934,7 +919,10 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
           </div>
           <div className="mt-4 flex items-center text-xs text-violet-400">
             <AlertCircle className="w-3 h-3 mr-1" />
-            {receipts.filter(r => r.status === 'pending').length} recibos por aprobar
+            {(() => {
+              const n = receipts.filter(r => r.status === 'pending').length;
+              return `${n} ${n === 1 ? 'recibo' : 'recibos'} por aprobar`;
+            })()}
           </div>
         </Card>
 
@@ -942,14 +930,14 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
           <div className="flex justify-between items-start">
             <div>
               <p className="text-sm font-medium text-muted-foreground">Pagado este Mes</p>
-              <h3 className="text-2xl font-bold text-foreground mt-1">{formatCurrencyEs(receipts.filter(r => r.status === 'paid' && r.issueDate.getMonth() === new Date().getMonth()).reduce((acc, curr) => acc + curr.amount, 0))}</h3>
+              <h3 className="text-2xl font-bold text-foreground mt-1">{formatCurrencyEs(analyticsSummary.paidThisMonth)}</h3>
             </div>
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <CheckCircle2 className="w-5 h-5 text-emerald-500" />
             </div>
           </div>
           <div className="mt-4 text-xs text-emerald-400">
-            +12% vs mes anterior
+            {analyticsSummary.momPaidLabel}
           </div>
         </Card>
 
@@ -1460,9 +1448,9 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                      </div>
                   </div>
                   <h3 className="text-2xl font-bold text-foreground">{formatCurrencyEs(analyticsSummary.totalPaidYTD)}</h3>
-                  <div className="flex items-center mt-2 text-xs text-green-500">
-                     <TrendingUp className="w-3 h-3 mr-1" />
-                     <span>+12% vs año anterior</span>
+                  <div className="flex items-center mt-2 text-xs text-muted-foreground">
+                     {analyticsSummary.yoyPaidLabel !== 'Sin pagos este año' && <TrendingUp className="w-3 h-3 mr-1 text-green-500" />}
+                     <span>{analyticsSummary.yoyPaidLabel}</span>
                   </div>
                </Card>
 
@@ -1497,9 +1485,11 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                         <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                      </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-foreground">95%</h3>
-                  <div className="flex items-center mt-2 text-xs text-emerald-500">
-                     <span>Pagos a tiempo</span>
+                  <h3 className="text-2xl font-bold text-foreground">
+                    {analyticsSummary.paymentEfficiencyPct === null ? '—' : `${analyticsSummary.paymentEfficiencyPct}%`}
+                  </h3>
+                  <div className="flex items-center mt-2 text-xs text-muted-foreground">
+                     <span>{analyticsSummary.paymentEfficiencyPct === null ? 'Sin pagos con fecha registrada' : 'Pagos a tiempo'}</span>
                   </div>
                </Card>
              </div>
