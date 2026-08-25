@@ -48,7 +48,7 @@ import { RoleConfigDialog } from './RoleConfigDialog';
 import { SedeConfigDialog } from './SedeConfigDialog';
 import { repository } from '../../services/api';
 import { describeAuthOrNetworkError } from '../../utils/authErrors';
-import { getConfiguredSupabaseUrl } from '../../services/repository/supabase';
+import { isSupabaseBackend } from '../../config/backend';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -816,10 +816,12 @@ export function UserManager({
                                 )}
                             </div>
                         </div>
+                        {isSupabaseBackend() ? (
                         <p className="text-[10px] text-muted-foreground break-all rounded-md bg-muted/30 px-2 py-1.5">
-                            <span className="font-medium">Proyecto en uso:</span> {getConfiguredSupabaseUrl()}
+                            <span className="font-medium">Proyecto en uso:</span> {import.meta.env.VITE_SUPABASE_URL}
                             {' '}— Debe coincidir con <strong>Project URL</strong> en Supabase → Settings → API.
                         </p>
+                        ) : null}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsNewUserOpen(false)}>Cancelar</Button>

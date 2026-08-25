@@ -6,6 +6,12 @@ import { useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { DEFAULT_ROLES } from '../components/users/types';
+import {
+  clearLocalDemoSession,
+  createLocalDemoAdminUser,
+  getLocalDemoSessionEmail,
+  isLocalDemoSessionActive,
+} from '../config/demoLogin';
 import { getSuperAdminEmails } from '../config/superAdmins';
 import { initialStructure, initialSystemSettings, mergeSystemSettings } from '../data/initialData';
 import { api } from '../services/api';
@@ -46,7 +52,9 @@ import {
   migrateTransactionsKvToSql,
   isTransactionsSqlEnabled,
 } from '../services/repository/transactionsSql';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { repository } from '../services/repository';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
+import { getGrooflowBackend } from '../config/backend';
 import { isAdminAppUser, syncUserProfilesToSql, loadSelfAppUserProfile, mergeUserWithSqlProfile, touchOwnLastLogin } from '../services/repository/userProfileSync';
 import type { Role } from '../components/users/types';
 import type {
@@ -99,10 +107,9 @@ import {
   resolveCurrentUserRow,
 } from '../utils/userListMerge';
 import { isUserSessionBlocked, stampLastLoginInList } from '../utils/userSessionGuard';
-import { supabase } from '../../../utils/supabase/client';
 import type { AppHydrationDeps } from './hydration/appHydrationDeps';
 
-const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
+const APP_BACKEND = getGrooflowBackend();
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 const FLEET_USE_SQL = isFleetSqlEnabled();
@@ -139,29 +146,49 @@ type FeeReceiptGlobal = {
 export function useAppDataHydration(deps: AppHydrationDeps): void {
   useEffect(() => {
     let cancelled = false;
-    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+    const backend = getGrooflowBackend();
     const authWatchdog = setTimeout(() => {
       if (!cancelled) deps.setIsAuthChecking(false);
     }, AUTH_CHECK_MAX_MS);
 
     const refreshSessionWithTimeout = async (ms = 2200) => {
+      if (backend !== 'supabase') return null;
+      const client = await getSupabaseClientLazy();
+      if (!client) return null;
       return Promise.race([
-        supabase.auth.refreshSession(),
+        client.auth.refreshSession(),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
       ]);
     };
 
+    const sessionFromAuthUser = (user: { id: string; email?: string; name?: string } | null) => {
+      if (!user) return null;
+      return {
+        access_token: 'rest',
+        user: {
+          id: user.id,
+          email: user.email || '',
+          user_metadata: { name: user.name },
+        },
+      };
+    };
+
     const getStableSession = async () => {
-      const first = await supabase.auth.getSession();
+      if (backend === 'rest' || backend === 'local') {
+        const user = await repository.auth.getSession();
+        return sessionFromAuthUser(user);
+      }
+      const client = await getSupabaseClientLazy();
+      if (!client) return null;
+      const first = await client.auth.getSession();
       const token = first.data.session?.access_token;
       if (token && !isAccessTokenExpired(token)) return first.data.session;
-      if (backend !== 'supabase') return first.data.session;
       try {
         await refreshSessionWithTimeout(4000);
       } catch {
         // noop: tolerar carreras transitorias al refrescar la página o despertar la pestaña.
       }
-      const second = await supabase.auth.getSession();
+      const second = await client.auth.getSession();
       return second.data.session;
     };
 
@@ -181,14 +208,18 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
 
       try {
         const session = await getStableSession();
+        const sqlClient = backend === 'supabase' ? await getSupabaseClientLazy() : null;
+        const hasCloudSession =
+          backend === 'rest' ? Boolean(session?.user) : Boolean(session?.access_token);
 
-        if (backend === 'supabase') {
-          if (!session?.access_token) {
+        if (backend === 'supabase' || backend === 'rest') {
+          if (!hasCloudSession) {
             deps.setIsAuthenticated(false);
             deps.setIsAuthChecking(false);
             return;
           }
-          deps.setCanSaveUsers(false);
+          if (backend === 'supabase') deps.setCanSaveUsers(false);
+          else deps.setCanSaveUsers(true);
         } else {
           deps.setCanSaveUsers(true);
         }
@@ -216,7 +247,8 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         /** Sesión al momento de aplicar auth (evita carrera si el usuario cerró sesión durante el fetch). */
         const sessionEffective = await getStableSession();
 
-        if (backend === 'supabase' && !sessionEffective?.access_token) {
+        if ((backend === 'supabase' && !sessionEffective?.access_token) ||
+            (backend === 'rest' && !sessionEffective?.user)) {
             deps.setIsAuthenticated(false);
             deps.setIsAuthChecking(false);
             return;
@@ -251,21 +283,17 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig(nextUsers));
         }
 
-        const hasLocalDemoSession =
-          typeof window !== 'undefined' &&
-          window.sessionStorage.getItem('grooflow_local_session') === '1';
+        const hasLocalDemoSession = isLocalDemoSessionActive();
 
         let sessionUserRow: User | null = null;
 
-        if (!cancelled && sessionEffective?.user?.email) {
-          if (typeof window !== 'undefined') {
-            window.sessionStorage.removeItem('grooflow_local_session');
-          }
-          const em = sessionEffective.user.email.trim().toLowerCase();
-          const row = resolveCurrentUserRow(nextUsers, em);
+        if (!cancelled && sessionEffective?.user) {
+          clearLocalDemoSession();
+          const em = (sessionEffective.user.email || '').trim().toLowerCase();
+          const row = resolveCurrentUserRow(nextUsers, em, sessionEffective.user.id);
           sessionUserRow = row;
           if (!row) {
-            await supabase.auth.signOut();
+            await (backend === 'rest' || backend === 'local' ? repository.auth.signOut() : sqlClient!.auth.signOut());
             toast.error("Acceso denegado", {
               description:
                 "Tu correo no aparece en la lista de usuarios del sistema. Un administrador debe darte de alta en «Gestión de usuarios».",
@@ -277,7 +305,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             return;
           }
           if (isUserSessionBlocked(row)) {
-            await supabase.auth.signOut();
+            await (backend === 'rest' || backend === 'local' ? repository.auth.signOut() : sqlClient!.auth.signOut());
             toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
             deps.setCurrentUser(deps.GUEST_USER);
             deps.setIsAuthenticated(false);
@@ -288,11 +316,30 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           deps.setCurrentUser(row);
           deps.setIsAuthenticated(true);
           if (shouldShowAuthChecking) deps.setIsAuthChecking(false);
-        } else if (backend === 'local' && hasLocalDemoSession && nextUsers.length > 0) {
+        } else if (backend === 'local' && hasLocalDemoSession) {
           if (!deps.signingOutRef.current) {
-            deps.setCurrentUser(nextUsers[0]);
-            deps.setIsAuthenticated(true);
-            if (shouldShowAuthChecking) deps.setIsAuthChecking(false);
+            const demoEmail = getLocalDemoSessionEmail() || 'admin@grooflow.com';
+            if (nextUsers.length === 0) {
+              nextUsers = applySuperAdminRoleFromConfig([createLocalDemoAdminUser(demoEmail)]);
+              try {
+                await api.saveKey('data:users', nextUsers);
+              } catch (seedErr) {
+                console.warn('[GrooFlow] No se pudo sembrar data:users demo local:', seedErr);
+              }
+            }
+            const row =
+              resolveCurrentUserRow(nextUsers, demoEmail) ??
+              nextUsers.find((u) => (u.email || '').toLowerCase() === 'admin@grooflow.com') ??
+              nextUsers[0];
+            if (row) {
+              deps.setUsers(nextUsers);
+              deps.setCurrentUser({ ...row, lastLogin: new Date().toISOString() });
+              deps.setIsAuthenticated(true);
+              if (shouldShowAuthChecking) deps.setIsAuthChecking(false);
+            } else {
+              deps.setIsAuthenticated(false);
+              deps.setIsAuthChecking(false);
+            }
           }
         } else {
           deps.setIsAuthenticated(false);
@@ -319,7 +366,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             if (PRODUCTION_USE_SQL) {
               finalConfig =
                 ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'settings:config',
                   remoteConfig ?? initialStructure,
                   sessionUserId,
@@ -354,7 +401,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             if (PRODUCTION_USE_SQL) {
               resolvedRemote =
                 ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'settings:system',
                   remote ?? initialSystemSettings,
                   sessionUserId,
@@ -367,7 +414,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const legacyMeta = extractPettyCashMeta(mergedBase.pettyCash);
             let remoteMeta = normalizePettyCashMeta(data[PETTY_CASH_META_KV_KEY]);
             if (PRODUCTION_USE_SQL) {
-              const sqlMetaLoad = await loadPettyCashMetaFromSql(getSupabaseClient());
+              const sqlMetaLoad = await loadPettyCashMetaFromSql(sqlClient!);
               if (sqlMetaLoad.ok && sqlMetaLoad.data) {
                 remoteMeta = sqlMetaLoad.data;
               }
@@ -381,7 +428,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               (legacyMeta.weekClosures.length > 0 || legacyMeta.fundDeliveries.length > 0)
             ) {
               void migratePettyCashMetaKvToSql(
-                getSupabaseClient(),
+                sqlClient!,
                 legacyMeta,
                 sessionUserId
               );
@@ -400,7 +447,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             if (!data.__asistenciaKvFetchFailed && PRODUCTION_USE_SQL) {
               asistenciaRemote =
                 ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   ASISTENCIA_SETTINGS_KV_KEY,
                   asistenciaRemote ?? merged.asistencia,
                   sessionUserId,
@@ -422,7 +469,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               !asistenciaSettingsHasContent(asistenciaRemote)
             ) {
               void saveAppKvKey(
-                getSupabaseClient(),
+                sqlClient!,
                 ASISTENCIA_SETTINGS_KV_KEY,
                 resolvedAsistencia,
                 sessionUserId
@@ -453,8 +500,8 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           if (TRANSACTIONS_USE_SQL) {
             nextTransactions = await resolveListFromSql(
               kvUnique,
-              () => loadTransactionsFromSql(getSupabaseClient()),
-              (list, uid) => migrateTransactionsKvToSql(getSupabaseClient(), list, uid),
+              () => loadTransactionsFromSql(sqlClient!),
+              (list, uid) => migrateTransactionsKvToSql(sqlClient!, list, uid),
               sessionUserId
             );
           }
@@ -493,7 +540,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const unique = PRODUCTION_USE_SQL
               ? await resolveListFromSql(
                   kvUnique,
-                  () => loadInvoicesFromSql(getSupabaseClient()),
+                  () => loadInvoicesFromSql(sqlClient!),
                   migrateInvoicesKvToSql,
                   sessionUserId
                 )
@@ -522,7 +569,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           const list = PRODUCTION_USE_SQL
             ? await resolveListFromSql(
                 kvList,
-                () => loadProvidersFromSql(getSupabaseClient()),
+                () => loadProvidersFromSql(sqlClient!),
                 migrateProvidersKvToSql,
                 sessionUserId
               )
@@ -542,7 +589,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             if (PRODUCTION_USE_SQL && sessionUserId) {
               const sqlList =
                 ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'data:chartOfAccounts',
                   [],
                   sessionUserId,
@@ -568,7 +615,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
             const list = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'data:chartOfAccounts',
                   kvList,
                   sessionUserId,
@@ -604,7 +651,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
             const resolved = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'data:products',
                   kvUnique,
                   sessionUserId,
@@ -658,7 +705,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                       requestDate: isNaN(asDate.getTime()) ? new Date() : asDate,
                     };
                   }),
-                  () => loadPurchaseRequestsFromSql(getSupabaseClient()),
+                  () => loadPurchaseRequestsFromSql(sqlClient!),
                   migratePurchaseRequestsKvToSql,
                   sessionUserId
                 )
@@ -705,7 +752,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const mapped = PRODUCTION_USE_SQL
               ? await resolveListFromSql(
                   kvMapped,
-                  () => loadPettyCashFromSql(getSupabaseClient()),
+                  () => loadPettyCashFromSql(sqlClient!),
                   migratePettyCashKvToSql,
                   sessionUserId
                 )
@@ -719,7 +766,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         if (PRODUCTION_USE_SQL && sessionEffective?.user?.id) {
           const sqlUsers = await resolveUsersFromSql(
             nextUsers,
-            () => loadAppUsersFromSql(getSupabaseClient()),
+            () => loadAppUsersFromSql(sqlClient!),
             migrateAppUsersKvToSql,
             sessionEffective.user.id,
             isAdminAppUser(sessionUserRow)
@@ -733,17 +780,17 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           }
           if (sessionEffective.user.email) {
             const em = sessionEffective.user.email.trim().toLowerCase();
-            const refreshedRow = resolveCurrentUserRow(nextUsers, em);
+            const refreshedRow = resolveCurrentUserRow(nextUsers, em, sessionEffective.user.id);
             if (refreshedRow) {
               const profile = await loadSelfAppUserProfile(
-                getSupabaseClient(),
+                sqlClient!,
                 sessionEffective.user.id
               );
               const merged = applySuperAdminRoleFromConfig([
                 mergeUserWithSqlProfile(refreshedRow, profile),
               ])[0]!;
               if (isUserSessionBlocked(merged)) {
-                await supabase.auth.signOut();
+                await (backend === 'rest' || backend === 'local' ? repository.auth.signOut() : sqlClient!.auth.signOut());
                 toast.error('Tu cuenta está desactivada. Contacta al Administrador.');
                 deps.setCurrentUser(deps.GUEST_USER);
                 deps.setIsAuthenticated(false);
@@ -762,7 +809,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           deps.setCurrentUser((prev) =>
             prev.id === sessionEffective.user!.id ? { ...prev, lastLogin: loginAt } : prev
           );
-          void touchOwnLastLogin(getSupabaseClient());
+          void touchOwnLastLogin(sqlClient!);
         }
 
         deps.setUsers(nextUsers);
@@ -770,7 +817,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           deps.usersKvLatestRef.current = nextUsers;
           deps.usersHydratedFromKvRef.current = true;
           if (backend === 'supabase' && sessionEffective.user?.id) {
-            void syncUserProfilesToSql(getSupabaseClient(), nextUsers, {
+            void syncUserProfilesToSql(sqlClient!, nextUsers, {
               authUserId: sessionEffective.user.id,
               isAdmin: isAdminAppUser(sessionUserRow),
             });
@@ -798,7 +845,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               ? mergeRolesWithDefaults(
                   await resolveListFromSql(
                     kvMerged,
-                    () => loadRolesFromSql(getSupabaseClient()),
+                    () => loadRolesFromSql(sqlClient!),
                     migrateRolesKvToSql,
                     sessionUserId
                   )
@@ -827,7 +874,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
             const list = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'data:feeReceipts',
                   kvList,
                   sessionUserId,
@@ -856,7 +903,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
             const resolved = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'settings:alertThresholds',
                   remoteThresholds,
                   sessionUserId,
@@ -885,7 +932,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
             const resolved = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'settings:theme',
                   remote,
                   sessionUserId,
@@ -921,7 +968,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const kvTiList = Array.isArray(rawTi) ? rawTi : [];
             const tiList = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'data:treasuryInvoices',
                   kvTiList,
                   sessionUserId,
@@ -938,7 +985,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 : undefined;
             const bal = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'data:treasuryBankBalance',
                   kvBal,
                   sessionUserId,
@@ -957,7 +1004,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const kvPhList = Array.isArray(rawPh) ? rawPh : [];
             const phList = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
-                  getSupabaseClient(),
+                  sqlClient!,
                   'data:treasuryPaidHistory',
                   kvPhList,
                   sessionUserId,
@@ -988,15 +1035,15 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
 
             if (FLEET_USE_SQL) {
-              const sqlLoad = await loadFleetFromSql(getSupabaseClient());
+              const sqlLoad = await loadFleetFromSql(sqlClient!);
               const rawFleet = data['data:fleet'];
               const kvFleet = rawFleet != null ? normalizeFleetDataset(rawFleet) : null;
               const kvHasData = kvFleet != null && !isFleetDatasetEmpty(kvFleet);
 
               if (sqlLoad.ok && sqlLoad.data) {
                 if (sqlLoad.empty && kvHasData && sessionUserId) {
-                  await migrateFleetKvToSql(getSupabaseClient(), kvFleet!, sessionUserId);
-                  const reload = await loadFleetFromSql(getSupabaseClient());
+                  await migrateFleetKvToSql(sqlClient!, kvFleet!, sessionUserId);
+                  const reload = await loadFleetFromSql(sqlClient!);
                   nextFleet = reload.data ?? sqlLoad.data;
                   if (reload.timestamps) {
                     deps.fleetSqlTimestampsRef.current = reload.timestamps;
@@ -1008,8 +1055,8 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                   }
                 }
               } else if (kvHasData && sessionUserId) {
-                await migrateFleetKvToSql(getSupabaseClient(), kvFleet!, sessionUserId);
-                const reload = await loadFleetFromSql(getSupabaseClient());
+                await migrateFleetKvToSql(sqlClient!, kvFleet!, sessionUserId);
+                const reload = await loadFleetFromSql(sqlClient!);
                 nextFleet = reload.data ?? kvFleet!;
                 if (reload.timestamps) {
                   deps.fleetSqlTimestampsRef.current = reload.timestamps;
@@ -1059,7 +1106,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
 
             if (INVENTORY_USE_SQL) {
-              const sqlLoad = await loadInventoryFromSql(getSupabaseClient());
+              const sqlLoad = await loadInventoryFromSql(sqlClient!);
               const rawInv = data['data:inventory'];
               const kvInv = rawInv != null ? normalizeInventoryDataset(rawInv) : null;
               const kvHasData = kvInv != null && !isInventoryDatasetEmpty(kvInv);
@@ -1081,7 +1128,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                   }
                 });
                 if (sqlLoad.ok && sessionUserId && sqlLoad.data && !sqlLoad.empty) {
-                  void migrateInventoryKvToSql(getSupabaseClient(), nextInventory, sessionUserId);
+                  void migrateInventoryKvToSql(sqlClient!, nextInventory, sessionUserId);
                 }
               } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
                 nextInventory = sqlLoad.data;
@@ -1162,111 +1209,88 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
     deps.hydrateFromKvRef.current = hydrateFromKv;
     void hydrateFromKv();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (cancelled) return;
-      if (deps.authNullDebounceRef.current) {
-        clearTimeout(deps.authNullDebounceRef.current);
-        deps.authNullDebounceRef.current = null;
-      }
-      if (event === 'TOKEN_REFRESHED') {
-        return;
-      }
-      if (session?.user) {
-        /** No hacer KV full-hydrate en USER_UPDATED: Supabase puede emitirlo tras metadatos y pisa estado local
-         *  antes del autosave (ej. proveedores recién cargados parecían «no guardarse»). */
-        const shouldHydrate =
-          (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
-          !deps.cloudDataHydratedRef.current;
-        if (shouldHydrate) {
-          if (event === 'SIGNED_IN' && deps.hydrateRunningRef.current) return;
-          await hydrateFromKv();
-        }
-        return;
-      }
-      // Sesión nula: puede ser cierre real o carrera (F5, pestaña, red).
-      if (event === 'TOKEN_REFRESHED') {
-        return;
-      }
-      if (backend !== 'supabase') {
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.removeItem('grooflow_local_session');
-        }
-        deps.setCurrentUser(deps.GUEST_USER);
-        deps.setIsAuthenticated(false);
-        deps.setIsAuthChecking(false);
-        deps.cloudDataHydratedRef.current = false;
-        deps.transactionsCloudHydrationDoneRef.current = false;
-        deps.transactionsHydratedFromKvRef.current = false;
-        deps.providersCloudHydrationDoneRef.current = false;
-        deps.providersHydratedFromKvRef.current = false;
-        deps.pettyCashHydratedFromKvRef.current = false;
-        deps.providersKvCooldownUntilRef.current = 0;
-        deps.pettyCashKvCooldownUntilRef.current = 0;
-        deps.configHydratedFromKvRef.current = false;
-        deps.configKvCooldownUntilRef.current = 0;
-        deps.skipProvidersHydrateRef.current = false;
-        deps.skipPettyCashHydrateRef.current = false;
-        deps.skipConfigHydrateRef.current = false;
-        deps.resetAllKvDomainRefs();
-        deps.resetKvSaveChains();
-        deps.cloudSyncPendingRef.current = 0;
-        deps.cloudSyncErrorRef.current = false;
-        deps.setCloudSyncPhase('idle');
-        deps.setCanSaveUsers(true);
-        deps.setIsDataLoaded(false);
-        return;
-      }
-      deps.authNullDebounceRef.current = setTimeout(async () => {
-        deps.authNullDebounceRef.current = null;
-        if (cancelled || deps.signingOutRef.current) return;
-        let s2 = await getStableSession();
-        if (!s2?.user && backend === 'supabase') {
-          try {
-            await refreshSessionWithTimeout(5000);
-            const retry = await supabase.auth.getSession();
-            s2 = retry.data.session;
-          } catch {
-            /* intento extra tras idle / pestaña en segundo plano */
+    let unsubAuth: (() => void) | undefined;
+    if (backend === 'supabase') {
+      void getSupabaseClientLazy().then((client) => {
+        if (cancelled || !client) return;
+        const {
+          data: { subscription },
+        } = client.auth.onAuthStateChange(async (event, session) => {
+          if (cancelled) return;
+          if (deps.authNullDebounceRef.current) {
+            clearTimeout(deps.authNullDebounceRef.current);
+            deps.authNullDebounceRef.current = null;
           }
-        }
-        if (s2?.user) {
-          /** Sesión recuperada tras un null transitorio (refresh/red): no re-hidratar KV
-           *  porque invalidaría colas de guardado y pisaría cambios locales recientes. */
-          if (!deps.cloudDataHydratedRef.current) {
-            await hydrateFromKv();
+          if (event === 'TOKEN_REFRESHED') {
+            return;
           }
-          return;
-        }
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.removeItem('grooflow_local_session');
-        }
-        deps.setCurrentUser(deps.GUEST_USER);
-        deps.setIsAuthenticated(false);
-        deps.setIsAuthChecking(false);
-        deps.cloudDataHydratedRef.current = false;
-        deps.transactionsCloudHydrationDoneRef.current = false;
-        deps.transactionsHydratedFromKvRef.current = false;
-        deps.providersCloudHydrationDoneRef.current = false;
-        deps.providersHydratedFromKvRef.current = false;
-        deps.pettyCashHydratedFromKvRef.current = false;
-        deps.providersKvCooldownUntilRef.current = 0;
-        deps.pettyCashKvCooldownUntilRef.current = 0;
-        deps.configHydratedFromKvRef.current = false;
-        deps.configKvCooldownUntilRef.current = 0;
-        deps.skipProvidersHydrateRef.current = false;
-        deps.skipPettyCashHydrateRef.current = false;
-        deps.skipConfigHydrateRef.current = false;
-        deps.resetAllKvDomainRefs();
-        deps.resetKvSaveChains();
-        deps.cloudSyncPendingRef.current = 0;
-        deps.cloudSyncErrorRef.current = false;
-        deps.setCloudSyncPhase('idle');
-        deps.setCanSaveUsers(true);
-        deps.setIsDataLoaded(false);
-      }, 600);
-    });
+          if (session?.user) {
+            /** No hacer KV full-hydrate en USER_UPDATED: Supabase puede emitirlo tras metadatos y pisa estado local
+             *  antes del autosave (ej. proveedores recién cargados parecían «no guardarse»). */
+            const shouldHydrate =
+              (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') &&
+              !deps.cloudDataHydratedRef.current;
+            if (shouldHydrate) {
+              if (event === 'SIGNED_IN' && deps.hydrateRunningRef.current) return;
+              await hydrateFromKv();
+            }
+            return;
+          }
+          // Sesión nula: puede ser cierre real o carrera (F5, pestaña, red).
+          if (event === 'TOKEN_REFRESHED') {
+            return;
+          }
+          deps.authNullDebounceRef.current = setTimeout(async () => {
+            deps.authNullDebounceRef.current = null;
+            if (cancelled || deps.signingOutRef.current) return;
+            let s2 = await getStableSession();
+            if (!s2?.user) {
+              try {
+                await refreshSessionWithTimeout(5000);
+                const retryClient = await getSupabaseClientLazy();
+                const retry = retryClient ? await retryClient.auth.getSession() : null;
+                s2 = retry?.data.session ?? null;
+              } catch {
+                /* intento extra tras idle / pestaña en segundo plano */
+              }
+            }
+            if (s2?.user) {
+              /** Sesión recuperada tras un null transitorio (refresh/red): no re-hidratar KV
+               *  porque invalidaría colas de guardado y pisaría cambios locales recientes. */
+              if (!deps.cloudDataHydratedRef.current) {
+                await hydrateFromKv();
+              }
+              return;
+            }
+            clearLocalDemoSession();
+            deps.setCurrentUser(deps.GUEST_USER);
+            deps.setIsAuthenticated(false);
+            deps.setIsAuthChecking(false);
+            deps.cloudDataHydratedRef.current = false;
+            deps.transactionsCloudHydrationDoneRef.current = false;
+            deps.transactionsHydratedFromKvRef.current = false;
+            deps.providersCloudHydrationDoneRef.current = false;
+            deps.providersHydratedFromKvRef.current = false;
+            deps.pettyCashHydratedFromKvRef.current = false;
+            deps.providersKvCooldownUntilRef.current = 0;
+            deps.pettyCashKvCooldownUntilRef.current = 0;
+            deps.configHydratedFromKvRef.current = false;
+            deps.configKvCooldownUntilRef.current = 0;
+            deps.skipProvidersHydrateRef.current = false;
+            deps.skipPettyCashHydrateRef.current = false;
+            deps.skipConfigHydrateRef.current = false;
+            deps.resetAllKvDomainRefs();
+            deps.resetKvSaveChains();
+            deps.cloudSyncPendingRef.current = 0;
+            deps.cloudSyncErrorRef.current = false;
+            deps.setCloudSyncPhase('idle');
+            deps.setCanSaveUsers(true);
+            deps.setIsDataLoaded(false);
+          }, 600);
+        });
+        unsubAuth = () => subscription.unsubscribe();
+      });
+    }
 
     return () => {
       cancelled = true;
@@ -1275,7 +1299,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         clearTimeout(deps.authNullDebounceRef.current);
         deps.authNullDebounceRef.current = null;
       }
-      subscription.unsubscribe();
+      unsubAuth?.();
       deps.hydrateFromKvRef.current = null;
     };
   }, []);

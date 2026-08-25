@@ -1,6 +1,6 @@
 import { useEffect, type MutableRefObject } from 'react';
 
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isFleetSqlEnabled, loadFleetFromSql } from '../services/repository/fleetSql';
 import { normalizeFleetDataset } from '../utils/fleetData';
 import { mergeFleetRemoteIntoLocal } from '../utils/fleetMerge';
@@ -21,10 +21,13 @@ export function useFleetRealtimeSync(
   useEffect(() => {
     if (!enabled || !isFleetSqlEnabled()) return;
 
-    const client = getSupabaseClient();
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let cancelled = false;
     let reloadInFlight = false;
+    let dispose: (() => void) | undefined;
+
+    void getSupabaseClientLazy().then((client) => {
+    if (!client || cancelled) return;
 
     const reload = async (source: 'realtime' | 'poll') => {
       if (cancelled || reloadInFlight) return;
@@ -79,10 +82,15 @@ export function useFleetRealtimeSync(
         }
       });
 
-    return () => {
-      cancelled = true;
+    dispose = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       void client.removeChannel(channel);
+    };
+    });
+
+    return () => {
+      cancelled = true;
+      dispose?.();
     };
   }, [enabled, applyRef, latestRef, cooldownUntilRef]);
 }

@@ -119,8 +119,21 @@ export function mergeAuthUserIntoUsers(
   return [...list, row];
 }
 
-export function resolveCurrentUserRow(nextUsers: User[], sessionEmail: string | undefined | null): User | null {
+export function resolveCurrentUserRow(
+  nextUsers: User[],
+  sessionEmail: string | undefined | null,
+  sessionId?: string | null
+): User | null {
+  const id = String(sessionId || '').trim();
+  if (id) {
+    const byId = nextUsers.find((u) => String(u.id) === id);
+    if (byId) return byId;
+  }
   const em = (sessionEmail || '').trim().toLowerCase();
   if (!em) return null;
-  return nextUsers.find((u) => (u.email || '').toLowerCase() === em) ?? null;
+  return (
+    nextUsers.find((u) => (u.email || '').toLowerCase() === em) ??
+    nextUsers.find((u) => String(u.id).toLowerCase() === em) ??
+    null
+  );
 }

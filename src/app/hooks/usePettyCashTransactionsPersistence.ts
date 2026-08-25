@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 
 import { savePettyCashToSql } from '../services/repository/businessDomainsSql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { getAuthUserId } from '../services/productionSqlBridge';
 import type { PettyCashTransaction } from '../types';
 import {
@@ -113,10 +113,12 @@ export function usePettyCashTransactionsPersistence(
       try {
         if (PRODUCTION_USE_SQL) {
           const uid = await getAuthUserId();
+          const client = await getSupabaseClientLazy();
+          if (!client) return false;
           const sqlOk = await ensureSqlSave(
             true,
             'data:pettyCash',
-            () => savePettyCashToSql(getSupabaseClient(), next, uid),
+            () => savePettyCashToSql(client, next, uid),
             lastSaveErrorAtRef
           );
           if (!sqlOk) return false;

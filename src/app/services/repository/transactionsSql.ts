@@ -3,6 +3,7 @@
  * Fuente de verdad cuando VITE_TRANSACTIONS_SQL !== 'false'.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getGrooflowBackend } from '../../config/backend';
 import type { Transaction } from '../types';
 import { parseTransactionDate } from '../../utils/transactionDate';
 import { deleteRowsByIdBatched, fetchAllRowIds, selectAllRowsPaginated } from './sqlDomainUtils';
@@ -133,7 +134,6 @@ export async function migrateTransactionsKvToSql(
 }
 
 export function isTransactionsSqlEnabled(): boolean {
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-  if (backend !== 'supabase') return false;
+  if (getGrooflowBackend() !== 'supabase') return false;
   return import.meta.env.VITE_TRANSACTIONS_SQL !== 'false';
 }

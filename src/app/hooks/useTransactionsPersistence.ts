@@ -5,7 +5,7 @@ import {
   saveTransactionsToSql,
   isTransactionsSqlEnabled,
 } from '../services/repository/transactionsSql';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import type { Transaction } from '../types';
 import {
   backupDomainSqlAfterKvSave,
@@ -109,7 +109,9 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
       skipExplicitAutosaveRef.current = true;
       try {
         if (TRANSACTIONS_USE_SQL) {
-          const { data: sess } = await getSupabaseClient().auth.getSession();
+          const client = await getSupabaseClientLazy();
+          if (!client) return false;
+          const { data: sess } = await client.auth.getSession();
           const uid = sess.session?.user?.id ?? null;
           const sqlOpts = {
             ...saveOptions,
@@ -118,7 +120,7 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
           const sqlOk = await ensureSqlSave(
             true,
             'data:transactions',
-            () => saveTransactionsToSql(getSupabaseClient(), next, uid, sqlOpts),
+            () => saveTransactionsToSql(client, next, uid, sqlOpts),
             lastSaveErrorAtRef
           );
           if (!sqlOk) return false;

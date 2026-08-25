@@ -171,7 +171,8 @@ import {
   migrateTransactionsKvToSql,
   isTransactionsSqlEnabled,
 } from '../services/repository/transactionsSql';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
+import { getGrooflowBackend } from '../config/backend';
 import { isAdminAppUser, syncUserProfilesToSql } from '../services/repository/userProfileSync';
 import type { Role } from '../components/users/types';
 import type {
@@ -206,10 +207,9 @@ import {
   mergeAuthUserIntoUsers,
   resolveCurrentUserRow,
 } from '../utils/userListMerge';
-import { supabase } from '../../../utils/supabase/client';
 import type { AppHydrationDeps } from './hydration/appHydrationDeps';
 
-const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
+const APP_BACKEND = getGrooflowBackend();
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 import { isFleetSqlEnabled } from '../services/repository/fleetSql';

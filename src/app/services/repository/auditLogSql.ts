@@ -92,6 +92,18 @@ export async function writeAuditLog(
   return true;
 }
 
+export function writeAuditLogLazy(
+  action: string,
+  metadata: Record<string, unknown>,
+  targetUserId?: string | null
+): void {
+  void import('./supabaseLazy').then(async ({ getSupabaseClientLazy }) => {
+    const client = await getSupabaseClientLazy();
+    if (!client) return;
+    await writeAuditLog(client, action, metadata, targetUserId);
+  });
+}
+
 export async function loadAuditLogs(
   client: SupabaseClient,
   limit = 100

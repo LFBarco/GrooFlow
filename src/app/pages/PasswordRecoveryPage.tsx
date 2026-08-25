@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { supabase } from '../../../utils/supabase/client';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { validatePasswordClient } from '../utils/userSessionGuard';
 
 type PasswordRecoveryPageProps = {
@@ -37,7 +37,12 @@ export function PasswordRecoveryPage({
     }
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      const client = await getSupabaseClientLazy();
+      if (!client) {
+        toast.error('La recuperación de clave no está disponible en este entorno.');
+        return;
+      }
+      const { error } = await client.auth.updateUser({ password });
       if (error) throw error;
       if (typeof window !== 'undefined') {
         window.history.replaceState({}, document.title, window.location.pathname);

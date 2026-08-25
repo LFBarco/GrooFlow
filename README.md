@@ -13,38 +13,33 @@ npm run dev
 
 ## Producción
 
-1. **Variables de entorno**  
-   Copie `.env.example` a `.env` y configure:
-   - `VITE_SUPABASE_PROJECT_ID` – ID del proyecto Supabase  
-   - `VITE_SUPABASE_ANON_KEY` – Clave anónima pública de Supabase  
-   - Opcional: `VITE_SUPABASE_FUNCTIONS_URL` – URL base de las Edge Functions si usa dominio propio  
+Producción es **Hostinger**, no Vercel:
 
-2. **Assets**  
-   Coloque en la carpeta `public/`:
-   - `logo.png` – Logo de la clínica (sidebar e inicio)
-   - `warm-bg.png` – Imagen de fondo de la pantalla de login  
-   Ver `public/ASSETS-README.txt`.
+- App: https://gestionveterinariagroomers.com/grooflow
+- API: https://gestionveterinariagroomers.com/grooflow/api/
+- Deploy: `./deploy/hostinger/deploy-ssh.sh` en el repo del panel Gestión (`VITE_BACKEND=rest`).
 
-3. **Build**
-   ```bash
-   npm run build
-   ```
-   La salida estará en `dist/`. Sirva esa carpeta con cualquier servidor estático (Nginx, Vercel, Netlify, etc.).  
-   **SPA:** Configure el servidor para devolver `index.html` en todas las rutas (ej. `/transacciones`, `/reportes`) para que React Router funcione al recargar o compartir enlaces.
+Para un build local de la SPA:
 
-4. **Edge Functions (Supabase)**  
-   En producción, configure la variable `ALLOWED_ORIGINS` en Supabase con los dominios permitidos (ej. `https://tu-dominio.com`). Si no se define, se permite cualquier origen (`*`).
+```
+VITE_BACKEND=rest VITE_GROOFLOW_API_URL=/grooflow/api npm run build
+```
+
+La salida está en `dist/`. El hosting debe devolver `index.html` en rutas de la SPA (ya lo hace `/grooflow` en Hostinger).
+
+El logo de marca va en `public/logo.png`. Un logo de clínica opcional se puede subir en Configuración (`businessLogo`).
 
 ## Stack
 
-React 18, Vite 6, TypeScript, Tailwind CSS, Supabase (Auth + Edge Functions), persistencia local + KV en backend.
+React 18, Vite 6, TypeScript, Tailwind CSS. Persistencia en Hostinger: PHP (`grooflow-backend`) + MySQL. El adaptador Supabase permanece en el código para builds `VITE_BACKEND=supabase`.
 
 ## Backend (`VITE_BACKEND`)
 
 | Valor       | Uso |
 |------------|-----|
-| `supabase` | KV vía repositorio Supabase (por defecto). |
+| `rest`     | PHP/MySQL en Hostinger (default / producción). |
 | `local`    | Solo `localStorage`, útil sin red o para pruebas aisladas. |
+| `supabase` | KV vía repositorio Supabase (legacy / Vercel). |
 
 La fábrica del repositorio está en `src/app/services/repository/index.ts`. Guía de nuevos backends: **`BACKEND_MIGRATION.md`**.
 

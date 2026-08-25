@@ -2,6 +2,7 @@
  * Inventario de equipos — persistencia SQL + Realtime.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getGrooflowBackend } from '../../config/backend';
 import type {
   InventoryDataset,
   InventoryEquipment,
@@ -163,7 +164,6 @@ export async function migrateInventoryKvToSql(
 }
 
 export function isInventorySqlEnabled(): boolean {
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-  if (backend !== 'supabase') return false;
+  if (getGrooflowBackend() !== 'supabase') return false;
   return import.meta.env.VITE_INVENTORY_SQL !== 'false';
 }

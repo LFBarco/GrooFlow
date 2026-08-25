@@ -12,7 +12,7 @@ import {
 
 } from '../services/repository/inventorySql';
 
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 
 import type { InventoryDataset } from '../types/inventory';
 
@@ -182,11 +182,15 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
         run: async () => {
 
-          const { data: sess } = await getSupabaseClient().auth.getSession();
+          const client = await getSupabaseClientLazy();
+
+          if (!client) return { ok: true, errors: [] };
+
+          const { data: sess } = await client.auth.getSession();
 
           return saveInventoryToSql(
 
-            getSupabaseClient(),
+            client,
 
             latestRef.current,
 
@@ -288,7 +292,11 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
         if (INVENTORY_USE_SQL) {
 
-          const { data: sess } = await getSupabaseClient().auth.getSession();
+          const client = await getSupabaseClientLazy();
+
+          if (!client) return false;
+
+          const { data: sess } = await client.auth.getSession();
 
           const sqlOk = await ensureSqlSave(
 
@@ -300,7 +308,7 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
               saveInventoryToSql(
 
-                getSupabaseClient(),
+                client,
 
                 clean,
 

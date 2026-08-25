@@ -21,8 +21,10 @@ export type TransactionDatePreset =
   | 'year'
   | 'custom';
 
-export const APP_BACKEND = import.meta.env.VITE_BACKEND ?? 'supabase';
+import { getGrooflowBackend, isLocalBackend as isLocalBackendFn } from '../config/backend';
+
+export const APP_BACKEND = getGrooflowBackend();
 
 export function isLocalBackend(): boolean {
-  return APP_BACKEND === 'local';
+  return isLocalBackendFn();
 }

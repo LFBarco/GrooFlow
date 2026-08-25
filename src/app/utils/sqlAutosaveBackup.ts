@@ -4,7 +4,8 @@
 import type { MutableRefObject } from 'react';
 import { toast } from 'sonner';
 
-import { getSupabaseClient } from '../services/repository/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { saveAppKvKey, type AppKvSaveResult } from '../services/repository/appKvSql';
 import { getAuthUserId } from '../services/productionSqlBridge';
 import { enqueueSqlRetry, dequeueSqlRetry } from '../services/repository/sqlRetryQueue';
@@ -136,7 +137,9 @@ export async function backupAppKvAfterKvSave(
     lastSaveErrorAtRef,
     run: async (): Promise<AppKvSaveResult> => {
       const uid = await getAuthUserId();
-      return saveAppKvKey(getSupabaseClient(), kvKey, value, uid);
+      const client = await getSupabaseClientLazy();
+      if (!client) return { ok: true, errors: [] };
+      return saveAppKvKey(client, kvKey, value, uid);
     },
   });
 }
@@ -146,7 +149,7 @@ export async function backupDomainSqlAfterKvSave<T>(
   kvKey: string,
   items: T,
   saver: (
-    client: ReturnType<typeof getSupabaseClient>,
+    client: SupabaseClient,
     data: T,
     userId: string | null
   ) => Promise<SqlSaveResult>,
@@ -158,7 +161,9 @@ export async function backupDomainSqlAfterKvSave<T>(
     lastSaveErrorAtRef,
     run: async () => {
       const uid = await getAuthUserId();
-      return saver(getSupabaseClient(), items, uid);
+      const client = await getSupabaseClientLazy();
+      if (!client) return { ok: true, errors: [] };
+      return saver(client, items, uid);
     },
   });
 }

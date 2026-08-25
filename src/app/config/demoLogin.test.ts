@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isDemoLoginEnabled, tryDemoLogin } from './demoLogin';
+import {
+  createLocalDemoAdminUser,
+  isDemoLoginEnabled,
+  tryDemoLogin,
+} from './demoLogin';
 
 const devLocal: Parameters<typeof isDemoLoginEnabled>[0] = {
   prod: false,
@@ -52,5 +56,13 @@ describe('demoLogin', () => {
     expect(isDemoLoginEnabled(devSupabaseNoFlag)).toBe(false);
     expect(isDemoLoginEnabled(devSupabaseWithFlag)).toBe(true);
     expect(tryDemoLogin('admin@vetflow.com', '123456', devSupabaseWithFlag)).toBe(true);
+  });
+
+  it('crea admin demo local con rol super_admin', () => {
+    const user = createLocalDemoAdminUser('admin@grooflow.com');
+    expect(user.email).toBe('admin@grooflow.com');
+    expect(user.role).toBe('super_admin');
+    expect(user.status).toBe('active');
+    expect(user.allSedes).toBe(true);
   });
 });

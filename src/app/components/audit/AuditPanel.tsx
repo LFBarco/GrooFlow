@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getSupabaseClient } from '../../services/repository/supabase';
+import { getSupabaseClientLazy } from '../../services/repository/supabaseLazy';
 import { loadAuditLogs, mapAuditRowToEntry, type AuditLogEntry } from '../../services/repository/auditLogSql';
 import { Transaction, InvoiceDraft } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../ui/card';
@@ -61,11 +61,19 @@ export function AuditPanel({
     }
     let cancelled = false;
     setAuditLogsLoading(true);
-    void loadAuditLogs(getSupabaseClient(), 80).then(({ ok, rows }) => {
+    void getSupabaseClientLazy().then((client) => {
       if (cancelled) return;
-      setAuditLogsLoading(false);
-      if (!ok) return;
-      setAuditLogs(rows.map((r) => mapAuditRowToEntry(r, currentUserEmail)));
+      if (!client) {
+        setAuditLogsLoading(false);
+        setAuditLogs([]);
+        return;
+      }
+      return loadAuditLogs(client, 80).then(({ ok, rows }) => {
+        if (cancelled) return;
+        setAuditLogsLoading(false);
+        if (!ok) return;
+        setAuditLogs(rows.map((r) => mapAuditRowToEntry(r, currentUserEmail)));
+      });
     });
     return () => {
       cancelled = true;

@@ -2,7 +2,7 @@ import { useCallback, useRef, type Dispatch, type MutableRefObject, type SetStat
 import { toast } from 'sonner';
 
 import { saveAppKvKey } from '../services/repository/appKvSql';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import type { SystemSettings } from '../types';
 import type { AsistenciaSettings } from '../types/asistencia';
@@ -88,12 +88,17 @@ export function useAsistenciaPersistence(options: UseAsistenciaPersistenceOption
         }
 
         if (PRODUCTION_USE_SQL) {
-          const { data: sess } = await getSupabaseClient().auth.getSession();
+          const client = await getSupabaseClientLazy();
+          if (!client) {
+            asistenciaLatestRef.current = prevAsistencia;
+            return false;
+          }
+          const { data: sess } = await client.auth.getSession();
           const uid = sess.session?.user?.id ?? null;
           const sqlOk = await ensureSqlSave(
             true,
             ASISTENCIA_SETTINGS_KV_KEY,
-            () => saveAppKvKey(getSupabaseClient(), ASISTENCIA_SETTINGS_KV_KEY, nextAsistencia, uid),
+            () => saveAppKvKey(client, ASISTENCIA_SETTINGS_KV_KEY, nextAsistencia, uid),
             lastSaveErrorAtRef,
             'No se pudo guardar la configuración de Asistencia en SQL. Revisa sesión o permisos.'
           );

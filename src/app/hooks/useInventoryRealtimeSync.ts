@@ -1,6 +1,6 @@
 import { useEffect, type MutableRefObject } from 'react';
 
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isInventorySqlEnabled, loadInventoryFromSql } from '../services/repository/inventorySql';
 import { normalizeInventoryDataset } from '../utils/inventoryData';
 import { shouldApplyInventoryRemoteSnapshot } from '../utils/inventoryRemoteSyncGuard';
@@ -15,11 +15,14 @@ export function useInventoryRealtimeSync(
   useEffect(() => {
     if (!enabled || !isInventorySqlEnabled()) return;
 
-    const client = getSupabaseClient();
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let cancelled = false;
     let reloadInFlight = false;
+    let dispose: (() => void) | undefined;
+
+    void getSupabaseClientLazy().then((client) => {
+    if (!client || cancelled) return;
 
     const reload = async (source: 'realtime' | 'poll') => {
       if (cancelled || reloadInFlight) return;
@@ -66,11 +69,16 @@ export function useInventoryRealtimeSync(
 
     pollTimer = setInterval(() => void reload('poll'), 45_000);
 
-    return () => {
-      cancelled = true;
+    dispose = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       if (pollTimer) clearInterval(pollTimer);
       void client.removeChannel(channel);
+    };
+    });
+
+    return () => {
+      cancelled = true;
+      dispose?.();
     };
   }, [enabled, applyRef, latestRef, cooldownUntilRef]);
 }

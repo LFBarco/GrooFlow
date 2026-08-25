@@ -85,6 +85,9 @@ export interface IKVRepository {
     key: string
   ): Promise<{ ok: boolean; value: T | null }>;
 
+  /** Lectura en lote (REST Hostinger: un solo round-trip). */
+  getMany?(keys: string[]): Promise<Record<string, unknown>>;
+
   /** Write a value by key */
   set(key: string, value: unknown): Promise<void>;
 

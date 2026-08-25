@@ -16,7 +16,8 @@
  */
 
 import { repository, KV_KEYS } from './repository';
-import { getSupabaseClient, isSupabaseKvFatalAuthError } from './repository/supabase';
+import { getGrooflowBackend, isSupabaseBackend } from '../config/backend';
+import { getSupabaseClientLazy, isSupabaseKvFatalAuthErrorLazy } from './repository/supabaseLazy';
 import { isAccessTokenExpired } from '../utils/accessToken';
 import { broadcastKvUpdate, shouldBroadcastKvUpdate } from '../utils/kvCrossTabSync';
 import { toast } from 'sonner';
@@ -188,18 +189,21 @@ export const api = {
    */
   async fetchInitialData(): Promise<InitialDataKeys> {
     const result: InitialDataKeys = {};
-    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+    const backend = getGrooflowBackend();
 
     // Solo renovar si el JWT expiró; tras signIn el token ya es válido (evita ~2.5s de espera).
-    if (backend === 'supabase') {
+    if (isSupabaseBackend()) {
       try {
-        const { data } = await getSupabaseClient().auth.getSession();
-        const token = data.session?.access_token;
-        if (data.session?.user && (!token || isAccessTokenExpired(token))) {
-          await Promise.race([
-            getSupabaseClient().auth.refreshSession(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
-          ]);
+        const client = await getSupabaseClientLazy();
+        if (client) {
+          const { data } = await client.auth.getSession();
+          const token = data.session?.access_token;
+          if (data.session?.user && (!token || isAccessTokenExpired(token))) {
+            await Promise.race([
+              client.auth.refreshSession(),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+            ]);
+          }
         }
       } catch {
         /* KV decidirá con getSession interno */
@@ -207,6 +211,39 @@ export const api = {
     }
 
     const kv = repository.kv;
+
+    if (backend === 'rest' && typeof kv.getMany === 'function') {
+      try {
+        const values = await kv.getMany(ALL_KEYS as string[]);
+        const arrayFallback = new Set([
+          'data:users',
+          'data:providers',
+          'data:pettyCash',
+          'data:chartOfAccounts',
+          'data:products',
+        ]);
+        for (const key of ALL_KEYS) {
+          if (Object.prototype.hasOwnProperty.call(values, key)) {
+            const value = values[key];
+            (result as Record<string, unknown>)[key] =
+              value ?? (arrayFallback.has(key) ? [] : null);
+          }
+        }
+        if (result['settings:alertThresholds'] == null) {
+          try {
+            const legacy = await kv.get('data:alertThresholds');
+            if (legacy != null) {
+              result['settings:alertThresholds'] = legacy;
+            }
+          } catch {
+            /* migración legacy opcional */
+          }
+        }
+        return result;
+      } catch {
+        /* fallback a lecturas individuales */
+      }
+    }
 
     await Promise.all(
       ALL_KEYS.map(async (key) => {
@@ -270,16 +307,19 @@ export const api = {
 
   /** Carga perezosa de una clave KV (p. ej. conciliación con muchos movimientos). */
   async fetchKvKey<T = unknown>(key: string): Promise<T | null> {
-    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-    if (backend === 'supabase') {
+    const backend = getGrooflowBackend();
+    if (isSupabaseBackend()) {
       try {
-        const { data } = await getSupabaseClient().auth.getSession();
-        const token = data.session?.access_token;
-        if (data.session?.user && (!token || isAccessTokenExpired(token))) {
-          await Promise.race([
-            getSupabaseClient().auth.refreshSession(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
-          ]);
+        const client = await getSupabaseClientLazy();
+        if (client) {
+          const { data } = await client.auth.getSession();
+          const token = data.session?.access_token;
+          if (data.session?.user && (!token || isAccessTokenExpired(token))) {
+            await Promise.race([
+              client.auth.refreshSession(),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+            ]);
+          }
         }
       } catch {
         /* noop */
@@ -294,7 +334,7 @@ export const api = {
    * Replaces the old direct fetch() call.
    */
   async saveKey(key: string, data: unknown): Promise<boolean> {
-    const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+    const backend = getGrooflowBackend();
     /** Directorio grande / importaciones masivas: más reintentos por timeouts intermitentes. */
     const maxAttempts =
       key === 'data:providers' ||
@@ -324,10 +364,11 @@ export const api = {
         }
         return true;
       } catch (error) {
-        if (backend === 'supabase' && isSupabaseKvFatalAuthError(error)) {
+        if (isSupabaseBackend() && (await isSupabaseKvFatalAuthErrorLazy(error))) {
           toastKvSessionFatalOnce();
           try {
-            const { data: d } = await getSupabaseClient().auth.getSession();
+            const client = await getSupabaseClientLazy();
+            const { data: d } = client ? await client.auth.getSession() : { data: { session: null } };
             /** No desloguear si el SDK sigue exponiendo usuario; evita falsos positivos en red/particionado */
             if (!d.session?.user) {
               invokeKvSessionFatalHandler();
@@ -341,17 +382,17 @@ export const api = {
         const last = attempt === maxAttempts;
         console.warn(`[api] saveKey failed for "${key}" (attempt ${attempt}/${maxAttempts}):`, error);
         if (last) return false;
-        if (
-          backend === 'supabase' &&
-          !isSupabaseKvFatalAuthError(error)
-        ) {
+        if (isSupabaseBackend() && !(await isSupabaseKvFatalAuthErrorLazy(error))) {
           try {
-            const { data: s } = await getSupabaseClient().auth.getSession();
-            if (s.session?.user) {
-              await Promise.race([
-                getSupabaseClient().auth.refreshSession(),
-                new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
-              ]);
+            const client = await getSupabaseClientLazy();
+            if (client) {
+              const { data: s } = await client.auth.getSession();
+              if (s.session?.user) {
+                await Promise.race([
+                  client.auth.refreshSession(),
+                  new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
+                ]);
+              }
             }
           } catch {
             // noop

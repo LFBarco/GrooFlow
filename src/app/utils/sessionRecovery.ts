@@ -1,4 +1,5 @@
-import { getSupabaseClient } from '../services/repository/supabase';
+import { isSupabaseBackend } from '../config/backend';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isAccessTokenExpired } from './accessToken';
 
 const REFRESH_TIMEOUT_MS = 5000;
@@ -8,11 +9,11 @@ const REFRESH_TIMEOUT_MS = 5000;
  * tarda en renovarlo. Refresca de forma proactiva al volver a la pestaña.
  */
 export async function recoverSupabaseSessionAfterIdle(): Promise<boolean> {
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-  if (backend !== 'supabase') return true;
+  if (!isSupabaseBackend()) return true;
 
   try {
-    const sb = getSupabaseClient();
+    const sb = await getSupabaseClientLazy();
+    if (!sb) return true;
     const { data } = await sb.auth.getSession();
     const token = data.session?.access_token;
 
@@ -29,7 +30,9 @@ export async function recoverSupabaseSessionAfterIdle(): Promise<boolean> {
     return Boolean(after.session?.user?.id);
   } catch {
     try {
-      const { data: fallback } = await getSupabaseClient().auth.getSession();
+      const sb = await getSupabaseClientLazy();
+      if (!sb) return false;
+      const { data: fallback } = await sb.auth.getSession();
       return Boolean(fallback.session?.user?.id);
     } catch {
       return false;

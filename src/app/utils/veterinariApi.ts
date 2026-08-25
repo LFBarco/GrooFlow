@@ -3,7 +3,9 @@
  * La prueba usa proxy en Edge Function (evita CORS del navegador).
  */
 
-import { getEdgeFunctionAccessToken, getSupabaseFunctionsUrl } from '../services/repository/supabase';
+import { getEdgeFunctionAccessTokenLazy, getSupabaseFunctionsUrlLazy } from '../services/repository/supabaseLazy';
+import { getGrooflowApiBase, getGrooflowToken } from '../services/repository/apiBase';
+import { getGrooflowBackend } from '../config/backend';
 
 export const VETERINARI_AUTH_BEARER = 'Authorization: Bearer' as const;
 
@@ -102,11 +104,15 @@ async function validateViaServerProxy(
   accessToken: string
 ): Promise<VeterinariValidationResult> {
   const start = Date.now();
-  const functionsUrl = getSupabaseFunctionsUrl();
+  const backend = getGrooflowBackend();
+  const functionsUrl =
+    backend === 'rest' ? `${getGrooflowApiBase()}/proxy` : await getSupabaseFunctionsUrlLazy();
   if (!functionsUrl) {
     return {
       ok: false,
-      message: 'Supabase no configurado (falta VITE_SUPABASE_URL).',
+      message: backend === 'rest'
+        ? 'API GrooFlow no configurada.'
+        : 'Supabase no configurado (falta VITE_SUPABASE_URL).',
       durationMs: Date.now() - start,
     };
   }
@@ -116,11 +122,21 @@ async function validateViaServerProxy(
   const timeoutId = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
 
   try {
+    const bearer =
+      backend === 'rest' ? getGrooflowToken() : accessToken;
+    if (!bearer) {
+      return {
+        ok: false,
+        message: 'Sesión caducada. Vuelve a iniciar sesión.',
+        durationMs: Date.now() - start,
+        viaProxy: true,
+      };
+    }
     const res = await fetch(`${functionsUrl}/veterinari/test`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${bearer}`,
         apikey: anonKey ?? '',
         'Content-Type': 'application/json',
       },
@@ -219,10 +235,11 @@ export async function validateVeterinariConnection(input: {
     month: input.testMonth,
   });
 
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-  if (backend === 'supabase') {
+  const backend = getGrooflowBackend();
+  if (backend === 'supabase' || backend === 'rest') {
     try {
-      const accessToken = await getEdgeFunctionAccessToken();
+      const accessToken =
+        backend === 'rest' ? getGrooflowToken() : await getEdgeFunctionAccessTokenLazy();
       return validateViaServerProxy(targetUrl, token, accessToken);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

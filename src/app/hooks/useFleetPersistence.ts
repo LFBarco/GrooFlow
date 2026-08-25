@@ -15,7 +15,7 @@ import {
   saveFleetToSql,
   type FleetSqlTimestamps,
 } from '../services/repository/fleetSql';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import type { FleetChecklistSection, FleetDataset } from '../types/fleet';
 import { fleetChecklistSignature } from '../utils/fleetData';
 import { FLEET_REMOTE_COOLDOWN_MS } from '../utils/fleetRemoteSyncGuard';
@@ -95,7 +95,9 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reloadFleetFromSql = useCallback(async (): Promise<FleetDataset | null> => {
-    const result = await loadFleetFromSql(getSupabaseClient());
+    const client = await getSupabaseClientLazy();
+    if (!client) return null;
+    const result = await loadFleetFromSql(client);
     if (!result.ok || !result.data) return null;
     if (result.timestamps) sqlTimestampsRef.current = result.timestamps;
     latestRef.current = result.data;
@@ -235,7 +237,9 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         syncOpen = false;
 
         if (FLEET_USE_SQL) {
-          void saveFleetChecklistToSql(getSupabaseClient(), cleanSections, {
+          void getSupabaseClientLazy().then((client) => {
+            if (!client) return;
+            return saveFleetChecklistToSql(client, cleanSections, {
             skipOptimisticLock: true,
           }).then((clResult) => {
             if (clResult.ok) {
@@ -254,6 +258,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
                   'No se pudo guardar la plantilla del checklist en SQL. Revisa sesión o permisos.'
               );
             }
+          });
           });
         }
 

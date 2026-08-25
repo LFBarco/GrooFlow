@@ -13,7 +13,7 @@ export type ProductionGuardEnv = {
 export function readProductionGuardEnv(): ProductionGuardEnv {
   return {
     prod: import.meta.env.PROD,
-    backend: import.meta.env.VITE_BACKEND ?? 'supabase',
+    backend: import.meta.env.VITE_BACKEND ?? 'rest',
     productionSql: import.meta.env.VITE_PRODUCTION_SQL,
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
   }
@@ -30,7 +30,7 @@ export function getProductionConfigIssues(
   if (env.backend === 'local') {
     issues.push({
       code: 'backend_local',
-      message: 'VITE_BACKEND=local en un build de producción. Use supabase.',
+      message: 'VITE_BACKEND=local en un build de producción. Use supabase o rest.',
     })
   }
 
@@ -41,7 +41,7 @@ export function getProductionConfigIssues(
     })
   }
 
-  if (!env.supabaseUrl?.startsWith('https://')) {
+  if (env.backend === 'supabase' && !env.supabaseUrl?.startsWith('https://')) {
     issues.push({
       code: 'missing_supabase_url',
       message: 'Falta VITE_SUPABASE_URL en el build de producción.',

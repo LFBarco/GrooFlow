@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react';
 
 import { getAuthUserId } from '../services/productionSqlBridge';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isFleetSqlEnabled } from '../services/repository/fleetSql';
 import { isInventorySqlEnabled } from '../services/repository/inventorySql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
@@ -37,7 +37,8 @@ export function useSqlRetryProcessor(options: UseSqlRetryProcessorOptions) {
       if (!isDataLoaded) return;
 
       const uid = await getAuthUserId();
-      const client = getSupabaseClient();
+      const client = await getSupabaseClientLazy();
+      if (!client) return;
       const runners = buildSqlRetryRunners({
         client,
         uid,

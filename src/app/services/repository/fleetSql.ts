@@ -3,6 +3,7 @@
  * Lee/escribe tablas `fleet_*` con RLS + Realtime.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getGrooflowBackend } from '../../config/backend';
 import type {
   FleetDataset,
   FleetVehicle,
@@ -415,7 +416,6 @@ export async function migrateFleetKvToSql(
 }
 
 export function isFleetSqlEnabled(): boolean {
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-  if (backend !== 'supabase') return false;
+  if (getGrooflowBackend() !== 'supabase') return false;
   return import.meta.env.VITE_FLEET_SQL !== 'false';
 }

@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const getSessionMock = vi.fn();
 const refreshSessionMock = vi.fn();
 
-vi.mock('../services/repository/supabase', () => ({
-  getSupabaseClient: () => ({
+vi.mock('../services/repository/supabaseLazy', () => ({
+  getSupabaseClientLazy: async () => ({
     auth: {
       getSession: getSessionMock,
       refreshSession: refreshSessionMock,

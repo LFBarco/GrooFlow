@@ -56,8 +56,7 @@ import {
   UserCheck,
   GitCompare,
 } from "lucide-react";
-// Logo: coloque logo.png en la carpeta public/ para producción
-const logoUrl = '/logo.png';
+import { GrooflowBrandLogo } from "./config/brandLogo";
 import {
   AlertsCenter,
   AnalyticsDashboard,
@@ -97,8 +96,8 @@ import { Input } from "./components/ui/input";
 import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./components/ui/dialog";
 import { api, setKvSessionFatalHandler, repository } from "./services/api";
-import { supabase } from "../../utils/supabase/client";
-import { getSupabaseClient } from "./services/repository/supabase";
+import { getGrooflowBackend, isSupabaseBackend } from "./config/backend";
+import { getSupabaseClientLazy } from "./services/repository/supabaseLazy";
 import { isFleetSqlEnabled, type FleetSqlTimestamps } from "./services/repository/fleetSql";
 import { isInventorySqlEnabled } from "./services/repository/inventorySql";
 import {
@@ -212,7 +211,7 @@ import {
   shouldApplyObjectRemoteSnapshot,
   shouldApplyValueRemoteSnapshot,
 } from "./utils/listRemoteSyncGuard";
-import { writeAuditLog } from "./services/repository/auditLogSql";
+import { writeAuditLogLazy } from "./services/repository/auditLogSql";
 import { generateEntityId } from "./utils/generateEntityId";
 import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
 import { useAlertReadPersistence } from "./hooks/useAlertReadPersistence";
@@ -305,7 +304,9 @@ export default function App() {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   /** Enlace de recuperación Supabase: mostrar formulario de nueva contraseña antes del login/app. */
-  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(() => isPasswordRecoveryUrl());
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(
+    () => isSupabaseBackend() && isPasswordRecoveryUrl()
+  );
   /** En Supabase: solo true tras leer `data:users` del KV con HTTP 200 (evita pisar la nube si el GET falló). */
   const [canSaveUsers, setCanSaveUsers] = useState(true);
   /** Evita doble carga y, en Supabase, permite volver a cargar tras logout/login. */
@@ -1288,8 +1289,8 @@ export default function App() {
         usersKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setUsers(list);
         const em = currentUser.email?.trim().toLowerCase();
-        if (em) {
-          const row = resolveCurrentUserRow(list, em);
+        if (em || currentUser.id) {
+          const row = resolveCurrentUserRow(list, em, currentUser.id);
           if (row) setCurrentUser(row);
         }
         applied = true;
@@ -1883,7 +1884,7 @@ export default function App() {
   }, []);
 
   useSessionRecoveryOnFocus({
-    enabled: isAuthenticated && isDataLoaded,
+    enabled: isAuthenticated && isDataLoaded && APP_BACKEND === 'supabase',
     onRecover: releasePersistenceAfterIdle,
   });
 
@@ -1963,18 +1964,28 @@ export default function App() {
    * Solo se usa en modo local/demo.
    */
   const handleLogin = () => {
-    if ((import.meta.env.VITE_BACKEND ?? 'supabase') === 'supabase') return;
+    if (isSupabaseBackend()) return;
     void hydrateFromKvRef.current?.();
   };
 
   useEffect(() => {
+    if (!isSupabaseBackend()) return;
     if (isPasswordRecoveryUrl()) setPasswordRecoveryMode(true);
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setPasswordRecoveryMode(true);
+    let unsub: (() => void) | undefined;
+    let cancelled = false;
+    void import('../../utils/supabase/client').then(({ supabase }) => {
+      if (cancelled) return;
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') setPasswordRecoveryMode(true);
+      });
+      unsub = () => subscription.unsubscribe();
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -2022,10 +2033,18 @@ export default function App() {
       setIsAuthChecking(false);
       if (typeof window !== 'undefined') {
         window.sessionStorage.removeItem('grooflow_local_session');
+        window.sessionStorage.removeItem('grooflow_local_session_email');
       }
       const signOutWithTimeout = async () => {
+        const backend = getGrooflowBackend();
+        const signOut =
+          backend === 'rest' || backend === 'local'
+            ? repository.auth.signOut()
+            : import('../../utils/supabase/client').then(({ supabase }) =>
+                supabase.auth.signOut({ scope: 'global' })
+              );
         await Promise.race([
-          supabase.auth.signOut({ scope: 'global' }),
+          signOut,
           new Promise<void>((resolve) => setTimeout(resolve, 5000)),
         ]);
       };
@@ -2035,8 +2054,9 @@ export default function App() {
         console.error('[GrooFlow] signOut', e);
       }
       try {
-        const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+        const backend = getGrooflowBackend();
         if (backend === 'supabase') {
+          const { supabase } = await import('../../utils/supabase/client');
           const {
             data: { session: still },
           } = await supabase.auth.getSession();
@@ -2085,7 +2105,8 @@ export default function App() {
   handleLogoutRef.current = handleLogout;
 
   const syncUserAuthAccess = useCallback(async (user: User, enabled: boolean) => {
-    if ((import.meta.env.VITE_BACKEND ?? 'supabase') !== 'supabase') return true;
+    const backend = getGrooflowBackend();
+    if (backend === 'local') return true;
     const key = user.email?.trim() || user.id;
     if (!key || key === 'guest') return true;
     try {
@@ -2224,7 +2245,7 @@ export default function App() {
       `${transactionIds.length} transacción(es) eliminada(s)`
     );
     if (ok) {
-      void writeAuditLog(getSupabaseClient(), 'transaction_bulk_delete', {
+      void writeAuditLogLazy('transaction_bulk_delete', {
         entity: 'Transacciones',
         details: `Eliminó ${transactionIds.length} transacción(es)`,
         count: transactionIds.length,
@@ -2254,7 +2275,7 @@ export default function App() {
       'Transacción guardada correctamente'
     );
     if (ok) {
-      void writeAuditLog(getSupabaseClient(), 'transaction_create', {
+      void writeAuditLogLazy('transaction_create', {
         entity: 'Transacciones',
         details: `Creó transacción ${newTransaction.type} · S/ ${newTransaction.amount}`,
         transactionId: newTransaction.id,
@@ -2268,7 +2289,7 @@ export default function App() {
       `${newTransactions.length} transacción(es) importada(s) y guardada(s)`
     );
     if (ok && newTransactions.length > 0) {
-      void writeAuditLog(getSupabaseClient(), 'transaction_import', {
+      void writeAuditLogLazy('transaction_import', {
         entity: 'Transacciones',
         details: `Importó ${newTransactions.length} transacción(es)`,
         count: newTransactions.length,
@@ -2337,7 +2358,7 @@ export default function App() {
       }
       const ok = await persistTransactionsNow(next, 'Valor guardado en transacciones');
       if (ok && createdId) {
-        void writeAuditLog(getSupabaseClient(), 'transaction_create', {
+        void writeAuditLogLazy('transaction_create', {
           entity: 'Flujo de caja',
           details: `Proyección en celda · S/ ${payload.amount}`,
           transactionId: createdId,
@@ -2354,7 +2375,7 @@ export default function App() {
       'Transacción eliminada correctamente'
     );
     if (ok && removed) {
-      void writeAuditLog(getSupabaseClient(), 'transaction_delete', {
+      void writeAuditLogLazy('transaction_delete', {
         entity: 'Transacción',
         details: `Eliminó: ${(removed.description || removed.category || id).slice(0, 120)}`,
         transactionId: id,
@@ -2475,8 +2496,8 @@ export default function App() {
       }
 
       const toastId = toast.loading('Reiniciando datos operativos…');
-      const { data: sess } = await getSupabaseClient().auth.getSession();
-      const uid = sess.session?.user?.id ?? null;
+      const sb = await getSupabaseClientLazy();
+      const uid = sb ? ((await sb.auth.getSession()).data.session?.user?.id ?? null) : null;
       const { ok, failed } = await clearOperationalData(uid);
 
       const emptyFleet = normalizeFleetDataset({});
@@ -2515,7 +2536,7 @@ export default function App() {
         });
         return;
       }
-      void writeAuditLog(getSupabaseClient(), 'operational_reset', {
+      void writeAuditLogLazy('operational_reset', {
         entity: 'Sistema',
         details: 'Reinicio de datos operativos (super admin)',
         failedDomains: failed,
@@ -3026,7 +3047,7 @@ export default function App() {
 
       const ok = await persistPettyCashNow(merged);
       if (ok && newMovements.length > 0) {
-        void writeAuditLog(getSupabaseClient(), 'petty_cash_create', {
+        void writeAuditLogLazy('petty_cash_create', {
           entity: 'Caja chica',
           details: `Registró ${newMovements.length} movimiento(s)`,
           count: newMovements.length,
@@ -3044,14 +3065,17 @@ export default function App() {
 
   if (passwordRecoveryMode) {
     return (
-      <PasswordRecoveryPage
-        currentTheme={theme}
-        onToggleTheme={toggleTheme}
-        onComplete={() => {
-          setPasswordRecoveryMode(false);
-          void hydrateFromKvRef.current?.();
-        }}
-      />
+      <>
+        <PasswordRecoveryPage
+          currentTheme={theme}
+          onToggleTheme={toggleTheme}
+          onComplete={() => {
+            setPasswordRecoveryMode(false);
+            void hydrateFromKvRef.current?.();
+          }}
+        />
+        <Toaster />
+      </>
     );
   }
 
@@ -3067,6 +3091,7 @@ export default function App() {
     return (
       <div className="bg-background text-foreground transition-colors duration-500">
         <LoginPage onLogin={handleLogin} currentTheme={theme} onToggleTheme={toggleTheme} />
+        <Toaster />
       </div>
     );
   }
@@ -3122,7 +3147,7 @@ export default function App() {
                background: 'transparent',
                overflow: 'hidden'
              }}>
-             <img src={systemSettings.businessLogo || logoUrl} alt="GrooFlow" className="w-full h-full object-contain" />
+             <GrooflowBrandLogo customSrc={systemSettings.businessLogo} className="w-full h-full object-contain" />
           </div>
           
           <div className={`ml-3 overflow-hidden transition-all duration-500 ${isSidebarCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100'}`}>
@@ -3228,13 +3253,9 @@ export default function App() {
              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mr-3 p-2 rounded-xl hover:bg-white/8 active:scale-95 transition-all">
                  <Menu className="h-5 w-5" style={{ color: 'rgba(255,255,255,0.6)' }} />
              </button>
-            {systemSettings.businessLogo ? (
-              <div className="w-7 h-7 mr-2 rounded-lg overflow-hidden flex-shrink-0" style={{ border: '1px solid rgba(34,211,238,0.25)' }}>
-                <img src={systemSettings.businessLogo} alt="Logo" className="w-full h-full object-cover" />
-              </div>
-            ) : (
-              <Stethoscope className="h-5 w-5 mr-2" style={{ color: '#22d3ee', filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.6))' }} />
-            )}
+            <div className="w-7 h-7 mr-2 rounded-lg overflow-hidden flex-shrink-0" style={{ border: '1px solid rgba(34,211,238,0.25)' }}>
+              <GrooflowBrandLogo customSrc={systemSettings.businessLogo} className="w-full h-full object-contain" />
+            </div>
             <span className="text-base font-bold tracking-tight gradient-text-cyber truncate max-w-[150px]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{systemSettings.businessName || 'GrooFlow'}</span>
         </div>
         <div className="flex items-center gap-2">

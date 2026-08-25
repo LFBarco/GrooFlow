@@ -2,7 +2,9 @@
  * Cliente Buk Asistencia (Ctrlit) — proxy Edge Function para evitar CORS.
  */
 import type { BukAsistenciaRecord, BukAsistenciaResponse } from '../types/asistencia';
-import { getEdgeFunctionAccessToken, getSupabaseFunctionsUrl } from '../services/repository/supabase';
+import { getEdgeFunctionAccessTokenLazy, getSupabaseFunctionsUrlLazy } from '../services/repository/supabaseLazy';
+import { getGrooflowApiBase, getGrooflowToken } from '../services/repository/apiBase';
+import { getGrooflowBackend } from '../config/backend';
 
 export const DEFAULT_BUK_ASISTENCIA_BASE_URL =
   'https://app.ctrlit.cl/ctrl/api/v2';
@@ -112,15 +114,30 @@ async function postBukProxy(
   body: Record<string, unknown>,
   timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<Response> {
-  const functionsUrl = getSupabaseFunctionsUrl();
-  if (!functionsUrl) throw new Error('Supabase no configurado (VITE_SUPABASE_URL).');
-
-  const accessToken = await getEdgeFunctionAccessToken();
-  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+  const backend = getGrooflowBackend();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    if (backend === 'rest') {
+      const token = getGrooflowToken();
+      if (!token) throw new Error('Sesión caducada. Vuelve a iniciar sesión.');
+      return await fetch(`${getGrooflowApiBase()}/proxy/buk/${path}`, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+    }
+
+    const functionsUrl = await getSupabaseFunctionsUrlLazy();
+    if (!functionsUrl) throw new Error('Supabase no configurado (VITE_SUPABASE_URL).');
+
+    const accessToken = await getEdgeFunctionAccessTokenLazy();
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
     return await fetch(`${functionsUrl}/buk/${path}`, {
       method: 'POST',
       signal: controller.signal,
@@ -149,8 +166,8 @@ export async function validateBukAsistenciaConnection(input: {
     return { ok: false, message: 'Indica el token de la API.', durationMs: 0 };
   }
 
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
-  if (backend !== 'supabase') {
+  const backend = getGrooflowBackend();
+  if (backend === 'local') {
     try {
       const res = await fetch(triedUrl, {
         headers: { token: apiToken, accept: 'application/json' },
@@ -346,13 +363,13 @@ export async function fetchBukAsistenciaAll(input: {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
   const apiToken = normalizeBukToken(input.apiToken);
   const maxPages = input.maxPages ?? 15;
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+  const backend = getGrooflowBackend();
 
   if (!apiToken) {
     throw new Error('Falta el token de Buk. Configúralo en Integraciones y guarda los cambios.');
   }
 
-  if (backend !== 'supabase') {
+  if (backend === 'local') {
     return fetchAllDirect({ baseUrl, apiToken, maxPages, onProgress: input.onProgress });
   }
 

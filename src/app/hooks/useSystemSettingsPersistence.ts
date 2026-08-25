@@ -5,7 +5,7 @@ import { mergeSystemSettings } from '../data/initialData';
 import { mergeSystemSettingsSqlAndKv } from '../services/repository/appKvSql';
 import { saveAppKvKey } from '../services/repository/appKvSql';
 import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import type { SystemSettings } from '../types';
 import {
@@ -127,19 +127,21 @@ export function useSystemSettingsPersistence(
       lastSystemPayloadSigRef.current = JSON.stringify(systemPayload);
 
       if (PRODUCTION_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
+        const client = await getSupabaseClientLazy();
+        if (!client) return false;
+        const { data: sess } = await client.auth.getSession();
         const uid = sess.session?.user?.id ?? null;
         const [settingsSqlOk, metaSqlOk] = await Promise.all([
           ensureSqlSave(
             true,
             'settings:system',
-            () => saveAppKvKey(getSupabaseClient(), 'settings:system', systemPayload, uid),
+            () => saveAppKvKey(client, 'settings:system', systemPayload, uid),
             lastSaveErrorAtRef
           ),
           ensureSqlSave(
             true,
             PETTY_CASH_META_KV_KEY,
-            () => savePettyCashMetaToSql(getSupabaseClient(), meta, uid),
+            () => savePettyCashMetaToSql(client, meta, uid),
             lastSaveErrorAtRef
           ),
         ]);

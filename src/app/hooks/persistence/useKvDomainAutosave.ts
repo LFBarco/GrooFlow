@@ -2,7 +2,6 @@ import { useEffect, type MutableRefObject } from 'react';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { getSupabaseClient } from '../../services/repository/supabase';
 import type { SqlSaveResult } from '../../services/repository/sqlDomainUtils';
 import {
   backupAppKvAfterKvSave,

@@ -2,6 +2,7 @@
  * Utilidades compartidas para persistencia SQL de producción.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getGrooflowBackend } from '../../config/backend';
 
 export type SqlLoadResult<T> = {
   ok: boolean;
@@ -27,7 +28,7 @@ export function isMissingTableError(err: { code?: string; message?: string } | n
 
 /** Activo por defecto cuando backend es Supabase (VITE_PRODUCTION_SQL !== 'false'). */
 export function isProductionSqlEnabled(): boolean {
-  const backend = import.meta.env.VITE_BACKEND ?? 'supabase';
+  const backend = getGrooflowBackend();
   if (backend !== 'supabase') return false;
   return import.meta.env.VITE_PRODUCTION_SQL !== 'false';
 }

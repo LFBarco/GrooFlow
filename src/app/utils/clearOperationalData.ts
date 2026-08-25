@@ -2,7 +2,7 @@
  * Borra datos operativos en KV y SQL (no toca usuarios, roles ni configuración).
  */
 import { api } from '../services/api';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { saveAppKvKey } from '../services/repository/appKvSql';
 import {
   saveProvidersToSql,
@@ -57,7 +57,10 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     return { ok: failed.length === 0, failed };
   }
 
-  const client = getSupabaseClient();
+  const client = await getSupabaseClientLazy();
+  if (!client) {
+    return { ok: failed.length === 0, failed };
+  }
   const sqlTasks: Array<{ label: string; run: () => Promise<{ ok: boolean }> }> = [];
 
   if (isTransactionsSqlEnabled()) {

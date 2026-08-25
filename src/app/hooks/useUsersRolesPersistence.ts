@@ -4,8 +4,9 @@ import { toast } from 'sonner';
 import type { Role } from '../components/users/types';
 import { saveAppUsersToSql, saveRolesToSql } from '../services/repository/businessDomainsSql';
 import { isAdminAppUser, syncUserProfilesToSql } from '../services/repository/userProfileSync';
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
+import { isSupabaseBackend } from '../config/backend';
 import type { User } from '../types';
 import { backupDomainSqlAfterKvSave, ensureSqlSave } from '../utils/sqlAutosaveBackup';
 import { dequeueSqlRetry } from '../services/repository/sqlRetryQueue';
@@ -82,11 +83,13 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
       usersLatestRef.current = clean;
 
       if (PRODUCTION_USE_SQL && canWriteUsersRoles) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
+        const client = await getSupabaseClientLazy();
+        if (!client) return false;
+        const { data: sess } = await client.auth.getSession();
         const sqlOk = await ensureSqlSave(
           true,
           'data:users',
-          () => saveAppUsersToSql(getSupabaseClient(), clean, sess.session?.user?.id ?? null),
+          () => saveAppUsersToSql(client, clean, sess.session?.user?.id ?? null),
           lastSaveErrorAtRef
         );
         if (!sqlOk) return false;
@@ -109,14 +112,17 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
       });
       if (ok) {
         setCanSaveUsers(true);
-        if ((import.meta.env.VITE_BACKEND ?? 'supabase') === 'supabase') {
-          const { data: sess } = await getSupabaseClient().auth.getSession();
-          const authId = sess.session?.user?.id;
-          const actor = authId ? clean.find((u) => u.id === authId) : undefined;
-          void syncUserProfilesToSql(getSupabaseClient(), clean, {
-            authUserId: authId,
-            isAdmin: isAdminAppUser(actor),
-          });
+        if (isSupabaseBackend()) {
+          const client = await getSupabaseClientLazy();
+          if (client) {
+            const { data: sess } = await client.auth.getSession();
+            const authId = sess.session?.user?.id;
+            const actor = authId ? clean.find((u) => u.id === authId) : undefined;
+            void syncUserProfilesToSql(client, clean, {
+              authUserId: authId,
+              isAdmin: isAdminAppUser(actor),
+            });
+          }
         }
         return true;
       }
@@ -137,11 +143,13 @@ export function useUsersRolesPersistence(options: UseUsersRolesPersistenceOption
       }
 
       if (PRODUCTION_USE_SQL) {
-        const { data: sess } = await getSupabaseClient().auth.getSession();
+        const client = await getSupabaseClientLazy();
+        if (!client) return false;
+        const { data: sess } = await client.auth.getSession();
         const sqlOk = await ensureSqlSave(
           true,
           'data:roles',
-          () => saveRolesToSql(getSupabaseClient(), nextRoles, sess.session?.user?.id ?? null),
+          () => saveRolesToSql(client, nextRoles, sess.session?.user?.id ?? null),
           lastSaveErrorAtRef
         );
         if (!sqlOk) return false;

@@ -10,7 +10,7 @@ warnProductionConfigIssues();
 
 createRoot(document.getElementById("root")!).render(
   <AppErrorBoundary>
-    <BrowserRouter>
+    <BrowserRouter basename="/grooflow">
       <App />
     </BrowserRouter>
   </AppErrorBoundary>

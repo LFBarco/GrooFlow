@@ -21,9 +21,10 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { Checkbox } from "../components/ui/checkbox";
-import { tryDemoLogin } from '../config/demoLogin';
+import { beginLocalDemoSession, tryDemoLogin } from '../config/demoLogin';
+import { getGrooflowBackend, isSupabaseBackend } from '../config/backend';
 import { describeAuthOrNetworkError } from '../utils/authErrors';
-import { supabase } from '../../../utils/supabase/client';
+import { repository } from '../services/repository';
 
 /* ═══════════════════════════════════════════════════
    GrooFlow SVG Logo — "G" + EKG Heartbeat
@@ -117,7 +118,7 @@ function TypewriterText({ text, delay = 1500, speed = 60, color }: { text: strin
    SCHEMAS
    ═══════════════════════════════════════════════════ */
 const loginSchema = z.object({
-  email: z.string().email("Ingrese un correo valido"),
+  email: z.string().min(1, "Ingrese su usuario o correo"),
   password: z.string().min(1, "Ingrese su contraseña"),
   remember: z.boolean().optional(),
 });
@@ -318,36 +319,54 @@ export function LoginPage({
       localStorage.removeItem("grooflow_remember_email");
     }
     try {
-      const email = data.email.trim().toLowerCase();
+      const email = data.email.trim();
+      const backend = getGrooflowBackend();
+
+      // Demo offline primero: evita llamar a Supabase (placeholder) y carreras con Auth.
+      if (tryDemoLogin(email.toLowerCase(), data.password)) {
+        beginLocalDemoSession(email.toLowerCase());
+        toast.success("ACCESO DEMO (OFFLINE)", {
+          className: "bg-background border border-primary text-primary font-mono",
+        });
+        onLogin(email.toLowerCase(), "Admin Principal");
+        return;
+      }
+
+      if (backend === 'rest' || backend === 'local') {
+        const authUser = await repository.auth.signIn(email, data.password);
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem('grooflow_local_session');
+          window.sessionStorage.removeItem('grooflow_local_session_email');
+        }
+        toast.success("ACCESO CONCEDIDO", {
+          className: "bg-background border border-primary text-primary font-mono",
+        });
+        onLogin(authUser.email || email, authUser.name, authUser.id);
+        return;
+      }
+
+      const { getSupabaseClient } = await import('../services/repository/supabase');
+      const supabase = getSupabaseClient();
       const { data: authData, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.toLowerCase(),
         password: data.password,
       });
       if (error) throw error;
       if (authData.session) {
         if (typeof window !== 'undefined') {
           window.sessionStorage.removeItem('grooflow_local_session');
+          window.sessionStorage.removeItem('grooflow_local_session_email');
         }
         toast.success("ACCESO CONCEDIDO", {
           className: "bg-background border border-primary text-primary font-mono",
         });
         onLogin(
-          email,
+          email.toLowerCase(),
           authData.user?.user_metadata?.name,
           authData.user?.id
         );
       }
     } catch (error: any) {
-      if (tryDemoLogin(data.email, data.password)) {
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.setItem('grooflow_local_session', '1');
-        }
-        toast.success("ACCESO DEMO (OFFLINE)", {
-          className: "bg-background border border-primary text-primary font-mono",
-        });
-        onLogin(data.email, "Admin Principal");
-        return;
-      }
       let errorMessage = error.message;
       if (errorMessage === "Invalid login credentials") {
         errorMessage = "Credenciales incorrectas. Intente nuevamente.";
@@ -370,14 +389,22 @@ export function LoginPage({
   };
 
   const handleForgotPassword = async () => {
+    if (!isSupabaseBackend()) {
+      toast.error('El acceso es gestionado por el Administrador del sistema.', {
+        description: 'Contacte al administrador si necesita restablecer su contraseña.',
+        duration: 8000,
+      });
+      return;
+    }
     const email = getValues('email')?.trim().toLowerCase();
     if (!email) {
       toast.error('Ingrese su correo arriba para enviar el enlace de recuperación.');
       return;
     }
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/`,
+      const { getSupabaseClient } = await import('../services/repository/supabase');
+      const { error } = await getSupabaseClient().auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}${(import.meta.env.BASE_URL || '/').replace(/\/?$/, '/')}`,
       });
       if (error) throw error;
       toast.success('Enlace enviado', {
@@ -738,12 +765,13 @@ export function LoginPage({
                   {/* Email */}
                   <div className="space-y-1.5 group">
                     <Label className="text-xs uppercase tracking-[0.14em]" style={{ color: t.labelColor, fontWeight: 700 }}>
-                      Email
+                      Usuario
                     </Label>
                     <Input
                       {...register("email")}
-                      type="email"
-                      placeholder="usuario@empresa.com"
+                      type="text"
+                      autoComplete="username"
+                      placeholder="usuario o correo"
                       className="h-12 pl-4 text-sm rounded-xl splash-input-focus"
                       style={{ background: t.inputBg, border: t.inputBorder, color: t.inputText }}
                     />

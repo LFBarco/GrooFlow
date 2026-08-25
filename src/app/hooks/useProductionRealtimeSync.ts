@@ -8,7 +8,7 @@ import { useEffect, type MutableRefObject } from 'react';
 
 
 
-import { getSupabaseClient } from '../services/repository/supabase';
+import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 
@@ -246,9 +246,13 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
 
 
-    const client = getSupabaseClient();
-
     let cancelled = false;
+
+    let dispose: (() => void) | undefined;
+
+    void getSupabaseClientLazy().then((client) => {
+
+    if (!client || cancelled) return;
 
     const debouncers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -804,9 +808,7 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
 
 
 
-    return () => {
-
-      cancelled = true;
+    dispose = () => {
 
       debouncers.forEach((t) => clearTimeout(t));
 
@@ -815,6 +817,16 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
       channels.forEach((ch) => void client.removeChannel(ch));
 
       void client.removeChannel(kvChannel);
+
+    };
+
+    });
+
+    return () => {
+
+      cancelled = true;
+
+      dispose?.();
 
     };
 
