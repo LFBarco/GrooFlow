@@ -103,7 +103,7 @@ import {
   mergeAsistenciaIntoSystemSettings,
   resolveAsistenciaSettings,
 } from '../utils/asistenciaPersistence';
-import { parseTransactionDate } from '../utils/transactionDate';
+import { parseTransactionDate, tryParseAppDate } from '../utils/transactionDate';
 import {
   persistAndApplyTheme,
   readStoredTheme,
@@ -156,9 +156,12 @@ type FeeReceiptGlobal = {
 };
 
 function asFeeDate(value: unknown, fallback = new Date()): Date {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  const parsed = new Date(value as string | number);
-  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+  return tryParseAppDate(value) ?? fallback;
+}
+
+function asFeeDateOptional(value: unknown): Date | undefined {
+  if (value == null || value === '') return undefined;
+  return tryParseAppDate(value) ?? undefined;
 }
 
 function normalizeFeeReceipts(raw: unknown): FeeReceiptGlobal[] {
@@ -170,8 +173,8 @@ function normalizeFeeReceipts(raw: unknown): FeeReceiptGlobal[] {
       amount: Number(r.amount) || 0,
       issueDate: asFeeDate(r.issueDate),
       dueDate: asFeeDate(r.dueDate),
-      paymentRequestedAt: r.paymentRequestedAt != null ? asFeeDate(r.paymentRequestedAt) : undefined,
-      paymentDate: r.paymentDate != null ? asFeeDate(r.paymentDate) : undefined,
+      paymentRequestedAt: asFeeDateOptional(r.paymentRequestedAt),
+      paymentDate: asFeeDateOptional(r.paymentDate),
     };
   });
 }
@@ -694,8 +697,8 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               : kvUnique;
             const mapped = resolved.map((p) => ({
               ...p,
-              createdAt: p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt),
-              updatedAt: p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt),
+              createdAt: tryParseAppDate(p.createdAt) ?? new Date(),
+              updatedAt: tryParseAppDate(p.updatedAt) ?? new Date(),
             }));
             deps.productsKvLatestRef.current = mapped;
             deps.setProducts(mapped);

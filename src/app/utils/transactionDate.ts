@@ -35,13 +35,15 @@ function parseExcelSerialDate(serial: number): Date | null {
   );
 }
 
-/** Convierte fechas de transacciones (Date, ISO string, DD/MM/YYYY, serial Excel) a `Date` local. */
-export function parseTransactionDate(value: unknown): Date {
+/** Convierte fechas de transacciones (Date, ISO string, DD/MM/YYYY, serial Excel) a `Date` local.
+ *  Si no se puede interpretar, retorna `null` (no inventa “hoy”).
+ */
+export function tryParseAppDate(value: unknown): Date | null {
   if (value instanceof Date && isValid(value)) return startOfDay(value);
 
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    if (!trimmed) return startOfDay(new Date());
+    if (!trimmed) return null;
 
     const dateOnly = DATE_ONLY.exec(trimmed);
     if (dateOnly) {
@@ -55,7 +57,6 @@ export function parseTransactionDate(value: unknown): Date {
 
     const dmy = DMY_SEP.exec(trimmed);
     if (dmy) {
-      // Formato latinoamericano: día / mes / año
       const parsed = buildLocalDate(Number(dmy[1]), Number(dmy[2]), Number(dmy[3]));
       if (parsed) return parsed;
     }
@@ -65,6 +66,7 @@ export function parseTransactionDate(value: unknown): Date {
 
     const legacy = new Date(trimmed);
     if (isValid(legacy)) return startOfDay(legacy);
+    return null;
   }
 
   if (typeof value === 'number') {
@@ -76,7 +78,12 @@ export function parseTransactionDate(value: unknown): Date {
     if (isValid(parsed)) return startOfDay(parsed);
   }
 
-  return startOfDay(new Date());
+  return null;
+}
+
+/** Igual que `tryParseAppDate`, con fallback a hoy si el valor es inválido. */
+export function parseTransactionDate(value: unknown): Date {
+  return tryParseAppDate(value) ?? startOfDay(new Date());
 }
 
 /** Formato `yyyy-MM-dd` para inputs HTML de tipo date. */

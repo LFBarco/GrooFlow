@@ -225,8 +225,9 @@ import {
   shouldApplyValueRemoteSnapshot,
 } from "./utils/listRemoteSyncGuard";
 import { writeAuditLogLazy } from "./services/repository/auditLogSql";
-import { applyReconciliationRemote, getReconciliationRetrySnapshot } from "./reconciliation/hooks/reconciliationPersistenceBridge";
-import { applyAlertReadRemote, getAlertReadRetrySnapshot } from "./hooks/alertReadPersistenceBridge";
+import { applyReconciliationRemote, getReconciliationRetrySnapshot, resetReconciliationForOperationalClear } from "./reconciliation/hooks/reconciliationPersistenceBridge";
+import { applyAlertReadRemote, getAlertReadRetrySnapshot, resetAlertReadForOperationalClear } from "./hooks/alertReadPersistenceBridge";
+import { isStressTestEnabled } from "./config/destructiveDebug";
 import { generateEntityId } from "./utils/generateEntityId";
 import { persistAppKvDomainNow } from "./utils/persistAppKvDomain";
 import { useAlertReadPersistence } from "./hooks/useAlertReadPersistence";
@@ -2670,6 +2671,10 @@ export default function App() {
     };
 
     const handleStressTest = async () => {
+        if (!isStressTestEnabled()) {
+          toast.error('El stress test está deshabilitado en este entorno.');
+          return;
+        }
         const { generateStressData } = await import("./utils/stressTestGenerator");
         const { transactions: newTx, invoices: newInv, users: newUsrs } = generateStressData();
         setTransactions((prev) => [...newTx, ...prev]);
@@ -2701,6 +2706,9 @@ export default function App() {
       const { ok, failed } = await clearOperationalData(uid);
 
       const emptyFleet = normalizeFleetDataset({});
+      const emptyInventory = normalizeInventoryDataset({});
+      const emptyPettyMeta = { weekClosures: [], weekPreClosures: [], fundDeliveries: [] };
+
       transactionsKvLatestRef.current = [];
       invoicesKvLatestRef.current = [];
       providersKvLatestRef.current = [];
@@ -2711,11 +2719,13 @@ export default function App() {
       chartOfAccountsKvLatestRef.current = [];
       fleetKvLatestRef.current = emptyFleet;
       fleetSqlTimestampsRef.current = new Map();
+      inventoryKvLatestRef.current = emptyInventory;
       treasuryInvoicesKvLatestRef.current = [];
       treasuryBankBalanceKvLatestRef.current = undefined;
       treasuryPaidHistoryKvLatestRef.current = [];
       treasurySubscriptionsKvLatestRef.current = [];
       treasuryBankMovementsKvLatestRef.current = [];
+      pettyCashMetaKvLatestRef.current = emptyPettyMeta;
 
       setTransactions([]);
       setInvoices([]);
@@ -2726,11 +2736,17 @@ export default function App() {
       setFeeReceipts([]);
       setChartOfAccounts([]);
       setFleetDataset(emptyFleet);
+      setInventoryDataset(emptyInventory);
       setTreasuryInvoices([]);
       setTreasuryBankBalance(undefined);
       setTreasuryPaidHistory([]);
       setTreasurySubscriptions([]);
       setTreasuryBankMovements([]);
+      setSystemSettings((prev) =>
+        mergePettyCashMetaIntoSettings(prev, emptyPettyMeta)
+      );
+      resetReconciliationForOperationalClear();
+      resetAlertReadForOperationalClear();
 
       toast.dismiss(toastId);
       if (!ok) {

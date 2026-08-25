@@ -1,11 +1,11 @@
 /**
  * Correos con rol super_admin (gestión de usuarios, sedes, etc.).
- * Ampliable sin tocar código: VITE_SUPER_ADMIN_EMAILS=uno@x.com,otro@y.com
+ * Producción: solo VITE_SUPER_ADMIN_EMAILS (sin emails hardcodeados).
+ * Desarrollo: incluye defaults locales + env.
  */
-const DEFAULT_SUPER_ADMIN_EMAILS = [
+const DEV_SUPER_ADMIN_EMAILS = [
   'admin@grooflow.com',
   'admin@vetflow.com',
-  'luisfrancisco.barco@gmail.com',
 ] as const;
 
 export function getSuperAdminEmails(): Set<string> {
@@ -17,5 +17,8 @@ export function getSuperAdminEmails(): Set<string> {
           .map((s) => s.trim().toLowerCase())
           .filter(Boolean)
       : [];
-  return new Set<string>([...DEFAULT_SUPER_ADMIN_EMAILS.map((e) => e.toLowerCase()), ...fromEnv]);
+  if (import.meta.env.PROD) {
+    return new Set(fromEnv);
+  }
+  return new Set<string>([...DEV_SUPER_ADMIN_EMAILS.map((e) => e.toLowerCase()), ...fromEnv]);
 }

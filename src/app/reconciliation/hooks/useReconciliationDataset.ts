@@ -8,12 +8,14 @@ import {
   subscribeKvCrossTab,
 } from '../../utils/kvCrossTabSync';
 import { backupAppKvAfterKvSave } from '../../utils/sqlAutosaveBackup';
-import { createEmptyDataset, normalizeDataset } from '../domain/dataset';
+import { createEmptyDataset } from '../domain/dataset';
 import type { ReconciliationDataset } from '../domain/types';
 import {
   getReconciliationRetrySnapshot,
+  setReconciliationForceApply,
   setReconciliationRemoteApply,
   setReconciliationRetrySnapshot,
+  normalizeReconciliationRemoteValue,
 } from './reconciliationPersistenceBridge';
 
 const KV_KEY = 'data:reconciliation';
@@ -40,7 +42,7 @@ export function useReconciliationDataset(enabled: boolean) {
       try {
         const raw = await api.fetchKvKey(KV_KEY);
         if (cancelled) return;
-        const next = normalizeDataset(raw);
+        const next = normalizeReconciliationRemoteValue(raw);
         setDataset(next);
         setReconciliationRetrySnapshot(next);
         dirtyRef.current = false;
@@ -105,6 +107,7 @@ export function useReconciliationDataset(enabled: boolean) {
     (updater: ReconciliationDataset | ((prev: ReconciliationDataset) => ReconciliationDataset)) => {
       setDataset((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (next === prev) return prev;
         latestRef.current = next;
         setReconciliationRetrySnapshot(next);
         dirtyRef.current = true;
@@ -123,14 +126,30 @@ export function useReconciliationDataset(enabled: boolean) {
 
   useEffect(() => {
     if (!enabled || !loaded) return;
-    setReconciliationRemoteApply((value) => {
-      const next = normalizeDataset(value);
+    const applySoft = (value: unknown) => {
+      const next = normalizeReconciliationRemoteValue(value);
       if (dirtyRef.current) return;
       latestRef.current = next;
       setReconciliationRetrySnapshot(next);
       setDataset(next);
-    });
-    return () => setReconciliationRemoteApply(null);
+    };
+    const applyForce = (value: unknown) => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      dirtyRef.current = false;
+      const next = normalizeReconciliationRemoteValue(value);
+      latestRef.current = next;
+      setReconciliationRetrySnapshot(next);
+      setDataset(next);
+    };
+    setReconciliationRemoteApply(applySoft);
+    setReconciliationForceApply(applyForce);
+    return () => {
+      setReconciliationRemoteApply(null);
+      setReconciliationForceApply(null);
+    };
   }, [enabled, loaded]);
 
   useEffect(() => {
@@ -138,7 +157,7 @@ export function useReconciliationDataset(enabled: boolean) {
     return subscribeKvCrossTab((msg) => {
       if (msg.key !== KV_KEY) return;
       if (dirtyRef.current) return;
-      const next = normalizeDataset(msg.value);
+      const next = normalizeReconciliationRemoteValue(msg.value);
       latestRef.current = next;
       setReconciliationRetrySnapshot(next);
       setDataset(next);

@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo } from 'react';
 import { getSuperAdminEmails } from '../../config/superAdmins';
+import { isStressTestEnabled } from '../../config/destructiveDebug';
 import { ConfigStructure, TransactionType, ConceptDefinition, SubcategoryDefinition, Flexibility, getSubcategories, subcategoryId } from '../../data/initialData';
 import { SystemSettings, type PettyCashRenditionPrintSettings, type BankAccountConfig, type BankCurrency } from '../../types';
 import { mergePettyCashRenditionPrint } from '../../data/initialData';
@@ -1969,9 +1970,12 @@ export function ConfigPanel({
                     <div>
                       <h3 className="font-semibold text-foreground">Generación Masiva de Datos</h3>
                       <p className="text-sm text-muted-foreground mb-4">
-                        Inyecta 1000 transacciones, 500 facturas y 20 usuarios. No borra usuarios ni configuración.
+                        {isStressTestEnabled()
+                          ? 'Inyecta 1000 transacciones, 500 facturas y 20 usuarios. No borra usuarios ni configuración.'
+                          : 'El stress test está deshabilitado en producción (evita contaminar la BD).'}
                       </p>
                       <div className="flex flex-wrap gap-4">
+                        {isStressTestEnabled() && (
                         <Button 
                           variant="destructive" 
                           onClick={() => {
@@ -1982,6 +1986,7 @@ export function ConfigPanel({
                         >
                           Ejecutar Prueba de Carga (Stress Test)
                         </Button>
+                        )}
                         <Button 
                           variant="outline" 
                           className="text-red-500 border-red-200 hover:bg-red-50"

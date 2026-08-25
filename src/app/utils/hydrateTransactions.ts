@@ -10,13 +10,6 @@ export function hydrateTransactions(raw: unknown): Transaction[] {
 
   return raw.map((item): Transaction => {
     const t = item as Record<string, unknown>;
-    const dateVal = t.date;
-    const date =
-      dateVal instanceof Date
-        ? dateVal
-        : typeof dateVal === 'string' || typeof dateVal === 'number'
-          ? new Date(dateVal)
-          : new Date();
 
     return {
       id: String(t.id ?? ''),
@@ -26,7 +19,7 @@ export function hydrateTransactions(raw: unknown): Transaction[] {
       subcategory: t.subcategory != null ? String(t.subcategory) : undefined,
       concept: t.concept != null ? String(t.concept) : undefined,
       description: String(t.description ?? ''),
-      date,
+      date: parseTransactionDate(t.date),
       providerId: t.providerId != null ? String(t.providerId) : undefined,
       location: t.location != null ? String(t.location) : undefined,
     };

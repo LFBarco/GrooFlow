@@ -30,7 +30,10 @@ const DEFAULT_THRESHOLDS: AlertThresholds = {
     invoiceDueDays: 7,
     spendingSpikePercent: 30,
     pettyCashLowBalance: 20,
-    staleRequestDays: 3
+    staleRequestDays: 3,
+    paymentConcentrationMin: 5000,
+    pettyCashPendingRiskMin: 500,
+    spendingBaselineMin: 200,
 };
 
 interface AlertContext {
@@ -108,8 +111,9 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
     });
 
     // C. Alerta de Concentración de Pagos (Cuello de Botella)
+    const paymentConcentrationMin = thresholds.paymentConcentrationMin ?? DEFAULT_THRESHOLDS.paymentConcentrationMin ?? 5000;
     Object.entries(dueByDate).forEach(([dateStr, amount]) => {
-        if (amount > 5000) { // Umbral fijo por ahora, podría ser dinámico
+        if (amount > paymentConcentrationMin) {
             alerts.push({
                 id: `bottleneck-${dateStr}`,
                 title: 'Concentración de Pagos',
@@ -125,10 +129,7 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
 
     // --- 2. OPERATIVO: CAJA CHICA Y SOLICITUDES ---
     
-    // A. Caja Chica: Saldo Bajo (Simulado, ya que necesitaríamos el saldo actual real)
-    // Asumimos un fondo fijo total de 2000 soles como ejemplo si no hay config
-    // En una app real, esto vendría de un estado global de "Caja"
-    // Pero podemos detectar anomalías: Muchas reposiciones en poco tiempo.
+    // A. Caja Chica: reposición frecuente (anomalía operativa)
     const last7DaysPettyCash = context.pettyCash.filter(t => 
         isAfter(new Date(t.date), subDays(today, 7))
     );
@@ -230,7 +231,7 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
         const historicalTotal = historyCatTotals[cat] || 0;
         const historicalAvg = historicalTotal / 3; 
         
-        if (historicalAvg > 200 && amount > historicalAvg * (1 + (thresholds.spendingSpikePercent || 30)/100)) {
+        if (historicalAvg > (thresholds.spendingBaselineMin ?? DEFAULT_THRESHOLDS.spendingBaselineMin ?? 200) && amount > historicalAvg * (1 + (thresholds.spendingSpikePercent || 30)/100)) {
              const increase = ((amount - historicalAvg) / historicalAvg) * 100;
              alerts.push({
                 id: `spending-spike-${cat}`,
@@ -258,7 +259,7 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
         });
 
         Object.entries(pettyCashPendingByUser).forEach(([user, amount]) => {
-            if (amount > 500) { // Umbral arbitrario de riesgo
+            if (amount > (thresholds.pettyCashPendingRiskMin ?? DEFAULT_THRESHOLDS.pettyCashPendingRiskMin ?? 500)) {
                  alerts.push({
                     id: `risk-user-petty-${user}`,
                     title: 'Riesgo en Caja Chica',

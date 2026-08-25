@@ -11,6 +11,7 @@ import {
 import { backupAppKvAfterKvSave } from '../utils/sqlAutosaveBackup';
 import {
   getAlertReadRetrySnapshot,
+  setAlertReadForceApply,
   setAlertReadRemoteApply,
   setAlertReadRetrySnapshot,
   type AlertReadState,
@@ -96,18 +97,36 @@ export function useAlertReadPersistence(isDataLoaded: boolean) {
     });
   }, []);
 
+  const applyForcePayload = useCallback((value: unknown) => {
+    dirtyRef.current = false;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    const raw = value as AlertReadState | null;
+    const ids = Array.isArray(raw?.readIds) ? raw!.readIds.slice(-MAX_STORED_READ_IDS) : [];
+    readIdsRef.current = new Set(ids);
+    setAlertReadRetrySnapshot({
+      readIds: ids,
+      updatedAt:
+        typeof raw?.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
+    });
+  }, []);
+
   useEffect(() => {
     if (!isDataLoaded) return;
     setAlertReadRemoteApply(applyRemotePayload);
+    setAlertReadForceApply(applyForcePayload);
     const unsub = subscribeKvCrossTab((msg) => {
       if (msg.key !== ALERT_READ_STATE_KV_KEY) return;
       applyRemotePayload(msg.value);
     });
     return () => {
       setAlertReadRemoteApply(null);
+      setAlertReadForceApply(null);
       unsub();
     };
-  }, [isDataLoaded, applyRemotePayload]);
+  }, [isDataLoaded, applyRemotePayload, applyForcePayload]);
 
   const schedulePersist = useCallback(() => {
     dirtyRef.current = true;

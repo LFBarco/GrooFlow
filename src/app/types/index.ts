@@ -586,6 +586,12 @@ export interface AlertThresholds {
     spendingSpikePercent: number; // % de aumento de gasto para considerar anomalía (ej. 25%)
     pettyCashLowBalance: number; // % de saldo bajo en caja chica (ej. 20%)
     staleRequestDays: number; // Días que una solicitud puede estar pendiente (ej. 3 días)
+    /** Monto mínimo diario de vencimientos para alerta de concentración (PEN). */
+    paymentConcentrationMin?: number;
+    /** Monto mínimo pendiente de auditar por usuario en caja chica (PEN). */
+    pettyCashPendingRiskMin?: number;
+    /** Promedio histórico mínimo de categoría para evaluar spikes (PEN). */
+    spendingBaselineMin?: number;
 }
 
 // --- REQUISITION SYSTEM (REQUERIMIENTOS) ---
