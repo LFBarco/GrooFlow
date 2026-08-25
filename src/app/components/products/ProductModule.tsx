@@ -328,11 +328,11 @@ export function ProductModule({
               <p className="text-xs" style={{ color: s.pageSubtitle }}>Pulsa una fila para abrir la ficha (pestañas Editar, Precios, etc.).</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" className="border-white/10 bg-transparent text-slate-300 hover:bg-white/5" onClick={handleExportCsv}>
+              <Button variant="outline" className="border-border bg-background text-foreground hover:bg-muted" onClick={handleExportCsv}>
                 <Download className="mr-2 h-4 w-4" />
                 Exportar
               </Button>
-              <Button variant="outline" className="border-white/10 bg-transparent text-slate-300 hover:bg-white/5" onClick={handleBulkDeactivate}>
+              <Button variant="outline" className="border-border bg-background text-foreground hover:bg-muted" onClick={handleBulkDeactivate}>
                 <Archive className="mr-2 h-4 w-4" />
                 Desactivar
               </Button>
@@ -345,9 +345,9 @@ export function ProductModule({
 
           <div className="grid gap-2 xl:grid-cols-[1.4fr_1fr_1fr_1fr_1fr_auto]">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                className="border-white/10 bg-[#0D0B1E] pl-9 text-slate-200 placeholder:text-slate-600"
+                className="border-border bg-background pl-9 text-foreground placeholder:text-muted-foreground"
                 placeholder="Buscar producto..."
                 value={searchTerm}
                 onChange={(event) => {
@@ -357,7 +357,7 @@ export function ProductModule({
               />
             </div>
             <Select value={providerFilter} onValueChange={(value) => { setProviderFilter(value); setPage(1); }}>
-              <SelectTrigger className="border-white/10 bg-[#0D0B1E] text-slate-200">
+              <SelectTrigger className="border-border bg-background text-foreground">
                 <SelectValue placeholder="Proveedor..." />
               </SelectTrigger>
               <SelectContent>
@@ -368,7 +368,7 @@ export function ProductModule({
               </SelectContent>
             </Select>
             <Select value={lineFilter} onValueChange={(value) => { setLineFilter(value); setPage(1); }}>
-              <SelectTrigger className="border-white/10 bg-[#0D0B1E] text-slate-200">
+              <SelectTrigger className="border-border bg-background text-foreground">
                 <SelectValue placeholder="Linea..." />
               </SelectTrigger>
               <SelectContent>
@@ -377,7 +377,7 @@ export function ProductModule({
               </SelectContent>
             </Select>
             <Select value={categoryFilter} onValueChange={(value) => { setCategoryFilter(value); setPage(1); }}>
-              <SelectTrigger className="border-white/10 bg-[#0D0B1E] text-slate-200">
+              <SelectTrigger className="border-border bg-background text-foreground">
                 <SelectValue placeholder="Categorias..." />
               </SelectTrigger>
               <SelectContent>
@@ -386,7 +386,7 @@ export function ProductModule({
               </SelectContent>
             </Select>
             <Select value={stockFilter} onValueChange={(value) => { setStockFilter(value); setPage(1); }}>
-              <SelectTrigger className="border-white/10 bg-[#0D0B1E] text-slate-200">
+              <SelectTrigger className="border-border bg-background text-foreground">
                 <SelectValue placeholder="Stock..." />
               </SelectTrigger>
               <SelectContent>

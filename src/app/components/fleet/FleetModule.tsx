@@ -86,6 +86,8 @@ import {
 import { FleetSedeField, useFleetSedeOptions } from './FleetSedeField';
 import { FleetFuelBulkImport } from './FleetFuelBulkImport';
 import { applyFleetDatasetChange, type FleetPersistFn } from '../../utils/fleetPersist';
+import { useModuleSurfaces } from '../../utils/moduleSurfaces';
+import { ChartEmptyState, seriesHasValues } from '../ui/ChartEmptyState';
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#64748b'];
 
@@ -138,17 +140,28 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
   }, [dataset.vehicles]);
 
   const avgCons = avgFleetConsumptionLPer100(dataset);
+  const s = useModuleSurfaces();
+  const costBarsHaveData = seriesHasValues(costBars, ['fuel', 'maintenance']);
 
   return (
     <div data-testid="fleet-module" className="space-y-4 animate-in fade-in duration-150 -mt-2">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-500/25 bg-gradient-to-br from-slate-950/90 via-[#151025] to-slate-900/95 p-3 shadow-xl">
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-3 shadow-xl"
+        style={{
+          background: s.card.background,
+          borderColor: s.isDark ? 'rgba(16,185,129,0.28)' : 'rgba(16,185,129,0.35)',
+          boxShadow: s.card.boxShadow,
+        }}
+      >
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-emerald-500/15 p-2.5 border border-emerald-500/30">
-            <Truck className="h-8 w-8 text-emerald-400" />
+            <Truck className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-white">Gestión vehicular — Flota clínica</h2>
-            <p className="text-sm text-slate-400 max-w-xl">
+            <h2 className="text-xl font-bold tracking-tight" style={{ color: s.pageTitle }}>
+              Gestión vehicular — Flota clínica
+            </h2>
+            <p className="text-sm max-w-xl" style={{ color: s.pageSubtitle }}>
               Control integral de disponibilidad, mantenimiento, combustible y cumplimiento (SOAT · revisión técnica).
             </p>
           </div>
@@ -161,7 +174,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
       <div className="min-w-0">
         <div className="space-y-4">
       <Tabs value={fleetTab} onValueChange={(v) => setFleetTab(v as FleetTab)} className="space-y-4">
-        <TabsList className="flex-wrap h-auto gap-1 bg-slate-900/80 border border-white/10 p-1 rounded-xl">
+        <TabsList className="flex-wrap h-auto gap-1 border border-border bg-muted/60 p-1 rounded-xl">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="fleet" data-testid="fleet-tab-fleet">Flota</TabsTrigger>
           <TabsTrigger value="maintenance">Mantenimiento</TabsTrigger>
@@ -178,60 +191,53 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
               label="Disponibles"
               value={kpis.available}
               sub={`de ${kpis.total} vehículos`}
-              color="text-emerald-400"
-              border="border-emerald-500/35"
-              bg="bg-emerald-500/10"
+              accent="#34d399"
             />
             <KpiTile
               icon={ArrowRightCircle}
               label="En uso"
               value={kpis.inUse}
               sub="En ruta u operativo"
-              color="text-sky-400"
-              border="border-sky-500/35"
-              bg="bg-sky-500/10"
+              accent="#38bdf8"
             />
             <KpiTile
               icon={Wrench}
               label="Mantenimiento"
               value={kpis.maintenance}
               sub={`Fuera servicio · ${kpis.outOfService}`}
-              color="text-amber-400"
-              border="border-amber-500/35"
-              bg="bg-amber-500/10"
+              accent="#fbbf24"
             />
             <KpiTile
               icon={AlertTriangle}
               label="Alertas críticas"
               value={kpis.criticalAlerts}
               sub={`Advertencias · ${kpis.warningAlerts}`}
-              color="text-red-400"
-              border="border-red-500/40"
-              bg="bg-red-500/12"
+              accent="#f87171"
             />
             <KpiTile
               icon={Gauge}
               label="Combustible (mes)"
               value={kpis.monthFuelLiters.toFixed(1) + ' L'}
               sub={formatMoneyStr(kpis.monthFuelSpend)}
-              color="text-violet-300"
-              border="border-violet-500/35"
-              bg="bg-violet-500/10"
+              accent="#c084fc"
             />
           </div>
 
           <div className="grid lg:grid-cols-5 gap-4">
-            <Card className="lg:col-span-2 bg-slate-950/70 border-white/10 text-white overflow-hidden">
+            <Card
+              className="lg:col-span-2 overflow-hidden"
+              style={{ background: s.chartCard.background, borderColor: 'transparent', boxShadow: s.chartCard.boxShadow, border: s.chartCard.border }}
+            >
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-teal-400" />
+                <CardTitle className="text-base flex items-center gap-2" style={{ color: s.pageTitle }}>
+                  <Activity className="h-4 w-4 text-teal-500" />
                   Estado de la flota
                 </CardTitle>
-                <CardDescription className="text-slate-400">Distribución por disponibilidad</CardDescription>
+                <CardDescription style={{ color: s.pageSubtitle }}>Distribución por disponibilidad</CardDescription>
               </CardHeader>
               <CardContent className="h-[280px]">
                 {statusPie.length === 0 ? (
-                  <p className="text-sm text-slate-500">Sin vehículos registrados.</p>
+                  <ChartEmptyState message="Sin vehículos registrados." />
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -242,7 +248,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
                       </Pie>
                       <Tooltip
                         formatter={(value: number) => [`${value} u.`, '']}
-                        contentStyle={{ background: '#14121f', border: '1px solid rgba(139,92,246,0.25)' }}
+                        contentStyle={s.tooltip}
                       />
                       <Legend />
                     </PieChart>
@@ -251,27 +257,30 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
               </CardContent>
             </Card>
 
-            <Card className="lg:col-span-3 bg-slate-950/70 border-white/10 text-white">
+            <Card
+              className="lg:col-span-3"
+              style={{ background: s.chartCard.background, border: s.chartCard.border, boxShadow: s.chartCard.boxShadow }}
+            >
               <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
                 <div>
-                  <CardTitle className="text-base">Costos flota vs combustible</CardTitle>
-                  <CardDescription className="text-slate-400">Últimos 6 meses (S/&nbsp;mensual)</CardDescription>
+                  <CardTitle className="text-base" style={{ color: s.pageTitle }}>Costos flota vs combustible</CardTitle>
+                  <CardDescription style={{ color: s.pageSubtitle }}>Últimos 6 meses (S/&nbsp;mensual)</CardDescription>
                 </div>
-                <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-200 border-emerald-500/30">
+                <Badge variant="secondary" className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-200 border-emerald-500/30">
                   Mant. este mes · {formatMoneyStr(kpis.monthMaintenanceSpend)}
                 </Badge>
               </CardHeader>
               <CardContent className="h-[280px]">
+                {!costBarsHaveData ? (
+                  <ChartEmptyState message="Sin costos de mantenimiento ni combustible en el período." />
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={costBars}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} stroke="#64748b" />
-                    <XAxis dataKey="label" stroke="#94a3b8" tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                    <YAxis stroke="#64748b" tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.25} stroke={s.gridStroke} />
+                    <XAxis dataKey="label" stroke={s.axisTick} tick={{ fill: s.axisTick, fontSize: 11 }} />
+                    <YAxis stroke={s.axisTick} tick={{ fill: s.axisTick, fontSize: 10 }} />
                     <Tooltip
-                      contentStyle={{
-                        background: '#14121f',
-                        border: '1px solid rgba(139,92,246,0.25)',
-                      }}
+                      contentStyle={s.tooltip}
                       formatter={(v: number, name: string) => [`S/${v.toLocaleString('es-PE')}`, name === 'fuel' ? 'Combustible' : 'Mantenimiento']}
                     />
                     <Legend formatter={(value) => (value === 'fuel' ? 'Combustible' : 'Mantenimiento')} />
@@ -279,22 +288,28 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
                     <Bar dataKey="fuel" fill="#22d3ee" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          <Card className="bg-gradient-to-br from-slate-900/95 to-emerald-950/20 border-white/10 text-white">
+          <Card
+            style={{ background: s.card.background, border: s.card.border, boxShadow: s.card.boxShadow }}
+          >
             <CardContent className="pt-6 flex flex-wrap gap-8 items-center">
               <div>
-                <div className="text-xs uppercase tracking-wider text-emerald-200/70">Consumo flota observado</div>
-                <div className="text-3xl font-bold text-white tabular-nums">
-                  {avgCons != null ? `${avgCons.toFixed(1)}` : '—'} <span className="text-lg text-slate-400">L / 100&nbsp;km</span>
+                <div className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-200/80">Consumo flota observado</div>
+                <div className="text-3xl font-bold tabular-nums" style={{ color: s.pageTitle }}>
+                  {avgCons != null ? `${avgCons.toFixed(1)}` : '—'}{' '}
+                  <span className="text-lg" style={{ color: s.pageSubtitle }}>L / 100&nbsp;km</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">Promedio entre vehículos con al menos dos repostajes encadenados.</p>
+                <p className="text-xs mt-1" style={{ color: s.pageSubtitle }}>
+                  Promedio entre vehículos con al menos dos repostajes encadenados.
+                </p>
               </div>
-              <div className="h-px w-full sm:h-16 sm:w-px bg-white/15" />
-              <div className="text-sm text-slate-400">
-                Actualizado vista <span className="text-teal-300 font-semibold">{kpis.lastSyncedAtLabel}</span>
+              <div className="h-px w-full sm:h-16 sm:w-px bg-border" />
+              <div className="text-sm" style={{ color: s.pageSubtitle }}>
+                Actualizado vista <span className="text-teal-600 dark:text-teal-300 font-semibold">{kpis.lastSyncedAtLabel}</span>
               </div>
             </CardContent>
           </Card>
@@ -339,19 +354,19 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
         </TabsContent>
 
         <TabsContent value="inspections" className="focus-visible:outline-none space-y-6">
-          <Card className="border-white/10 bg-slate-950/70 text-white">
+          <Card className="border-border bg-card text-card-foreground">
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-teal-400" />
+                <ClipboardCheck className="h-4 w-4 text-teal-500" />
                 Inspección vehicular — movilidad canina
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription>
                 Configure plantillas editables, revise el historial global y registre checklist desde cada tarjeta de vehículo.
               </CardDescription>
             </CardHeader>
           </Card>
           <Tabs defaultValue="checklist-config" className="space-y-4">
-            <TabsList className="flex-wrap h-auto gap-1 bg-slate-900/80 border border-white/10 p-1 rounded-xl">
+            <TabsList className="flex-wrap h-auto gap-1 border border-border bg-muted/60 p-1 rounded-xl">
               <TabsTrigger value="checklist-config">Plantilla del checklist</TabsTrigger>
               <TabsTrigger value="inspection-global-hist">Historial global</TabsTrigger>
             </TabsList>
@@ -388,28 +403,39 @@ function KpiTile({
   label,
   value,
   sub,
-  color,
-  border,
-  bg,
+  accent,
 }: {
   icon: typeof Truck;
   label: string;
   value: string | number;
   sub: string;
-  color: string;
-  border: string;
-  bg: string;
+  accent: string;
 }) {
+  const s = useModuleSurfaces();
   return (
-    <Card className={`relative overflow-hidden border ${border} ${bg} backdrop-blur-md`}>
+    <Card
+      className="relative overflow-hidden border backdrop-blur-md"
+      style={{
+        background: s.isDark ? `${accent}14` : `${accent}18`,
+        border: `1px solid ${accent}55`,
+        boxShadow: s.card.boxShadow,
+      }}
+    >
       <CardHeader className="pb-2">
-        <div className={`flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider ${color}`}>
+        <div
+          className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider"
+          style={{ color: accent }}
+        >
           <Icon className="h-4 w-4 shrink-0" />
           {label}
         </div>
-        <CardTitle className={`text-2xl mt-2 ${color.includes('red') ? 'text-red-200' : 'text-white'} tabular-nums`}>{value}</CardTitle>
+        <CardTitle className="text-2xl mt-2 tabular-nums" style={{ color: s.pageTitle }}>
+          {value}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="pt-0 text-xs text-slate-500">{sub}</CardContent>
+      <CardContent className="pt-0 text-xs" style={{ color: s.pageSubtitle }}>
+        {sub}
+      </CardContent>
     </Card>
   );
 }
@@ -1106,7 +1132,7 @@ function FleetFuelSection({
     <div className="space-y-4">
       <div className="flex flex-wrap justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <Label className="text-white">Consumo observado:</Label>
+          <Label className="text-foreground">Consumo observado:</Label>
           <Select value={chartVid} onValueChange={setChartVid}>
             <SelectTrigger className="w-[220px]"><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -1115,7 +1141,7 @@ function FleetFuelSection({
               ))}
             </SelectContent>
           </Select>
-          <Badge variant="outline" className="text-emerald-200 border-emerald-500/40">
+          <Badge variant="outline" className="text-emerald-700 dark:text-emerald-200 border-emerald-500/40">
             {consVid != null ? `${consVid.toFixed(1)} L / 100 km` : 'Necesita 2 repostajes consecutivos'}
           </Badge>
         </div>
@@ -1134,7 +1160,10 @@ function FleetFuelSection({
         </div>
       </div>
 
-      <div className="h-[260px] rounded-xl border border-white/10 bg-slate-950/80 p-2">
+      <div className="h-[260px] rounded-xl border border-border bg-card p-2">
+        {consumptionPoints.length === 0 ? (
+          <ChartEmptyState message={dataset.vehicles.length === 0 ? 'Sin vehículos registrados.' : 'Sin puntos de consumo (faltan repostajes consecutivos).'} />
+        ) : (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={consumptionPoints}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} stroke="#64748b" />
@@ -1145,6 +1174,7 @@ function FleetFuelSection({
             <Bar name="L/100km" dataKey="l100" fill="#22d3ee" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+        )}
       </div>
 
       <ScrollArea className="h-[260px] rounded-xl border border-white/10 bg-slate-950/60">
@@ -1244,7 +1274,7 @@ function FleetAlertsSection({ alerts }: { alerts: ReturnType<typeof buildFleetAl
           </CardHeader>
         </Card>
       ))}
-      {alerts.length === 0 && <p className="text-muted-foreground text-sm">Sin alertas recientes 🎉</p>}
+      {alerts.length === 0 && <p className="text-sm text-muted-foreground">Sin alertas recientes.</p>}
     </div>
   );
 }

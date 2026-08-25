@@ -55,7 +55,7 @@ export function AppNavButton({
           isActive
             ? isDark
               ? 'text-white border border-cyan-500/30'
-              : 'text-slate-900 border border-cyan-500/35'
+              : 'text-slate-900 border border-cyan-600/45 bg-cyan-50 shadow-sm'
             : isDark
               ? 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
               : 'text-slate-600 hover:bg-indigo-50 hover:text-slate-900 border border-transparent'
@@ -70,8 +70,8 @@ export function AppNavButton({
                 }
               : {
                   background:
-                    'linear-gradient(90deg, rgba(8,145,178,0.12) 0%, rgba(79,70,229,0.08) 100%)',
-                  boxShadow: '0 0 16px rgba(79,70,229,0.08)',
+                    'linear-gradient(90deg, rgba(8,145,178,0.22) 0%, rgba(79,70,229,0.14) 100%)',
+                  boxShadow: '0 0 0 1px rgba(8,145,178,0.2), 0 8px 20px rgba(79,70,229,0.1)',
                 }
             : {}
         }

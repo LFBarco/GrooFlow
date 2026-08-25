@@ -75,9 +75,9 @@
   --secondary: #2A2840;         /* Mid purple surface */
   --secondary-foreground: #A78BFA; /* Violet text */
 
-  /* MUTED: Subtle elements */
+  /* MUTED: Subtle elements — readable on dark cards (not neon purple wash) */
   --muted: #110F20;             /* Near-void */
-  --muted-foreground: #8B7CF8;  /* Muted purple text */
+  --muted-foreground: #A8A3C7;  /* Soft lavender-gray for captions */
 
   /* ACCENT: Neon Violet */
   --accent: #1E1040;            /* Deep purple bg */

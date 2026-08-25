@@ -36,6 +36,7 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { ChartEmptyState, seriesHasValues } from '../ui/ChartEmptyState';
 
 import type {
   InventoryDataset,
@@ -394,21 +395,21 @@ export function InventoryModule({
 
   return (
     <div className="space-y-4 animate-in fade-in duration-150 -mt-2" data-testid="inventory-module">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/25 bg-gradient-to-br from-slate-950/90 via-[#0f172a] to-slate-900/95 p-3 shadow-xl">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-card p-3 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-sky-500/15 p-2.5 border border-sky-500/30">
-            <Package className="h-8 w-8 text-sky-400" />
+            <Package className="h-8 w-8 text-sky-600 dark:text-sky-400" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-white">Gestión de Inventario</h2>
-            <p className="text-sm text-slate-400 max-w-xl">
+            <h2 className="text-xl font-bold tracking-tight text-foreground">Gestión de Inventario</h2>
+            <p className="text-sm text-muted-foreground max-w-xl">
               Equipos médicos y operativos — dashboard, catálogo y planificación de mantenimientos.
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Select value={sedeFilter} onValueChange={setSedeFilter}>
-            <SelectTrigger className="w-[200px] bg-slate-900/50 border-slate-700 text-white">
+            <SelectTrigger className="w-[200px] bg-background border-border text-foreground">
               <SelectValue placeholder="Sedes" />
             </SelectTrigger>
             <SelectContent>
@@ -492,6 +493,9 @@ export function InventoryModule({
                 <CardDescription>Número de mantenimientos y costos — últimos 6 meses</CardDescription>
               </CardHeader>
               <CardContent className="h-[280px]">
+                {!seriesHasValues(maintSeries as unknown as Array<Record<string, unknown>>, ['count', 'cost']) ? (
+                  <ChartEmptyState message="Sin mantenimientos en los últimos 6 meses." />
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={maintSeries}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -504,6 +508,7 @@ export function InventoryModule({
                     <Line yAxisId="right" type="monotone" dataKey="cost" name="Costos (S/)" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 
@@ -512,6 +517,9 @@ export function InventoryModule({
                 <CardTitle className="text-base">Estado del Inventario</CardTitle>
               </CardHeader>
               <CardContent className="h-[280px]">
+                {statusPie.length === 0 || !seriesHasValues(statusPie as unknown as Array<Record<string, unknown>>, ['value']) ? (
+                  <ChartEmptyState message="Sin equipos registrados." />
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={statusPie} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
@@ -523,6 +531,7 @@ export function InventoryModule({
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -534,6 +543,9 @@ export function InventoryModule({
                 <CardDescription>Equipos por tipo</CardDescription>
               </CardHeader>
               <CardContent className="h-[220px]">
+                {categoryBars.length === 0 ? (
+                  <ChartEmptyState message="Sin categorías con equipos." />
+                ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={categoryBars} layout="vertical" margin={{ left: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
@@ -543,6 +555,7 @@ export function InventoryModule({
                     <Bar dataKey="value" fill="#0ea5e9" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
+                )}
               </CardContent>
             </Card>
 

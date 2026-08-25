@@ -248,26 +248,26 @@ export function AsistenciaModule({
 
   return (
     <div className="space-y-6" data-testid="asistencia-module">
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 p-6 text-white">
+      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
         <div className="space-y-1">
-          <div className="flex items-center gap-2 text-indigo-300">
+          <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-300">
             <Users className="h-5 w-5" />
             <span className="text-sm font-medium">Asistencia del día</span>
           </div>
-          <h2 className="text-2xl font-bold tracking-tight">Panel de dotación operativa</h2>
-          <p className="text-sm text-slate-400 max-w-2xl">
+          <h2 className="text-2xl font-bold tracking-tight text-foreground">Panel de dotación operativa</h2>
+          <p className="text-sm text-muted-foreground max-w-2xl">
             Gestiona el personal por sede y visualiza el organigrama en vivo cruzado con Buk Asistencia.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Sede</label>
+            <label className="text-xs text-muted-foreground block mb-1">Sede</label>
             <Select
               value={activeSede}
               onValueChange={setSelectedSede}
               disabled={liveViewMode === 'consolidated' && mainTab === 'live'}
             >
-              <SelectTrigger className="w-[180px] bg-slate-900/60 border-slate-700 text-white">
+              <SelectTrigger className="w-[180px] bg-background border-border text-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

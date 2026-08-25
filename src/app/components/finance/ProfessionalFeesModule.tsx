@@ -54,6 +54,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
 import { read, utils, writeFile } from 'xlsx';
 import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
+import { ChartEmptyState, seriesHasValues } from '../ui/ChartEmptyState';
 
 interface FeeReceipt {
   id: string;
@@ -1506,6 +1507,9 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                    </div>
                 </div>
                 <div className="h-[300px] w-full">
+                   {!seriesHasValues(analyticsSummary.trendData, ['pagado', 'pendiente']) ? (
+                     <ChartEmptyState message="Sin honorarios en los últimos 6 meses." />
+                   ) : (
                    <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={analyticsSummary.trendData}>
                          <defs>
@@ -1530,6 +1534,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                          <Area type="monotone" dataKey="pendiente" name="Pendiente" stroke="#f59e0b" fillOpacity={1} fill="url(#colorPending)" />
                       </AreaChart>
                    </ResponsiveContainer>
+                   )}
                 </div>
              </Card>
 
@@ -1541,6 +1546,9 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                       Anticuamiento de Deuda (Aging)
                    </h3>
                    <div className="h-[300px] w-full">
+                      {!seriesHasValues(agingData, ['value']) ? (
+                        <ChartEmptyState message="Sin deuda pendiente para anticuamiento." />
+                      ) : (
                       <ResponsiveContainer width="100%" height="100%">
                          <BarChart data={agingData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#333" opacity={0.1} />
@@ -1553,6 +1561,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                             <Bar dataKey="value" fill="#8b5cf6" radius={[4, 4, 0, 0]} name="Monto por vencer" />
                          </BarChart>
                       </ResponsiveContainer>
+                      )}
                    </div>
                 </Card>
 

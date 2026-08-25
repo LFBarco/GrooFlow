@@ -12,6 +12,7 @@ import { es } from 'date-fns/locale';
 import { ArrowUpRight, TrendingUp, DollarSign, PieChart as PieIcon } from 'lucide-react';
 import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
 import { useModuleSurfaces } from '../../utils/moduleSurfaces';
+import { ChartEmptyState, seriesHasValues } from '../ui/ChartEmptyState';
 
 interface PettyCashAnalyticsProps {
     transactions: PettyCashTransaction[];
@@ -329,6 +330,9 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                       <p className="text-xs" style={{ color: s.axisTick }}>Comportamiento mensual del egreso de caja chica</p>
                     </div>
                     <div style={{ height: '260px' }}>
+                        {!seriesHasValues(expensesByMonth as unknown as Array<Record<string, unknown>>, ['value']) ? (
+                          <ChartEmptyState message="Sin gastos de caja chica en el período." />
+                        ) : (
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={expensesByMonth} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 6" vertical={false} stroke={s.gridStroke} />
@@ -338,6 +342,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
                                 <Bar dataKey="value" fill="#22d3ee" radius={[4, 4, 0, 0]} opacity={0.85} />
                             </BarChart>
                         </ResponsiveContainer>
+                        )}
                     </div>
                 </div>
 
