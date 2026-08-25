@@ -25,24 +25,46 @@ export function GrooflowBrandLogo({
     setSrc(preferred);
   }, [preferred]);
 
+  if (usingDefault && !isDark) {
+    return (
+      <svg
+        viewBox="0 0 56 48"
+        role="img"
+        aria-label={alt}
+        className={className}
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <rect width="56" height="48" rx="12" fill="#EEF2FF" />
+        <rect x="1" y="1" width="54" height="46" rx="11" fill="none" stroke="#C7D2FE" strokeWidth="1" />
+        <path
+          d="M12 30c4-10 8-16 12-16s8 6 12 16"
+          fill="none"
+          stroke="#6366F1"
+          strokeWidth="3.2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M18 24c2.5-6 5-9.5 10-9.5S36 18 38.5 24"
+          fill="none"
+          stroke="#06B6D4"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+        />
+        <circle cx="40" cy="16" r="3.2" fill="#22D3EE" />
+      </svg>
+    );
+  }
+
   return (
-    <span
-      className={
-        usingDefault && !isDark
-          ? 'inline-flex h-full w-full items-center justify-center rounded-xl bg-gradient-to-br from-indigo-50 via-white to-cyan-50 ring-1 ring-indigo-100/80'
-          : 'inline-flex h-full w-full items-center justify-center'
-      }
-    >
-      <img
-        src={src}
-        alt={alt}
-        className={`${className ?? ''} ${usingDefault && !isDark ? 'scale-[0.92]' : ''}`.trim()}
-        onError={() => {
-          if (src !== GROOFLOW_DEFAULT_LOGO) {
-            setSrc(GROOFLOW_DEFAULT_LOGO);
-          }
-        }}
-      />
-    </span>
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (src !== GROOFLOW_DEFAULT_LOGO) {
+          setSrc(GROOFLOW_DEFAULT_LOGO);
+        }
+      }}
+    />
   );
 }
