@@ -1,4 +1,5 @@
 import { Cloud, CloudOff, Loader2, RefreshCw, WifiOff } from 'lucide-react';
+import { useApp } from '../../context/AppContext';
 import type { CloudSyncPhase } from '../../utils/kvDomainPersistence';
 import { Button } from '../ui/button';
 
@@ -31,6 +32,9 @@ export function CloudSyncIndicator({
   errorKey,
   errorKeyLabel,
 }: CloudSyncIndicatorProps) {
+  const { theme } = useApp();
+  const isLight = theme === 'light';
+
   if (!visible) return null;
 
   const offline = !isOnline;
@@ -40,14 +44,24 @@ export function CloudSyncIndicator({
 
   const Icon = offline ? WifiOff : isError ? CloudOff : isSaving ? Loader2 : Cloud;
   const color = offline
-    ? '#fb923c'
+    ? isLight
+      ? '#ea580c'
+      : '#fb923c'
     : isError
-      ? '#fb7185'
+      ? isLight
+        ? '#e11d48'
+        : '#fb7185'
       : isSaving
-        ? '#fbbf24'
+        ? isLight
+          ? '#d97706'
+          : '#fbbf24'
         : isSynced
-          ? '#34d399'
-          : 'rgba(255,255,255,0.35)';
+          ? isLight
+            ? '#059669'
+            : '#34d399'
+          : isLight
+            ? '#64748b'
+            : 'rgba(255,255,255,0.35)';
 
   const phaseLabel = offline ? 'Sin conexión' : LABELS[phase];
   const errorModule =
@@ -55,13 +69,25 @@ export function CloudSyncIndicator({
   const title = errorModule ? `${phaseLabel} · ${errorModule}` : phaseLabel;
   const label = errorModule && !compact ? `${phaseLabel} · ${errorModule}` : phaseLabel;
 
+  const border = offline
+    ? isLight
+      ? 'rgba(234,88,12,0.35)'
+      : 'rgba(251,146,60,0.35)'
+    : isError
+      ? isLight
+        ? 'rgba(225,29,72,0.35)'
+        : 'rgba(251,113,133,0.35)'
+      : isLight
+        ? 'rgba(15,23,42,0.12)'
+        : 'rgba(255,255,255,0.08)';
+
   return (
     <div
       className={`flex items-center gap-1.5 rounded-lg px-2 py-1 ${compact ? 'text-[10px]' : 'text-xs'}`}
       data-testid="cloud-sync-indicator"
       style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: `1px solid ${offline ? 'rgba(251,146,60,0.35)' : isError ? 'rgba(251,113,133,0.35)' : 'rgba(255,255,255,0.08)'}`,
+        background: isLight ? 'rgba(15,23,42,0.04)' : 'rgba(255,255,255,0.04)',
+        border: `1px solid ${border}`,
         color,
       }}
       title={title}
@@ -73,7 +99,7 @@ export function CloudSyncIndicator({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-6 px-1.5 ml-0.5 text-[10px] hover:bg-white/10"
+          className={`h-6 px-1.5 ml-0.5 text-[10px] ${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
           onClick={onRetry}
         >
           <RefreshCw className="h-3 w-3 mr-1" />
@@ -85,7 +111,7 @@ export function CloudSyncIndicator({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-6 px-1.5 ml-0.5 text-[10px] hover:bg-white/10"
+          className={`h-6 px-1.5 ml-0.5 text-[10px] ${isLight ? 'hover:bg-slate-100' : 'hover:bg-white/10'}`}
           onClick={onRetry}
           title="Reintentar sincronización al volver la conexión"
         >
