@@ -187,9 +187,9 @@ export function AsistenciaStaffDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg bg-slate-950 border-slate-800 text-white">
+      <DialogContent className="max-w-lg bg-card border-border text-foreground dark:bg-slate-950 dark:border-slate-800 dark:text-white">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
+          <DialogTitle className="flex items-center gap-2 text-foreground">
             <User className="h-5 w-5 text-indigo-400" />
             {isEdit ? 'Editar personal' : 'Nuevo Personal'}
           </DialogTitle>
@@ -203,7 +203,7 @@ export function AsistenciaStaffDialog({
               value={form.fullName}
               onChange={(e) => patch({ fullName: e.target.value })}
               placeholder="Ej. Luis Barco"
-              className="bg-white text-slate-900 border-0"
+              className="bg-background text-foreground border-border"
             />
           </div>
 
@@ -213,7 +213,7 @@ export function AsistenciaStaffDialog({
                 <MapPin className="h-3.5 w-3.5" /> Área
               </Label>
               <Select value={form.area} onValueChange={(v) => patch({ area: v })}>
-                <SelectTrigger className="bg-white text-slate-900 border-0">
+                <SelectTrigger className="bg-background text-foreground border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -228,7 +228,7 @@ export function AsistenciaStaffDialog({
                 <Briefcase className="h-3.5 w-3.5" /> Cargo
               </Label>
               <Select value={form.cargoLabel} onValueChange={(v) => patch({ cargoLabel: v })}>
-                <SelectTrigger className="bg-white text-slate-900 border-0">
+                <SelectTrigger className="bg-background text-foreground border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -240,11 +240,11 @@ export function AsistenciaStaffDialog({
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-700 bg-slate-900/60 p-3 space-y-3">
+          <div className="rounded-xl border border-border bg-muted/50 dark:border-slate-700 dark:bg-slate-900/60 p-3 space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-white">Turno mixto</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-sm font-medium text-foreground">Turno mixto</p>
+                <p className="text-xs text-muted-foreground">
                   Día y noche distintos según el día de la semana (ej. lun–mié día, jue–vie noche).
                 </p>
               </div>
@@ -272,7 +272,7 @@ export function AsistenciaStaffDialog({
                   >
                     <SelectTrigger
                       data-testid="asistencia-staff-shift"
-                      className="bg-white text-slate-900 border-0"
+                      className="bg-background text-foreground border-border"
                     >
                       <SelectValue />
                     </SelectTrigger>
@@ -290,7 +290,7 @@ export function AsistenciaStaffDialog({
                     type="time"
                     value={form.expectedTime}
                     onChange={(e) => patch({ expectedTime: e.target.value })}
-                    className="bg-white text-slate-900 border-0"
+                    className="bg-background text-foreground border-border"
                   />
                 </div>
               </div>
@@ -311,7 +311,7 @@ export function AsistenciaStaffDialog({
                           value={value}
                           onValueChange={(v) => setWeekdayShift(day, v as AsistenciaWeekdayShift)}
                         >
-                          <SelectTrigger className="h-8 px-1 text-[10px] bg-white text-slate-900 border-0">
+                          <SelectTrigger className="h-8 px-1 text-[10px] bg-background text-foreground border-border">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -336,7 +336,7 @@ export function AsistenciaStaffDialog({
                       type="time"
                       value={form.expectedTime}
                       onChange={(e) => patch({ expectedTime: e.target.value })}
-                      className="bg-white text-slate-900 border-0"
+                      className="bg-background text-foreground border-border"
                     />
                   </div>
                   <div className="space-y-2">
@@ -347,7 +347,7 @@ export function AsistenciaStaffDialog({
                       type="time"
                       value={form.expectedTimeNight ?? ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME}
                       onChange={(e) => patch({ expectedTimeNight: e.target.value })}
-                      className="bg-white text-slate-900 border-0"
+                      className="bg-background text-foreground border-border"
                     />
                   </div>
                 </div>
@@ -359,7 +359,7 @@ export function AsistenciaStaffDialog({
             <div className="space-y-2">
               <Label className="text-slate-300">Estado inicial</Label>
               <Select value="ausente" disabled>
-                <SelectTrigger className="bg-slate-800 text-slate-400 border-slate-700">
+                <SelectTrigger className="bg-muted text-muted-foreground border-border dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
                   <SelectValue placeholder="Ausente" />
                 </SelectTrigger>
                 <SelectContent>
@@ -397,7 +397,7 @@ export function AsistenciaStaffDialog({
                 type="email"
                 value={form.email ?? ''}
                 onChange={(e) => patch({ email: e.target.value })}
-                className="bg-white text-slate-900 border-0"
+                className="bg-background text-foreground border-border"
               />
             </div>
             <div className="space-y-2">
@@ -407,7 +407,7 @@ export function AsistenciaStaffDialog({
               <Input
                 value={form.phone ?? ''}
                 onChange={(e) => patch({ phone: e.target.value })}
-                className="bg-white text-slate-900 border-0"
+                className="bg-background text-foreground border-border"
               />
             </div>
           </div>
@@ -419,7 +419,7 @@ export function AsistenciaStaffDialog({
               value={form.rut ?? ''}
               onChange={(e) => patch({ rut: e.target.value })}
               placeholder="12345678-9"
-              className="bg-white text-slate-900 border-0"
+              className="bg-background text-foreground border-border"
               required
             />
             <p className="text-[11px] text-slate-500">
@@ -433,19 +433,19 @@ export function AsistenciaStaffDialog({
               value={form.avatarUrl ?? ''}
               onChange={(e) => patch({ avatarUrl: e.target.value })}
               placeholder="https://..."
-              className="bg-white text-slate-900 border-0"
+              className="bg-background text-foreground border-border"
             />
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted-foreground">
               Puedes usar una URL de imagen o dejar en blanco para usar el icono del cargo.
             </p>
           </div>
 
-          <div className="flex items-start justify-between gap-4 rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-muted/50 dark:border-slate-700 dark:bg-slate-900/60 p-3">
             <div className="flex gap-2">
               <Hexagon className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
               <div>
-                <p className="text-sm font-medium text-white">Puesto Crítico</p>
-                <p className="text-xs text-slate-400">
+                <p className="text-sm font-medium text-foreground">Puesto Crítico</p>
+                <p className="text-xs text-muted-foreground">
                   Si este puesto es crítico, la sede no estará operativa sin esta persona.
                 </p>
               </div>
@@ -456,10 +456,10 @@ export function AsistenciaStaffDialog({
             />
           </div>
 
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-700 bg-slate-900/60 p-3">
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/50 dark:border-slate-700 dark:bg-slate-900/60 p-3">
             <div>
-              <p className="text-sm font-medium text-white">Encargado de sede</p>
-              <p className="text-xs text-slate-400">Aparece en la cima del organigrama en vivo.</p>
+              <p className="text-sm font-medium text-foreground">Encargado de sede</p>
+              <p className="text-xs text-muted-foreground">Aparece en la cima del organigrama en vivo.</p>
             </div>
             <Switch
               checked={form.isManager === true}
@@ -481,7 +481,7 @@ export function AsistenciaStaffDialog({
             <Button
               type="button"
               variant="outline"
-              className="border-slate-600 text-slate-300 hover:bg-slate-800"
+              className="border-border text-foreground hover:bg-muted dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
               onClick={() => onOpenChange(false)}
             >
               Cancelar

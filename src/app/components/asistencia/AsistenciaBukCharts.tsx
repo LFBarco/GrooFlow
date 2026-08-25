@@ -36,8 +36,8 @@ type ChartTooltipProps = {
 function DarkTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-lg border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs shadow-xl">
-      <p className="font-medium text-white mb-1">{label}</p>
+    <div className="rounded-lg border border-border bg-popover dark:border-slate-700 dark:bg-slate-950/95 px-3 py-2 text-xs shadow-xl">
+      <p className="font-medium text-foreground mb-1">{label}</p>
       {payload.map((entry) => (
         <p key={entry.name} style={{ color: entry.color }} className="tabular-nums">
           {entry.name}: {entry.value ?? 0}
@@ -100,9 +100,9 @@ export function AsistenciaBukCharts({ summary, areaGroups }: Props) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-3">
-        <div className="xl:col-span-2 rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm font-semibold text-white mb-1">Asistencia por área</p>
-          <p className="text-xs text-slate-500 mb-4">
+        <div className="xl:col-span-2 rounded-xl border border-border dark:border-slate-800 bg-slate-900/40 p-4">
+          <p className="text-sm font-semibold text-foreground mb-1">Asistencia por área</p>
+          <p className="text-xs text-muted-foreground mb-4">
             Personas con entrada marcada, a tiempo, con tardanza y sin entrada.
           </p>
           <div className="h-[320px] w-full">
@@ -128,9 +128,9 @@ export function AsistenciaBukCharts({ summary, areaGroups }: Props) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm font-semibold text-white mb-1">Distribución global</p>
-          <p className="text-xs text-slate-500 mb-4">Puntualidad del personal con entrada ese día.</p>
+        <div className="rounded-xl border border-border dark:border-slate-800 bg-slate-900/40 p-4">
+          <p className="text-sm font-semibold text-foreground mb-1">Distribución global</p>
+          <p className="text-xs text-muted-foreground mb-4">Puntualidad del personal con entrada ese día.</p>
           <div className="h-[320px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
@@ -157,9 +157,9 @@ export function AsistenciaBukCharts({ summary, areaGroups }: Props) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm font-semibold text-white mb-1">% puntualidad por área</p>
-          <p className="text-xs text-slate-500 mb-4">
+        <div className="rounded-xl border border-border dark:border-slate-800 bg-slate-900/40 p-4">
+          <p className="text-sm font-semibold text-foreground mb-1">% puntualidad por área</p>
+          <p className="text-xs text-muted-foreground mb-4">
             A tiempo ÷ llegaron (solo quienes marcaron entrada).
           </p>
           <div className="h-[280px] w-full">
@@ -184,9 +184,9 @@ export function AsistenciaBukCharts({ summary, areaGroups }: Props) {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm font-semibold text-white mb-1">Llegadas y salidas por área</p>
-          <p className="text-xs text-slate-500 mb-4">
+        <div className="rounded-xl border border-border dark:border-slate-800 bg-slate-900/40 p-4">
+          <p className="text-sm font-semibold text-foreground mb-1">Llegadas y salidas por área</p>
+          <p className="text-xs text-muted-foreground mb-4">
             Total registrados en Buk, con entrada y con salida el mismo día.
           </p>
           <div className="h-[280px] w-full">
@@ -213,14 +213,14 @@ export function AsistenciaBukCharts({ summary, areaGroups }: Props) {
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-800 overflow-hidden">
-        <div className="border-b border-slate-800 bg-slate-900/80 px-4 py-3">
-          <p className="text-sm font-semibold text-white">Resumen numérico por área</p>
+      <div className="rounded-xl border border-border overflow-hidden dark:border-slate-800">
+        <div className="border-b border-border bg-muted/50 dark:border-slate-800 dark:bg-slate-900/80 px-4 py-3">
+          <p className="text-sm font-semibold text-foreground">Resumen numérico por área</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-slate-800 text-slate-400 text-left">
+              <tr className="border-b border-border text-muted-foreground dark:border-slate-800 text-left">
                 <th className="px-4 py-2 font-medium">Área</th>
                 <th className="px-4 py-2 font-medium text-right">Total</th>
                 <th className="px-4 py-2 font-medium text-right">Llegaron</th>
@@ -233,8 +233,8 @@ export function AsistenciaBukCharts({ summary, areaGroups }: Props) {
             </thead>
             <tbody>
               {chartData.map((row) => (
-                <tr key={row.area} className="border-b border-slate-800/60 hover:bg-slate-900/40">
-                  <td className="px-4 py-2 text-white max-w-[200px] truncate" title={row.area}>
+                <tr key={row.area} className="border-b border-border/60 hover:bg-muted/30 dark:border-slate-800/60 dark:hover:bg-slate-900/40">
+                  <td className="px-4 py-2 text-foreground max-w-[200px] truncate" title={row.area}>
                     {row.area}
                   </td>
                   <td className="px-4 py-2 text-right text-slate-300 tabular-nums">{row.total}</td>

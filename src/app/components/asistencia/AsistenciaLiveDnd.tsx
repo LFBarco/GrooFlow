@@ -199,18 +199,18 @@ function DraggableAreaColumn({
         }`}
       >
         <div className="flex items-center gap-2 mb-2">
-          <Icon className="h-4 w-4 text-white/80" />
-          <span className="font-semibold text-white">{block.label}</span>
+          <Icon className="h-4 w-4 text-foreground/80" />
+          <span className="font-semibold text-foreground">{block.label}</span>
         </div>
-        <p className="text-xs text-slate-400 mb-2">
+        <p className="text-xs text-muted-foreground mb-2">
           Personal Activo {block.activeCount}/{block.totalCount}
         </p>
-        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden dark:bg-slate-800">
           <div className={`h-full rounded-full transition-all ${theme.bar}`} style={{ width: `${pct}%` }} />
         </div>
       </div>
 
-      <div className="h-4 w-px bg-slate-700" />
+      <div className="h-4 w-px bg-border dark:bg-slate-700" />
 
       <div className="flex flex-col gap-1 w-full items-center pt-1">
         {visibleStaff.length === 0 ? (
@@ -221,7 +221,7 @@ function DraggableAreaColumn({
             editLayout={editLayout}
             onDropStaff={onStaffDrop}
           >
-            <div className="w-full rounded-xl border border-dashed border-slate-700 py-6 text-center text-xs text-slate-500">
+            <div className="w-full rounded-xl border border-dashed border-border py-6 text-center text-xs text-muted-foreground dark:border-slate-700">
               {editLayout ? 'Soltar aquí' : 'Sin personal asignado'}
             </div>
           </AreaStaffDropZone>
@@ -303,10 +303,10 @@ export function AsistenciaLiveSedeBlock({
   );
 
   return (
-    <div className={compact ? 'pt-6 border-t border-slate-800 first:border-t-0 first:pt-0' : ''}>
+    <div className={compact ? 'pt-6 border-t border-border first:border-t-0 dark:border-slate-800 first:pt-0' : ''}>
       {compact ? (
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <h3 className="text-lg font-semibold text-white">{summary.sedeName}</h3>
+          <h3 className="text-lg font-semibold text-foreground">{summary.sedeName}</h3>
           <span className="text-xs text-emerald-400">{summary.workingCount} trabajando</span>
           <span className="text-xs text-red-400">{summary.absentCount} ausentes</span>
           {!summary.isOperational ? (
@@ -334,8 +334,8 @@ export function AsistenciaLiveSedeBlock({
           )}
         </div>
 
-        <div className="h-6 w-px bg-slate-700" />
-        <div className="h-px w-full max-w-3xl bg-slate-700" />
+        <div className="h-6 w-px bg-border dark:bg-slate-700" />
+        <div className="h-px w-full max-w-3xl bg-border dark:bg-slate-700" />
 
         <div
           className="grid w-full max-w-5xl gap-6 mt-4"

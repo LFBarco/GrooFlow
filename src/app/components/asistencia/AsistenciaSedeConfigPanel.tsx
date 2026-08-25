@@ -6,6 +6,7 @@ import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_WORK_SHIFT_LABELS } from '../.
 import { formatWeeklyShiftSummary } from '../../utils/asistenciaShift';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
+import { mergeExampleStaffIntoSettings } from '../../utils/asistenciaExampleSeed';
 import {
   applyAddOrgColumn,
   applyOrgColumnLabels,
@@ -26,12 +27,16 @@ import { Switch } from '../ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
 const BUILTIN_BADGE: Record<string, string> = {
-  administracion: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30',
-  medica: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  peluqueria: 'bg-sky-500/20 text-sky-300 border-sky-500/30',
+  administracion:
+    'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-500/20 dark:text-fuchsia-300 dark:border-fuchsia-500/30',
+  medica:
+    'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30',
+  peluqueria:
+    'bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/30',
 };
 
-const CUSTOM_BADGE = 'bg-violet-500/20 text-violet-300 border-violet-500/30';
+const CUSTOM_BADGE =
+  'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/30';
 
 type Props = {
   sedeName: string;
@@ -231,15 +236,22 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     );
   };
 
+  const loadExampleStaff = async () => {
+    await runSave(
+      (prev) => mergeExampleStaffIntoSettings(prev, sedeName, { replaceSede: true }),
+      'Personal de ejemplo cargado.'
+    );
+  };
+
   const badgeClass = (columnId: string) =>
     BUILTIN_BADGE[columnId] ?? CUSTOM_BADGE;
 
   return (
     <div className="space-y-6">
-      <Card className="border-slate-800 bg-slate-950/80">
+      <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2 text-white">
+            <CardTitle className="flex items-center gap-2 text-foreground">
               <Building2 className="h-5 w-5 text-indigo-400" />
               Configuración de Sede
             </CardTitle>
@@ -257,7 +269,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
               <Button
                 size="sm"
                 variant="outline"
-                className="border-slate-600 text-slate-200"
+                className="border-border text-foreground dark:border-slate-600 dark:text-slate-200"
                 onClick={() => {
                   setScheduleStart(profile.scheduleStart ?? '08:00');
                   setScheduleEnd(profile.scheduleEnd ?? '18:00');
@@ -275,25 +287,25 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-              <p className="text-xs text-slate-500 mb-1">Nombre de la Sede</p>
-              <p className="text-lg font-semibold text-white">{sedeName}</p>
+            <div className="rounded-xl border border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-900/50 p-4">
+              <p className="text-xs text-muted-foreground mb-1">Nombre de la Sede</p>
+              <p className="text-lg font-semibold text-foreground">{sedeName}</p>
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 sm:col-span-2">
-              <p className="text-xs text-slate-500 mb-1">Horario</p>
+            <div className="rounded-xl border border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-900/50 p-4 sm:col-span-2">
+              <p className="text-xs text-muted-foreground mb-1">Horario</p>
               {editSede ? (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] uppercase text-slate-500 w-12">Día</span>
-                    <Input type="time" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                    <Input type="time" value={scheduleStart} onChange={(e) => setScheduleStart(e.target.value)} className="h-8 w-[110px] bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
                     <span className="text-slate-500">-</span>
-                    <Input type="time" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                    <Input type="time" value={scheduleEnd} onChange={(e) => setScheduleEnd(e.target.value)} className="h-8 w-[110px] bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] uppercase text-slate-500 w-12">Noche</span>
-                    <Input type="time" value={scheduleNightStart} onChange={(e) => setScheduleNightStart(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                    <Input type="time" value={scheduleNightStart} onChange={(e) => setScheduleNightStart(e.target.value)} className="h-8 w-[110px] bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
                     <span className="text-slate-500">-</span>
-                    <Input type="time" value={scheduleNightEnd} onChange={(e) => setScheduleNightEnd(e.target.value)} className="h-8 w-[110px] bg-slate-800 border-slate-700 text-white" />
+                    <Input type="time" value={scheduleNightEnd} onChange={(e) => setScheduleNightEnd(e.target.value)} className="h-8 w-[110px] bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white" />
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] uppercase text-slate-500 w-12">Tol.</span>
@@ -303,22 +315,22 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                       max={120}
                       value={scheduleTolerance}
                       onChange={(e) => setScheduleTolerance(e.target.value)}
-                      className="h-8 w-[72px] bg-slate-800 border-slate-700 text-white"
+                      className="h-8 w-[72px] bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                     />
-                    <span className="text-xs text-slate-500">min después de entrada turno día (ej. 08:00 + 10 = hasta 08:10)</span>
+                    <span className="text-xs text-muted-foreground">min después de entrada turno día (ej. 08:00 + 10 = hasta 08:10)</span>
                   </div>
                 </div>
               ) : (
-                <p className="text-sm font-semibold text-white">
+                <p className="text-sm font-semibold text-foreground">
                   Día {profile.scheduleStart} - {profile.scheduleEnd}
                   <span className="text-slate-500 font-normal mx-2">·</span>
                   Noche {profile.scheduleNightStart ?? '20:00'} - {profile.scheduleNightEnd ?? '08:00'}
                 </p>
               )}
             </div>
-            <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
-              <p className="text-xs text-slate-500 mb-1">Personal Registrado</p>
-              <p className="text-lg font-semibold text-white">{staff.length}</p>
+            <div className="rounded-xl border border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-900/50 p-4">
+              <p className="text-xs text-muted-foreground mb-1">Personal Registrado</p>
+              <p className="text-lg font-semibold text-foreground">{staff.length}</p>
             </div>
           </div>
           {editSede ? (
@@ -328,7 +340,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 value={bukCode}
                 onChange={(e) => setBukCode(e.target.value)}
                 placeholder="Ej. Petmax o Petmax · Petmax Principal"
-                className="max-w-md bg-slate-800 border-slate-700 text-white"
+                className="max-w-md bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               />
               <p className="text-[11px] text-slate-500">
                 Puedes pegar el código solo (Petmax) o la etiqueta completa del diagnóstico.
@@ -339,10 +351,10 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
       </Card>
 
       {canConfigure ? (
-        <Card className="border-slate-800 bg-slate-950/80">
+        <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
           <CardHeader className="flex flex-row items-start justify-between gap-4">
             <div>
-              <CardTitle className="flex items-center gap-2 text-white">
+              <CardTitle className="flex items-center gap-2 text-foreground">
                 <LayoutGrid className="h-5 w-5 text-cyan-400" />
                 Estructura del organigrama
               </CardTitle>
@@ -355,7 +367,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 type="button"
                 size="sm"
                 variant="outline"
-                className="border-slate-600 text-slate-200"
+                className="border-border text-foreground dark:border-slate-600 dark:text-slate-200"
                 onClick={() => setOrgDialogOpen(true)}
               >
                 Dotación Buk
@@ -376,10 +388,10 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 return (
                   <div
                     key={columnId}
-                    className="rounded-xl border border-slate-800 bg-slate-900/50 p-3 space-y-3"
+                    className="rounded-xl border border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-900/50 p-3 space-y-3"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-slate-500 w-24 shrink-0">
+                    <span className="text-xs text-muted-foreground w-24 shrink-0">
                       Columna {index + 1}
                     </span>
                     <Input
@@ -387,7 +399,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                       onChange={(e) =>
                         setAreaLabels((prev) => ({ ...prev, [columnId]: e.target.value }))
                       }
-                      className="max-w-xs h-8 bg-slate-800 border-slate-700 text-white"
+                      className="max-w-xs h-8 bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                     />
                     <span className="text-[10px] text-slate-500">
                       ({builtin ? 'built-in' : 'personalizada'})
@@ -427,7 +439,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                     </div>
                     </div>
                     <div className="space-y-1.5 pl-0 sm:pl-24">
-                      <Label className="text-xs text-slate-400">Cargos visibles en esta área</Label>
+                      <Label className="text-xs text-muted-foreground">Cargos visibles en esta área</Label>
                       <Textarea
                         value={
                           cargoByColumnText[columnId] ??
@@ -438,7 +450,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                         }
                         placeholder={'Un cargo por línea\nEj. Médico veterinario\nAsistente veterinario'}
                         rows={3}
-                        className="text-sm bg-slate-800 border-slate-700 text-white resize-y min-h-[72px]"
+                        className="text-sm bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white resize-y min-h-[72px]"
                       />
                       <p className="text-[10px] text-slate-500">
                         Estos cargos aparecen al agregar personal y en el organigrama en vivo.
@@ -449,14 +461,14 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
               })}
             </div>
 
-            <div className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-slate-700 bg-slate-900/30 p-3">
+            <div className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-border bg-muted/30 dark:border-slate-700 dark:bg-slate-900/30 p-3">
               <div className="flex-1 min-w-[200px] space-y-1">
-                <Label className="text-xs text-slate-400">Nueva columna</Label>
+                <Label className="text-xs text-muted-foreground">Nueva columna</Label>
                 <Input
                   value={newColumnLabel}
                   onChange={(e) => setNewColumnLabel(e.target.value)}
                   placeholder="Ej. Recepción, Laboratorio…"
-                  className="h-8 bg-slate-800 border-slate-700 text-white"
+                  className="h-8 bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void addColumn();
                   }}
@@ -466,7 +478,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 type="button"
                 size="sm"
                 variant="outline"
-                className="border-slate-600 text-slate-200"
+                className="border-border text-foreground dark:border-slate-600 dark:text-slate-200"
                 disabled={!newColumnLabel.trim() || saving}
                 onClick={() => void addColumn()}
               >
@@ -480,7 +492,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 checked={hideEmptyAreas}
                 onCheckedChange={setHideEmptyAreas}
               />
-              <Label htmlFor="hide-empty-areas" className="text-sm text-slate-300">
+              <Label htmlFor="hide-empty-areas" className="text-sm text-muted-foreground">
                 Ocultar áreas sin personal en el organigrama en vivo
               </Label>
             </div>
@@ -488,28 +500,42 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         </Card>
       ) : null}
 
-      <Card className="border-slate-800 bg-slate-950/80">
+      <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
-            <CardTitle className="flex items-center gap-2 text-white">
+            <CardTitle className="flex items-center gap-2 text-foreground">
               <Users className="h-5 w-5 text-violet-400" />
               Gestión de Personal
             </CardTitle>
-            <CardDescription className="text-slate-400">
+            <CardDescription className="text-muted-foreground">
               Agrega y administra el personal de cada área. Los cargos disponibles dependen del área seleccionada.
             </CardDescription>
           </div>
           {canConfigure ? (
-            <Button
-              className="bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white border-0"
-              data-testid="asistencia-add-staff"
-              onClick={() => {
-                setEditingStaff(null);
-                setDialogOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4 mr-1" /> Agregar Personal
-            </Button>
+            <div className="flex flex-wrap gap-2 justify-end">
+              {staff.length === 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-border"
+                  data-testid="asistencia-load-example-staff"
+                  disabled={saving}
+                  onClick={() => void loadExampleStaff()}
+                >
+                  Cargar ejemplo
+                </Button>
+              ) : null}
+              <Button
+                className="bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white border-0"
+                data-testid="asistencia-add-staff"
+                onClick={() => {
+                  setEditingStaff(null);
+                  setDialogOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Agregar Personal
+              </Button>
+            </div>
           ) : null}
         </CardHeader>
         <CardContent className="space-y-6">
@@ -521,10 +547,10 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                   <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${badgeClass(col.id)}`}>
                     {col.label}
                   </span>
-                  <span className="text-xs text-slate-500">{list.length} personas</span>
+                  <span className="text-xs text-muted-foreground">{list.length} personas</span>
                 </div>
                 {list.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/30 py-8 text-center text-sm text-slate-500">
+                  <div className="rounded-xl border border-dashed border-border bg-muted/30 dark:border-slate-700 dark:bg-slate-900/30 py-8 text-center text-sm text-muted-foreground">
                     No hay personal asignado a esta área
                   </div>
                 ) : (
@@ -532,11 +558,11 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                     {list.map((member) => (
                       <div
                         key={member.id}
-                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900/50 p-3"
+                        className="flex items-center justify-between gap-2 rounded-xl border border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-900/50 p-3"
                       >
                         <div className="min-w-0">
-                          <p className="font-medium text-white truncate">{member.fullName}</p>
-                          <p className="text-xs text-slate-400">
+                          <p className="font-medium text-foreground truncate">{member.fullName}</p>
+                          <p className="text-xs text-muted-foreground">
                             {member.cargoLabel} · {member.expectedTime} ·{' '}
                             {formatWeeklyShiftSummary(member) ??
                               ASISTENCIA_WORK_SHIFT_LABELS[member.shift ?? 'day']}
@@ -551,7 +577,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                               type="button"
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-slate-400 hover:text-white"
+                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
                               onClick={() => {
                                 setEditingStaff(member);
                                 setDialogOpen(true);

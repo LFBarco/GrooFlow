@@ -99,7 +99,7 @@ function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
   return (
     <Table>
       <TableHeader>
-        <TableRow className="border-slate-800 hover:bg-transparent">
+        <TableRow className="border-border hover:bg-transparent dark:border-slate-800">
           <TableHead className="text-slate-400">Nombre</TableHead>
           <TableHead className="text-slate-400">Apellidos</TableHead>
           <TableHead className="text-slate-400">Área</TableHead>
@@ -113,8 +113,8 @@ function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
-          <TableRow key={row.id} className="border-slate-800/80 hover:bg-slate-900/50">
-            <TableCell className="font-medium text-white">{row.nombre}</TableCell>
+          <TableRow key={row.id} className="border-border/80 hover:bg-muted/40 dark:border-slate-800/80 dark:hover:bg-slate-900/50">
+            <TableCell className="font-medium text-foreground">{row.nombre}</TableCell>
             <TableCell className="text-slate-300">{row.apellidos || '—'}</TableCell>
             <TableCell className="text-slate-300 max-w-[180px] truncate" title={row.area}>
               {row.area}
@@ -222,7 +222,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
 
   if (records.length === 0) {
     return (
-      <Card className="border-slate-800 bg-slate-950/50">
+      <Card className="border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-950/50">
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
           Pulsa «Actualizar Buk» para ver el listado crudo de la API por sede y fecha.
         </CardContent>
@@ -233,14 +233,14 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <Card className="border-slate-800 bg-slate-950/80">
+        <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
           <CardContent className="pt-5">
-            <p className="text-xs text-slate-500 uppercase tracking-wide">En sede ese día</p>
-            <p className="text-2xl font-bold text-white mt-1">{summary.total}</p>
-            <p className="text-xs text-slate-500 mt-1">{sedeName}</p>
+            <p className="text-xs text-muted-foreground uppercase tracking-wide">En sede ese día</p>
+            <p className="text-2xl font-bold text-foreground mt-1">{summary.total}</p>
+            <p className="text-xs text-muted-foreground mt-1">{sedeName}</p>
           </CardContent>
         </Card>
-        <Card className="border-emerald-500/30 bg-emerald-950/20">
+        <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-950/20">
           <CardContent className="pt-5 flex items-start justify-between gap-2">
             <div>
               <p className="text-xs text-emerald-400/80 uppercase tracking-wide">Llegaron</p>
@@ -249,7 +249,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
             <CheckCircle2 className="h-8 w-8 text-emerald-500/60 shrink-0" />
           </CardContent>
         </Card>
-        <Card className="border-red-500/30 bg-red-950/20">
+        <Card className="border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-950/20">
           <CardContent className="pt-5 flex items-start justify-between gap-2">
             <div>
               <p className="text-xs text-red-400/80 uppercase tracking-wide">Sin entrada</p>
@@ -258,7 +258,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
             <XCircle className="h-8 w-8 text-red-500/60 shrink-0" />
           </CardContent>
         </Card>
-        <Card className="border-emerald-500/30 bg-emerald-950/20">
+        <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-950/20">
           <CardContent className="pt-5 flex items-start justify-between gap-2">
             <div>
               <p className="text-xs text-emerald-400/80 uppercase tracking-wide">A tiempo</p>
@@ -277,18 +277,18 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
             <X className="h-8 w-8 text-orange-500/60 shrink-0" strokeWidth={2.5} />
           </CardContent>
         </Card>
-        <Card className="border-amber-500/30 bg-amber-950/20">
+        <Card className="border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-950/20">
           <CardContent className="pt-5">
             <p className="text-xs text-amber-400/80 uppercase tracking-wide">Con salida</p>
             <p className="text-2xl font-bold text-amber-300 mt-1">{summary.leftSameDay}</p>
-            <p className="text-xs text-slate-500 mt-1">salida_format mismo día</p>
+            <p className="text-xs text-muted-foreground mt-1">salida_format mismo día</p>
           </CardContent>
         </Card>
       </div>
 
-      <Card className="border-slate-800 bg-slate-950/80">
+      <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-white text-lg">
+          <CardTitle className="flex items-center gap-2 text-foreground text-lg">
             <LayoutDashboard className="h-5 w-5 text-indigo-400" />
             Dashboard Buk — {dateLabel}
           </CardTitle>
@@ -304,11 +304,11 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar nombre, apellido, área, especialidad o RUT…"
-                className="pl-9 bg-slate-900 border-slate-700 text-white"
+                className="pl-9 bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white"
               />
             </div>
             <Select value={areaFilter} onValueChange={setAreaFilter}>
-              <SelectTrigger className="w-[200px] bg-slate-900 border-slate-700 text-white">
+              <SelectTrigger className="w-[200px] bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white">
                 <SelectValue placeholder="Área" />
               </SelectTrigger>
               <SelectContent>
@@ -319,7 +319,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
               </SelectContent>
             </Select>
             <Select value={specialtyFilter} onValueChange={setSpecialtyFilter}>
-              <SelectTrigger className="w-[220px] bg-slate-900 border-slate-700 text-white">
+              <SelectTrigger className="w-[220px] bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white">
                 <SelectValue placeholder="Especialidad" />
               </SelectTrigger>
               <SelectContent>
@@ -330,7 +330,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
               </SelectContent>
             </Select>
             <Select value={arrivalFilter} onValueChange={(v) => setArrivalFilter(v as ArrivalFilter)}>
-              <SelectTrigger className="w-[180px] bg-slate-900 border-slate-700 text-white">
+              <SelectTrigger className="w-[180px] bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -344,7 +344,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
           </div>
 
           <Tabs value={view} onValueChange={(v) => setView(v as 'list' | 'specialty' | 'area' | 'charts')}>
-            <TabsList className="bg-slate-900 border border-slate-800">
+            <TabsList className="bg-muted/60 border border-border dark:bg-slate-900 dark:border-slate-800">
               <TabsTrigger
                 value="list"
                 className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
@@ -376,10 +376,10 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
             </TabsContent>
 
             <TabsContent value="list" className="mt-4">
-              <div className="rounded-xl border border-slate-800 overflow-hidden">
+              <div className="rounded-xl border border-border overflow-hidden dark:border-slate-800">
                 <BukRowsTable rows={filteredRows} />
               </div>
-              <p className="text-xs text-slate-500 mt-3">
+              <p className="text-xs text-muted-foreground mt-3">
                 Mostrando {filteredRows.length} de {summary.total} persona(s).
               </p>
             </TabsContent>
@@ -391,11 +391,11 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                 </p>
               ) : (
                 filteredAreaGroups.map((group) => (
-                  <div key={group.area} className="rounded-xl border border-slate-800 overflow-hidden">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 px-4 py-3">
+                  <div key={group.area} className="rounded-xl border border-border overflow-hidden dark:border-slate-800">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/50 dark:border-slate-800 dark:bg-slate-900/80 px-4 py-3">
                       <div>
-                        <p className="font-semibold text-white">{group.area}</p>
-                        <p className="text-xs text-slate-500">{group.rows.length} persona(s) en vista</p>
+                        <p className="font-semibold text-foreground">{group.area}</p>
+                        <p className="text-xs text-muted-foreground">{group.rows.length} persona(s) en vista</p>
                       </div>
                       <div className="flex flex-wrap gap-2 text-xs">
                         <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
@@ -419,7 +419,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                   </div>
                 ))
               )}
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {filteredAreaGroups.length} área(s) · {filteredRows.length} persona(s) en total.
               </p>
             </TabsContent>
@@ -433,12 +433,12 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                 filteredSpecialtyGroups.map((group) => (
                   <div
                     key={group.especialidad}
-                    className="rounded-xl border border-slate-800 overflow-hidden"
+                    className="rounded-xl border border-border overflow-hidden dark:border-slate-800"
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-slate-900/80 px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/50 dark:border-slate-800 dark:bg-slate-900/80 px-4 py-3">
                       <div>
-                        <p className="font-semibold text-white">{group.especialidad}</p>
-                        <p className="text-xs text-slate-500">
+                        <p className="font-semibold text-foreground">{group.especialidad}</p>
+                        <p className="text-xs text-muted-foreground">
                           {group.rows.length} persona(s) en vista
                         </p>
                       </div>
@@ -464,7 +464,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                   </div>
                 ))
               )}
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {filteredSpecialtyGroups.length} especialidad(es) · {filteredRows.length} persona(s) en total.
               </p>
             </TabsContent>

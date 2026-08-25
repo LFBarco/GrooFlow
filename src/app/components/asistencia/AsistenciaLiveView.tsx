@@ -1,6 +1,6 @@
+import { AlertTriangle, LayoutGrid, Pencil, Sparkles, Users } from 'lucide-react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { AlertTriangle, LayoutGrid, Pencil, Sparkles, Users } from 'lucide-react';
 
 import type {
   AsistenciaLiveConsolidatedSummary,
@@ -43,16 +43,16 @@ function LiveHeaderBadges({
 }) {
   return (
     <>
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-950/40 px-3 py-1 text-xs font-medium text-emerald-300">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-300">
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
         {workingCount} Trabajando
       </span>
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-950/40 px-3 py-1 text-xs font-medium text-red-300">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-medium text-red-700 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-300">
         <AlertTriangle className="h-3 w-3" />
         {absentCount} Ausentes
       </span>
       {lateCount > 0 ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-950/40 px-3 py-1 text-xs font-medium text-amber-300">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300">
           {lateCount} Tarde
         </span>
       ) : null}
@@ -92,19 +92,19 @@ export function AsistenciaLiveView({
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <Card className="border-slate-800 bg-[#0f0d18] overflow-hidden">
-        <CardHeader className="border-b border-slate-800/80 pb-4">
+      <Card className="overflow-hidden border-border bg-card text-card-foreground shadow-sm dark:border-slate-800 dark:bg-[#0f0d18]">
+        <CardHeader className="border-b border-border pb-4 dark:border-slate-800/80">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <CardTitle className="text-xl text-white flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-xl text-foreground">
                 {isConsolidated ? (
-                  <LayoutGrid className="h-5 w-5 text-cyan-400" />
+                  <LayoutGrid className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
                 ) : (
-                  <Users className="h-5 w-5 text-indigo-400" />
+                  <Users className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
                 )}
                 {title}
               </CardTitle>
-              <CardDescription className="text-slate-400">{description}</CardDescription>
+              <CardDescription className="text-muted-foreground">{description}</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <LiveHeaderBadges
@@ -119,12 +119,12 @@ export function AsistenciaLiveView({
                   size="sm"
                   className={
                     editLayout
-                      ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
-                      : 'border-slate-600 text-slate-300'
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+                      : 'border-border text-foreground dark:border-slate-600 dark:text-slate-300'
                   }
                   onClick={() => onEditLayoutChange(!editLayout)}
                 >
-                  <Pencil className="h-3.5 w-3.5 mr-1" />
+                  <Pencil className="mr-1 h-3.5 w-3.5" />
                   {editLayout ? 'Listo' : 'Editar layout'}
                 </Button>
               ) : null}
@@ -133,11 +133,11 @@ export function AsistenciaLiveView({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-slate-600 text-slate-300"
+                  className="border-border text-foreground dark:border-slate-600 dark:text-slate-300"
                   onClick={onRefresh}
                   disabled={loading}
                 >
-                  <Sparkles className="h-3.5 w-3.5 mr-1" />
+                  <Sparkles className="mr-1 h-3.5 w-3.5" />
                   Actualizar
                 </Button>
               ) : null}
@@ -145,23 +145,23 @@ export function AsistenciaLiveView({
           </div>
 
           {editLayout ? (
-            <div className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-950/30 px-3 py-2 text-sm text-indigo-200">
+            <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-950/30 dark:text-indigo-200">
               Modo edición: arrastra tarjetas entre áreas, reordénalas dentro del área o mueve columnas
               agarrando el encabezado del área.
             </div>
           ) : null}
 
           {!isConsolidated && summary && !summary.isOperational ? (
-            <div className="mt-3 rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-200">
               Sede no operativa: faltan puestos críticos (
               {summary.criticalMissing.map((s) => s.fullName).join(', ')})
             </div>
           ) : isConsolidated && !consolidated.isFullyOperational ? (
-            <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-200">
               Al menos una sede no está operativa por puestos críticos ausentes.
             </div>
           ) : totalStaff > 0 && !editLayout ? (
-            <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-950/20 px-3 py-2 text-sm text-emerald-200">
+            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-950/20 dark:text-emerald-200">
               {isConsolidated
                 ? 'Vista consolidada de todas las sedes visibles'
                 : `Dotación crítica cubierta · Horario ${summary?.scheduleLabel ?? ''}`}
@@ -169,7 +169,7 @@ export function AsistenciaLiveView({
           ) : null}
         </CardHeader>
 
-        <CardContent className="pt-8 pb-10 space-y-2">
+        <CardContent className="space-y-2 pb-10 pt-8">
           {isConsolidated ? (
             consolidated.sedes.map((sedeSummary) => (
               <AsistenciaLiveSedeBlock

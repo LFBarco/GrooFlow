@@ -370,7 +370,8 @@ export const api = {
       key === 'data:treasurySubscriptions' ||
       key === 'data:treasuryBankMovements' ||
       key === 'data:reconciliation' ||
-      key === 'settings:alertReadState'
+      key === 'settings:alertReadState' ||
+      key === 'data:fleet'
         ? (backend === 'supabase' ? 6 : 3)
         : backend === 'supabase' ? 3 : 2;
 
@@ -400,6 +401,9 @@ export const api = {
         const last = attempt === maxAttempts;
         console.warn(`[api] saveKey failed for "${key}" (attempt ${attempt}/${maxAttempts}):`, error);
         if (last) return false;
+        const msg = error instanceof Error ? error.message : String(error);
+        const isDbPressure =
+          /base de datos|503|max_connections|circuit|Service Unavailable/i.test(msg);
         if (isSupabaseBackend() && !(await isSupabaseKvFatalAuthErrorLazy(error))) {
           try {
             const client = await getSupabaseClientLazy();
@@ -416,7 +420,9 @@ export const api = {
             // noop
           }
         }
-        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+        await new Promise((resolve) =>
+          setTimeout(resolve, (isDbPressure ? 1200 : 250) * attempt)
+        );
       }
     }
     return false;

@@ -26,6 +26,10 @@ import {
   mergeBukAsistenciaRecords,
   saveBukAsistenciaCache,
 } from '../../utils/bukAsistenciaCache';
+import {
+  buildExampleBukRecords,
+  mergeExampleStaffIntoSettings,
+} from '../../utils/asistenciaExampleSeed';
 import { buildLiveConsolidatedSummary, buildLiveSedeSummary, formatSedeDateLabel, staffForSede } from '../../utils/asistenciaStaff';
 import { AsistenciaBukDashboard } from './AsistenciaBukDashboard';
 import { AsistenciaLiveView } from './AsistenciaLiveView';
@@ -246,6 +250,45 @@ export function AsistenciaModule({
     [onPersistAsistenciaSettings, onPersistSystemSettings, onUpdateSystemSettings, systemSettings]
   );
 
+  const loadExampleData = useCallback(async () => {
+    const targets =
+      liveViewMode === 'consolidated' || mainTab !== 'live' ? sedeOptions : [activeSede];
+    const ok = await saveAsistencia((prev) => {
+      let next = mergeAsistenciaSettings(prev);
+      for (const sede of targets) {
+        next = mergeExampleStaffIntoSettings(next, sede, { replaceSede: true });
+      }
+      return next;
+    }, 'Personal de ejemplo guardado.');
+    if (!ok) return;
+
+    const nextSettings = targets.reduce(
+      (acc, sede) => mergeExampleStaffIntoSettings(acc, sede, { replaceSede: true }),
+      mergeAsistenciaSettings(asistencia)
+    );
+    const exampleRecords = targets.flatMap((sede) =>
+      buildExampleBukRecords({
+        sedeName: sede,
+        dateYmd: selectedDate,
+        staff: staffForSede(nextSettings, sede),
+      })
+    );
+    setRecords(exampleRecords);
+    setCacheFetchedAt(Date.now());
+    toast.success(
+      `Ejemplo listo: ${exampleRecords.length} marcaciones simuladas para ${format(dateObj, "d 'de' MMMM", { locale: es })}.`
+    );
+  }, [
+    activeSede,
+    asistencia,
+    dateObj,
+    liveViewMode,
+    mainTab,
+    saveAsistencia,
+    selectedDate,
+    sedeOptions,
+  ]);
+
   return (
     <div className="space-y-6" data-testid="asistencia-module">
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
@@ -278,21 +321,32 @@ export function AsistenciaModule({
             </Select>
           </div>
           <div>
-            <label className="text-xs text-slate-400 block mb-1">Fecha</label>
+            <label className="text-xs text-muted-foreground block mb-1">Fecha</label>
             <Input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-[160px] bg-slate-900/60 border-slate-700 text-white"
+              className="w-[160px] bg-background border-border text-foreground dark:bg-slate-900/60 dark:border-slate-700 dark:text-white"
             />
           </div>
           <Button variant="secondary" onClick={() => void refresh()} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             {loading && fetchProgress ? fetchProgress : 'Actualizar Buk'}
           </Button>
+          {canConfigure ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="border-border"
+              data-testid="asistencia-load-examples"
+              onClick={() => void loadExampleData()}
+            >
+              Datos de ejemplo
+            </Button>
+          ) : null}
           {mainTab === 'live' ? (
             <>
-              <div className="flex rounded-lg border border-slate-700 overflow-hidden">
+              <div className="flex rounded-lg border border-border overflow-hidden dark:border-slate-700">
                 {(
                   [
                     { id: 'all' as const, label: 'Todos', icon: Users },
@@ -309,7 +363,7 @@ export function AsistenciaModule({
                     className={
                       shiftFilter === id
                         ? 'rounded-none bg-indigo-600 hover:bg-indigo-500 text-white'
-                        : 'rounded-none text-slate-300 hover:bg-slate-800'
+                        : 'rounded-none text-muted-foreground hover:bg-muted dark:text-slate-300 dark:hover:bg-slate-800'
                     }
                     onClick={() => setShiftFilter(id)}
                   >
@@ -324,7 +378,7 @@ export function AsistenciaModule({
               className={
                 liveViewMode === 'consolidated'
                   ? 'bg-cyan-600 hover:bg-cyan-500 text-white border-0'
-                  : 'border-slate-600 text-slate-200 bg-slate-900/60'
+                  : 'border-border text-foreground bg-background dark:border-slate-600 dark:text-slate-200 dark:bg-slate-900/60'
               }
               onClick={() =>
                 setLiveViewMode((m) => (m === 'consolidated' ? 'single' : 'consolidated'))
@@ -337,7 +391,7 @@ export function AsistenciaModule({
           ) : null}
         </div>
         {cacheFetchedAt && records.length > 0 ? (
-          <p className="w-full text-xs text-slate-500">
+          <p className="w-full text-xs text-muted-foreground">
             Caché local: {records.length} registros · actualizado {cacheAgeLabel(cacheFetchedAt)} · válido 48 h
           </p>
         ) : null}
@@ -358,7 +412,7 @@ export function AsistenciaModule({
       ) : null}
 
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'live' | 'dashboard' | 'config')}>
-        <TabsList className="bg-slate-900/80 border border-slate-800">
+        <TabsList className="bg-muted/60 border border-border dark:bg-slate-900/80 dark:border-slate-800">
           <TabsTrigger value="live" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
             <Users className="h-4 w-4 mr-1" /> Operativa en vivo
           </TabsTrigger>
@@ -374,7 +428,7 @@ export function AsistenciaModule({
 
         <TabsContent value="live" className="mt-4 space-y-4">
           {records.length === 0 && !loading ? (
-            <Card className="border-slate-800 bg-slate-950/50">
+            <Card className="border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-950/50">
               <CardContent className="py-8 text-center text-sm text-muted-foreground">
                 Pulsa «Actualizar Buk» para cargar marcaciones de{' '}
                 {format(dateObj, "d 'de' MMMM", { locale: es })}. El organigrama mostrará ausentes en rojo.
@@ -398,34 +452,34 @@ export function AsistenciaModule({
           (liveViewMode === 'consolidated'
             ? consolidatedSummary.absentCount > 0
             : liveSummary.absentCount > 0) ? (
-            <Card className="border-amber-500/30 bg-amber-950/10">
+            <Card className="border-amber-200 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-950/10">
               <CardContent className="pt-6 space-y-3">
-                <p className="text-sm font-medium text-amber-200 flex items-center gap-2">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   Diagnóstico de cruce Buk —{' '}
                   {liveViewMode === 'consolidated' ? 'todas las sedes' : activeSede}
                 </p>
-                <ul className="space-y-2 text-sm text-slate-300">
+                <ul className="space-y-2 text-sm text-muted-foreground">
                   {(liveViewMode === 'consolidated'
                     ? consolidatedSummary.sedes.flatMap((s) => s.areas.flatMap((a) => a.staff))
                     : liveSummary.areas.flatMap((a) => a.staff)
                   )
                     .filter((s) => s.status === 'ausente' && s.matchHint)
                     .map((s) => (
-                      <li key={s.staff.id} className="rounded-lg border border-slate-800 bg-slate-950/50 p-3">
-                        <span className="font-medium text-white">{s.staff.fullName}</span>
+                      <li key={s.staff.id} className="rounded-lg border border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-950/50 p-3">
+                        <span className="font-medium text-foreground">{s.staff.fullName}</span>
                         <span className="text-slate-500">
                           {' '}
                           · {s.staff.cargoLabel} · {s.staff.sedeName}
                         </span>
-                        <p className="mt-1 text-xs text-amber-100/90 leading-relaxed">{s.matchHint}</p>
+                        <p className="mt-1 text-xs text-amber-900/90 dark:text-amber-100/90 leading-relaxed">{s.matchHint}</p>
                       </li>
                     ))}
                 </ul>
                 {(liveViewMode === 'consolidated'
                   ? consolidatedSummary.sedes.some((s) => s.bukRecintosOnDate.length > 0)
                   : liveSummary.bukRecintosOnDate.length > 0) ? (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     Revisa códigos recinto Buk en Configuración sede si el cruce falla.
                   </p>
                 ) : null}

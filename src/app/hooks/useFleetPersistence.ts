@@ -93,6 +93,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
 
   const skipExplicitAutosaveRef = useRef(false);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedSignatureRef = useRef<string | null>(null);
 
   const reloadFleetFromSql = useCallback(async (): Promise<FleetDataset | null> => {
     const client = await getSupabaseClientLazy();
@@ -142,10 +143,29 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
 
     latestRef.current = fleetDataset;
 
+    // Tras hidratar desde la nube, no reescribir el mismo payload (evita 503 por presión DB).
+    if (lastSavedSignatureRef.current === null) {
+      try {
+        lastSavedSignatureRef.current = JSON.stringify(slimFleetDatasetForKv(fleetDataset));
+      } catch {
+        lastSavedSignatureRef.current = '';
+      }
+      return;
+    }
+
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     autosaveTimerRef.current = setTimeout(() => {
       autosaveTimerRef.current = null;
       const payload = slimFleetDatasetForKv(latestRef.current);
+      let signature = '';
+      try {
+        signature = JSON.stringify(payload);
+      } catch {
+        signature = '';
+      }
+      if (signature && lastSavedSignatureRef.current === signature) {
+        return;
+      }
       void autosaveKvDomain({
         kvKey: 'data:fleet',
         payload,
@@ -158,6 +178,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         sync: cloudSync,
       }).then((kvOk) => {
         if (!kvOk) return;
+        if (signature) lastSavedSignatureRef.current = signature;
         void backupFleetSql(latestRef.current);
       });
     }, FLEET_AUTOSAVE_DEBOUNCE_MS);
