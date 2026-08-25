@@ -43,7 +43,7 @@ function DropdownMenuContent({
         sideOffset={sideOffset}
         className={cn(
           "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-[8rem] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-xl border p-1 shadow-[0_8px_32px_rgba(0,0,0,0.6)]",
-          "bg-[#1E1C35] border-[#3D3B5C] text-[#E4E0FF]",
+          "bg-popover text-popover-foreground border-border shadow-lg dark:bg-[#1E1C35] dark:border-[#3D3B5C] dark:text-[#E4E0FF] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6)]",
           className,
         )}
         {...props}
@@ -76,7 +76,7 @@ function DropdownMenuItem({
       data-variant={variant}
       className={cn(
         "data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-lg px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 transition-colors",
-        "focus:bg-[rgba(34,211,238,0.08)] focus:text-cyan-300 hover:bg-[rgba(34,211,238,0.08)] hover:text-cyan-300",
+        "focus:bg-accent focus:text-accent-foreground hover:bg-accent hover:text-accent-foreground dark:focus:bg-[rgba(34,211,238,0.08)] dark:focus:text-cyan-300 dark:hover:bg-[rgba(34,211,238,0.08)] dark:hover:text-cyan-300",
         className,
       )}
       {...props}

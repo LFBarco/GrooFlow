@@ -467,7 +467,7 @@ export function ProductModule({
                     <TableCell className="font-medium text-slate-200">{product.systemCode}</TableCell>
                     <TableCell className="text-slate-400">{product.barcode || '-'}</TableCell>
                     <TableCell>
-                      <div className="font-medium text-slate-100">{product.name}</div>
+                      <div className="font-medium text-foreground">{product.name}</div>
                       <div className="mt-1 flex flex-wrap gap-1 text-xs text-slate-500">
                         <span>{product.category}</span>
                         {product.subcategory && <span>/ {product.subcategory}</span>}
@@ -477,7 +477,7 @@ export function ProductModule({
                     <TableCell className="text-slate-400">{product.brand || '-'}</TableCell>
                     <TableCell className="text-slate-300">{product.providerName || 'Sin proveedor'}</TableCell>
                     <TableCell className="text-slate-300">{product.line}</TableCell>
-                    <TableCell className="text-right font-medium text-slate-100">{formatCurrencyEs(product.salePrice)}</TableCell>
+                    <TableCell className="text-right font-medium text-foreground">{formatCurrencyEs(product.salePrice)}</TableCell>
                     <TableCell className="text-center">
                       <Badge className="border border-cyan-500/25 bg-cyan-500/15 text-cyan-200">{product.stockAccounting}</Badge>
                     </TableCell>

@@ -3129,17 +3129,17 @@ export default function App() {
         className={`sidebar-hybrid ${isSidebarCollapsed ? 'w-[76px]' : 'w-[256px]'} fixed inset-y-0 left-0 z-50 flex flex-col`}
         style={{
           transition: 'width 500ms cubic-bezier(0.2, 0, 0, 1)',
-          background: 'linear-gradient(180deg, #0B0F19 0%, #070a12 50%, #0B0F19 100%)',
-          borderRight: '1px solid rgba(139,92,246,0.12)',
-          boxShadow: theme === 'light' ? '4px 0 32px rgba(15,23,42,0.18)' : '4px 0 40px rgba(0,0,0,0.6)',
+          background: 'var(--gf-sidebar-bg)',
+          borderRight: '1px solid var(--gf-sidebar-border)',
+          boxShadow: 'var(--gf-sidebar-shadow)',
         }}
       >
         {/* Cyber border glow line */}
-        <div className="absolute inset-y-0 right-0 w-px pointer-events-none" style={{ background: 'linear-gradient(180deg, transparent 0%, rgba(34,211,238,0.3) 30%, rgba(139,92,246,0.3) 70%, transparent 100%)' }} />
+        <div className="absolute inset-y-0 right-0 w-px pointer-events-none" style={{ background: 'var(--gf-sidebar-glow)' }} />
 
         {/* Brand Header */}
         <div className={`h-[80px] flex items-center transition-all duration-500 ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'}`}
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ borderBottom: '1px solid var(--gf-sidebar-divider)' }}
         >
           <div className={`relative flex items-center justify-center rounded-xl transition-all duration-300 shrink-0
              ${isSidebarCollapsed ? 'w-10 h-10' : 'w-14 h-14'}`}
@@ -3172,7 +3172,7 @@ export default function App() {
         <nav className="flex-1 overflow-y-auto py-2.5 space-y-0.5 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/5 [&::-webkit-scrollbar-track]:bg-transparent">
           {!isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-0.5">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Principal</span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Principal</span>
             </div>
           )}
            <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Dashboard" />
@@ -3181,7 +3181,7 @@ export default function App() {
            
            {canSeeFinanzasNavGroup && !isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-2.5">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Finanzas</span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Finanzas</span>
             </div>
           )}
            <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Tesorería" />
@@ -3194,7 +3194,7 @@ export default function App() {
            
            {canSeeGestionNavGroup && !isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-2.5">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.2)' }}>Gestión</span>
+              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Gestión</span>
             </div>
           )}
            <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Proveedores" />
@@ -3208,7 +3208,7 @@ export default function App() {
            <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Conciliación" />
            
            {(hasPermission('Usuarios') || hasPermission('Configuración')) && (
-           <div className="mt-2 pt-2 space-y-0.5" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+           <div className="mt-2 pt-2 space-y-0.5" style={{ borderTop: '1px solid var(--gf-sidebar-divider)' }}>
              <NavButton targetView="users" icon={Users} label="Usuarios y Roles" iconColorClass="text-lime-400 group-hover/btn:text-lime-300" requiredModule="Usuarios" />
              <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400 group-hover/btn:text-slate-300" requiredModule="Configuración" />
            </div>
@@ -3216,7 +3216,7 @@ export default function App() {
         </nav>
         
         {/* Footer */}
-        <div className="mt-auto" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(6,4,18,0.7)' }}>
+        <div className="mt-auto" style={{ borderTop: '1px solid var(--gf-sidebar-divider)', background: 'var(--gf-sidebar-footer)' }}>
              <div className={`transition-all duration-300 ${isSidebarCollapsed ? 'p-2 flex justify-center' : 'p-2.5'}`}>
                 <UserMenu 
                     onLogout={handleLogout} 
@@ -3230,8 +3230,8 @@ export default function App() {
              {/* Collapse Toggle */}
              <button 
                 onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                className="w-full h-7 flex items-center justify-center hover:bg-white/5 transition-all group"
-                style={{ borderTop: '1px solid rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.2)' }}
+                className={`w-full h-7 flex items-center justify-center transition-all group ${isDarkTheme ? 'hover:bg-white/5' : 'hover:bg-slate-100'}`}
+                style={{ borderTop: '1px solid var(--gf-sidebar-divider)', color: 'var(--gf-sidebar-section)' }}
              >
                 {isSidebarCollapsed ? 
                     <ChevronRight className="w-3.5 h-3.5 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-all" /> : 
@@ -3251,7 +3251,7 @@ export default function App() {
       >
         <div className="flex items-center">
              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="mr-3 p-2 rounded-xl hover:bg-white/8 active:scale-95 transition-all">
-                 <Menu className="h-5 w-5" style={{ color: 'rgba(255,255,255,0.6)' }} />
+                 <Menu className="h-5 w-5" style={{ color: 'var(--gf-sidebar-icon)' }} />
              </button>
             <div className="w-7 h-7 mr-2 rounded-lg overflow-hidden flex-shrink-0" style={{ border: '1px solid rgba(34,211,238,0.25)' }}>
               <GrooflowBrandLogo customSrc={systemSettings.businessLogo} className="w-full h-full object-contain" />
@@ -3280,7 +3280,7 @@ export default function App() {
        {/* Mobile Menu Dropdown */}
        {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-30 backdrop-blur-sm" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={() => setMobileMenuOpen(false)}>
-            <div className="fixed inset-y-0 left-0 w-64 shadow-2xl p-4 pt-20 overflow-y-auto" style={{ background: 'linear-gradient(180deg, #0D0B1E 0%, #090718 100%)', borderRight: '1px solid rgba(139,92,246,0.15)' }} onClick={e => e.stopPropagation()}>
+            <div className="fixed inset-y-0 left-0 w-64 shadow-2xl p-4 pt-20 overflow-y-auto sidebar-hybrid" style={{ background: 'var(--gf-sidebar-bg)', borderRight: '1px solid var(--gf-sidebar-border)' }} onClick={e => e.stopPropagation()}>
                 <nav className="space-y-0.5">
                     <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400" requiredModule="Dashboard" />
                     <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400" requiredModule="Alertas" />

@@ -37,7 +37,15 @@
   --glass-border: 1px solid rgba(255, 255, 255, 0.72);
   --glass-bg: rgba(255, 255, 255, 0.55);
   --card-shadow: 0 12px 40px -12px rgba(79, 70, 229, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --sidebar-hybrid: #0B0F19;
+  --sidebar-hybrid: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, #f1f5f9 55%, #eef2ff 100%);
+  --gf-sidebar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, #f1f5f9 55%, #eef2ff 100%);
+  --gf-sidebar-border: #cbd5e1;
+  --gf-sidebar-glow: linear-gradient(180deg, transparent 0%, rgba(79, 70, 229, 0.28) 30%, rgba(8, 145, 178, 0.22) 70%, transparent 100%);
+  --gf-sidebar-divider: rgba(15, 23, 42, 0.08);
+  --gf-sidebar-section: #64748b;
+  --gf-sidebar-footer: rgba(255, 255, 255, 0.72);
+  --gf-sidebar-shadow: 4px 0 28px rgba(15, 23, 42, 0.08);
+  --gf-sidebar-icon: #334155;
   --gf-glass-blur: 16px;
   --gf-transition-module: 400ms cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -111,6 +119,15 @@
   /* ─── SIDEBAR ──────────────────────────────── */
   --sidebar: #130F24;           /* Even darker than card */
   --sidebar-border: #22203A;
+  --sidebar-hybrid: linear-gradient(180deg, #0B0F19 0%, #070a12 50%, #0B0F19 100%);
+  --gf-sidebar-bg: linear-gradient(180deg, #0B0F19 0%, #070a12 50%, #0B0F19 100%);
+  --gf-sidebar-border: rgba(139, 92, 246, 0.12);
+  --gf-sidebar-glow: linear-gradient(180deg, transparent 0%, rgba(34, 211, 238, 0.3) 30%, rgba(139, 92, 246, 0.3) 70%, transparent 100%);
+  --gf-sidebar-divider: rgba(255, 255, 255, 0.05);
+  --gf-sidebar-section: rgba(255, 255, 255, 0.2);
+  --gf-sidebar-footer: rgba(6, 4, 18, 0.7);
+  --gf-sidebar-shadow: 4px 0 40px rgba(0, 0, 0, 0.6);
+  --gf-sidebar-icon: rgba(255, 255, 255, 0.6);
 }
 
 /* ─── MODO CLARO: layout app y utilidades ─── */
@@ -203,6 +220,81 @@ html.light select:focus,
 html.light textarea:focus {
   border-color: #22d3ee;
   box-shadow: 0 0 0 1px #22d3ee, 0 0 16px rgba(34, 211, 238, 0.2);
+}
+
+/* Hex fijos de módulos legacy: solo en light; dark no cambia */
+html.light .bg-\[\#22203A\],
+html.light .bg-\[\#1E1C35\],
+html.light .bg-\[\#1A1826\],
+html.light .bg-\[\#0D0B1E\],
+html.light .bg-\[\#0B0F19\] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+}
+
+html.light .bg-\[\#1A1826\]\/90,
+html.light .bg-\[\#1A1826\]\/80,
+html.light .bg-\[\#1A1826\]\/95,
+html.light .bg-\[\#1A1826\]\/50 {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+}
+
+html.light .border-\[\#3D3B5C\] {
+  border-color: #cbd5e1 !important;
+}
+
+html.light .bg-\[\#22203A\].text-white,
+html.light .bg-\[\#1E1C35\].text-white,
+html.light .bg-\[\#1A1826\].text-white,
+html.light .bg-\[\#0D0B1E\].text-white {
+  color: #0f172a !important;
+}
+
+html.light .gf-cashflow-grid {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.92) 0%, rgba(238, 242, 255, 0.95) 100%) !important;
+  border-color: rgba(148, 163, 184, 0.4) !important;
+  box-shadow: 0 16px 48px -18px rgba(79, 70, 229, 0.18);
+}
+
+html.light .gf-cashflow-grid h3.text-white,
+html.light .gf-cashflow-grid p.text-white,
+html.light .gf-cashflow-grid td.text-white {
+  color: #0f172a !important;
+}
+
+html.light .gf-cashflow-grid .text-violet-200\/75,
+html.light .gf-cashflow-grid .text-zinc-400,
+html.light .gf-cashflow-grid .text-zinc-500 {
+  color: #475569 !important;
+}
+
+html.light .gf-cashflow-grid .bg-\[\#110e1a\],
+html.light .gf-cashflow-grid .bg-\[\#161222\],
+html.light .gf-cashflow-grid .bg-\[\#161222\]\/95,
+html.light .gf-cashflow-grid .bg-\[\#161222\]\/98,
+html.light .gf-cashflow-grid .bg-\[\#13101f\],
+html.light .gf-cashflow-grid .bg-\[\#120f1c\],
+html.light .gf-cashflow-grid .bg-\[\#1a1528\],
+html.light .gf-cashflow-grid .bg-\[\#1e1830\],
+html.light .gf-cashflow-grid .bg-\[\#141022\],
+html.light .gf-cashflow-grid .bg-\[\#0f1628\] {
+  background-color: rgba(248, 250, 252, 0.96) !important;
+}
+
+html.light .gf-cashflow-grid .bg-zinc-900\/80,
+html.light .gf-cashflow-grid .bg-zinc-900\/40,
+html.light .gf-cashflow-grid .bg-zinc-900\/25,
+html.light .gf-cashflow-grid .bg-zinc-900\/90 {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  color: #0f172a !important;
+}
+
+html.light .gf-cashflow-grid .text-sky-200,
+html.light .gf-cashflow-grid .text-sky-100,
+html.light .gf-cashflow-grid .text-amber-200,
+html.light .gf-cashflow-grid .text-amber-200\/90,
+html.light .gf-cashflow-grid .text-zinc-200 {
+  color: #334155 !important;
 }
 
 @theme inline {
@@ -352,15 +444,17 @@ html.light textarea:focus {
     box-shadow: 0 0 16px rgba(192, 132, 252, 0.15), inset 0 0 16px rgba(192, 132, 252, 0.03);
   }
 
-  /* ─── SIDEBAR HÍBRIDO (oscuro en modo claro y oscuro) ─── */
+  /* ─── SIDEBAR (tokens light/dark) ─── */
   .sidebar-hybrid {
-    background: linear-gradient(180deg, #0B0F19 0%, #070a12 50%, #0B0F19 100%) !important;
+    background: var(--gf-sidebar-bg) !important;
+    border-right: 1px solid var(--gf-sidebar-border);
+    box-shadow: var(--gf-sidebar-shadow);
   }
 
   /* ─── SIDEBAR STYLE ───────────────────────── */
   .sidebar-cyber {
-    background: linear-gradient(180deg, #130F24 0%, #0E0C1E 100%);
-    border-right: 1px solid rgba(139, 92, 246, 0.12);
+    background: var(--gf-sidebar-bg);
+    border-right: 1px solid var(--gf-sidebar-border);
   }
 
   /* ─── ANIMATED BACKGROUND ORBS ───────────── */

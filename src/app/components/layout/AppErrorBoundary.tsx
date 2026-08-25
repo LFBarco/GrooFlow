@@ -34,20 +34,19 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
     return (
       <div
-        className="min-h-screen flex items-center justify-center p-6"
-        style={{ background: 'linear-gradient(180deg, #0D0B1E 0%, #090718 100%)' }}
+      className="min-h-screen flex items-center justify-center p-6 bg-background text-foreground"
       >
         <div
           className="max-w-md w-full rounded-2xl p-8 text-center space-y-5"
           style={{
-            background: 'rgba(255,255,255,0.04)',
+            background: 'var(--card)',
             border: '1px solid rgba(251,113,133,0.35)',
           }}
         >
           <AlertTriangle className="h-12 w-12 mx-auto text-rose-400" />
           <div className="space-y-2">
-            <h1 className="text-xl font-bold text-white">Algo salió mal</h1>
-            <p className="text-sm text-white/60">
+            <h1 className="text-xl font-bold text-foreground">Algo salió mal</h1>
+            <p className="text-sm text-muted-foreground">
               La aplicación encontró un error inesperado. Tus datos guardados en la nube no se
               pierden; recarga la página para continuar.
             </p>

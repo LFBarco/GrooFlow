@@ -63,6 +63,20 @@ export type ModuleSurfaces = {
     colors: string[];
   };
   kpi: Record<KpiSurfaceKind, KpiSurface>;
+  assistant: {
+    background: string;
+    border: string;
+    boxShadow: string;
+    title: string;
+    subtitle: string;
+    innerBg: string;
+    innerBorder: string;
+    body: string;
+    miniBg: string;
+    miniBorder: string;
+    label: string;
+    value: string;
+  };
 };
 
 const DARK_KPI_BASE = {
@@ -209,6 +223,20 @@ export function getModuleSurfaces(isDark: boolean): ModuleSurfaces {
         blue: '#818cf8',
         colors: ['#22d3ee', '#34d399', '#fbbf24', '#fb7185', '#c084fc'],
       },
+      assistant: {
+        background: 'linear-gradient(145deg, rgba(52,211,153,0.08) 0%, #161424 55%, #1A1826 100%)',
+        border: '1px solid rgba(52,211,153,0.22)',
+        boxShadow: '0 4px 28px rgba(0,0,0,0.45), 0 0 40px rgba(52,211,153,0.06)',
+        title: '#ECFDF5',
+        subtitle: '#6b7f72',
+        innerBg: 'rgba(0,0,0,0.22)',
+        innerBorder: '1px solid rgba(255,255,255,0.06)',
+        body: '#CBD5F5',
+        miniBg: 'rgba(255,255,255,0.03)',
+        miniBorder: '1px solid rgba(255,255,255,0.06)',
+        label: '#64748b',
+        value: '#F0EEFF',
+      },
       kpi: {
         income: darkKpi('#22d3ee'),
         expense: darkKpi('#fb7185'),
@@ -276,6 +304,21 @@ export function getModuleSurfaces(isDark: boolean): ModuleSurfaces {
       violet: '#7c3aed',
       blue: '#4f46e5',
       colors: ['#059669', '#4f46e5', '#d97706', '#dc2626', '#0891b2'],
+    },
+    assistant: {
+      background:
+        'linear-gradient(145deg, rgba(16,185,129,0.14) 0%, rgba(255,255,255,0.78) 48%, rgba(238,242,255,0.9) 100%)',
+      border: '1px solid rgba(16, 185, 129, 0.28)',
+      boxShadow: '0 16px 40px -16px rgba(16,185,129,0.28), inset 0 1px 0 rgba(255,255,255,0.92)',
+      title: '#0f172a',
+      subtitle: '#475569',
+      innerBg: 'rgba(255, 255, 255, 0.72)',
+      innerBorder: '1px solid rgba(148, 163, 184, 0.35)',
+      body: '#334155',
+      miniBg: 'rgba(255, 255, 255, 0.82)',
+      miniBorder: '1px solid rgba(148, 163, 184, 0.32)',
+      label: '#64748b',
+      value: '#0f172a',
     },
     kpi: LIGHT_KPI,
   };

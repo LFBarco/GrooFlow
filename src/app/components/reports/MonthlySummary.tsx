@@ -7,6 +7,7 @@ import { Badge } from '../ui/badge';
 import { ScrollArea } from '../ui/scroll-area';
 import { Lock, Unlock, TrendingUp, TrendingDown, DollarSign, CalendarDays } from 'lucide-react';
 import { formatCurrencyEs } from '../../utils/numberFormat';
+import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 
 interface MonthlySummaryProps {
   transactions: Transaction[];
@@ -14,6 +15,7 @@ interface MonthlySummaryProps {
 }
 
 export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProps) {
+  const s = useModuleSurfaces();
   // Safety check for date
   if (!currentDate || isNaN(currentDate.getTime())) {
     return (
@@ -86,14 +88,14 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
               <span className="uppercase text-xs tracking-wider font-bold">{category}</span>
               <span className="font-bold text-sm" style={{ fontFamily: "'JetBrains Mono', monospace" }}>{formatMoney(data.total)}</span>
             </div>
-            <div className="p-2 space-y-1" style={{ background: 'rgba(26,24,38,0.6)' }}>
+            <div className="p-2 space-y-1" style={{ background: s.isDark ? 'rgba(26,24,38,0.6)' : 'rgba(255,255,255,0.55)' }}>
               {Array.from(data.concepts.entries()).sort((a,b) => b[1] - a[1]).map(([concept, amount]) => (
                 <div key={concept} className="flex justify-between text-xs px-2 py-1.5 rounded-lg transition-colors group"
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.08)'}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = s.isDark ? 'rgba(139,92,246,0.08)' : 'rgba(79,70,229,0.08)'}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                 >
-                  <span style={{ color: '#8b7cf8' }}>{concept}</span>
-                  <span className="font-mono font-medium" style={{ color: '#E4E0FF' }}>{formatMoney(amount)}</span>
+                  <span style={{ color: s.accentText }}>{concept}</span>
+                  <span className="font-mono font-medium" style={{ color: s.pageTitle }}>{formatMoney(amount)}</span>
                 </div>
               ))}
             </div>
@@ -107,13 +109,13 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
     <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
         {/* Header Status */}
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-4 rounded-xl"
-          style={{ background: 'rgba(26,24,38,0.8)', border: '1px solid rgba(139,92,246,0.15)' }}
+          style={{ background: s.isDark ? 'rgba(26,24,38,0.8)' : s.card.background, border: s.isDark ? '1px solid rgba(139,92,246,0.15)' : s.card.border, boxShadow: s.isDark ? undefined : s.card.boxShadow }}
         >
             <div>
-                <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: '#F0EEFF' }}>
+                <h2 className="text-xl font-bold flex items-center gap-2" style={{ color: s.pageTitle }}>
                     Resumen Mensual: {format(currentDate, 'MMMM yyyy', { locale: es })}
                 </h2>
-                <p className="text-sm mt-0.5" style={{ color: '#6b5fa5' }}>
+                <p className="text-sm mt-0.5" style={{ color: s.pageSubtitle }}>
                     {monthTransactions.length} transacciones registradas
                 </p>
             </div>
@@ -143,19 +145,19 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
-              { label: 'Total Ingresos', value: formatMoney(income), icon: TrendingUp, color: '#22d3ee' },
-              { label: 'Total Egresos', value: formatMoney(expense), icon: TrendingDown, color: '#fb7185' },
-              { label: 'Balance Neto', value: formatMoney(balance), icon: DollarSign, color: balance >= 0 ? '#34d399' : '#fbbf24' },
+              { label: 'Total Ingresos', value: formatMoney(income), icon: TrendingUp, color: s.chart.income },
+              { label: 'Total Egresos', value: formatMoney(expense), icon: TrendingDown, color: s.chart.expense },
+              { label: 'Balance Neto', value: formatMoney(balance), icon: DollarSign, color: balance >= 0 ? s.chart.profit : s.chart.warning },
             ].map((card, i) => (
-              <div key={i} className="rounded-2xl p-5 flex items-center justify-between"
+              <div key={i} className={`rounded-2xl p-5 flex items-center justify-between ${s.isDark ? '' : 'gf-glass-card'}`}
                 style={{
-                  background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)',
-                  border: `1px solid ${card.color}20`,
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                  background: s.card.background,
+                  border: `1px solid ${card.color}33`,
+                  boxShadow: s.card.boxShadow,
                 }}
               >
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}>{card.label}</p>
+                  <p className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: s.kpi.neutral.labelColor, letterSpacing: '0.1em' }}>{card.label}</p>
                   <p className="text-2xl font-bold" style={{ color: card.color, fontFamily: "'JetBrains Mono', monospace" }}>{card.value}</p>
                 </div>
                 <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
@@ -169,20 +171,20 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
 
         {/* Detailed Breakdown */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 flex-1 min-h-0">
-            <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(34,211,238,0.12)' }}>
-                <div className="px-5 py-3.5 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(34,211,238,0.1)', background: 'rgba(34,211,238,0.05)' }}>
-                    <TrendingUp className="w-4 h-4" style={{ color: '#22d3ee' }} />
-                    <span className="text-sm font-bold uppercase tracking-wider" style={{ color: '#22d3ee' }}>Detalle de Ingresos</span>
+            <div className={`rounded-2xl overflow-hidden flex flex-col ${s.isDark ? '' : 'gf-glass-card'}`} style={{ background: s.card.background, border: `1px solid ${s.chart.income}33`, boxShadow: s.card.boxShadow }}>
+                <div className="px-5 py-3.5 flex items-center gap-2" style={{ borderBottom: `1px solid ${s.chart.income}22`, background: `${s.chart.income}14` }}>
+                    <TrendingUp className="w-4 h-4" style={{ color: s.chart.income }} />
+                    <span className="text-sm font-bold uppercase tracking-wider" style={{ color: s.chart.income }}>Detalle de Ingresos</span>
                 </div>
                 <div className="flex-1 min-h-[400px] overflow-auto p-4">
                     {renderGroup(groupedData.incomeGroups, 'income')}
                 </div>
             </div>
 
-            <div className="rounded-2xl overflow-hidden flex flex-col" style={{ background: 'linear-gradient(145deg, #1A1826 0%, #161424 100%)', border: '1px solid rgba(251,113,133,0.12)' }}>
-                <div className="px-5 py-3.5 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(251,113,133,0.1)', background: 'rgba(251,113,133,0.05)' }}>
-                    <TrendingDown className="w-4 h-4" style={{ color: '#fb7185' }} />
-                    <span className="text-sm font-bold uppercase tracking-wider" style={{ color: '#fb7185' }}>Detalle de Egresos</span>
+            <div className={`rounded-2xl overflow-hidden flex flex-col ${s.isDark ? '' : 'gf-glass-card'}`} style={{ background: s.card.background, border: `1px solid ${s.chart.expense}33`, boxShadow: s.card.boxShadow }}>
+                <div className="px-5 py-3.5 flex items-center gap-2" style={{ borderBottom: `1px solid ${s.chart.expense}22`, background: `${s.chart.expense}14` }}>
+                    <TrendingDown className="w-4 h-4" style={{ color: s.chart.expense }} />
+                    <span className="text-sm font-bold uppercase tracking-wider" style={{ color: s.chart.expense }}>Detalle de Egresos</span>
                 </div>
                 <div className="flex-1 min-h-[400px] overflow-auto p-4">
                     {renderGroup(groupedData.expenseGroups, 'expense')}

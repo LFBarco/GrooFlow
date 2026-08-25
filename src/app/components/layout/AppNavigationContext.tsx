@@ -1,5 +1,6 @@
 import { createContext, useContext, type LucideIcon } from 'react';
 import type { ViewType } from '../../routes';
+import { useApp } from '../../context/AppContext';
 
 export type AppNavigationContextValue = {
   activeView: ViewType;
@@ -34,6 +35,8 @@ export function AppNavButton({
   requiredModule,
 }: AppNavButtonProps) {
   const { activeView, isSidebarCollapsed, hasPermission, onSelectView } = useAppNavigation();
+  const { theme } = useApp();
+  const isDark = theme === 'dark';
 
   if (requiredModule && !hasPermission(requiredModule)) return null;
 
@@ -47,16 +50,26 @@ export function AppNavButton({
         ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}
         ${
           isActive
-            ? 'text-white border border-cyan-500/30'
-            : 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
+            ? isDark
+              ? 'text-white border border-cyan-500/30'
+              : 'text-slate-900 border border-cyan-500/35'
+            : isDark
+              ? 'text-slate-400 hover:bg-white/5 hover:text-white border border-transparent'
+              : 'text-slate-600 hover:bg-indigo-50 hover:text-slate-900 border border-transparent'
         }`}
         style={
           isActive
-            ? {
-                background:
-                  'linear-gradient(90deg, rgba(34,211,238,0.12) 0%, rgba(139,92,246,0.06) 100%)',
-                boxShadow: '0 0 20px rgba(34,211,238,0.08)',
-              }
+            ? isDark
+              ? {
+                  background:
+                    'linear-gradient(90deg, rgba(34,211,238,0.12) 0%, rgba(139,92,246,0.06) 100%)',
+                  boxShadow: '0 0 20px rgba(34,211,238,0.08)',
+                }
+              : {
+                  background:
+                    'linear-gradient(90deg, rgba(8,145,178,0.12) 0%, rgba(79,70,229,0.08) 100%)',
+                  boxShadow: '0 0 16px rgba(79,70,229,0.08)',
+                }
             : {}
         }
       >
@@ -72,15 +85,15 @@ export function AppNavButton({
 
         <Icon
           className={`w-[19px] h-[19px] transition-all duration-300 shrink-0
-            ${isActive ? 'text-cyan-300' : iconColorClass || 'text-slate-500 group-hover/btn:text-slate-200'}
+            ${isActive ? (isDark ? 'text-cyan-300' : 'text-cyan-700') : iconColorClass || (isDark ? 'text-slate-500 group-hover/btn:text-slate-200' : 'text-slate-500 group-hover/btn:text-slate-800')}
             ${!isSidebarCollapsed ? 'mr-3' : ''}`}
-          style={isActive ? { filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.7))' } : {}}
+          style={isActive && isDark ? { filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.7))' } : {}}
         />
 
         {!isSidebarCollapsed && (
           <>
             <span
-              className={`text-[13px] flex-1 text-left tracking-wide truncate font-medium ${isActive ? 'text-cyan-50' : ''}`}
+              className={`text-[13px] flex-1 text-left tracking-wide truncate font-medium ${isActive ? (isDark ? 'text-cyan-50' : 'text-slate-900') : ''}`}
             >
               {label}
             </span>
@@ -95,9 +108,17 @@ export function AppNavButton({
       </button>
 
       {isSidebarCollapsed && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 bg-[#22203A] text-white text-xs font-semibold rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-all duration-200 whitespace-nowrap z-[60] shadow-xl border border-[#3D3B5C] translate-x-2 group-hover/tooltip:translate-x-0 pointer-events-none">
+        <div
+          className={`absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-1.5 text-xs font-semibold rounded-lg opacity-0 group-hover/tooltip:opacity-100 transition-all duration-200 whitespace-nowrap z-[60] shadow-xl translate-x-2 group-hover/tooltip:translate-x-0 pointer-events-none ${
+            isDark ? 'bg-[#22203A] text-white border border-[#3D3B5C]' : 'bg-white text-slate-800 border border-slate-200'
+          }`}
+        >
           {label}
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1.5 border-4 border-transparent border-r-[#22203A]" />
+          <div
+            className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1.5 border-4 border-transparent ${
+              isDark ? 'border-r-[#22203A]' : 'border-r-white'
+            }`}
+          />
         </div>
       )}
     </div>

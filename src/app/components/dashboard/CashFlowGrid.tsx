@@ -121,7 +121,7 @@ function cellClasses(
   const past = sodCol < sod;
   const isCur = sodCol.getTime() === sod.getTime();
   let bg = '';
-  if (past) bg = 'bg-zinc-800/85';
+  if (past) bg = 'bg-slate-200/90 dark:bg-zinc-800/85';
   else if (!past && !isCur) bg = 'bg-zinc-100/95 dark:bg-white/[0.04]';
 
   let text = 'text-muted-foreground';
@@ -1322,8 +1322,8 @@ export function CashFlowGrid({
       className={clsx(
         'flex min-h-0 w-full flex-1 overflow-hidden transition-all duration-300',
         isFullscreen
-          ? 'fixed inset-0 z-[45] h-screen w-screen rounded-none flex-col lg:flex-row max-md:inset-0 md:top-0 md:right-0 md:bottom-0 md:left-[var(--grooflow-sidebar-w,256px)] md:w-auto'
-          : 'h-full max-h-full min-h-[280px] flex-col gap-4 rounded-2xl lg:flex-row lg:gap-4'
+          ? 'fixed inset-0 z-[45] h-screen w-screen rounded-none flex-col lg:flex-row max-md:inset-0 md:top-0 md:right-0 md:bottom-0 md:left-[var(--grooflow-sidebar-w,256px)] md:w-auto gf-cashflow-grid'
+          : 'h-full max-h-full min-h-[280px] flex-col gap-4 rounded-2xl lg:flex-row lg:gap-4 gf-cashflow-grid'
       )}
       style={{
         background: 'linear-gradient(155deg,#141226 0%,#0f0d1a 100%)',
@@ -1337,7 +1337,7 @@ export function CashFlowGrid({
           style={{ borderBottom: '1px solid rgba(148,163,184,0.12)' }}
         >
           <div className="space-y-1">
-            <h3 className="font-bold text-base md:text-lg text-white tracking-tight">Flujo de Caja · Triple Capa</h3>
+            <h3 className="font-bold text-base md:text-lg text-foreground dark:text-white tracking-tight">Flujo de Caja · Triple Capa</h3>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-violet-200/75">
               <span className="font-mono">TODAY:</span>
               <span className="rounded bg-sky-500/20 px-2 py-0.5 border border-sky-500/30 text-sky-200">{format(TODAY, "dd/MM/yyyy EEE", { locale: es })}</span>
@@ -1363,7 +1363,7 @@ export function CashFlowGrid({
                     onViewDateChange(new Date(safeCurrentDate.getFullYear(), Number(v), 1))
                   }
                 >
-                  <SelectTrigger className="h-8 w-[130px] text-xs bg-zinc-900/80 border-violet-500/30 text-white">
+                  <SelectTrigger className="h-8 w-[130px] text-xs bg-background border-violet-500/30 text-foreground dark:bg-zinc-900/80 dark:text-white">
                     <SelectValue placeholder="Mes" />
                   </SelectTrigger>
                   <SelectContent className="max-h-[220px]">
@@ -1380,7 +1380,7 @@ export function CashFlowGrid({
                     onViewDateChange(new Date(Number(v), safeCurrentDate.getMonth(), 1))
                   }
                 >
-                  <SelectTrigger className="h-8 w-[100px] text-xs bg-zinc-900/80 border-violet-500/30 text-white">
+                  <SelectTrigger className="h-8 w-[100px] text-xs bg-background border-violet-500/30 text-foreground dark:bg-zinc-900/80 dark:text-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="max-h-[260px]">
@@ -1681,7 +1681,7 @@ export function CashFlowGrid({
       {viewMode === 'daily' && !isFullscreen && (
         <aside
           className={clsx(
-            'shrink-0 border-t lg:border-t-0 lg:border-l border-white/10 bg-[#110e1a] lg:sticky lg:top-16 lg:self-start lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto transition-all duration-300',
+            'shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-card/80 dark:border-white/10 dark:bg-[#110e1a] lg:sticky lg:top-16 lg:self-start lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto transition-all duration-300',
             isDecisionPanelCollapsed
               ? 'w-full lg:w-12 p-2'
               : 'w-full lg:w-[min(100%,clamp(268px,34vw,420px))] p-4 space-y-4'
@@ -1701,7 +1701,7 @@ export function CashFlowGrid({
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-violet-400 shrink-0" />
-              <p className="text-sm font-bold text-white tracking-tight">Asistente de decisiones</p>
+              <p className="text-sm font-bold text-foreground dark:text-white tracking-tight">Asistente de decisiones</p>
             </div>
             <button
               type="button"
@@ -1738,7 +1738,7 @@ export function CashFlowGrid({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="w-full h-9 border-white/15 bg-zinc-900/90 text-[11px] text-white hover:bg-zinc-800"
+                  className="w-full h-9 border-border bg-background text-[11px] text-foreground hover:bg-muted dark:border-white/15 dark:bg-zinc-900/90 dark:text-white dark:hover:bg-zinc-800"
                   onClick={() => containerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 >
                   Ver matriz / filas de egreso <ChevronRight className="w-3.5 h-3.5 ml-1" />
@@ -1749,7 +1749,7 @@ export function CashFlowGrid({
 
           {sidebarDailyFlow.length > 0 && (
             <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-3 space-y-3">
-              <p className="text-[11px] font-bold text-white flex items-center gap-1.5">
+              <p className="text-[11px] font-bold text-foreground dark:text-white flex items-center gap-1.5">
                 Cumplimiento del presupuesto
                 <Info className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
               </p>
@@ -1791,7 +1791,7 @@ export function CashFlowGrid({
           )}
 
           <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-3 space-y-2">
-            <p className="text-[11px] font-bold text-white flex items-center gap-1.5">
+            <p className="text-[11px] font-bold text-foreground dark:text-white flex items-center gap-1.5">
               Proyección de saldo final
               <Info className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
             </p>

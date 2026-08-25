@@ -1,0 +1,39 @@
+---
+description: GrooFlow light/dark themes — never hardcode a single palette
+globs: src/**/*.{tsx,ts,css}
+alwaysApply: false
+---
+
+# GrooFlow — temas claro y oscuro
+
+El panel usa `html.light` / `html.dark`. El dark cyberpunk está correcto. Toda UI nueva o tocada debe verse bien en **ambos** temas.
+
+## Obligatorio
+
+- Superficies y texto: tokens CSS (`--background`, `--foreground`, `--card`, `--border`, `--gf-sidebar-*`) o `useModuleSurfaces()` / `getModuleSurfaces(isDark)`.
+- Tailwind: incluir `dark:` (o default light + `dark:`) cuando el color no sea un token.
+- Sidebar: `var(--gf-sidebar-bg)`, `var(--gf-sidebar-border)`, etc. Nunca `#0B0F19` fijo.
+- Light: clases `gf-glass-card` / `gf-glass-kpi` definidas en `src/styles/theme.css`.
+
+```tsx
+// ❌ BAD
+<div style={{ background: '#1A1826', color: '#F0EEFF' }}>KPI</div>
+
+// ✅ GOOD
+const s = useModuleSurfaces();
+<div style={{ background: s.card.background, color: s.pageTitle }}>KPI</div>
+```
+
+```tsx
+// ❌ BAD
+className="bg-[#22203A] text-white"
+
+// ✅ GOOD
+className="bg-card text-card-foreground border-border"
+```
+
+## Prohibido
+
+- Hex de dark (`#0B0F19`, `#161424`, `#1A1826`, `#F0EEFF`) sin `isDark` / `dark:` / `html.light`.
+- Dejar el sidebar oscuro cuando `html` es `light`.
+- Paleta propia distinta a `theme.css`.

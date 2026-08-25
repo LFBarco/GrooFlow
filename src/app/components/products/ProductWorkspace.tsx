@@ -362,7 +362,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#0D0B1E]" data-testid="product-workspace">
+    <div className="fixed inset-0 z-50 flex flex-col bg-background" data-testid="product-workspace">
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
           <Button type="button" variant="outline" size="sm" className="border-white/15" onClick={onClose}>
@@ -371,7 +371,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </Button>
           <div className="min-w-0">
             <div className="truncate text-xs uppercase tracking-wider text-slate-500">Producto</div>
-            <div className="truncate text-lg font-semibold text-slate-100">{draft.name.trim() || 'Nuevo producto'}</div>
+            <div className="truncate text-lg font-semibold text-foreground">{draft.name.trim() || 'Nuevo producto'}</div>
           </div>
         </div>
         <Button type="button" className="bg-emerald-600 hover:bg-emerald-500" onClick={handleSave} data-testid="product-save">
@@ -381,7 +381,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
       </header>
 
       <Tabs defaultValue="editar" className="flex min-h-0 flex-1 flex-col px-4 py-3">
-        <TabsList className="mb-3 h-auto w-full flex-wrap justify-start gap-1 overflow-x-auto border border-white/10 bg-[#1A1826]/80 p-2">
+        <TabsList className="mb-3 h-auto w-full flex-wrap justify-start gap-1 overflow-x-auto border border-border bg-muted p-2">
           {[
             ['editar', 'Editar'],
             ['precios', 'Precios'],
@@ -402,19 +402,19 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
         <div className="min-h-0 flex-1 overflow-y-auto pb-28">
           {/* Editar */}
           <TabsContent value="editar" className="mt-0 space-y-4">
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-4 p-4">
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="space-y-2">
                     <Label>Nombre del producto <span className="text-red-400">*</span></Label>
                     <IconField Icon={Package}>
-                      <Input className="border-white/10 bg-[#0D0B1E]" data-testid="product-name-input" value={draft.name} onChange={(e) => patchDraft((p) => ({ ...p, name: e.target.value }))} />
+                      <Input className="border-border bg-background" data-testid="product-name-input" value={draft.name} onChange={(e) => patchDraft((p) => ({ ...p, name: e.target.value }))} />
                     </IconField>
                   </div>
                   <div className="space-y-2">
                     <Label>Marca</Label>
                     <IconField Icon={Copyright}>
-                      <Input className="border-white/10 bg-[#0D0B1E]" value={draft.brand ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, brand: e.target.value }))} />
+                      <Input className="border-border bg-background" value={draft.brand ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, brand: e.target.value }))} />
                     </IconField>
                   </div>
                   <div className="space-y-2">
@@ -428,13 +428,13 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="space-y-2">
                     <Label>Código personalizado</Label>
                     <IconField Icon={Hash}>
-                      <Input className="border-white/10 bg-[#0D0B1E]" value={ex.customCode ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, customCode: e.target.value } }))} />
+                      <Input className="border-border bg-background" value={ex.customCode ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, customCode: e.target.value } }))} />
                     </IconField>
                   </div>
                   <div className="space-y-2">
                     <Label>SKU</Label>
                     <IconField Icon={Tag}>
-                      <Input className="border-white/10 bg-[#0D0B1E]" value={ex.sku ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, sku: e.target.value } }))} />
+                      <Input className="border-border bg-background" value={ex.sku ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, sku: e.target.value } }))} />
                     </IconField>
                   </div>
                 </div>
@@ -442,18 +442,18 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="space-y-2">
                     <Label>Presentación</Label>
                     <Select value={ex.presentation ?? 'Botella'} onValueChange={(v) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, presentation: v } }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>{PRODUCT_PRESENTATIONS.map((pr) => (<SelectItem key={pr} value={pr}>{pr}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Contenido</Label>
-                    <Input className="border-white/10 bg-[#0D0B1E]" value={ex.content ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, content: e.target.value } }))} />
+                    <Input className="border-border bg-background" value={ex.content ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, content: e.target.value } }))} />
                   </div>
                   <div className="space-y-2">
                     <Label>Unidad de medida</Label>
                     <Select value={draft.unit} onValueChange={(v) => patchDraft((p) => ({ ...p, unit: v }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>{PRODUCT_UNITS.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
@@ -471,7 +471,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                         }));
                       }}
                     >
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue placeholder="Seleccione" /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue placeholder="Seleccione" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Seleccione</SelectItem>
                         {providerOptions.map((pr) => (<SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>))}
@@ -483,21 +483,21 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="space-y-2">
                     <Label>Línea <span className="text-red-400">*</span></Label>
                     <Select value={draft.line} onValueChange={(v) => patchDraft((p) => ({ ...p, line: v }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>{PRODUCT_LINES.map((l) => (<SelectItem key={l} value={l}>{l}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Categoría <span className="text-red-400">*</span></Label>
                     <Select value={draft.category} onValueChange={(v) => patchDraft((p) => ({ ...p, category: v }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>{PRODUCT_CATEGORIES.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Subcategoría</Label>
                     <Select value={draft.subcategory?.trim() ? draft.subcategory! : 'none'} onValueChange={(v) => patchDraft((p) => ({ ...p, subcategory: v === 'none' ? undefined : v }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue placeholder="Seleccione" /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue placeholder="Seleccione" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Seleccione</SelectItem>
                         {PRODUCT_SUBCATEGORIES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
@@ -513,12 +513,12 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   </div>
                   <div className="space-y-2">
                     <Label>Stock mínimo <span className="text-red-400">*</span></Label>
-                    <Input type="number" min={0} className="border-white/10 bg-[#0D0B1E]" value={draft.minStock} onChange={(e) => patchDraft((p) => ({ ...p, minStock: Math.max(0, Number(e.target.value) || 0) }))} />
+                    <Input type="number" min={0} className="border-border bg-background" value={draft.minStock} onChange={(e) => patchDraft((p) => ({ ...p, minStock: Math.max(0, Number(e.target.value) || 0) }))} />
                     <p className="text-[11px] text-slate-500">Cantidad mínima para no quedarse sin stock.</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Stock máximo <span className="text-red-400">*</span></Label>
-                    <Input type="number" min={0} className="border-white/10 bg-[#0D0B1E]" value={draft.maxStock ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, maxStock: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) }))} />
+                    <Input type="number" min={0} className="border-border bg-background" value={draft.maxStock ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, maxStock: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value) || 0) }))} />
                     <p className="text-[11px] text-slate-500">Máximo para evitar sobrestock.</p>
                   </div>
                 </div>
@@ -526,20 +526,20 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="space-y-2">
                     <Label>Disponible ventas <span className="text-red-400">*</span></Label>
                     <Select value={(ex.salesAvailable ?? true) ? 'yes' : 'no'} onValueChange={(v) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, salesAvailable: v === 'yes' } }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent><SelectItem value="yes">SI</SelectItem><SelectItem value="no">NO</SelectItem></SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Frecuencia (días)</Label>
                     <IconField Icon={CalendarDays}>
-                      <Input className="border-white/10 bg-[#0D0B1E]" value={ex.applicationFrequencyDays ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, applicationFrequencyDays: e.target.value } }))} />
+                      <Input className="border-border bg-background" value={ex.applicationFrequencyDays ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, applicationFrequencyDays: e.target.value } }))} />
                     </IconField>
                   </div>
                   <div className="space-y-2">
                     <Label>Estado</Label>
                     <Select value={statusLabel(draft.status)} onValueChange={(v) => patchDraft((p) => ({ ...p, status: statusFromLabel(v) }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="ACTIVO">ACTIVO</SelectItem>
                         <SelectItem value="INACTIVO">INACTIVO</SelectItem>
@@ -550,7 +550,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="space-y-2">
                     <Label>ICBPER</Label>
                     <Select value={ex.icbperGravado ? 'yes' : 'no'} onValueChange={(v) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, icbperGravado: v === 'yes' } }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent><SelectItem value="yes">SI</SelectItem><SelectItem value="no">NO</SelectItem></SelectContent>
                     </Select>
                     <p className="text-[11px] text-slate-500">Grava bolsas plásticas y similares.</p>
@@ -559,7 +559,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                 <div className="space-y-2">
                   <Label>Puntos <span className="text-red-400">*</span></Label>
                   <IconField Icon={Star}>
-                    <Input type="number" min={0} className="border-white/10 bg-[#0D0B1E]" value={ex.loyaltyPoints ?? 0} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, loyaltyPoints: Math.max(0, Number(e.target.value) || 0) } }))} />
+                    <Input type="number" min={0} className="border-border bg-background" value={ex.loyaltyPoints ?? 0} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, loyaltyPoints: Math.max(0, Number(e.target.value) || 0) } }))} />
                   </IconField>
                 </div>
               </CardContent>
@@ -567,14 +567,14 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="precios" className="mt-0 space-y-4">
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-4 p-4">
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="space-y-3">
-                    <div className="text-sm font-semibold text-slate-200">Ventas</div>
+                    <div className="text-sm font-semibold text-foreground">Ventas</div>
                     <Label>Valor venta (sin impuestos)</Label>
                     <Input
-                      className="border-white/10 bg-[#0D0B1E] pl-6"
+                      className="border-border bg-background pl-6"
                       value={String(ex.saleValueNet ?? 0)}
                       onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, saleValueNet: Number(e.target.value.replace(',', '.')) || 0 } }))}
                     />
@@ -582,7 +582,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                       <div className="space-y-2">
                         <Label>IGV ventas (%)</Label>
                         <Input
-                          className="border-white/10 bg-[#0D0B1E]"
+                          className="border-border bg-background"
                           value={String(ex.saleTaxPercent ?? 18)}
                           onChange={(e) =>
                             patchDraft((p) => ({ ...p, extended: { ...p.extended!, saleTaxPercent: Number(e.target.value.replace(',', '.')) || 0 } }))
@@ -603,10 +603,10 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                     <Input readOnly disabled value={String(publicSale)} className="border-cyan-500/30 opacity-90" />
                   </div>
                   <div className="space-y-3">
-                    <div className="text-sm font-semibold text-slate-200">Compra</div>
+                    <div className="text-sm font-semibold text-foreground">Compra</div>
                     <Label>Valor compra (sin impuestos)</Label>
                     <Input
-                      className="border-white/10 bg-[#0D0B1E] pl-6"
+                      className="border-border bg-background pl-6"
                       value={String(ex.purchaseValueNet ?? 0)}
                       onChange={(e) =>
                         patchDraft((p) => ({ ...p, extended: { ...p.extended!, purchaseValueNet: Number(e.target.value.replace(',', '.')) || 0 } }))
@@ -616,7 +616,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                       <div className="space-y-2">
                         <Label>IGV compra (%)</Label>
                         <Input
-                          className="border-white/10 bg-[#0D0B1E]"
+                          className="border-border bg-background"
                           value={String(ex.purchaseTaxPercent ?? 18)}
                           onChange={(e) =>
                             patchDraft((p) => ({ ...p, extended: { ...p.extended!, purchaseTaxPercent: Number(e.target.value.replace(',', '.')) || 0 } }))
@@ -638,7 +638,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                 <div className="space-y-2">
                   <Label>Descuento máximo (%)</Label>
                   <Input
-                    className="max-w-xs border-white/10 bg-[#0D0B1E]"
+                    className="max-w-xs border-border bg-background"
                     value={String(ex.maxDiscountPercent ?? 0)}
                     onChange={(e) =>
                       patchDraft((p) => ({ ...p, extended: { ...p.extended!, maxDiscountPercent: Number(e.target.value.replace(',', '.')) || 0 } }))
@@ -664,7 +664,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                       value={ex.commissionType === 'percent' ? 'percent' : 'fixed'}
                       onValueChange={(v) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, commissionType: v === 'percent' ? 'percent' : 'fixed' } }))}
                     >
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="fixed">Monto fijo</SelectItem>
                         <SelectItem value="percent">Porcentaje</SelectItem>
@@ -674,7 +674,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="lg:col-span-2">
                     <Label>Aplicar % sobre</Label>
                     <Select value={ex.commissionApplyOn ?? 'valor_venta'} onValueChange={(v) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, commissionApplyOn: v } }))}>
-                      <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="valor_venta">Valor venta</SelectItem>
                         <SelectItem value="subtotal">Subtotal sin IGV</SelectItem>
@@ -684,7 +684,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div>
                     <Label>Comisión ($)</Label>
                     <Input
-                      className="border-white/10 bg-[#0D0B1E]"
+                      className="border-border bg-background"
                       value={String(ex.commissionAmount ?? 0)}
                       onChange={(e) =>
                         patchDraft((p) => ({ ...p, extended: { ...p.extended!, commissionAmount: Number(e.target.value.replace(',', '.')) || 0 } }))
@@ -694,7 +694,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div>
                     <Label>Comisión (%)</Label>
                     <Input
-                      className="border-white/10 bg-[#0D0B1E]"
+                      className="border-border bg-background"
                       value={String(ex.commissionPercent ?? 0)}
                       onChange={(e) =>
                         patchDraft((p) => ({ ...p, extended: { ...p.extended!, commissionPercent: Number(e.target.value.replace(',', '.')) || 0 } }))
@@ -711,13 +711,13 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="barcode" className="mt-0 space-y-4">
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-4 p-4">
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="min-w-[200px] flex-1 space-y-2">
                     <Label>Código de barras</Label>
                     <IconField Icon={BarcodeIcon}>
-                      <Input className="border-white/10 bg-[#0D0B1E]" value={draft.barcode ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, barcode: e.target.value }))} />
+                      <Input className="border-border bg-background" value={draft.barcode ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, barcode: e.target.value }))} />
                     </IconField>
                   </div>
                   <Button type="button" variant="outline" title="Renderizar previews" className="border-white/15" onClick={() => setBarcodeBump((n) => n + 1)}>
@@ -754,7 +754,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="factor" className="mt-0 space-y-4">
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-4 p-4">
                 <div className="rounded-lg border border-sky-500/35 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
                   Para compras en formato distinto al de venta (ej. caja → unidades).
@@ -767,19 +767,19 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                   <div className="space-y-2">
                     <Label>Nombre en compra</Label>
                     <IconField Icon={Link2}>
-                      <Input disabled={!ex.usePurchaseConversion} className="border-white/10 bg-[#0D0B1E]" value={ex.purchaseConversionLabel ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, purchaseConversionLabel: e.target.value } }))} />
+                      <Input disabled={!ex.usePurchaseConversion} className="border-border bg-background" value={ex.purchaseConversionLabel ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, purchaseConversionLabel: e.target.value } }))} />
                     </IconField>
                   </div>
                   <div className="space-y-2">
                     <Label>Factor de compra</Label>
-                    <Input disabled={!ex.usePurchaseConversion} type="number" className="border-white/10 bg-[#0D0B1E]" value={ex.purchaseConversionFactor ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, purchaseConversionFactor: e.target.value === '' ? undefined : Number(e.target.value) } }))} />
+                    <Input disabled={!ex.usePurchaseConversion} type="number" className="border-border bg-background" value={ex.purchaseConversionFactor ?? ''} onChange={(e) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, purchaseConversionFactor: e.target.value === '' ? undefined : Number(e.target.value) } }))} />
                   </div>
                   <div className="space-y-2">
                     <Label>Precio compra ref.</Label>
                     <Input
                       disabled={!ex.usePurchaseConversion}
                       type="number"
-                      className="border-white/10 bg-[#0D0B1E]"
+                      className="border-border bg-background"
                       value={String(ex.purchaseConversionUnitPurchasePrice ?? 0)}
                       onChange={(e) =>
                         patchDraft((p) => ({
@@ -799,7 +799,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="kardex" className="mt-0 space-y-4">
-            <Card className="border border-dashed border-white/20 bg-[#1A1826]/50">
+            <Card className="border border-dashed border-border bg-muted/50">
               <CardContent className="grid gap-2 p-4 text-xs md:grid-cols-3">
                 {[
                   ['Disponible (general)', draft.stockAvailable],
@@ -816,7 +816,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                 ))}
               </CardContent>
             </Card>
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-3 p-4">
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="outline" className="border-white/15" onClick={exportKardexCsv} aria-label="Exportar"><FileSpreadsheet className="h-4 w-4" /></Button>
@@ -859,18 +859,18 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="calc" className="mt-0 space-y-4">
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-4 p-4">
                 <p className="text-sm text-slate-400">Calcula valor neto + IGV desde costo neto y utilidad % sobre costo.</p>
                 <div className="grid gap-3 md:grid-cols-3">
-                  <div><Label>Costo neto</Label><Input className="border-white/10 bg-[#0D0B1E]" value={calcCostNet} onChange={(e) => setCalcCostNet(e.target.value)} /></div>
-                  <div><Label>IGV venta %</Label><Input className="border-white/10 bg-[#0D0B1E]" value={calcTaxVenta} onChange={(e) => setCalcTaxVenta(e.target.value)} /></div>
-                  <div><Label>Utilidad % s/costo</Label><Input className="border-white/10 bg-[#0D0B1E]" value={calcMargenPct} onChange={(e) => setCalcMargenPct(e.target.value)} /></div>
+                  <div><Label>Costo neto</Label><Input className="border-border bg-background" value={calcCostNet} onChange={(e) => setCalcCostNet(e.target.value)} /></div>
+                  <div><Label>IGV venta %</Label><Input className="border-border bg-background" value={calcTaxVenta} onChange={(e) => setCalcTaxVenta(e.target.value)} /></div>
+                  <div><Label>Utilidad % s/costo</Label><Input className="border-border bg-background" value={calcMargenPct} onChange={(e) => setCalcMargenPct(e.target.value)} /></div>
                 </div>
                 <div className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.03] p-4 md:grid-cols-3">
                   <div><div className="text-xs text-slate-500">Venta neto</div><div className="text-lg font-semibold text-emerald-300">{formatCurrencyEs(calcSuggested.saleNet)}</div></div>
                   <div><div className="text-xs text-slate-500">IGV</div><div className="text-lg font-semibold text-cyan-200">{formatCurrencyEs(calcSuggested.taxAmt)}</div></div>
-                  <div><div className="text-xs text-slate-500">Público</div><div className="text-lg font-semibold text-slate-100">{formatCurrencyEs(calcSuggested.publicP)}</div></div>
+                  <div><div className="text-xs text-slate-500">Público</div><div className="text-lg font-semibold text-foreground">{formatCurrencyEs(calcSuggested.publicP)}</div></div>
                 </div>
                 <Button type="button" className="bg-emerald-600" onClick={applyCalculatorToPrices}>Aplicar a Precios</Button>
               </CardContent>
@@ -878,7 +878,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="audit" className="mt-0 space-y-4">
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-3 p-4">
                 <div className="overflow-x-auto rounded-lg border border-white/10">
                   <table className="w-full text-left text-xs">
@@ -897,7 +897,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                             <td className="p-2">{(() => { try { return format(parseISO(row.at), 'dd-MM-yyyy HH:mm', { locale: es }); } catch { return row.at; } })()}</td>
                             <td className="p-2">{row.action}</td><td className="p-2 text-slate-500">{row.module}</td>
                             <td className="whitespace-pre-wrap p-2 text-slate-500">{row.previousValue ?? '—'}</td>
-                            <td className="whitespace-pre-wrap p-2 text-slate-200">{row.newValue ?? '—'}</td>
+                            <td className="whitespace-pre-wrap p-2 text-foreground">{row.newValue ?? '—'}</td>
                             <td className="p-2">{row.responsible}</td>
                           </tr>
                         ))
@@ -919,14 +919,14 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="gallery" className="mt-0 space-y-4">
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-4 p-4">
                 <Label>Galería</Label>
                 <Input
                   type="file"
                   accept="image/*"
                   multiple
-                  className="cursor-pointer border-white/10 bg-[#0D0B1E]"
+                  className="cursor-pointer border-border bg-background"
                   onChange={(event) => {
                     const fs = event.target.files;
                     if (!fs?.length) return;
@@ -977,13 +977,13 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
 
           <TabsContent value="lotes" className="mt-0 space-y-4">
-            <Card className="border border-dashed border-white/20 bg-[#1A1826]/50">
+            <Card className="border border-dashed border-border bg-muted/50">
               <CardContent className="grid gap-2 p-4 text-sm md:grid-cols-2">
                 <div className="flex justify-between gap-4"><span className="text-slate-400">Disp. general</span><span className="rounded-full bg-white/10 px-2">{draft.stockAvailable}</span></div>
                 <div className="flex justify-between gap-4"><span className="text-slate-400">Contable</span><span className="rounded-full bg-white/10 px-2">{draft.stockAccounting}</span></div>
               </CardContent>
             </Card>
-            <Card className="border-white/10 bg-[#1A1826]/90">
+            <Card className="border-border bg-card">
               <CardContent className="space-y-3 p-4">
                 <Button
                   type="button"
@@ -1060,7 +1060,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
         </div>
 
-        <div className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[60] border-t border-white/10 bg-[#1A1826]/95 px-4 py-3 backdrop-blur">
+        <div className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[60] border-t border-border bg-card/95 px-4 py-3 backdrop-blur">
           <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4">
             <Button type="button" variant="outline" className="border-white/15" onClick={onClose}><ArrowLeft className="mr-2 h-4 w-4" />Regresar al listado</Button>
             <Button type="button" className="bg-emerald-600" onClick={handleSave}><Plus className="mr-2 h-4 w-4" />Guardar cambios</Button>
@@ -1069,18 +1069,18 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
       </Tabs>
 
       <Dialog open={lotOpen} onOpenChange={setLotOpen}>
-        <DialogContent className="max-w-md border-white/10 bg-[#1A1826] text-slate-200">
+        <DialogContent className="max-w-md border-border bg-card text-foreground">
           <DialogHeader><DialogTitle>Registrar lote</DialogTitle></DialogHeader>
           <div className="grid gap-3 py-2">
-            <div className="space-y-2"><Label># Lote</Label><Input className="border-white/10 bg-[#0D0B1E]" value={lotForm.lotNumber} onChange={(e) => setLotForm((f) => ({ ...f, lotNumber: e.target.value }))} /></div>
+            <div className="space-y-2"><Label># Lote</Label><Input className="border-border bg-background" value={lotForm.lotNumber} onChange={(e) => setLotForm((f) => ({ ...f, lotNumber: e.target.value }))} /></div>
             <div className="space-y-2"><Label>Almacén</Label>
               <Select value={lotForm.warehouse} onValueChange={(v) => setLotForm((f) => ({ ...f, warehouse: v }))}>
-                <SelectTrigger className="border-white/10 bg-[#0D0B1E]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
                 <SelectContent>{warehouses.map((w) => (<SelectItem key={w} value={w}>{w}</SelectItem>))}</SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Vencimiento</Label><Input type="date" className="border-white/10 bg-[#0D0B1E]" value={lotForm.expiresAt ?? ''} onChange={(e) => setLotForm((f) => ({ ...f, expiresAt: e.target.value }))} /></div>
-            <div className="space-y-2"><Label>Cantidad entrada</Label><Input type="number" min={0} className="border-white/10 bg-[#0D0B1E]" value={lotForm.qtyIn} onChange={(e) => setLotForm((f) => ({ ...f, qtyIn: Math.max(0, Number(e.target.value) || 0) }))} /></div>
+            <div className="space-y-2"><Label>Vencimiento</Label><Input type="date" className="border-border bg-background" value={lotForm.expiresAt ?? ''} onChange={(e) => setLotForm((f) => ({ ...f, expiresAt: e.target.value }))} /></div>
+            <div className="space-y-2"><Label>Cantidad entrada</Label><Input type="number" min={0} className="border-border bg-background" value={lotForm.qtyIn} onChange={(e) => setLotForm((f) => ({ ...f, qtyIn: Math.max(0, Number(e.target.value) || 0) }))} /></div>
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setLotOpen(false)}>Cancelar</Button>

@@ -11,6 +11,7 @@ import { formatNumberEs } from "../../utils/numberFormat";
 import { parseTransactionDate } from "../../utils/transactionDate";
 import { formatBankAccountLabel, resolveBankAccount } from "../../utils/bankAccounts";
 import type { BankAccountConfig } from "../../types";
+import { useModuleSurfaces } from "../../utils/moduleSurfaces";
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
@@ -36,6 +37,7 @@ type SortKey =
 type SortDirection = 'asc' | 'desc';
 
 export function RecentTransactions({ transactions, bankAccounts = [], onEdit, onDelete, onBulkDelete }: RecentTransactionsProps) {
+  const s = useModuleSurfaces();
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -153,7 +155,7 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
   return (
     <div className="space-y-3" data-testid="transactions-list">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-xs" style={{ color: '#6b5fa5' }}>
+        <div className="text-xs" style={{ color: s.pageSubtitle }}>
           {selectionCount > 0 ? `${selectionCount} seleccionada(s)` : 'Selecciona filas para eliminar en bloque'}
         </div>
         <Button
@@ -161,17 +163,17 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
           size="sm"
           onClick={handleBulkDelete}
           disabled={!onBulkDelete || selectionCount === 0}
-          className="border-red-500/30 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-100"
+          className={s.isDark ? "border-red-500/30 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-100" : "border-red-400/40 bg-transparent text-red-600 hover:bg-red-50 hover:text-red-700"}
         >
           <Trash2 className="mr-2 h-4 w-4" />
           Eliminar seleccionadas
         </Button>
       </div>
 
-      <div className="rounded-xl overflow-auto" style={{ border: '1px solid rgba(139,92,246,0.15)' }}>
+      <div className="rounded-xl overflow-auto" style={{ border: s.isDark ? '1px solid rgba(139,92,246,0.15)' : s.card.border, background: s.isDark ? undefined : s.card.background }}>
         <table className="min-w-[1280px] w-full text-sm">
           <thead>
-            <tr style={{ background: 'rgba(139,92,246,0.08)', borderBottom: '1px solid rgba(139,92,246,0.12)' }}>
+            <tr style={{ background: s.isDark ? 'rgba(139,92,246,0.08)' : 'rgba(79,70,229,0.08)', borderBottom: s.isDark ? '1px solid rgba(139,92,246,0.12)' : s.divider }}>
               <th className="h-10 w-10 px-4 text-left align-middle">
                 <Checkbox
                   checked={selectedOnPage}
@@ -179,18 +181,18 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
                   aria-label="Seleccionar página"
                 />
               </th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Cuenta" column="account" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Moneda" column="currency" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Fecha" column="date" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Tipo" column="type" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Sede" column="location" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Categoría" column="category" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Subcategoría" column="subcategory" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Concepto" column="concept" /></th>
-              <th className="h-10 px-4 text-right align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Monto" column="amount" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Operación" column="operation" /></th>
-              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}><SortHeader label="Referencia" column="reference" /></th>
-              <th className="h-10 px-4 text-right align-middle font-bold text-xs uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.3)', letterSpacing: '0.1em' }}>Acciones</th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Cuenta" column="account" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Moneda" column="currency" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Fecha" column="date" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Tipo" column="type" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Sede" column="location" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Categoría" column="category" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Subcategoría" column="subcategory" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Concepto" column="concept" /></th>
+              <th className="h-10 px-4 text-right align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Monto" column="amount" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Operación" column="operation" /></th>
+              <th className="h-10 px-4 text-left align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}><SortHeader label="Referencia" column="reference" /></th>
+              <th className="h-10 px-4 text-right align-middle font-bold text-xs uppercase tracking-wider" style={{ color: s.tableHeader, letterSpacing: '0.1em' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -198,8 +200,8 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
               <tr
                 key={transaction.id}
                 className="transition-colors"
-                style={{ borderBottom: '1px solid rgba(139,92,246,0.08)' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(139,92,246,0.05)'}
+                style={{ borderBottom: `1px solid ${s.divider}` }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = s.isDark ? 'rgba(139,92,246,0.05)' : 'rgba(79,70,229,0.06)'}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
               >
                 <td className="p-4 align-middle">
@@ -209,46 +211,46 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
                     aria-label={`Seleccionar ${transaction.description}`}
                   />
                 </td>
-                <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
+                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
                   {accountLabel(transaction)}
                 </td>
-                <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
+                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
                   {transaction.currency || '-'}
                 </td>
-                <td className="p-4 align-middle text-xs" style={{ color: '#8b7cf8', fontFamily: "'JetBrains Mono', monospace" }}>
+                <td className="p-4 align-middle text-xs" style={{ color: s.accentText, fontFamily: "'JetBrains Mono', monospace" }}>
                   {format(parseTransactionDate(transaction.date), "dd/MM/yyyy", { locale: es })}
                 </td>
-                <td className="p-4 align-middle text-xs font-bold" style={{ color: transaction.type === 'income' ? '#22d3ee' : '#fb7185' }}>
+                <td className="p-4 align-middle text-xs font-bold" style={{ color: transaction.type === 'income' ? s.chart.income : s.chart.expense }}>
                   {transaction.type === 'income' ? 'Ingreso' : 'Egreso'}
                 </td>
-                <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
+                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
                   {transaction.location || '-'}
                 </td>
                 <td className="p-4 align-middle">
                   <span className="px-2.5 py-1 rounded-full text-xs font-bold"
                     style={transaction.type === 'income'
-                      ? { background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.2)', color: '#22d3ee' }
-                      : { background: 'rgba(251,113,133,0.1)', border: '1px solid rgba(251,113,133,0.2)', color: '#fb7185' }
+                      ? { background: `${s.chart.income}18`, border: `1px solid ${s.chart.income}33`, color: s.chart.income }
+                      : { background: `${s.chart.expense}18`, border: `1px solid ${s.chart.expense}33`, color: s.chart.expense }
                     }
                   >
                     {transaction.category}
                   </span>
                 </td>
-                <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
+                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
                   {transaction.subcategory || '-'}
                 </td>
-                <td className="p-4 align-middle text-xs font-medium" style={{ color: '#E4E0FF' }}>
+                <td className="p-4 align-middle text-xs font-medium" style={{ color: s.pageTitle }}>
                   {transaction.concept || transaction.description || '-'}
                 </td>
                 <td className="p-4 align-middle text-right font-bold text-sm"
-                  style={{ color: transaction.type === 'income' ? '#22d3ee' : '#fb7185', fontFamily: "'JetBrains Mono', monospace" }}
+                  style={{ color: transaction.type === 'income' ? s.chart.income : s.chart.expense, fontFamily: "'JetBrains Mono', monospace" }}
                 >
                   {transaction.type === 'income' ? '+' : '-'} {formatNumberEs(Math.abs(transaction.amount), 2)}
                 </td>
-                <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
+                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
                   {transaction.operation || '-'}
                 </td>
-                <td className="p-4 align-middle text-xs" style={{ color: '#B8B0E8' }}>
+                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
                   {transaction.reference || '-'}
                 </td>
                 <td className="p-4 align-middle text-right">
