@@ -57,6 +57,8 @@ export type SqlRetryLatestSnapshot = {
   treasuryInvoices: unknown[];
   treasuryBankBalance: number | undefined;
   treasuryPaidHistory: unknown[];
+  treasurySubscriptions: unknown[];
+  treasuryBankMovements: unknown[];
   fleet: FleetDataset;
   inventory: InventoryDataset;
   pettyCashMeta: PettyCashWeekMetaPayload;
@@ -141,6 +143,14 @@ export function buildSqlRetryRunners(input: BuildSqlRetryRunnersInput): SqlRetry
     latest.treasuryBankBalance
   );
   runners['data:treasuryPaidHistory'] = appKv('data:treasuryPaidHistory', latest.treasuryPaidHistory);
+  runners['data:treasurySubscriptions'] = appKv(
+    'data:treasurySubscriptions',
+    latest.treasurySubscriptions
+  );
+  runners['data:treasuryBankMovements'] = appKv(
+    'data:treasuryBankMovements',
+    latest.treasuryBankMovements
+  );
 
   return runners;
 }

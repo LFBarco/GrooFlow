@@ -82,6 +82,8 @@ export interface InitialDataKeys {
   'data:treasuryInvoices'?:     unknown;
   'data:treasuryBankBalance'?:  unknown;
   'data:treasuryPaidHistory'?:  unknown;
+  'data:treasurySubscriptions'?: unknown;
+  'data:treasuryBankMovements'?: unknown;
   /** Plan de cuentas contables importado (Excel). */
   'data:chartOfAccounts'?: unknown;
   /** Flota clínica veterinaria (vehículos, mantenimiento, combustible). */
@@ -89,6 +91,7 @@ export interface InitialDataKeys {
   'data:inventory'?: unknown;
   /** Motor de conciliación de ingresos (batches, movimientos, matches). */
   'data:reconciliation'?: unknown;
+  'settings:alertReadState'?: unknown;
   /** Metadato interno: el GET HTTP a `data:users` falló (no confundir con lista vacía). */
   __usersKvFetchFailed?: boolean;
   /** Metadato interno: el GET HTTP de transacciones/marca falló; no autosobrescribir con estado local. */
@@ -126,6 +129,10 @@ export interface InitialDataKeys {
   __treasuryBankBalanceKvFetchFailed?: boolean;
   /** Metadato interno: GET de historial pagos tesorería falló. */
   __treasuryPaidHistoryKvFetchFailed?: boolean;
+  /** Metadato interno: GET de suscripciones tesorería falló. */
+  __treasurySubscriptionsKvFetchFailed?: boolean;
+  /** Metadato interno: GET de extracto bancario tesorería falló. */
+  __treasuryBankMovementsKvFetchFailed?: boolean;
   /** Metadato interno: GET de tema falló. */
   __themeKvFetchFailed?: boolean;
 }
@@ -153,6 +160,8 @@ const KV_GET_WITH_STATUS_KEYS = new Set([
   'data:treasuryInvoices',
   'data:treasuryBankBalance',
   'data:treasuryPaidHistory',
+  'data:treasurySubscriptions',
+  'data:treasuryBankMovements',
 ]);
 
 const ALL_KEYS: Array<keyof InitialDataKeys> = [
@@ -161,6 +170,7 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'settings:asistencia',
   'settings:theme',
   'settings:alertThresholds',
+  'settings:alertReadState',
   'maintenance:transactionsClearedAt',
   'data:transactions',
   'data:invoices',
@@ -175,9 +185,12 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'data:treasuryInvoices',
   'data:treasuryBankBalance',
   'data:treasuryPaidHistory',
+  'data:treasurySubscriptions',
+  'data:treasuryBankMovements',
   'data:chartOfAccounts',
   'data:fleet',
   'data:inventory',
+  'data:reconciliation',
 ];
 
 // ─── api object ───────────────────────────────────────────────
@@ -281,6 +294,8 @@ export const api = {
             else if (key === 'data:treasuryInvoices') result.__treasuryInvoicesKvFetchFailed = true;
             else if (key === 'data:treasuryBankBalance') result.__treasuryBankBalanceKvFetchFailed = true;
             else if (key === 'data:treasuryPaidHistory') result.__treasuryPaidHistoryKvFetchFailed = true;
+            else if (key === 'data:treasurySubscriptions') result.__treasurySubscriptionsKvFetchFailed = true;
+            else if (key === 'data:treasuryBankMovements') result.__treasuryBankMovementsKvFetchFailed = true;
           }
           return;
         }
@@ -352,6 +367,8 @@ export const api = {
       key === 'data:feeReceipts' ||
       key === 'data:treasuryInvoices' ||
       key === 'data:treasuryPaidHistory' ||
+      key === 'data:treasurySubscriptions' ||
+      key === 'data:treasuryBankMovements' ||
       key === 'data:reconciliation'
         ? (backend === 'supabase' ? 6 : 3)
         : backend === 'supabase' ? 3 : 2;

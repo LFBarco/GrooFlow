@@ -55,6 +55,12 @@ export const SQL_BACKUP_ERROR_MESSAGES: Record<string, string> = {
     'No se pudo guardar el saldo bancario en SQL. Revisa sesión o permisos.',
   'data:treasuryPaidHistory':
     'No se pudo guardar el historial de pagos en SQL. Revisa sesión o permisos.',
+  'data:treasurySubscriptions':
+    'No se pudieron guardar las suscripciones de tesorería en SQL. Revisa sesión o permisos.',
+  'data:treasuryBankMovements':
+    'No se pudo guardar el extracto bancario en SQL. Revisa sesión o permisos.',
+  'data:reconciliation':
+    'No se pudo guardar la conciliación en SQL. Revisa sesión o permisos.',
   'data:fleet':
     'No se pudo guardar Flota clínica en SQL. Revisa sesión o permisos.',
   'data:inventory':

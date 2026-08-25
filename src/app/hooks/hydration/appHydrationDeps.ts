@@ -127,6 +127,8 @@ export type AppHydrationDeps = {
   treasuryBankBalanceKvLatestRef: MutableRefObject<number | undefined>;
   treasuryBankBalanceLoadedFromKvRef: MutableRefObject<boolean>;
   treasuryPaidHistoryKvLatestRef: MutableRefObject<unknown[]>;
+  treasurySubscriptionsKvLatestRef: MutableRefObject<unknown[]>;
+  treasuryBankMovementsKvLatestRef: MutableRefObject<unknown[]>;
   setIsAuthChecking: Dispatch<SetStateAction<boolean>>;
   setCloudSyncPhase: Dispatch<SetStateAction<CloudSyncPhase>>;
   setCanSaveUsers: Dispatch<SetStateAction<boolean>>;
@@ -152,6 +154,8 @@ export type AppHydrationDeps = {
   setTreasuryInvoices: Dispatch<SetStateAction<unknown[]>>;
   setTreasuryBankBalance: Dispatch<SetStateAction<number | undefined>>;
   setTreasuryPaidHistory: Dispatch<SetStateAction<unknown[]>>;
+  setTreasurySubscriptions: Dispatch<SetStateAction<unknown[]>>;
+  setTreasuryBankMovements: Dispatch<SetStateAction<unknown[]>>;
   GUEST_USER: User;
   initialInvoices: InvoiceDraft[];
   initialProducts: Product[];

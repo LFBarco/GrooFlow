@@ -44,6 +44,9 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     ['data:treasuryInvoices', []],
     ['data:treasuryBankBalance', null],
     ['data:treasuryPaidHistory', []],
+    ['data:treasurySubscriptions', []],
+    ['data:treasuryBankMovements', []],
+    ['data:reconciliation', null],
     ['data:fleet', emptyFleet],
     ['data:inventory', emptyInventory],
   ];
@@ -89,7 +92,10 @@ export async function clearOperationalData(userId: string | null): Promise<Clear
     { label: 'chartOfAccounts', run: () => saveAppKvKey(client, 'data:chartOfAccounts', [], userId) },
     { label: 'treasuryInvoices', run: () => saveAppKvKey(client, 'data:treasuryInvoices', [], userId) },
     { label: 'treasuryBankBalance', run: () => saveAppKvKey(client, 'data:treasuryBankBalance', null, userId) },
-    { label: 'treasuryPaidHistory', run: () => saveAppKvKey(client, 'data:treasuryPaidHistory', [], userId) }
+    { label: 'treasuryPaidHistory', run: () => saveAppKvKey(client, 'data:treasuryPaidHistory', [], userId) },
+    { label: 'treasurySubscriptions', run: () => saveAppKvKey(client, 'data:treasurySubscriptions', [], userId) },
+    { label: 'treasuryBankMovements', run: () => saveAppKvKey(client, 'data:treasuryBankMovements', [], userId) },
+    { label: 'reconciliation', run: () => saveAppKvKey(client, 'data:reconciliation', null, userId) },
   );
 
   if (isFleetSqlEnabled()) {

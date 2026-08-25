@@ -172,8 +172,11 @@ export const KV_KEYS = {
   TREASURY_INVOICES:    'data:treasuryInvoices',
   TREASURY_BALANCE:     'data:treasuryBankBalance',
   TREASURY_PAID_HISTORY:'data:treasuryPaidHistory',
+  TREASURY_SUBSCRIPTIONS: 'data:treasurySubscriptions',
+  TREASURY_BANK_MOVEMENTS: 'data:treasuryBankMovements',
   CHART_OF_ACCOUNTS:    'data:chartOfAccounts',
   FLEET:                'data:fleet',
+  RECONCILIATION:       'data:reconciliation',
 } as const;
 
 export type KVKey = typeof KV_KEYS[keyof typeof KV_KEYS];

@@ -186,6 +186,14 @@ export type ProductionRealtimeHandlers = {
 
   treasuryPaidHistoryLatest?: MutableRefObject<unknown[]>;
 
+  treasurySubscriptions?: MutableRefObject<((items: unknown[]) => void) | null>;
+
+  treasurySubscriptionsLatest?: MutableRefObject<unknown[]>;
+
+  treasuryBankMovements?: MutableRefObject<((items: unknown[]) => void) | null>;
+
+  treasuryBankMovementsLatest?: MutableRefObject<unknown[]>;
+
 };
 
 
@@ -233,6 +241,10 @@ const APP_KV_KEYS = [
   'data:treasuryBankBalance',
 
   'data:treasuryPaidHistory',
+
+  'data:treasurySubscriptions',
+
+  'data:treasuryBankMovements',
 
 ] as const;
 
@@ -715,6 +727,42 @@ export function useProductionRealtimeSync(enabled: boolean, handlers: Production
           const h = handlers.treasuryPaidHistory;
 
           const latest = handlers.treasuryPaidHistoryLatest;
+
+          if (!h || !latest || !Array.isArray(result.data)) return;
+
+          if (kvPayloadsEqual(latest.current, result.data)) return;
+
+          latest.current = result.data;
+
+          h.current?.(result.data);
+
+          break;
+
+        }
+
+        case 'data:treasurySubscriptions': {
+
+          const h = handlers.treasurySubscriptions;
+
+          const latest = handlers.treasurySubscriptionsLatest;
+
+          if (!h || !latest || !Array.isArray(result.data)) return;
+
+          if (kvPayloadsEqual(latest.current, result.data)) return;
+
+          latest.current = result.data;
+
+          h.current?.(result.data);
+
+          break;
+
+        }
+
+        case 'data:treasuryBankMovements': {
+
+          const h = handlers.treasuryBankMovements;
+
+          const latest = handlers.treasuryBankMovementsLatest;
 
           if (!h || !latest || !Array.isArray(result.data)) return;
 

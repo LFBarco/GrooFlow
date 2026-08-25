@@ -28,6 +28,12 @@ import {
 } from "./constants/appSession";
 import { AppNavButton, AppNavigationContext } from "./components/layout/AppNavigationContext";
 import type { FeeReceiptGlobal } from "./utils/buildSqlRetryRunners";
+import type { BankMovement, Subscription as TreasurySubscription } from "./components/treasury/types";
+import {
+  normalizeTreasuryBankMovements,
+  normalizeTreasuryInvoices,
+  normalizeTreasurySubscriptions,
+} from "./components/treasury/normalizeTreasuryKv";
 import { mergeSystemSettingsSqlAndKv } from "./services/repository/appKvSql";
 import { 
   LayoutDashboard, 
@@ -301,6 +307,8 @@ export default function App() {
   const [treasuryInvoices, setTreasuryInvoices] = useState<any[]>([]);
   const [treasuryBankBalance, setTreasuryBankBalance] = useState<number | undefined>(undefined);
   const [treasuryPaidHistory, setTreasuryPaidHistory] = useState<any[]>([]);
+  const [treasurySubscriptions, setTreasurySubscriptions] = useState<TreasurySubscription[]>([]);
+  const [treasuryBankMovements, setTreasuryBankMovements] = useState<BankMovement[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
   const urlView = pathToView(location.pathname);
@@ -443,6 +451,10 @@ export default function App() {
   const treasuryBankBalanceKvLatestRef = useRef<number | undefined>(undefined);
   const treasuryPaidHistoryKvChainRef = useRef(KV_CHAIN_IDLE);
   const treasuryPaidHistoryKvLatestRef = useRef<any[]>([]);
+  const treasurySubscriptionsKvChainRef = useRef(KV_CHAIN_IDLE);
+  const treasurySubscriptionsKvLatestRef = useRef<TreasurySubscription[]>([]);
+  const treasuryBankMovementsKvChainRef = useRef(KV_CHAIN_IDLE);
+  const treasuryBankMovementsKvLatestRef = useRef<BankMovement[]>([]);
   /** True tras leer saldo bancario del KV (aunque sea null). */
   const treasuryBankBalanceLoadedFromKvRef = useRef(false);
   /** Tema visual (settings:theme). */
@@ -516,6 +528,8 @@ export default function App() {
     treasuryInvoicesKvChainRef.current = KV_CHAIN_IDLE;
     treasuryBankBalanceKvChainRef.current = KV_CHAIN_IDLE;
     treasuryPaidHistoryKvChainRef.current = KV_CHAIN_IDLE;
+    treasurySubscriptionsKvChainRef.current = KV_CHAIN_IDLE;
+    treasuryBankMovementsKvChainRef.current = KV_CHAIN_IDLE;
     themeKvChainRef.current = KV_CHAIN_IDLE;
     usersKvChainRef.current = KV_CHAIN_IDLE;
   };
@@ -729,6 +743,8 @@ export default function App() {
     treasuryBankBalanceKvLatestRef,
     treasuryBankBalanceLoadedFromKvRef,
     treasuryPaidHistoryKvLatestRef,
+    treasurySubscriptionsKvLatestRef,
+    treasuryBankMovementsKvLatestRef,
     setIsAuthChecking,
     setCloudSyncPhase,
     setCanSaveUsers,
@@ -754,6 +770,8 @@ export default function App() {
     setTreasuryInvoices,
     setTreasuryBankBalance,
     setTreasuryPaidHistory,
+    setTreasurySubscriptions,
+    setTreasuryBankMovements,
     GUEST_USER,
     initialInvoices: DEMO_INITIAL_INVOICES,
     initialProducts: DEMO_INITIAL_PRODUCTS,
@@ -779,6 +797,8 @@ export default function App() {
       treasuryInvoices: treasuryInvoicesKvLatestRef.current,
       treasuryBankBalance: treasuryBankBalanceKvLatestRef.current,
       treasuryPaidHistory: treasuryPaidHistoryKvLatestRef.current,
+      treasurySubscriptions: treasurySubscriptionsKvLatestRef.current,
+      treasuryBankMovements: treasuryBankMovementsKvLatestRef.current,
       fleet: fleetKvLatestRef.current,
       inventory: inventoryKvLatestRef.current,
       pettyCashMeta: pettyCashMetaKvLatestRef.current,
@@ -985,6 +1005,18 @@ export default function App() {
       latestRef: treasuryPaidHistoryKvLatestRef,
       cooldownUntilRef: treasuryKvCooldownUntilRef,
     },
+    treasurySubscriptions,
+    treasurySubscriptionsRefs: {
+      chainRef: treasurySubscriptionsKvChainRef,
+      latestRef: treasurySubscriptionsKvLatestRef,
+      cooldownUntilRef: treasuryKvCooldownUntilRef,
+    },
+    treasuryBankMovements,
+    treasuryBankMovementsRefs: {
+      chainRef: treasuryBankMovementsKvChainRef,
+      latestRef: treasuryBankMovementsKvLatestRef,
+      cooldownUntilRef: treasuryKvCooldownUntilRef,
+    },
     treasuryHydratedRef: treasuryHydratedFromKvRef,
     treasuryBankBalanceLoadedRef: treasuryBankBalanceLoadedFromKvRef,
   });
@@ -1061,13 +1093,29 @@ export default function App() {
   }, []);
 
   const handleFeeReceiptsUpdate = useCallback((next: FeeReceiptGlobal[]) => {
-    feeReceiptsKvLatestRef.current = next;
-    setFeeReceipts(next);
+    const normalized = next.map((r) => ({
+      ...r,
+      issueDate: r.issueDate instanceof Date ? r.issueDate : new Date(r.issueDate),
+      dueDate: r.dueDate instanceof Date ? r.dueDate : new Date(r.dueDate),
+      paymentRequestedAt: r.paymentRequestedAt
+        ? r.paymentRequestedAt instanceof Date
+          ? r.paymentRequestedAt
+          : new Date(r.paymentRequestedAt)
+        : undefined,
+      paymentDate: r.paymentDate
+        ? r.paymentDate instanceof Date
+          ? r.paymentDate
+          : new Date(r.paymentDate)
+        : undefined,
+    }));
+    feeReceiptsKvLatestRef.current = normalized;
+    setFeeReceipts(normalized);
   }, []);
 
   const handleTreasuryInvoicesUpdate = useCallback((next: any[]) => {
-    treasuryInvoicesKvLatestRef.current = next;
-    setTreasuryInvoices(next);
+    const normalized = normalizeTreasuryInvoices(next);
+    treasuryInvoicesKvLatestRef.current = normalized;
+    setTreasuryInvoices(normalized);
   }, []);
 
   const handleTreasuryBankBalanceUpdate = useCallback((next: number | undefined) => {
@@ -1077,8 +1125,21 @@ export default function App() {
   }, []);
 
   const handleTreasuryPaidHistoryUpdate = useCallback((next: any[]) => {
-    treasuryPaidHistoryKvLatestRef.current = next;
-    setTreasuryPaidHistory(next);
+    const normalized = normalizeTreasuryInvoices(next);
+    treasuryPaidHistoryKvLatestRef.current = normalized;
+    setTreasuryPaidHistory(normalized);
+  }, []);
+
+  const handleTreasurySubscriptionsUpdate = useCallback((next: TreasurySubscription[]) => {
+    const normalized = normalizeTreasurySubscriptions(next);
+    treasurySubscriptionsKvLatestRef.current = normalized;
+    setTreasurySubscriptions(normalized);
+  }, []);
+
+  const handleTreasuryBankMovementsUpdate = useCallback((next: BankMovement[]) => {
+    const normalized = normalizeTreasuryBankMovements(next);
+    treasuryBankMovementsKvLatestRef.current = normalized;
+    setTreasuryBankMovements(normalized);
   }, []);
 
   const handleChartOfAccountsUpdate = useCallback(
@@ -1329,7 +1390,24 @@ export default function App() {
       case 'data:feeReceipts': {
         if (PRODUCTION_USE_SQL) return;
         if (!feeReceiptsHydratedFromKvRef.current) return;
-        const list = Array.isArray(value) ? (value as FeeReceiptGlobal[]) : [];
+        const list = (Array.isArray(value) ? value : []).map((row) => {
+          const r = row as FeeReceiptGlobal;
+          return {
+            ...r,
+            issueDate: r.issueDate instanceof Date ? r.issueDate : new Date(r.issueDate),
+            dueDate: r.dueDate instanceof Date ? r.dueDate : new Date(r.dueDate),
+            paymentRequestedAt: r.paymentRequestedAt
+              ? r.paymentRequestedAt instanceof Date
+                ? r.paymentRequestedAt
+                : new Date(r.paymentRequestedAt)
+              : undefined,
+            paymentDate: r.paymentDate
+              ? r.paymentDate instanceof Date
+                ? r.paymentDate
+                : new Date(r.paymentDate)
+              : undefined,
+          };
+        });
         if (kvPayloadsEqual(feeReceiptsKvLatestRef.current, list)) return;
         feeReceiptsKvLatestRef.current = list;
         feeReceiptsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
@@ -1340,7 +1418,7 @@ export default function App() {
       case 'data:treasuryInvoices': {
         if (PRODUCTION_USE_SQL) return;
         if (!treasuryHydratedFromKvRef.current) return;
-        const list = Array.isArray(value) ? value : [];
+        const list = normalizeTreasuryInvoices(value);
         if (kvPayloadsEqual(treasuryInvoicesKvLatestRef.current, list)) return;
         treasuryInvoicesKvLatestRef.current = list;
         treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
@@ -1364,11 +1442,33 @@ export default function App() {
       case 'data:treasuryPaidHistory': {
         if (PRODUCTION_USE_SQL) return;
         if (!treasuryHydratedFromKvRef.current) return;
-        const list = Array.isArray(value) ? value : [];
+        const list = normalizeTreasuryInvoices(value);
         if (kvPayloadsEqual(treasuryPaidHistoryKvLatestRef.current, list)) return;
         treasuryPaidHistoryKvLatestRef.current = list;
         treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setTreasuryPaidHistory(list);
+        applied = true;
+        break;
+      }
+      case 'data:treasurySubscriptions': {
+        if (PRODUCTION_USE_SQL) return;
+        if (!treasuryHydratedFromKvRef.current) return;
+        const list = normalizeTreasurySubscriptions(value);
+        if (kvPayloadsEqual(treasurySubscriptionsKvLatestRef.current, list)) return;
+        treasurySubscriptionsKvLatestRef.current = list;
+        treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setTreasurySubscriptions(list);
+        applied = true;
+        break;
+      }
+      case 'data:treasuryBankMovements': {
+        if (PRODUCTION_USE_SQL) return;
+        if (!treasuryHydratedFromKvRef.current) return;
+        const list = normalizeTreasuryBankMovements(value);
+        if (kvPayloadsEqual(treasuryBankMovementsKvLatestRef.current, list)) return;
+        treasuryBankMovementsKvLatestRef.current = list;
+        treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
+        setTreasuryBankMovements(list);
         applied = true;
         break;
       }
@@ -1763,7 +1863,7 @@ export default function App() {
   applyTreasuryInvoicesRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !treasuryHydratedFromKvRef.current) return;
     const local = treasuryInvoicesKvLatestRef.current;
-    const remote = Array.isArray(items) ? items : [];
+    const remote = normalizeTreasuryInvoices(items);
     if (
       !shouldApplyListRemoteSnapshot(
         Array.isArray(local) ? local : [],
@@ -1800,7 +1900,7 @@ export default function App() {
   applyTreasuryPaidHistoryRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !treasuryHydratedFromKvRef.current) return;
     const local = treasuryPaidHistoryKvLatestRef.current;
-    const remote = Array.isArray(items) ? items : [];
+    const remote = normalizeTreasuryInvoices(items);
     if (
       !shouldApplyListRemoteSnapshot(
         Array.isArray(local) ? local : [],
@@ -1813,6 +1913,44 @@ export default function App() {
     treasuryPaidHistoryKvLatestRef.current = remote;
     treasuryKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
     setTreasuryPaidHistory(remote);
+  };
+
+  const applyTreasurySubscriptionsRemoteRef = useRef<((items: unknown[]) => void) | null>(null);
+  applyTreasurySubscriptionsRemoteRef.current = (items) => {
+    if (!isDataLoaded || signingOutRef.current || !treasuryHydratedFromKvRef.current) return;
+    const local = treasurySubscriptionsKvLatestRef.current;
+    const remote = normalizeTreasurySubscriptions(items);
+    if (
+      !shouldApplyListRemoteSnapshot(
+        Array.isArray(local) ? local : [],
+        remote,
+        treasuryKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
+    treasurySubscriptionsKvLatestRef.current = remote;
+    treasuryKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+    setTreasurySubscriptions(remote);
+  };
+
+  const applyTreasuryBankMovementsRemoteRef = useRef<((items: unknown[]) => void) | null>(null);
+  applyTreasuryBankMovementsRemoteRef.current = (items) => {
+    if (!isDataLoaded || signingOutRef.current || !treasuryHydratedFromKvRef.current) return;
+    const local = treasuryBankMovementsKvLatestRef.current;
+    const remote = normalizeTreasuryBankMovements(items);
+    if (
+      !shouldApplyListRemoteSnapshot(
+        Array.isArray(local) ? local : [],
+        remote,
+        treasuryKvCooldownUntilRef.current
+      )
+    ) {
+      return;
+    }
+    treasuryBankMovementsKvLatestRef.current = remote;
+    treasuryKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+    setTreasuryBankMovements(remote);
   };
 
   const productionRealtimeHandlers = useMemo(
@@ -1853,6 +1991,10 @@ export default function App() {
       treasuryBankBalanceLatest: treasuryBankBalanceKvLatestRef,
       treasuryPaidHistory: applyTreasuryPaidHistoryRemoteRef,
       treasuryPaidHistoryLatest: treasuryPaidHistoryKvLatestRef,
+      treasurySubscriptions: applyTreasurySubscriptionsRemoteRef,
+      treasurySubscriptionsLatest: treasurySubscriptionsKvLatestRef,
+      treasuryBankMovements: applyTreasuryBankMovementsRemoteRef,
+      treasuryBankMovementsLatest: treasuryBankMovementsKvLatestRef,
     }),
     []
   );
@@ -2036,6 +2178,8 @@ export default function App() {
         treasuryInvoicesKvChainRef,
         treasuryBankBalanceKvChainRef,
         treasuryPaidHistoryKvChainRef,
+        treasurySubscriptionsKvChainRef,
+        treasuryBankMovementsKvChainRef,
       ]);
       if (kvFlushHasFailures(kvResults)) {
         toast.error(
@@ -2544,6 +2688,8 @@ export default function App() {
       treasuryInvoicesKvLatestRef.current = [];
       treasuryBankBalanceKvLatestRef.current = undefined;
       treasuryPaidHistoryKvLatestRef.current = [];
+      treasurySubscriptionsKvLatestRef.current = [];
+      treasuryBankMovementsKvLatestRef.current = [];
 
       setTransactions([]);
       setInvoices([]);
@@ -2557,6 +2703,8 @@ export default function App() {
       setTreasuryInvoices([]);
       setTreasuryBankBalance(undefined);
       setTreasuryPaidHistory([]);
+      setTreasurySubscriptions([]);
+      setTreasuryBankMovements([]);
 
       toast.dismiss(toastId);
       if (!ok) {
@@ -3540,6 +3688,10 @@ export default function App() {
                onUpdateBankBalance={handleTreasuryBankBalanceUpdate}
                paidHistory={treasuryPaidHistory}
                onUpdatePaidHistory={handleTreasuryPaidHistoryUpdate}
+               bankMovements={treasuryBankMovements}
+               onUpdateBankMovements={handleTreasuryBankMovementsUpdate}
+               subscriptions={treasurySubscriptions}
+               onUpdateSubscriptions={handleTreasurySubscriptionsUpdate}
                sedeCount={enabledSedesForForms.length}
                userInitials={currentUser.initials}
              />

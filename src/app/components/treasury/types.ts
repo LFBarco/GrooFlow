@@ -29,6 +29,19 @@ export interface BankMovement {
   matchedInvoiceId?: string;
 }
 
+export interface Subscription {
+  id: string;
+  name: string;
+  providerName: string;
+  amount: number;
+  frequency: 'monthly' | 'weekly' | 'quarterly';
+  dayOfMonth: number;
+  category: string;
+  autoGenerate: boolean;
+  lastGenerated?: Date;
+  nextDueDate: Date;
+}
+
 export interface TreasuryStats {
   totalPending: number;
   totalScheduledToday: number;

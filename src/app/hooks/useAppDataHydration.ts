@@ -79,6 +79,11 @@ import { normalizeInventoryDataset } from '../utils/inventoryData';
 import { isInventoryDatasetEmpty } from '../utils/inventoryDatasetEmpty';
 import { hydrateTransactions } from '../utils/hydrateTransactions';
 import { shouldAllowKvRemoteHydrate } from '../utils/kvDomainPersistence';
+import {
+  normalizeTreasuryBankMovements,
+  normalizeTreasuryInvoices,
+  normalizeTreasurySubscriptions,
+} from '../components/treasury/normalizeTreasuryKv';
 import { isAccessTokenExpired } from '../utils/accessToken';
 import { mergeRolesWithDefaults } from '../utils/mergeRolesWithDefaults';
 import {
@@ -149,6 +154,27 @@ type FeeReceiptGlobal = {
   paymentDate?: Date;
   fileUrl?: string;
 };
+
+function asFeeDate(value: unknown, fallback = new Date()): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  const parsed = new Date(value as string | number);
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+function normalizeFeeReceipts(raw: unknown): FeeReceiptGlobal[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((row) => {
+    const r = row as FeeReceiptGlobal;
+    return {
+      ...r,
+      amount: Number(r.amount) || 0,
+      issueDate: asFeeDate(r.issueDate),
+      dueDate: asFeeDate(r.dueDate),
+      paymentRequestedAt: r.paymentRequestedAt != null ? asFeeDate(r.paymentRequestedAt) : undefined,
+      paymentDate: r.paymentDate != null ? asFeeDate(r.paymentDate) : undefined,
+    };
+  });
+}
 
 export function useAppDataHydration(deps: AppHydrationDeps): void {
   useEffect(() => {
@@ -888,8 +914,8 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                   (v) => !Array.isArray(v) || v.length === 0
                 )) as FeeReceiptGlobal[] | null | undefined) ?? kvList
               : kvList;
-            deps.feeReceiptsKvLatestRef.current = list;
-            deps.setFeeReceipts(list);
+            deps.feeReceiptsKvLatestRef.current = normalizeFeeReceipts(list);
+            deps.setFeeReceipts(normalizeFeeReceipts(list));
             deps.feeReceiptsHydratedFromKvRef.current = true;
           }
         }
@@ -969,7 +995,9 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           const treasuryFetchFailed =
             data.__treasuryInvoicesKvFetchFailed ||
             data.__treasuryBankBalanceKvFetchFailed ||
-            data.__treasuryPaidHistoryKvFetchFailed;
+            data.__treasuryPaidHistoryKvFetchFailed ||
+            data.__treasurySubscriptionsKvFetchFailed ||
+            data.__treasuryBankMovementsKvFetchFailed;
           const allowTreasuryRemote =
             !treasuryFetchFailed &&
             !deps.skipTreasuryHydrateRef.current &&
@@ -985,7 +1013,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const sessionUserId = sessionEffective?.user?.id ?? null;
             const rawTi = data['data:treasuryInvoices'];
             const kvTiList = Array.isArray(rawTi) ? rawTi : [];
-            const tiList = PRODUCTION_USE_SQL
+            const tiListRaw = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
                   sqlClient!,
                   'data:treasuryInvoices',
@@ -994,6 +1022,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                   (v) => !Array.isArray(v) || v.length === 0
                 )) as unknown[] | null | undefined) ?? kvTiList
               : kvTiList;
+            const tiList = normalizeTreasuryInvoices(tiListRaw);
             deps.treasuryInvoicesKvLatestRef.current = tiList;
             deps.setTreasuryInvoices(tiList);
 
@@ -1021,7 +1050,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
 
             const rawPh = data['data:treasuryPaidHistory'];
             const kvPhList = Array.isArray(rawPh) ? rawPh : [];
-            const phList = PRODUCTION_USE_SQL
+            const phListRaw = PRODUCTION_USE_SQL
               ? ((await resolveAppKvFromSql(
                   sqlClient!,
                   'data:treasuryPaidHistory',
@@ -1030,8 +1059,39 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                   (v) => !Array.isArray(v) || v.length === 0
                 )) as unknown[] | null | undefined) ?? kvPhList
               : kvPhList;
+            const phList = normalizeTreasuryInvoices(phListRaw);
             deps.treasuryPaidHistoryKvLatestRef.current = phList;
             deps.setTreasuryPaidHistory(phList);
+
+            const rawSub = data['data:treasurySubscriptions'];
+            const kvSubList = Array.isArray(rawSub) ? rawSub : [];
+            const subListRaw = PRODUCTION_USE_SQL
+              ? ((await resolveAppKvFromSql(
+                  sqlClient!,
+                  'data:treasurySubscriptions',
+                  kvSubList,
+                  sessionUserId,
+                  (v) => !Array.isArray(v) || v.length === 0
+                )) as unknown[] | null | undefined) ?? kvSubList
+              : kvSubList;
+            const subList = normalizeTreasurySubscriptions(subListRaw);
+            deps.treasurySubscriptionsKvLatestRef.current = subList;
+            deps.setTreasurySubscriptions(subList);
+
+            const rawMov = data['data:treasuryBankMovements'];
+            const kvMovList = Array.isArray(rawMov) ? rawMov : [];
+            const movListRaw = PRODUCTION_USE_SQL
+              ? ((await resolveAppKvFromSql(
+                  sqlClient!,
+                  'data:treasuryBankMovements',
+                  kvMovList,
+                  sessionUserId,
+                  (v) => !Array.isArray(v) || v.length === 0
+                )) as unknown[] | null | undefined) ?? kvMovList
+              : kvMovList;
+            const movList = normalizeTreasuryBankMovements(movListRaw);
+            deps.treasuryBankMovementsKvLatestRef.current = movList;
+            deps.setTreasuryBankMovements(movList);
 
             deps.treasuryHydratedFromKvRef.current = true;
           }

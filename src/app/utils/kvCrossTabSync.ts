@@ -96,6 +96,9 @@ export function kvKeyDisplayLabel(key: string): string {
     'data:treasuryInvoices': 'Tesorería (facturas)',
     'data:treasuryBankBalance': 'Tesorería (saldo)',
     'data:treasuryPaidHistory': 'Tesorería (pagos)',
+    'data:treasurySubscriptions': 'Tesorería (suscripciones)',
+    'data:treasuryBankMovements': 'Tesorería (extracto)',
+    'data:reconciliation': 'Conciliación',
     'data:users': 'Usuarios',
   };
   return labels[key] ?? key;

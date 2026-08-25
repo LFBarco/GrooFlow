@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar, RefreshCw, Plus, Trash2, CheckCircle2 } from 'lucide-react';
-import { Invoice } from './types';
+import { Invoice, Subscription } from './types';
 import { clsx } from 'clsx';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { toast } from 'sonner';
@@ -17,21 +17,12 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 
-export interface Subscription {
-  id: string;
-  name: string;
-  providerName: string;
-  amount: number;
-  frequency: 'monthly' | 'weekly' | 'quarterly';
-  dayOfMonth: number;
-  category: string;
-  autoGenerate: boolean;
-  lastGenerated?: Date;
-  nextDueDate: Date;
-}
+export type { Subscription } from './types';
 
 interface SubscriptionManagerProps {
   onGenerateInvoice: (invoice: Invoice) => void;
+  subscriptions?: Subscription[];
+  onUpdateSubscriptions?: (subscriptions: Subscription[]) => void;
 }
 
 const EMPTY_FORM = {
@@ -43,10 +34,26 @@ const EMPTY_FORM = {
   frequency: 'monthly' as Subscription['frequency'],
 };
 
-export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({ onGenerateInvoice }) => {
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
+  onGenerateInvoice,
+  subscriptions: externalSubscriptions,
+  onUpdateSubscriptions,
+}) => {
+  const [subscriptions, setSubscriptionsState] = useState<Subscription[]>(externalSubscriptions ?? []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+
+  const setSubscriptions = (updater: Subscription[] | ((prev: Subscription[]) => Subscription[])) => {
+    setSubscriptionsState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onUpdateSubscriptions?.(next);
+      return next;
+    });
+  };
+
+  React.useEffect(() => {
+    if (externalSubscriptions !== undefined) setSubscriptionsState(externalSubscriptions);
+  }, [externalSubscriptions]);
 
   const handleGenerate = (sub: Subscription) => {
     const newInvoice: Invoice = {

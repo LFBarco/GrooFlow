@@ -66,6 +66,10 @@ export type UseOperationalDomainsPersistenceOptions = {
   treasuryBankBalanceRefs: KvDomainRefs<number | undefined>;
   treasuryPaidHistory: unknown[];
   treasuryPaidHistoryRefs: KvDomainRefs<unknown[]>;
+  treasurySubscriptions: unknown[];
+  treasurySubscriptionsRefs: KvDomainRefs<unknown[]>;
+  treasuryBankMovements: unknown[];
+  treasuryBankMovementsRefs: KvDomainRefs<unknown[]>;
   treasuryHydratedRef: MutableRefObject<boolean>;
   treasuryBankBalanceLoadedRef: MutableRefObject<boolean>;
 };
@@ -192,5 +196,29 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
     lastSaveErrorAtRef: o.lastSaveErrorAtRef,
     cloudSync: o.cloudSync,
     errorMessage: 'No se pudo guardar el historial de pagos en la nube.',
+  });
+
+  useKvAppKeyAutosave({
+    isDataLoaded: o.isDataLoaded,
+    hydratedRef: o.treasuryHydratedRef,
+    kvKey: 'data:treasurySubscriptions',
+    data: o.treasurySubscriptions,
+    refs: o.treasurySubscriptionsRefs,
+    kvApplyGenerationRef: o.kvApplyGenerationRef,
+    lastSaveErrorAtRef: o.lastSaveErrorAtRef,
+    cloudSync: o.cloudSync,
+    errorMessage: 'No se pudieron guardar las suscripciones de tesorería en la nube.',
+  });
+
+  useKvAppKeyAutosave({
+    isDataLoaded: o.isDataLoaded,
+    hydratedRef: o.treasuryHydratedRef,
+    kvKey: 'data:treasuryBankMovements',
+    data: o.treasuryBankMovements,
+    refs: o.treasuryBankMovementsRefs,
+    kvApplyGenerationRef: o.kvApplyGenerationRef,
+    lastSaveErrorAtRef: o.lastSaveErrorAtRef,
+    cloudSync: o.cloudSync,
+    errorMessage: 'No se pudo guardar el extracto bancario en la nube.',
   });
 }

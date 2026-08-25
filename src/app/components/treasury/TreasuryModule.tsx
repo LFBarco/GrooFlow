@@ -3,7 +3,7 @@ import { InvoiceIngest } from './InvoiceIngest';
 import { PaymentWorkbench } from './PaymentWorkbench';
 import { BankConciliation } from './BankConciliation';
 import { SubscriptionManager } from './SubscriptionManager'; 
-import { Invoice, BankMovement } from './types';
+import { Invoice, BankMovement, Subscription } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   LayoutDashboard, 
@@ -39,6 +39,10 @@ interface TreasuryModuleProps {
   onUpdateBankBalance?: (balance: number) => void;
   paidHistory?: Invoice[];
   onUpdatePaidHistory?: (history: Invoice[]) => void;
+  bankMovements?: BankMovement[];
+  onUpdateBankMovements?: (movements: BankMovement[]) => void;
+  subscriptions?: Subscription[];
+  onUpdateSubscriptions?: (subscriptions: Subscription[]) => void;
   sedeCount?: number;
   userInitials?: string;
 }
@@ -52,6 +56,10 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
   onUpdateBankBalance,
   paidHistory: externalPaidHistory,
   onUpdatePaidHistory,
+  bankMovements: externalBankMovements,
+  onUpdateBankMovements,
+  subscriptions: externalSubscriptions,
+  onUpdateSubscriptions,
   sedeCount = 0,
   userInitials,
 }) => {
@@ -85,11 +93,19 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
   };
 
   // Sync from external props when they change
-  React.useEffect(() => { if (externalInvoices) setInvoicesState(externalInvoices); }, [externalInvoices]);
+  React.useEffect(() => { if (externalInvoices !== undefined) setInvoicesState(externalInvoices); }, [externalInvoices]);
   React.useEffect(() => { if (externalBankBalance !== undefined) setBankBalanceState(externalBankBalance); }, [externalBankBalance]);
-  React.useEffect(() => { if (externalPaidHistory) setPaidHistoryState(externalPaidHistory); }, [externalPaidHistory]);
+  React.useEffect(() => { if (externalPaidHistory !== undefined) setPaidHistoryState(externalPaidHistory); }, [externalPaidHistory]);
+  React.useEffect(() => { if (externalBankMovements !== undefined) setBankMovementsState(externalBankMovements); }, [externalBankMovements]);
 
-  const [bankMovements, setBankMovements] = useState<BankMovement[]>([]);
+  const [bankMovements, setBankMovementsState] = useState<BankMovement[]>(externalBankMovements ?? []);
+  const setBankMovements = (updater: BankMovement[] | ((prev: BankMovement[]) => BankMovement[])) => {
+    setBankMovementsState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      onUpdateBankMovements?.(next);
+      return next;
+    });
+  };
 
   const handleIngestComplete = (newInvoices: Invoice[]) => {
     setInvoices(prev => [...prev, ...newInvoices]);
@@ -277,6 +293,8 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
             {activeTab === 'subscriptions' && (
               <SubscriptionManager 
                 onGenerateInvoice={handleSubscriptionGenerate}
+                subscriptions={externalSubscriptions ?? []}
+                onUpdateSubscriptions={onUpdateSubscriptions}
               />
             )}
             
