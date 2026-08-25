@@ -157,6 +157,7 @@ export async function syncCurrentUserProfileToSql(
     userRow ? { ...userRow, id: authUserId } : { id: authUserId, role: 'manager', sedes: [] }
   );
 
+  if (!client) return;
   const { error: rpcError } = await client.rpc('upsert_own_app_user_profile', {
     p_role: row.role,
     p_sedes: row.sedes,
@@ -177,7 +178,8 @@ export async function syncCurrentUserProfileToSql(
 }
 
 /** Registra último acceso en SQL (RLS: self via SECURITY DEFINER). */
-export async function touchOwnLastLogin(client: SupabaseClient): Promise<void> {
+export async function touchOwnLastLogin(client: SupabaseClient | null): Promise<void> {
+  if (!client) return;
   const { error } = await client.rpc('touch_own_app_user_last_login');
   if (error && error.code !== 'PGRST202' && !error.message?.includes('touch_own_app_user_last_login')) {
     console.warn('[userProfileSync] touch last login failed', error.message);

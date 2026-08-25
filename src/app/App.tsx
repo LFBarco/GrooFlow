@@ -99,6 +99,9 @@ import { Button } from "./components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./components/ui/dialog";
 import { api, setKvSessionFatalHandler, repository } from "./services/api";
 import { getGrooflowBackend, isSupabaseBackend } from "./config/backend";
+import { getGrooflowToken } from "./services/repository/apiBase";
+import { isLocalDemoSessionActive } from "./config/demoLogin";
+import { clearCachedAppUser, readCachedAppUser, writeCachedAppUser } from "./utils/sessionCache";
 import { getSupabaseClientLazy } from "./services/repository/supabaseLazy";
 import { isFleetSqlEnabled, type FleetSqlTimestamps } from "./services/repository/fleetSql";
 import { isInventorySqlEnabled } from "./services/repository/inventorySql";
@@ -258,10 +261,14 @@ const TRANSACTIONS_USE_SQL = isTransactionsSqlEnabled();
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (APP_BACKEND === 'rest') return Boolean(getGrooflowToken());
+    if (APP_BACKEND === 'local') return isLocalDemoSessionActive();
+    return false;
+  });
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
-  const [currentUser, setCurrentUser] = useState<User>(GUEST_USER);
+  const [currentUser, setCurrentUser] = useState<User>(() => readCachedAppUser() ?? GUEST_USER);
   const [transactions, setTransactions] = useState<Transaction[]>(EMPTY_INITIAL_TRANSACTIONS);
   const [invoices, setInvoices] = useState<InvoiceDraft[]>(() =>
     APP_BACKEND === 'local' ? DEMO_INITIAL_INVOICES : []
@@ -311,7 +318,7 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
-  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [isAuthChecking, setIsAuthChecking] = useState(() => APP_BACKEND === 'supabase');
   /** Enlace de recuperación Supabase: mostrar formulario de nueva contraseña antes del login/app. */
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(
     () => isSupabaseBackend() && isPasswordRecoveryUrl()
@@ -2098,6 +2105,7 @@ export default function App() {
       setIsDataLoaded(false);
       setCurrentUser(GUEST_USER);
       setIsAuthenticated(false);
+      clearCachedAppUser();
       setIsProfileOpen(false);
       signingOutRef.current = false;
       navigate(viewToPath('dashboard'), { replace: true });
@@ -2126,6 +2134,12 @@ export default function App() {
       return false;
     }
   }, []);
+
+  useEffect(() => {
+    if (currentUser.id && currentUser.id !== 'guest') {
+      writeCachedAppUser(currentUser);
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (!isAuthenticated || currentUser.id === 'guest') return;
@@ -3102,14 +3116,6 @@ export default function App() {
         />
         <Toaster />
       </>
-    );
-  }
-
-  if (isAuthChecking) {
-    return (
-      <div className="min-h-screen bg-background text-foreground transition-colors duration-500 flex items-center justify-center">
-        <div className="text-sm text-muted-foreground">Verificando sesión...</div>
-      </div>
     );
   }
 

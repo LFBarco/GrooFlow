@@ -109,15 +109,22 @@ class RestAuthRepository implements IAuthRepository {
   }
 
   async signOut(): Promise<void> {
-    try {
-      if (getGrooflowToken()) {
-        await restFetch('/auth/logout', { method: 'POST' });
-      }
-    } catch {
-      /* ignore */
-    }
+    const token = getGrooflowToken();
     setGrooflowToken('');
     notify(null);
+    if (!token) return;
+    try {
+      await fetch(`${getGrooflowApiBase()}/auth/logout`, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch {
+      /* ignore: el token ya se borró en local */
+    }
   }
 
   async createUser(email: string, password: string, name: string): Promise<AuthUser> {

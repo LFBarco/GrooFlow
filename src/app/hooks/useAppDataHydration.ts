@@ -202,7 +202,8 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         return;
       }
       deps.hydrateRunningRef.current = true;
-      const shouldShowAuthChecking = !deps.cloudDataHydratedRef.current;
+      const shouldShowAuthChecking =
+        !deps.cloudDataHydratedRef.current && backend === 'supabase';
       if (shouldShowAuthChecking) deps.setIsAuthChecking(true);
       deps.setCloudSyncPhase('loading');
 
@@ -782,10 +783,9 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             const em = sessionEffective.user.email.trim().toLowerCase();
             const refreshedRow = resolveCurrentUserRow(nextUsers, em, sessionEffective.user.id);
             if (refreshedRow) {
-              const profile = await loadSelfAppUserProfile(
-                sqlClient!,
-                sessionEffective.user.id
-              );
+              const profile = sqlClient
+                ? await loadSelfAppUserProfile(sqlClient, sessionEffective.user.id)
+                : null;
               const merged = applySuperAdminRoleFromConfig([
                 mergeUserWithSqlProfile(refreshedRow, profile),
               ])[0]!;
@@ -809,7 +809,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           deps.setCurrentUser((prev) =>
             prev.id === sessionEffective.user!.id ? { ...prev, lastLogin: loginAt } : prev
           );
-          void touchOwnLastLogin(sqlClient!);
+          if (sqlClient) void touchOwnLastLogin(sqlClient);
         }
 
         deps.setUsers(nextUsers);
