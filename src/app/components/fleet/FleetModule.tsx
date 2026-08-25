@@ -139,7 +139,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
   const avgCons = avgFleetConsumptionLPer100(dataset);
 
   return (
-    <div data-testid="fleet-module" className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2">
+    <div data-testid="fleet-module" className="space-y-4 animate-in fade-in duration-150 -mt-2">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-500/25 bg-gradient-to-br from-slate-950/90 via-[#151025] to-slate-900/95 p-3 shadow-xl">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-emerald-500/15 p-2.5 border border-emerald-500/30">

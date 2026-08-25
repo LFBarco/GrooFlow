@@ -1,96 +1,148 @@
-import { lazy } from 'react';
+import { lazy, type ComponentType } from 'react';
 
-/** Indicador mientras se descarga el chunk del módulo (primera visita a esa vista). */
+import type { ViewType } from './routes';
+
+type LazyModule<T extends ComponentType<unknown>> = { default: T };
+
+function named<M extends Record<string, unknown>, K extends keyof M>(
+  loader: () => Promise<M>,
+  exportName: K
+): () => Promise<LazyModule<M[K] & ComponentType<unknown>>> {
+  return () =>
+    loader().then((mod) => ({
+      default: mod[exportName] as M[K] & ComponentType<unknown>,
+    }));
+}
+
+/** Indicador compacto: no tapa el header ni el sidebar. */
 export function RouteLoader() {
   return (
-    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 text-muted-foreground">
+    <div className="flex min-h-[18vh] items-center justify-center text-muted-foreground" role="status">
       <div
-        className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"
+        className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent"
         aria-hidden
       />
-      <p className="text-sm">Cargando módulo…</p>
+      <span className="sr-only">Cargando módulo</span>
     </div>
   );
 }
 
-/** Vistas y formularios pesados: se cargan bajo demanda (code-split) para un arranque más liviano. */
-export const Overview = lazy(() =>
-  import('./components/dashboard/Overview').then((m) => ({ default: m.Overview }))
+const loadOverview = named(() => import('./components/dashboard/Overview'), 'Overview');
+const loadCashFlowChart = named(() => import('./components/dashboard/CashFlowChart'), 'CashFlowChart');
+const loadRecentTransactions = named(
+  () => import('./components/dashboard/RecentTransactions'),
+  'RecentTransactions'
 );
-export const CashFlowChart = lazy(() =>
-  import('./components/dashboard/CashFlowChart').then((m) => ({ default: m.CashFlowChart }))
+const loadTransactionForm = named(() => import('./components/transactions/TransactionForm'), 'TransactionForm');
+const loadTransactionImporter = named(
+  () => import('./components/transactions/TransactionImporter'),
+  'TransactionImporter'
 );
-export const RecentTransactions = lazy(() =>
-  import('./components/dashboard/RecentTransactions').then((m) => ({ default: m.RecentTransactions }))
+const loadPnLView = named(() => import('./components/finance/PnLView'), 'PnLView');
+const loadPettyCashModule = named(() => import('./components/finance/PettyCashModule'), 'PettyCashModule');
+const loadCashFlowGrid = named(() => import('./components/dashboard/CashFlowGrid'), 'CashFlowGrid');
+const loadSmartCashFlowSimulation = named(
+  () => import('./components/dashboard/SmartCashFlowSimulation'),
+  'SmartCashFlowSimulation'
 );
-export const TransactionForm = lazy(() =>
-  import('./components/transactions/TransactionForm').then((m) => ({ default: m.TransactionForm }))
+const loadAnalyticsDashboard = named(
+  () => import('./components/dashboard/AnalyticsDashboard'),
+  'AnalyticsDashboard'
 );
-export const TransactionImporter = lazy(() =>
-  import('./components/transactions/TransactionImporter').then((m) => ({ default: m.TransactionImporter }))
+const loadConfigPanel = named(() => import('./components/configuration/ConfigPanel'), 'ConfigPanel');
+const loadAuditPanel = named(() => import('./components/audit/AuditPanel'), 'AuditPanel');
+const loadMonthlySummary = named(() => import('./components/reports/MonthlySummary'), 'MonthlySummary');
+const loadProviderManager = named(() => import('./components/providers/ProviderManager'), 'ProviderManager');
+const loadChartOfAccountsModule = named(
+  () => import('./components/accounting/ChartOfAccountsModule'),
+  'ChartOfAccountsModule'
 );
-export const PnLView = lazy(() =>
-  import('./components/finance/PnLView').then((m) => ({ default: m.PnLView }))
+const loadPurchaseRequestManager = named(
+  () => import('./components/purchases/PurchaseRequestManager'),
+  'PurchaseRequestManager'
 );
-export const PettyCashModule = lazy(() =>
-  import('./components/finance/PettyCashModule').then((m) => ({ default: m.PettyCashModule }))
+const loadProductModule = named(() => import('./components/products/ProductModule'), 'ProductModule');
+const loadUserManager = named(() => import('./components/users/UserManager'), 'UserManager');
+const loadTreasuryModule = named(() => import('./components/treasury/TreasuryModule'), 'TreasuryModule');
+const loadProfessionalFeesModule = named(
+  () => import('./components/finance/ProfessionalFeesModule'),
+  'ProfessionalFeesModule'
 );
-export const CashFlowGrid = lazy(() =>
-  import('./components/dashboard/CashFlowGrid').then((m) => ({ default: m.CashFlowGrid }))
+const loadAlertsCenter = named(() => import('./components/alerts/AlertsCenter'), 'AlertsCenter');
+const loadFleetModule = named(() => import('./components/fleet/FleetModule'), 'FleetModule');
+const loadInventoryModule = named(() => import('./components/inventory/InventoryModule'), 'InventoryModule');
+const loadAsistenciaModule = named(() => import('./components/asistencia/AsistenciaModule'), 'AsistenciaModule');
+const loadReconciliationModule = named(
+  () => import('./reconciliation/ui/ReconciliationModule'),
+  'ReconciliationModule'
 );
-export const SmartCashFlowSimulation = lazy(() =>
-  import('./components/dashboard/SmartCashFlowSimulation').then((m) => ({
-    default: m.SmartCashFlowSimulation,
-  }))
-);
-export const AnalyticsDashboard = lazy(() =>
-  import('./components/dashboard/AnalyticsDashboard').then((m) => ({ default: m.AnalyticsDashboard }))
-);
-export const ConfigPanel = lazy(() =>
-  import('./components/configuration/ConfigPanel').then((m) => ({ default: m.ConfigPanel }))
-);
-export const AuditPanel = lazy(() =>
-  import('./components/audit/AuditPanel').then((m) => ({ default: m.AuditPanel }))
-);
-export const MonthlySummary = lazy(() =>
-  import('./components/reports/MonthlySummary').then((m) => ({ default: m.MonthlySummary }))
-);
-export const ProviderManager = lazy(() =>
-  import('./components/providers/ProviderManager').then((m) => ({ default: m.ProviderManager }))
-);
-export const ChartOfAccountsModule = lazy(() =>
-  import('./components/accounting/ChartOfAccountsModule').then((m) => ({ default: m.ChartOfAccountsModule }))
-);
-export const PurchaseRequestManager = lazy(() =>
-  import('./components/purchases/PurchaseRequestManager').then((m) => ({ default: m.PurchaseRequestManager }))
-);
-export const ProductModule = lazy(() =>
-  import('./components/products/ProductModule').then((m) => ({ default: m.ProductModule }))
-);
-export const UserManager = lazy(() =>
-  import('./components/users/UserManager').then((m) => ({ default: m.UserManager }))
-);
-export const TreasuryModule = lazy(() =>
-  import('./components/treasury/TreasuryModule').then((m) => ({ default: m.TreasuryModule }))
-);
-export const ProfessionalFeesModule = lazy(() =>
-  import('./components/finance/ProfessionalFeesModule').then((m) => ({ default: m.ProfessionalFeesModule }))
-);
-export const AlertsCenter = lazy(() =>
-  import('./components/alerts/AlertsCenter').then((m) => ({ default: m.AlertsCenter }))
-);
-export const FleetModule = lazy(() =>
-  import('./components/fleet/FleetModule').then((m) => ({ default: m.FleetModule }))
-);
-export const InventoryModule = lazy(() =>
-  import('./components/inventory/InventoryModule').then((m) => ({ default: m.InventoryModule }))
-);
-export const AsistenciaModule = lazy(() =>
-  import('./components/asistencia/AsistenciaModule').then((m) => ({ default: m.AsistenciaModule }))
-);
-export const ReconciliationModule = lazy(() =>
-  import('./reconciliation/ui/ReconciliationModule').then((m) => ({ default: m.ReconciliationModule }))
-);
-export const UserProfileDialog = lazy(() =>
-  import('./components/users/UserProfileDialog').then((m) => ({ default: m.UserProfileDialog }))
-);
+const loadUserProfileDialog = named(() => import('./components/users/UserProfileDialog'), 'UserProfileDialog');
+
+export const Overview = lazy(loadOverview);
+export const CashFlowChart = lazy(loadCashFlowChart);
+export const RecentTransactions = lazy(loadRecentTransactions);
+export const TransactionForm = lazy(loadTransactionForm);
+export const TransactionImporter = lazy(loadTransactionImporter);
+export const PnLView = lazy(loadPnLView);
+export const PettyCashModule = lazy(loadPettyCashModule);
+export const CashFlowGrid = lazy(loadCashFlowGrid);
+export const SmartCashFlowSimulation = lazy(loadSmartCashFlowSimulation);
+export const AnalyticsDashboard = lazy(loadAnalyticsDashboard);
+export const ConfigPanel = lazy(loadConfigPanel);
+export const AuditPanel = lazy(loadAuditPanel);
+export const MonthlySummary = lazy(loadMonthlySummary);
+export const ProviderManager = lazy(loadProviderManager);
+export const ChartOfAccountsModule = lazy(loadChartOfAccountsModule);
+export const PurchaseRequestManager = lazy(loadPurchaseRequestManager);
+export const ProductModule = lazy(loadProductModule);
+export const UserManager = lazy(loadUserManager);
+export const TreasuryModule = lazy(loadTreasuryModule);
+export const ProfessionalFeesModule = lazy(loadProfessionalFeesModule);
+export const AlertsCenter = lazy(loadAlertsCenter);
+export const FleetModule = lazy(loadFleetModule);
+export const InventoryModule = lazy(loadInventoryModule);
+export const AsistenciaModule = lazy(loadAsistenciaModule);
+export const ReconciliationModule = lazy(loadReconciliationModule);
+export const UserProfileDialog = lazy(loadUserProfileDialog);
+
+const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
+  dashboard: [loadOverview, loadCashFlowChart],
+  alerts: [loadAlertsCenter],
+  analytics: [loadAnalyticsDashboard],
+  treasury: [loadTreasuryModule],
+  transactions: [loadTransactionForm, loadRecentTransactions, loadTransactionImporter],
+  cashflow: [loadCashFlowGrid, loadSmartCashFlowSimulation],
+  pnl: [loadPnLView],
+  reports: [loadMonthlySummary],
+  pettycash: [loadPettyCashModule],
+  fees: [loadProfessionalFeesModule],
+  providers: [loadProviderManager],
+  accounting: [loadChartOfAccountsModule],
+  products: [loadProductModule],
+  requests: [loadPurchaseRequestManager],
+  audit: [loadAuditPanel],
+  users: [loadUserManager],
+  config: [loadConfigPanel],
+  fleet: [loadFleetModule],
+  inventory: [loadInventoryModule],
+  asistencia: [loadAsistenciaModule],
+  reconciliation: [loadReconciliationModule],
+};
+
+const prefetched = new Set<ViewType>();
+
+/** Precarga el chunk de una vista (hover del menú o idle). `import()` queda en caché del navegador. */
+export function prefetchView(view: ViewType): void {
+  if (prefetched.has(view)) return;
+  prefetched.add(view);
+  for (const load of VIEW_LOADERS[view] ?? []) {
+    void load();
+  }
+}
+
+export function prefetchCommonViews(): void {
+  (['dashboard', 'alerts', 'transactions', 'cashflow', 'treasury', 'reports'] as ViewType[]).forEach(
+    prefetchView
+  );
+  void loadUserProfileDialog();
+}

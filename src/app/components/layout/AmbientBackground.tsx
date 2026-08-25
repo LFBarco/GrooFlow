@@ -23,7 +23,7 @@ export function AmbientBackground({ moduleId, isDark }: AmbientBackgroundProps) 
       className="gf-ambient-layer fixed inset-0 z-0 pointer-events-none"
       style={{
         background,
-        transition: 'background 400ms cubic-bezier(0.4, 0, 0.2, 1)',
+        transition: 'background 160ms cubic-bezier(0.4, 0, 0.2, 1)',
       }}
       aria-hidden
     />

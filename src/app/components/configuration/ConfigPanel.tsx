@@ -555,7 +555,7 @@ export function ConfigPanel({
   };
 
   return (
-    <div className="space-y-4 h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-500 -mt-2">
+    <div className="space-y-4 h-[calc(100vh-140px)] flex flex-col animate-in fade-in duration-150 -mt-2">
       <div className="flex flex-col gap-0.5 border-b border-border/60 pb-3">
         <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Settings className="w-7 h-7 text-orange-500 shrink-0" />

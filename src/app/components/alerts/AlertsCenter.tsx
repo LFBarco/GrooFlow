@@ -125,7 +125,7 @@ export function AlertsCenter({
     };
 
     return (
-        <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4 -mt-2">
+        <div className="flex flex-col h-full animate-in fade-in duration-150 space-y-4 -mt-2">
             
             {/* 1. Header & Navigation */}
             <div

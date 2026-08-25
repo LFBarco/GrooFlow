@@ -244,7 +244,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
   };
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-background text-foreground font-sans animate-in fade-in duration-500">
+    <div className="flex flex-col min-h-[calc(100vh-4rem)] bg-background text-foreground font-sans animate-in fade-in duration-150">
       
       {/* Header */}
       <header className="bg-card border-b border-border px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sticky top-0 z-20">

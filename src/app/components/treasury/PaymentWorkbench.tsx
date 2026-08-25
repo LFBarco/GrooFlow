@@ -79,7 +79,7 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
   };
 
   return (
-    <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-500">
+    <div className="space-y-6 h-full flex flex-col animate-in fade-in duration-150">
       
       {/* Top Panel: KPIs & Actions */}
       <div className="bg-card rounded-xl shadow-sm border border-border overflow-hidden">

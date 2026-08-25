@@ -109,7 +109,7 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
     };
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
+        <div className="space-y-4 animate-in fade-in duration-150 -mt-2">
             {/* ── Header ───────────────────────────────────────────────── */}
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pb-3"
               style={{ borderBottom: '1px solid rgba(139,92,246,0.15)' }}

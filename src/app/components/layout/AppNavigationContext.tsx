@@ -1,6 +1,7 @@
 import { createContext, useContext, type LucideIcon } from 'react';
 import type { ViewType } from '../../routes';
 import { useApp } from '../../context/AppContext';
+import { prefetchView } from '../../lazyRouteModules';
 
 export type AppNavigationContextValue = {
   activeView: ViewType;
@@ -46,7 +47,9 @@ export function AppNavButton({
     <div className="relative group/tooltip px-2">
       <button
         onClick={() => onSelectView(targetView)}
-        className={`relative flex items-center w-full py-2.5 transition-all duration-300 rounded-xl group/btn overflow-hidden
+        onPointerEnter={() => prefetchView(targetView)}
+        onFocus={() => prefetchView(targetView)}
+        className={`relative flex items-center w-full py-2.5 transition-colors duration-150 rounded-xl group/btn overflow-hidden
         ${isSidebarCollapsed ? 'justify-center px-0' : 'px-3'}
         ${
           isActive
@@ -84,7 +87,7 @@ export function AppNavButton({
         )}
 
         <Icon
-          className={`w-[19px] h-[19px] transition-all duration-300 shrink-0
+          className={`w-[19px] h-[19px] transition-colors duration-150 shrink-0
             ${isActive ? (isDark ? 'text-cyan-300' : 'text-cyan-700') : iconColorClass || (isDark ? 'text-slate-500 group-hover/btn:text-slate-200' : 'text-slate-500 group-hover/btn:text-slate-800')}
             ${!isSidebarCollapsed ? 'mr-3' : ''}`}
           style={isActive && isDark ? { filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.7))' } : {}}

@@ -1295,7 +1295,7 @@ ${signatures}
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-6 animate-in fade-in duration-150">
             {/* Custodian Selector (Visible for Admins or if multiple custodians exist) */}
             {custodians.length > 0 && (
                 <div

@@ -183,7 +183,7 @@ export function CashMovements({
   const net = totalAssignments - totalExpense;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-6 animate-in fade-in duration-150">
         {/* Header & Filters */}
         <div className="flex flex-col md:flex-row md:justify-end gap-4 w-full">
             <div className="flex flex-wrap items-center gap-2 bg-card p-2 rounded-lg border shadow-sm w-full md:w-auto">

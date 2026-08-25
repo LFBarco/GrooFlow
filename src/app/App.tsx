@@ -85,6 +85,8 @@ import {
   Overview,
   CashFlowChart,
   UserProfileDialog,
+  prefetchView,
+  prefetchCommonViews,
 } from "./lazyRouteModules";
 import { UserMenu } from "./components/layout/UserMenu";
 import { addMonths, subMonths, format, startOfDay, isValid, subDays, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
@@ -2738,11 +2740,26 @@ export default function App() {
 
   const handleSelectView = useCallback(
     (targetView: ViewType) => {
+      prefetchView(targetView);
       navigate(viewToPath(targetView));
       setMobileMenuOpen(false);
     },
     [navigate]
   );
+
+  useEffect(() => {
+    if (!isAuthenticated || !isDataLoaded) return;
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof win.requestIdleCallback === 'function') {
+      const idleId = win.requestIdleCallback(() => prefetchCommonViews(), { timeout: 1200 });
+      return () => win.cancelIdleCallback?.(idleId);
+    }
+    const t = window.setTimeout(() => prefetchCommonViews(), 400);
+    return () => window.clearTimeout(t);
+  }, [isAuthenticated, isDataLoaded]);
 
   const appNavigationValue = useMemo(
     () => ({
@@ -3105,7 +3122,7 @@ export default function App() {
   return (
     <AppNavigationContext.Provider value={appNavigationValue}>
     <div
-      className="min-h-screen bg-background text-foreground font-sans transition-colors duration-500 relative overflow-x-hidden"
+      className="min-h-screen bg-background text-foreground font-sans transition-colors duration-200 relative overflow-x-hidden"
       data-testid="app-authenticated"
       style={
         {
@@ -3128,7 +3145,7 @@ export default function App() {
       <div 
         className={`sidebar-hybrid ${isSidebarCollapsed ? 'w-[76px]' : 'w-[256px]'} fixed inset-y-0 left-0 z-50 flex flex-col`}
         style={{
-          transition: 'width 500ms cubic-bezier(0.2, 0, 0, 1)',
+          transition: 'width 180ms cubic-bezier(0.2, 0, 0, 1)',
           background: 'var(--gf-sidebar-bg)',
           borderRight: '1px solid var(--gf-sidebar-border)',
           boxShadow: 'var(--gf-sidebar-shadow)',
@@ -3138,7 +3155,7 @@ export default function App() {
         <div className="absolute inset-y-0 right-0 w-px pointer-events-none" style={{ background: 'var(--gf-sidebar-glow)' }} />
 
         {/* Brand Header */}
-        <div className={`h-[80px] flex items-center transition-all duration-500 ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'}`}
+        <div className={`h-[80px] flex items-center transition-all duration-200 ${isSidebarCollapsed ? 'justify-center px-0' : 'px-4'}`}
           style={{ borderBottom: '1px solid var(--gf-sidebar-divider)' }}
         >
           <div className={`relative flex items-center justify-center rounded-xl transition-all duration-300 shrink-0
@@ -3150,7 +3167,7 @@ export default function App() {
              <GrooflowBrandLogo customSrc={systemSettings.businessLogo} className="w-full h-full object-contain" />
           </div>
           
-          <div className={`ml-3 overflow-hidden transition-all duration-500 ${isSidebarCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100'}`}>
+          <div className={`ml-3 overflow-hidden transition-all duration-200 ${isSidebarCollapsed ? 'w-0 opacity-0 ml-0' : 'w-auto opacity-100'}`}>
             <span className="text-2xl font-bold tracking-tight block gradient-text-cyber truncate max-w-[180px]" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{systemSettings.businessName || 'GrooFlow'}</span>
             {isAuthenticated && isDataLoaded && (
               <div className="mt-1.5">
@@ -3312,11 +3329,10 @@ export default function App() {
 
       {/* Main Content */}
       <main className={`min-h-screen relative z-10 pt-6 md:pt-0 ${isSidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[256px]'}`}
-        style={{ transition: 'padding-left 500ms cubic-bezier(0.2, 0, 0, 1)' }}
+        style={{ transition: 'padding-left 180ms cubic-bezier(0.2, 0, 0, 1)' }}
       >
         <div className={`w-full ${view !== 'treasury' ? 'px-4 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-6 lg:py-8' : ''}`}>
-        <Suspense fallback={<RouteLoader />}>
-          {/* Header Section for Views using Generic Wrapper */}
+          {/* Header fuera de Suspense: no desaparece al cambiar de módulo */}
           {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
             <ModuleHeader
               icon={moduleIdentity.icon}
@@ -3418,6 +3434,7 @@ export default function App() {
             </ModuleHeader>
           )}
 
+        <Suspense fallback={<RouteLoader />}>
           {view === 'treasury' && (
              <TreasuryModule 
                pendingFeeReceipts={feeReceipts.filter(r => r.status === 'requested_payment')}
@@ -3479,7 +3496,7 @@ export default function App() {
           )}
 
           {view === 'dashboard' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="space-y-8 animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
                 <Overview 
                     transactions={transactions} 
@@ -3518,7 +3535,7 @@ export default function App() {
           )}
 
             {view === 'transactions' && (
-            <div className="grid gap-6 lg:grid-cols-12 animate-in fade-in slide-in-from-bottom-4 duration-500" data-testid="transactions-module">
+            <div className="grid gap-6 lg:grid-cols-12 animate-in fade-in duration-150" data-testid="transactions-module">
               <div className="lg:col-span-4 xl:col-span-3 space-y-5">
                 <div className={`rounded-2xl p-5 ${!isDarkTheme ? 'gf-glass-card' : ''}`} style={{ background: surfaces.chartCard.background, border: surfaces.chartCard.border, boxShadow: surfaces.chartCard.boxShadow }}>
                   <h3 className="mb-5 flex items-center gap-2" style={{ color: surfaces.pageTitle, fontWeight: 700 }}>
@@ -3690,7 +3707,7 @@ export default function App() {
           )}
 
           {view === 'cashflow' && (
-             <div className="flex min-h-[calc(100vh-120px)] flex-1 flex-col animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="flex min-h-[calc(100vh-120px)] flex-1 flex-col animate-in fade-in duration-150">
                <Tabs defaultValue="matrix" className="flex min-h-0 flex-1 flex-col gap-4">
                  <TabsList className="w-full max-w-md shrink-0 bg-slate-900/70 border border-cyan-500/20">
                    <TabsTrigger value="matrix" className="data-[state=active]:bg-cyan-600/40 data-[state=active]:text-cyan-50">
@@ -3729,7 +3746,7 @@ export default function App() {
           )}
 
           {view === 'pnl' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="animate-in fade-in duration-150">
                <PnLView 
                  transactions={transactions} 
                  currentDate={safeCurrentDate} 
@@ -3740,7 +3757,7 @@ export default function App() {
           )}
 
           {view === 'reports' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="animate-in fade-in duration-150">
                <div className="flex items-center justify-between gap-4 mb-4">
                  <h2 className="text-xl font-semibold">Resumen mensual</h2>
                  <div className="flex items-center gap-2">
@@ -3760,7 +3777,7 @@ export default function App() {
           )}
 
           {view === 'providers' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="animate-in fade-in duration-150">
                 <ProviderManager 
                     providers={providers} 
                     onUpdateProviders={handleUpdateProviders} 
@@ -3777,7 +3794,7 @@ export default function App() {
           )}
 
           {view === 'accounting' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="animate-in fade-in duration-150">
               <ChartOfAccountsModule
                 chartOfAccounts={chartOfAccounts}
                 onUpdateChart={handleChartOfAccountsUpdate}
@@ -3788,7 +3805,7 @@ export default function App() {
           )}
 
           {view === 'fleet' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="animate-in fade-in duration-150">
               <FleetModule
                 dataset={fleetDataset}
                 setDataset={handleFleetDatasetUpdate}
@@ -3808,7 +3825,7 @@ export default function App() {
           )}
 
           {view === 'inventory' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
                 <InventoryModule
                   dataset={inventoryDataset}
@@ -3829,7 +3846,7 @@ export default function App() {
           )}
 
           {view === 'asistencia' && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
                 <AsistenciaModule
                   systemSettings={systemSettings}
@@ -3844,7 +3861,7 @@ export default function App() {
           )}
 
           {view === 'products' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="animate-in fade-in duration-150">
                 <ProductModule 
                     products={products}
                     providers={providers}
@@ -3856,7 +3873,7 @@ export default function App() {
           )}
 
           {view === 'requests' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="animate-in fade-in duration-150">
                 <PurchaseRequestManager 
                     requests={filteredRequestsBySede} 
                     providers={providers}
@@ -3877,7 +3894,7 @@ export default function App() {
           )}
 
           {view === 'users' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="animate-in fade-in duration-150">
                 <UserManager 
                     users={users} 
                     roles={roles}
@@ -3978,7 +3995,7 @@ export default function App() {
           )}
 
           {view === 'pettycash' && (
-             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+             <div className="animate-in fade-in duration-150">
                 <PettyCashModule 
                   transactions={filteredPettyCashBySede}
                   onUpdateTransactions={handleUpdatePettyCashTransactions}

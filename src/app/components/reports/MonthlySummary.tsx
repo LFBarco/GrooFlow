@@ -106,7 +106,7 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
+    <div className="space-y-6 animate-in fade-in duration-150 h-full flex flex-col">
         {/* Header Status */}
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center p-4 rounded-xl"
           style={{ background: s.isDark ? 'rgba(26,24,38,0.8)' : s.card.background, border: s.isDark ? '1px solid rgba(139,92,246,0.15)' : s.card.border, boxShadow: s.isDark ? undefined : s.card.boxShadow }}

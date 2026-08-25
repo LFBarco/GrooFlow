@@ -59,7 +59,11 @@ const PATH_TO_VIEW = Object.fromEntries(
 ) as Record<string, ViewType>;
 
 export function pathToView(pathname: string): ViewType {
-  const normalized = pathname.replace(/\/$/, '') || '/';
+  let normalized = pathname.replace(/\/$/, '') || '/';
+  if (normalized === '/grooflow') normalized = '/';
+  else if (normalized.startsWith('/grooflow/')) {
+    normalized = normalized.slice('/grooflow'.length) || '/';
+  }
   return PATH_TO_VIEW[normalized] ?? DEFAULT_VIEW;
 }
 

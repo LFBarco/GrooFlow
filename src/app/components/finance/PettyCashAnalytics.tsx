@@ -256,7 +256,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
     }
 
     return (
-        <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="space-y-6 animate-in fade-in duration-150">
             {/* Header & Controls */}
             <div className="flex flex-col md:flex-row justify-end items-start md:items-center gap-4">
                 <div className="flex items-center gap-2 p-1 rounded-xl border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(139,92,246,0.2)' }}>

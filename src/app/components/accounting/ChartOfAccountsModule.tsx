@@ -464,7 +464,7 @@ export function ChartOfAccountsModule({
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-500 -mt-2">
+    <div className="space-y-4 animate-in fade-in duration-150 -mt-2">
       <div className="border-b border-border/60 pb-3">
         <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <BookOpen className="h-7 w-7 text-primary shrink-0" />
