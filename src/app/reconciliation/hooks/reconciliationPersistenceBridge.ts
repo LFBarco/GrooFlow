@@ -28,6 +28,16 @@ export function applyReconciliationRemote(value: unknown): void {
   remoteApply?.(value);
 }
 
+/** Aplica un dataset de ejemplo/forzado al módulo de conciliación. */
+export function applyExampleReconciliationDataset(dataset: ReconciliationDataset): void {
+  latest = normalizeDataset(dataset);
+  if (forceApply) {
+    forceApply(latest);
+  } else {
+    remoteApply?.(latest);
+  }
+}
+
 /** Limpia snapshot + UI del módulo (reinicio operativo). */
 export function resetReconciliationForOperationalClear(): void {
   const empty = createEmptyDataset();

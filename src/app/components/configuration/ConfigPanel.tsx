@@ -68,6 +68,8 @@ interface ConfigPanelProps {
   ) => Promise<boolean>;
   onStressTest?: () => void;
   onResetData?: () => void;
+  /** Carga datos de ejemplo en todos los módulos operativos (super admin). */
+  onLoadExampleData?: () => void;
   users: User[];
   roles?: Role[];
   onUpdateUsers: (users: User[]) => void;
@@ -90,6 +92,7 @@ export function ConfigPanel({
   onPersistAsistenciaSettings,
   onStressTest,
   onResetData,
+  onLoadExampleData,
   users,
   roles = DEFAULT_ROLES,
   onUpdateUsers,
@@ -1987,6 +1990,22 @@ export function ConfigPanel({
                           Ejecutar Prueba de Carga (Stress Test)
                         </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                          onClick={() => {
+                            if (
+                              !confirm(
+                                'Se cargarán datos de ejemplo en alertas (derivadas), tesorería, transacciones, flujo de caja, EE.RR., reportes, caja chica, honorarios, proveedores, contabilidad, flota, inventario, asistencia, productos, solicitudes, auditoría (vía movimientos) y conciliación.\n\nPuede sobrescribir datos actuales de esos módulos. ¿Continuar?'
+                              )
+                            ) {
+                              return;
+                            }
+                            onLoadExampleData?.();
+                          }}
+                        >
+                          Cargar datos de ejemplo
+                        </Button>
                         <Button 
                           variant="outline" 
                           className="text-red-500 border-red-200 hover:bg-red-50"

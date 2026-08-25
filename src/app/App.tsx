@@ -206,6 +206,7 @@ import {
   broadcastKvUpdate,
 } from "./utils/kvCrossTabSync";
 import { clearOperationalData } from "./utils/clearOperationalData";
+import { loadExampleOperationalData } from "./utils/loadExampleOperationalData";
 import {
   FLEET_REMOTE_COOLDOWN_MS,
   shouldApplyFleetRemoteSnapshot,
@@ -225,7 +226,7 @@ import {
   shouldApplyValueRemoteSnapshot,
 } from "./utils/listRemoteSyncGuard";
 import { writeAuditLogLazy } from "./services/repository/auditLogSql";
-import { applyReconciliationRemote, getReconciliationRetrySnapshot, resetReconciliationForOperationalClear } from "./reconciliation/hooks/reconciliationPersistenceBridge";
+import { applyExampleReconciliationDataset, applyReconciliationRemote, getReconciliationRetrySnapshot, resetReconciliationForOperationalClear } from "./reconciliation/hooks/reconciliationPersistenceBridge";
 import { applyAlertReadRemote, getAlertReadRetrySnapshot, resetAlertReadForOperationalClear } from "./hooks/alertReadPersistenceBridge";
 import { isStressTestEnabled } from "./config/destructiveDebug";
 import { generateEntityId } from "./utils/generateEntityId";
@@ -2766,6 +2767,101 @@ export default function App() {
       });
     };
 
+    const handleLoadExampleData = async () => {
+      const email = currentUser.email?.trim().toLowerCase();
+      const canLoad =
+        currentUser.role === 'super_admin' ||
+        !!(email && getSuperAdminEmails().has(email));
+      if (!canLoad) {
+        toast.error('Solo super administradores pueden cargar datos de ejemplo.');
+        return;
+      }
+      if (!isDataLoaded) {
+        toast.error('Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.');
+        return;
+      }
+
+      const toastId = toast.loading('Cargando datos de ejemplo…');
+      const sb = await getSupabaseClientLazy();
+      const uid = sb ? ((await sb.auth.getSession()).data.session?.user?.id ?? null) : null;
+      const sedeNames = Array.from(
+        new Set(
+          [
+            ...(currentUser.sedes ?? []),
+            ...(systemSettings.asistencia?.staff ?? []).map((s) => s.sedeName),
+            'Benavides',
+          ].filter(Boolean)
+        )
+      ) as string[];
+
+      const { ok, failed, payload } = await loadExampleOperationalData({
+        userId: uid,
+        sedeNames: sedeNames.slice(0, 3),
+      });
+
+      transactionsKvLatestRef.current = payload.transactions;
+      invoicesKvLatestRef.current = payload.invoices;
+      providersKvLatestRef.current = payload.providers;
+      pettyCashKvLatestRef.current = payload.pettyCash;
+      requestsKvLatestRef.current = payload.requests;
+      productsKvLatestRef.current = payload.products;
+      feeReceiptsKvLatestRef.current = payload.feeReceipts;
+      chartOfAccountsKvLatestRef.current = payload.chartOfAccounts;
+      fleetKvLatestRef.current = payload.fleet;
+      inventoryKvLatestRef.current = payload.inventory;
+      treasuryInvoicesKvLatestRef.current = payload.treasuryInvoices;
+      treasuryBankBalanceKvLatestRef.current = payload.treasuryBankBalance;
+      treasuryPaidHistoryKvLatestRef.current = payload.treasuryPaidHistory;
+      treasurySubscriptionsKvLatestRef.current = payload.treasurySubscriptions;
+      treasuryBankMovementsKvLatestRef.current = payload.treasuryBankMovements;
+      pettyCashMetaKvLatestRef.current = payload.pettyCashMeta;
+
+      setTransactions(payload.transactions);
+      setInvoices(payload.invoices);
+      setProviders(payload.providers);
+      setPettyCashTransactions(payload.pettyCash);
+      setRequests(payload.requests);
+      setProducts(payload.products);
+      setFeeReceipts(payload.feeReceipts);
+      setChartOfAccounts(payload.chartOfAccounts);
+      setFleetDataset(payload.fleet);
+      setInventoryDataset(payload.inventory);
+      setTreasuryInvoices(payload.treasuryInvoices);
+      setTreasuryBankBalance(payload.treasuryBankBalance);
+      setTreasuryPaidHistory(payload.treasuryPaidHistory);
+      setTreasurySubscriptions(payload.treasurySubscriptions);
+      setTreasuryBankMovements(payload.treasuryBankMovements);
+      setSystemSettings((prev) =>
+        mergePettyCashMetaIntoSettings(prev, payload.pettyCashMeta)
+      );
+      applyExampleReconciliationDataset(payload.reconciliation);
+      resetAlertReadForOperationalClear();
+
+      const asistenciaOk = await persistAsistenciaNow(
+        (prev) => payload.asistenciaPatch(prev),
+        'Personal de ejemplo (asistencia) guardado.'
+      );
+
+      toast.dismiss(toastId);
+      void writeAuditLogLazy('operational_example_seed', {
+        entity: 'Sistema',
+        details: 'Carga de datos de ejemplo (super admin)',
+        failedDomains: failed,
+        asistenciaOk,
+      });
+
+      if (!ok || !asistenciaOk) {
+        toast.error('Carga de ejemplo incompleta', {
+          description: `Revisa: ${[!asistenciaOk ? 'asistencia' : null, ...failed.slice(0, 4)].filter(Boolean).join(', ')}`,
+          duration: 12_000,
+        });
+        return;
+      }
+      toast.success('Datos de ejemplo cargados.', {
+        description: 'Revisa los módulos del menú; alertas y reportes se actualizan con las transacciones.',
+      });
+    };
+
   const { totalIncome, totalExpense, netCashFlow } = useMemo(() => {
     const income = transactions
       .filter((t) => t.type === "income")
@@ -4248,6 +4344,7 @@ export default function App() {
               onPersistAsistenciaSettings={persistAsistenciaNow}
               onStressTest={handleStressTest}
               onResetData={handleResetData}
+              onLoadExampleData={handleLoadExampleData}
               users={users}
               roles={roles}
               onUpdateUsers={setUsers}
