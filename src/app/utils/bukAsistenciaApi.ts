@@ -377,10 +377,19 @@ export async function fetchBukAsistenciaAll(input: {
 
   try {
     const all = await fetchAllViaProxy({ baseUrl, apiToken, maxPages });
-    const totalPages =
-      all.length > 0 ? Math.min(maxPages, Math.ceil(all.length / BUK_PAGE_SIZE) || 1) : 1;
-    input.onProgress?.(totalPages, totalPages);
-    return all;
+    if (all.length > 0) {
+      const totalPages =
+        Math.min(maxPages, Math.ceil(all.length / BUK_PAGE_SIZE) || 1);
+      input.onProgress?.(totalPages, totalPages);
+      return all;
+    }
+    // fetch-all vacío pero HTTP 200: proxy PHP incompleto → paginar con /fetch.
+    return fetchAllViaProxyPages({
+      baseUrl,
+      apiToken,
+      maxPages,
+      onProgress: input.onProgress,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('404') || msg.includes('no encontrada')) {

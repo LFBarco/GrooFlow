@@ -46,6 +46,7 @@ import { Switch } from '../ui/switch';
 import { Role } from './types';
 import { RoleConfigDialog } from './RoleConfigDialog';
 import { SedeConfigDialog } from './SedeConfigDialog';
+import { UserOccupationalFields } from './UserOccupationalFields';
 import { repository } from '../../services/api';
 import { describeAuthOrNetworkError } from '../../utils/authErrors';
 import { isSupabaseBackend } from '../../config/backend';
@@ -209,6 +210,12 @@ export function UserManager({
                 status: 'active',
                 allSedes: currentUserForm.allSedes ?? true,
                 sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),
+                jobTitle: currentUserForm.jobTitle,
+                workArea: currentUserForm.workArea,
+                hireDate: currentUserForm.hireDate,
+                contractType: currentUserForm.contractType,
+                weeklyHours: currentUserForm.weeklyHours,
+                location: currentUserForm.location,
             };
 
             onAddUser(user);
@@ -252,6 +259,11 @@ export function UserManager({
             location: currentUserForm.location,
             allSedes: currentUserForm.allSedes ?? true,
             sedes: currentUserForm.allSedes ? [] : (currentUserForm.sedes || []),
+            jobTitle: currentUserForm.jobTitle,
+            workArea: currentUserForm.workArea,
+            hireDate: currentUserForm.hireDate,
+            contractType: currentUserForm.contractType,
+            weeklyHours: currentUserForm.weeklyHours,
         };
 
         onUpdateUser(user);
@@ -638,7 +650,7 @@ export function UserManager({
                     if (!open) setIsCreating(false);
                 }}
             >
-                <DialogContent className="sm:max-w-[520px]">
+                <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <KeyRound className="w-5 h-5 text-blue-600" />
@@ -769,6 +781,12 @@ export function UserManager({
                             )}
                         </div>
 
+                        <UserOccupationalFields
+                            form={currentUserForm}
+                            sedesCatalog={sedesCatalog}
+                            onChange={(patch) => setCurrentUserForm((prev) => ({ ...prev, ...patch }))}
+                        />
+
                         <div className="border-t pt-4 space-y-3">
                             <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-1">
                                 <KeyRound className="w-4 h-4" />
@@ -848,7 +866,7 @@ export function UserManager({
 
             {/* DIALOG: Editar Usuario */}
             <Dialog open={isEditUserOpen} onOpenChange={setIsEditUserOpen}>
-                <DialogContent className="sm:max-w-[500px]">
+                <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Editar Usuario</DialogTitle>
                         <DialogDescription>
@@ -921,6 +939,11 @@ export function UserManager({
                                 </SelectContent>
                             </Select>
                         </div>
+                        <UserOccupationalFields
+                            form={currentUserForm}
+                            sedesCatalog={sedesCatalog}
+                            onChange={(patch) => setCurrentUserForm((prev) => ({ ...prev, ...patch }))}
+                        />
                         {/* Sede Access Section */}
                         <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
                             <div className="flex items-center justify-between">

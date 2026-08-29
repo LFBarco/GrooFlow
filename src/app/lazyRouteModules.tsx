@@ -72,6 +72,11 @@ const loadAlertsCenter = named(() => import('./components/alerts/AlertsCenter'),
 const loadFleetModule = named(() => import('./components/fleet/FleetModule'), 'FleetModule');
 const loadInventoryModule = named(() => import('./components/inventory/InventoryModule'), 'InventoryModule');
 const loadAsistenciaModule = named(() => import('./components/asistencia/AsistenciaModule'), 'AsistenciaModule');
+const loadTurnosModule = named(() => import('./components/turnos/TurnosModule'), 'TurnosModule');
+const loadAccidentesModule = named(
+  () => import('./components/accidentes/AccidentesModule'),
+  'AccidentesModule'
+);
 const loadReconciliationModule = named(
   () => import('./reconciliation/ui/ReconciliationModule'),
   'ReconciliationModule'
@@ -102,6 +107,8 @@ export const AlertsCenter = lazy(loadAlertsCenter);
 export const FleetModule = lazy(loadFleetModule);
 export const InventoryModule = lazy(loadInventoryModule);
 export const AsistenciaModule = lazy(loadAsistenciaModule);
+export const TurnosModule = lazy(loadTurnosModule);
+export const AccidentesModule = lazy(loadAccidentesModule);
 export const ReconciliationModule = lazy(loadReconciliationModule);
 export const UserProfileDialog = lazy(loadUserProfileDialog);
 
@@ -126,6 +133,8 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   fleet: [loadFleetModule],
   inventory: [loadInventoryModule],
   asistencia: [loadAsistenciaModule],
+  turnos: [loadTurnosModule],
+  accidentes: [loadAccidentesModule],
   reconciliation: [loadReconciliationModule],
 };
 
