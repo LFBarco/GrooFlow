@@ -27,6 +27,7 @@ export type ViewType =
   | 'asistencia'
   | 'turnos'
   | 'accidentes'
+  | 'uniformes'
   | 'reconciliation';
 
 /** Path por defecto (raíz) */
@@ -70,6 +71,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   asistencia: '/asistencia',
   turnos: '/turnos',
   accidentes: '/accidentes-trabajo',
+  uniformes: '/entrega-uniformes',
   reconciliation: '/conciliacion',
 };
 
@@ -120,6 +122,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   asistencia: 'Asistencia',
   turnos: 'Turnos',
   accidentes: 'Accidentes de Trabajo',
+  uniformes: 'Entrega de Uniformes',
   reconciliation: 'Conciliación',
 };
 
@@ -150,5 +153,6 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'asistencia',
   'turnos',
   'accidentes',
+  'uniformes',
   'reconciliation',
 ];

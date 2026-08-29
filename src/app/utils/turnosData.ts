@@ -34,6 +34,22 @@ function initialsFromName(name: string): string {
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
 }
 
+function mapWorkAreaFromAsistencia(area: string): string {
+  const lower = area.toLowerCase();
+  if (lower.includes('med') || lower.includes('vet')) return 'Área Médica';
+  if (lower.includes('groom') || lower.includes('pelu')) return 'Grooming / Peluquería';
+  if (lower.includes('admin') || lower.includes('counter') || lower.includes('recep')) {
+    return 'Recepción / Counter';
+  }
+  if (lower.includes('mant')) return 'Mantenimiento';
+  if (lower.includes('limp')) return 'Limpieza';
+  if (lower.includes('chofer') || lower.includes('flota')) return 'Flota / Choferes';
+  if (lower.includes('farm')) return 'Farmacia';
+  if (lower.includes('lab')) return 'Laboratorio';
+  if (lower.includes('bode') || lower.includes('almac')) return 'Bodega / Almacén';
+  return area.trim() || 'Otro';
+}
+
 function rosterKey(entry: Pick<TurnosRosterEntry, 'source' | 'userId' | 'asistenciaStaffId' | 'fullName'>): string {
   if (entry.userId) return `user:${entry.userId}`;
   if (entry.asistenciaStaffId) return `asist:${entry.asistenciaStaffId}`;
@@ -60,7 +76,8 @@ export function buildRosterFromSources(input: {
       userId: u.id,
       fullName: u.name,
       initials: u.initials || initialsFromName(u.name),
-      roleLabel: u.role,
+      roleLabel: u.jobTitle || u.role,
+      workArea: u.workArea || undefined,
       homeSede,
       email: u.email,
       active: true,
@@ -77,13 +94,14 @@ export function buildRosterFromSources(input: {
       fullName: s.fullName,
       initials: initialsFromName(s.fullName),
       roleLabel: s.cargoLabel,
+      workArea: s.area ? mapWorkAreaFromAsistencia(s.area) : undefined,
       homeSede: s.sedeName,
       active: true,
       sortOrder: s.sortOrder,
     };
     const key = rosterKey(entry);
     const prev = map.get(key);
-    map.set(key, prev ? { ...prev, ...entry, id: prev.id } : entry);
+    map.set(key, prev ? { ...prev, ...entry, id: prev.id, workArea: entry.workArea || prev.workArea } : entry);
   }
 
   return [...map.values()]

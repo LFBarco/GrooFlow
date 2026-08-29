@@ -125,7 +125,10 @@ export function TurnosDayView({ settings, date, workSede, canEdit, showAllStaff,
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium">{staff.fullName}</p>
                               <p className="truncate text-[11px] text-muted-foreground">
-                                {staff.roleLabel} · {staff.homeSede}
+                                {staff.roleLabel}
+                                {staff.workArea ? ` · ${staff.workArea}` : ''}
+                                {' · '}
+                                {staff.homeSede}
                               </p>
                             </div>
                           </div>

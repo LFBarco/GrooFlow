@@ -82,6 +82,10 @@ const loadAccidentesModule = named(
   () => import('./components/accidentes/AccidentesModule'),
   'AccidentesModule'
 );
+const loadUniformesModule = named(
+  () => import('./components/uniformes/UniformesModule'),
+  'UniformesModule'
+);
 const loadReconciliationModule = named(
   () => import('./reconciliation/ui/ReconciliationModule'),
   'ReconciliationModule'
@@ -116,6 +120,7 @@ export const InventoryModule = lazy(loadInventoryModule);
 export const AsistenciaModule = lazy(loadAsistenciaModule);
 export const TurnosModule = lazy(loadTurnosModule);
 export const AccidentesModule = lazy(loadAccidentesModule);
+export const UniformesModule = lazy(loadUniformesModule);
 export const ReconciliationModule = lazy(loadReconciliationModule);
 export const UserProfileDialog = lazy(loadUserProfileDialog);
 
@@ -144,6 +149,7 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   asistencia: [loadAsistenciaModule],
   turnos: [loadTurnosModule],
   accidentes: [loadAccidentesModule],
+  uniformes: [loadUniformesModule],
   reconciliation: [loadReconciliationModule],
 };
 

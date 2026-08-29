@@ -21,6 +21,7 @@ import {
   ListTree,
   ShieldCheck,
   Circle,
+  Shirt,
 } from 'lucide-react';
 import { pathToView, VIEW_TO_PATH, type ViewType } from '../routes';
 
@@ -55,6 +56,8 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
   'Gestión Vehicular': Truck,
   'Gestión de Inventario': Package,
   Asistencia: UserCheck,
+  Turnos: CalendarDays,
+  'Entrega de Uniformes': Shirt,
   Compras: ShoppingCart,
   Productos: Package,
   Auditoría: ShieldAlert,

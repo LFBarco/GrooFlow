@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Trash2, UserPlus } from 'lucide-react';
 
 import type { TurnosRosterEntry, TurnosSettings } from '../../types/turnos';
+import { VET_WORK_AREAS } from '../../types/accidentes';
 import { removeRosterEntry, upsertManualRosterEntry } from '../../utils/turnosData';
 import { Button } from '../ui/button';
 import {
@@ -42,6 +43,7 @@ export function TurnosRosterDialog({
   const [editing, setEditing] = useState<TurnosRosterEntry | null>(null);
   const [fullName, setFullName] = useState('');
   const [roleLabel, setRoleLabel] = useState('');
+  const [workArea, setWorkArea] = useState<string>(VET_WORK_AREAS[0]);
   const [homeSede, setHomeSede] = useState(sedeOptions[0] ?? 'Principal');
   const [initials, setInitials] = useState('');
 
@@ -50,6 +52,7 @@ export function TurnosRosterDialog({
       setEditing(null);
       setFullName('');
       setRoleLabel('');
+      setWorkArea(VET_WORK_AREAS[0]);
       setHomeSede(sedeOptions[0] ?? 'Principal');
       setInitials('');
     }
@@ -60,6 +63,7 @@ export function TurnosRosterDialog({
     setEditing(entry);
     setFullName(entry.fullName);
     setRoleLabel(entry.roleLabel);
+    setWorkArea(entry.workArea || VET_WORK_AREAS[0]);
     setHomeSede(entry.homeSede);
     setInitials(entry.initials);
   };
@@ -72,6 +76,7 @@ export function TurnosRosterDialog({
           id: editing?.id,
           fullName: fullName.trim(),
           roleLabel: roleLabel.trim() || 'Personal',
+          workArea,
           homeSede,
           initials: initials.trim(),
         }),
@@ -80,6 +85,7 @@ export function TurnosRosterDialog({
     setEditing(null);
     setFullName('');
     setRoleLabel('');
+    setWorkArea(VET_WORK_AREAS[0]);
     setInitials('');
   };
 
@@ -118,6 +124,21 @@ export function TurnosRosterDialog({
                   onChange={(e) => setRoleLabel(e.target.value)}
                   placeholder="Counter"
                 />
+              </div>
+              <div className="space-y-1">
+                <Label>Área</Label>
+                <Select value={workArea} onValueChange={setWorkArea}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {VET_WORK_AREAS.map((a) => (
+                      <SelectItem key={a} value={a}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label>Sede habitual</Label>
@@ -161,7 +182,10 @@ export function TurnosRosterDialog({
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{entry.fullName}</p>
                 <p className="truncate text-[11px] text-muted-foreground">
-                  {entry.roleLabel} · {entry.homeSede}
+                  {entry.roleLabel}
+                  {entry.workArea ? ` · ${entry.workArea}` : ''}
+                  {' · '}
+                  {entry.homeSede}
                   {entry.source !== 'manual' ? ` · ${entry.source}` : ''}
                 </p>
               </div>

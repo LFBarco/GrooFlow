@@ -122,6 +122,25 @@ export interface Provider {
   totalPurchased?: number; // Campo calculado para analítica
   type?: 'Mercaderia' | 'Servicios' | 'Médico Externo'; // Nuevo: Tipo de proveedor
   specialty?: string; // Nuevo: Solo para 'Médico Externo'
+
+  // —— Abastecimiento / procurement (opcionales; no afectan caja chica ni honorarios) ——
+  /** Moneda preferida de cotización/compra. */
+  preferredCurrency?: 'PEN' | 'USD';
+  /** Días promedio de entrega. */
+  leadTimeDays?: number;
+  /** Pedido mínimo en moneda preferida. */
+  minimumOrderAmount?: number;
+  /** Forma de pago habitual (texto libre o catálogo corto). */
+  paymentTermsLabel?: string;
+  /** Score agregado 0–100 (calidad + cumplimiento + precio). */
+  supplierScore?: number;
+  /** Evaluación parcial 0–100. */
+  scoreQuality?: number;
+  scoreFulfillment?: number;
+  scorePrice?: number;
+  scoreDelivery?: number;
+  /** Marca el proveedor como preferido a nivel directorio. */
+  isPreferredSupplier?: boolean;
 }
 
 export type RequestStatus = 'pending' | 'approved' | 'rejected';

@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import { AlertTriangle, Moon, Sun } from 'lucide-react';
+import { AlertTriangle, ArrowDownAZ, ArrowUpAZ, Moon, Sun } from 'lucide-react';
 
 import type { TurnoShiftCode, TurnosRosterEntry, TurnosSettings } from '../../types/turnos';
 import { TURNO_SHIFT_LABELS } from '../../types/turnos';
@@ -18,6 +18,8 @@ import { TURNO_SHIFT_STYLES } from '../../utils/turnosStyles';
 import { cn } from '../ui/utils';
 import { TurnosShiftCell } from './TurnosShiftCell';
 
+type SortDir = 'asc' | 'desc' | null;
+
 type Props = {
   settings: TurnosSettings;
   weekDays: Date[];
@@ -27,12 +29,30 @@ type Props = {
   onUpdate: (updater: (prev: TurnosSettings) => TurnosSettings) => void;
 };
 
+function sortRosterByArea(roster: TurnosRosterEntry[], dir: SortDir): TurnosRosterEntry[] {
+  if (!dir) return roster;
+  const factor = dir === 'asc' ? 1 : -1;
+  return [...roster].sort((a, b) => {
+    const areaA = (a.workArea || 'Sin área').toLocaleLowerCase('es');
+    const areaB = (b.workArea || 'Sin área').toLocaleLowerCase('es');
+    const cmp = areaA.localeCompare(areaB, 'es') || a.fullName.localeCompare(b.fullName, 'es');
+    return cmp * factor;
+  });
+}
+
 export function TurnosWeekGrid({ settings, weekDays, workSede, canEdit, showAllStaff, onUpdate }: Props) {
+  const [areaSort, setAreaSort] = useState<SortDir>(null);
   const dateKeys = useMemo(() => weekDays.map(toDateKey), [weekDays]);
-  const roster = useMemo(() => {
+  const baseRoster = useMemo(() => {
     if (showAllStaff && workSede !== 'Todas') return settings.roster;
     return rosterForPlanning(settings.roster, settings.assignments, workSede, dateKeys);
   }, [settings.roster, settings.assignments, workSede, dateKeys, showAllStaff]);
+
+  const roster = useMemo(() => sortRosterByArea(baseRoster, areaSort), [baseRoster, areaSort]);
+
+  const cycleAreaSort = () => {
+    setAreaSort((prev) => (prev === null ? 'asc' : prev === 'asc' ? 'desc' : null));
+  };
 
   const handleAssign = (staff: TurnosRosterEntry, date: string, shift: TurnoShiftCode) => {
     onUpdate((prev) =>
@@ -58,6 +78,7 @@ export function TurnosWeekGrid({ settings, weekDays, workSede, canEdit, showAllS
   };
 
   const resolvedSede = workSede === 'Todas' ? undefined : workSede;
+  const SortIcon = areaSort === 'desc' ? ArrowUpAZ : ArrowDownAZ;
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -65,8 +86,27 @@ export function TurnosWeekGrid({ settings, weekDays, workSede, canEdit, showAllS
         <table className="w-full min-w-[720px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-muted/30 dark:border-slate-700 dark:bg-slate-900/40">
-              <th className="sticky left-0 z-10 min-w-[200px] bg-muted/30 px-3 py-3 text-left text-xs font-medium text-muted-foreground dark:bg-slate-900/40">
-                Personal
+              <th className="sticky left-0 z-10 min-w-[220px] bg-muted/30 px-3 py-3 text-left text-xs font-medium text-muted-foreground dark:bg-slate-900/40">
+                <button
+                  type="button"
+                  onClick={cycleAreaSort}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-muted/60 hover:text-foreground',
+                    areaSort && 'text-foreground'
+                  )}
+                  title={
+                    areaSort === 'asc'
+                      ? 'Ordenado por área A→Z (clic para invertir)'
+                      : areaSort === 'desc'
+                        ? 'Ordenado por área Z→A (clic para quitar)'
+                        : 'Ordenar por área'
+                  }
+                >
+                  Personal
+                  <SortIcon
+                    className={cn('h-3.5 w-3.5', areaSort ? 'opacity-100' : 'opacity-50')}
+                  />
+                </button>
               </th>
               {weekDays.map((day) => {
                 const key = toDateKey(day);
@@ -124,7 +164,10 @@ export function TurnosWeekGrid({ settings, weekDays, workSede, canEdit, showAllS
                       <div className="min-w-0">
                         <p className="truncate font-medium text-foreground">{staff.fullName}</p>
                         <p className="truncate text-[11px] text-muted-foreground">
-                          {staff.roleLabel} · {staff.homeSede}
+                          {staff.roleLabel}
+                          {staff.workArea ? ` · ${staff.workArea}` : ''}
+                          {' · '}
+                          {staff.homeSede}
                         </p>
                       </div>
                     </div>
@@ -172,7 +215,7 @@ export function TurnosWeekGrid({ settings, weekDays, workSede, canEdit, showAllS
         </div>
         {canEdit ? (
           <p className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground dark:border-slate-700">
-            Arrastra un turno a otra celda para reprogramar · clic para editar
+            Arrastra un turno a otra celda para reprogramar · clic para editar · flecha en Personal ordena por área
           </p>
         ) : null}
       </div>

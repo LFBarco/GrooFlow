@@ -1068,6 +1068,37 @@ export function ProviderManager({
                     bankAccount: currentProvider.bankAccount || '',
                     totalPurchased: 0,
                     accountingAccount: currentProvider.accountingAccount?.trim() || undefined,
+                    preferredCurrency: currentProvider.preferredCurrency || 'PEN',
+                    leadTimeDays:
+                      currentProvider.leadTimeDays != null
+                        ? Number(currentProvider.leadTimeDays)
+                        : undefined,
+                    minimumOrderAmount:
+                      currentProvider.minimumOrderAmount != null
+                        ? Number(currentProvider.minimumOrderAmount)
+                        : undefined,
+                    paymentTermsLabel: currentProvider.paymentTermsLabel?.trim() || undefined,
+                    supplierScore:
+                      currentProvider.supplierScore != null
+                        ? Number(currentProvider.supplierScore)
+                        : undefined,
+                    scoreQuality:
+                      currentProvider.scoreQuality != null
+                        ? Number(currentProvider.scoreQuality)
+                        : undefined,
+                    scoreFulfillment:
+                      currentProvider.scoreFulfillment != null
+                        ? Number(currentProvider.scoreFulfillment)
+                        : undefined,
+                    scorePrice:
+                      currentProvider.scorePrice != null
+                        ? Number(currentProvider.scorePrice)
+                        : undefined,
+                    scoreDelivery:
+                      currentProvider.scoreDelivery != null
+                        ? Number(currentProvider.scoreDelivery)
+                        : undefined,
+                    isPreferredSupplier: currentProvider.isPreferredSupplier === true,
                     pettyExpenseLines: pl,
                     usageContexts: uc,
                     defaultPurchaseAccount: undefined,
@@ -2117,6 +2148,147 @@ export function ProviderManager({
                                         onChange={e => setCurrentProvider({...currentProvider, bankName: e.target.value})}
                                         placeholder="Ej: BCP"
                                     />
+                                </div>
+                            </div>
+
+                            <div className="rounded-lg border border-cyan-500/25 bg-cyan-500/5 p-3 space-y-3">
+                                <div>
+                                    <h4 className="text-xs font-semibold text-cyan-800 dark:text-cyan-300 uppercase tracking-wider">
+                                        Abastecimiento / compras
+                                    </h4>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                        Datos para comparación de proveedores. Los precios por producto se gestionan en{' '}
+                                        <strong>Productos → pestaña Proveedores</strong>.
+                                    </p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Moneda preferida</Label>
+                                        <Select
+                                            value={currentProvider.preferredCurrency || 'PEN'}
+                                            onValueChange={(v) =>
+                                                setCurrentProvider({
+                                                    ...currentProvider,
+                                                    preferredCurrency: v as 'PEN' | 'USD',
+                                                })
+                                            }
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="PEN">PEN</SelectItem>
+                                                <SelectItem value="USD">USD</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Lead time (días)</Label>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            value={currentProvider.leadTimeDays ?? ''}
+                                            onChange={(e) =>
+                                                setCurrentProvider({
+                                                    ...currentProvider,
+                                                    leadTimeDays: e.target.value
+                                                        ? Number(e.target.value)
+                                                        : undefined,
+                                                })
+                                            }
+                                            placeholder="Ej: 2"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Pedido mínimo (monto)</Label>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            step="0.01"
+                                            value={currentProvider.minimumOrderAmount ?? ''}
+                                            onChange={(e) =>
+                                                setCurrentProvider({
+                                                    ...currentProvider,
+                                                    minimumOrderAmount: e.target.value
+                                                        ? Number(e.target.value)
+                                                        : undefined,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Forma de pago</Label>
+                                        <Input
+                                            value={currentProvider.paymentTermsLabel || ''}
+                                            onChange={(e) =>
+                                                setCurrentProvider({
+                                                    ...currentProvider,
+                                                    paymentTermsLabel: e.target.value,
+                                                })
+                                            }
+                                            placeholder="Ej: Contado / 30 días"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Score total (0–100)</Label>
+                                        <Input
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            value={currentProvider.supplierScore ?? ''}
+                                            onChange={(e) =>
+                                                setCurrentProvider({
+                                                    ...currentProvider,
+                                                    supplierScore: e.target.value
+                                                        ? Number(e.target.value)
+                                                        : undefined,
+                                                })
+                                            }
+                                        />
+                                    </div>
+                                    <div className="space-y-1 flex items-end pb-1">
+                                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                            <Checkbox
+                                                checked={currentProvider.isPreferredSupplier === true}
+                                                onCheckedChange={(c) =>
+                                                    setCurrentProvider({
+                                                        ...currentProvider,
+                                                        isPreferredSupplier: c === true,
+                                                    })
+                                                }
+                                            />
+                                            Preferido (directorio)
+                                        </label>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                    {(
+                                        [
+                                            ['scoreQuality', 'Calidad'],
+                                            ['scoreFulfillment', 'Cumplimiento'],
+                                            ['scorePrice', 'Precio'],
+                                            ['scoreDelivery', 'Entrega'],
+                                        ] as const
+                                    ).map(([key, label]) => (
+                                        <div key={key} className="space-y-1">
+                                            <Label className="text-[10px]">{label}</Label>
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                max={100}
+                                                className="h-8 text-xs"
+                                                value={currentProvider[key] ?? ''}
+                                                onChange={(e) =>
+                                                    setCurrentProvider({
+                                                        ...currentProvider,
+                                                        [key]: e.target.value
+                                                            ? Number(e.target.value)
+                                                            : undefined,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
 

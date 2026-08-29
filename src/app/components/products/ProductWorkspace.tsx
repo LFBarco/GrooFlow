@@ -23,6 +23,7 @@ import {
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import type { Product, ProductLotRow, ProductStatus, Provider } from '../../types';
+import type { SupplierProductsSettings } from '../../types/supplierProducts';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -54,6 +55,7 @@ import {
   PRODUCT_UNITS,
 } from './productCatalogConstants';
 import { round2 } from './productDraftUtils';
+import { ProductSupplierOffersPanel } from './ProductSupplierOffersPanel';
 
 const PAGE_SIZE = 10;
 
@@ -138,6 +140,12 @@ export interface ProductWorkspaceProps {
   isNew: boolean;
   onClose: () => void;
   onSave: (product: Product) => void;
+  supplierProductsSettings?: SupplierProductsSettings;
+  onUpdateSupplierProducts?: (
+    updater: (prev: SupplierProductsSettings) => SupplierProductsSettings,
+    message?: string
+  ) => void;
+  canEditSupplierOffers?: boolean;
 }
 
 export function ProductWorkspace(props: ProductWorkspaceProps) {
@@ -152,6 +160,9 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
     isNew,
     onClose,
     onSave,
+    supplierProductsSettings,
+    onUpdateSupplierProducts,
+    canEditSupplierOffers = true,
   } = props;
 
   const ex = draft.extended!;
@@ -381,6 +392,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           {[
             ['editar', 'Editar'],
             ['precios', 'Precios'],
+            ['proveedores', 'Proveedores'],
             ['barcode', 'Código de barras'],
             ['factor', 'Factor de compra'],
             ['kardex', 'Kardex'],
@@ -704,6 +716,36 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
               <Button type="button" variant="outline" className="border-white/15" onClick={onClose}>Cancelar</Button>
               <Button type="button" className="bg-emerald-600" onClick={handleSave}><Plus className="mr-2 h-4 w-4" />Guardar cambios</Button>
             </div>
+          </TabsContent>
+
+          <TabsContent value="proveedores" className="mt-0 space-y-4">
+            {isNew ? (
+              <Card className="border-dashed border-border">
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  Guarda el producto primero para vincular proveedores y precios de compra.
+                </CardContent>
+              </Card>
+            ) : supplierProductsSettings && onUpdateSupplierProducts ? (
+              <ProductSupplierOffersPanel
+                productId={draft.id}
+                productName={draft.name}
+                providers={providers}
+                settings={supplierProductsSettings}
+                canEdit={canEditSupplierOffers}
+                currentUserName={currentUserName}
+                preferredProviderId={draft.providerId}
+                onUpdateSettings={onUpdateSupplierProducts}
+                onPreferredProviderChange={(providerId, providerName) => {
+                  patchDraft((p) => ({ ...p, providerId, providerName }));
+                }}
+              />
+            ) : (
+              <Card className="border-border">
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  No se pudo cargar el catálogo de ofertas proveedor–producto.
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="barcode" className="mt-0 space-y-4">

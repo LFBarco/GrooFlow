@@ -8,7 +8,7 @@ import {
   Pie,
   PieChart,
   ResponsiveContainer,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   XAxis,
   YAxis,
 } from 'recharts';
@@ -16,6 +16,7 @@ import {
   Activity,
   AlertTriangle,
   CalendarCheck,
+  CircleHelp,
   DollarSign,
   ShieldAlert,
   TrendingDown,
@@ -25,6 +26,7 @@ import type { AccidentesKpiSnapshot } from '../../types/accidentes';
 import { ACCIDENT_SEVERITY_LABELS } from '../../types/accidentes';
 import { Card, CardContent } from '../ui/card';
 import { ChartEmptyState } from '../ui/ChartEmptyState';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import { BodyHeatMap } from './BodyHeatMap';
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -34,13 +36,13 @@ const SEVERITY_COLORS: Record<string, string> = {
   mortal: '#dc2626',
 };
 
-type TooltipProps = {
+type ChartTooltipProps = {
   active?: boolean;
   payload?: Array<{ name?: string; value?: number; color?: string }>;
   label?: string;
 };
 
-function ChartTooltip({ active, payload, label }: TooltipProps) {
+function ChartTooltip({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-xl dark:border-slate-700">
@@ -58,26 +60,46 @@ function KpiCard({
   title,
   value,
   subtitle,
+  help,
   icon: Icon,
   accent,
 }: {
   title: string;
   value: string;
   subtitle: string;
+  help: string;
   icon: typeof Activity;
   accent: string;
 }) {
   return (
-    <Card className="border-border dark:border-slate-700">
-      <CardContent className="pt-4">
+    <Card className="relative border-border dark:border-slate-700">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="absolute right-2.5 top-2.5 z-10 rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Qué significa: ${title}`}
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          sideOffset={6}
+          className="max-w-[260px] bg-popover text-popover-foreground border border-border shadow-md dark:border-slate-700"
+        >
+          <p className="text-xs leading-relaxed">{help}</p>
+        </TooltipContent>
+      </Tooltip>
+      <CardContent className="pt-4 pr-8">
         <div className="flex items-start justify-between gap-2">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-muted-foreground">{title}</p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{value}</p>
             <p className="mt-1 text-[11px] text-muted-foreground">{subtitle}</p>
           </div>
           <div
-            className="rounded-xl p-2"
+            className="rounded-xl p-2 shrink-0"
             style={{ background: `${accent}18`, color: accent }}
           >
             <Icon className="h-5 w-5" />
@@ -106,6 +128,7 @@ export function AccidentesDashboard({ kpis }: Props) {
           title="Índice de Frecuencia (IF)"
           value={kpis.frequencyIndex.toFixed(2)}
           subtitle="Accidentes c/baja × 10⁶ / HH"
+          help="Mide cuántos accidentes con días de baja ocurren por cada millón de horas hombre trabajadas. Un IF más bajo indica menos frecuencia de incidentes."
           icon={Activity}
           accent="#8b5cf6"
         />
@@ -113,6 +136,7 @@ export function AccidentesDashboard({ kpis }: Props) {
           title="Índice de Gravedad (IG)"
           value={kpis.gravityIndex.toFixed(2)}
           subtitle="Días perdidos × 10³ / HH"
+          help="Representa los días de trabajo perdidos por cada mil horas hombre. Refleja la severidad de los accidentes: a mayor IG, mayor impacto en la operación."
           icon={TrendingDown}
           accent="#f97316"
         />
@@ -120,6 +144,7 @@ export function AccidentesDashboard({ kpis }: Props) {
           title="Tasa de siniestralidad"
           value={`${kpis.sinistralityRate}%`}
           subtitle={`${kpis.accidentsWithLostTime} trabajadores / ${kpis.activeWorkers}`}
+          help="Porcentaje de trabajadores que sufrieron al menos un accidente con baja en el periodo filtrado, respecto al total de personal activo."
           icon={ShieldAlert}
           accent="#ef4444"
         />
@@ -131,6 +156,7 @@ export function AccidentesDashboard({ kpis }: Props) {
               ? `Último: ${kpis.lastAccidentDate}`
               : 'Sin registros con baja'
           }
+          help="Contador de días calendario desde el último accidente con baja registrado. Sirve como indicador de cultura preventiva en tiempo real."
           icon={CalendarCheck}
           accent="#22c55e"
         />
@@ -138,6 +164,7 @@ export function AccidentesDashboard({ kpis }: Props) {
           title="Costo total SST"
           value={`S/ ${kpis.totalCost.toLocaleString('es-PE')}`}
           subtitle={`Médico S/ ${kpis.medicalCost.toLocaleString('es-PE')}`}
+          help="Suma de gastos médicos, indemnizaciones y el valor estimado de los días de baja perdidos (según el costo diario configurado en Config KPI)."
           icon={DollarSign}
           accent="#0ea5e9"
         />
@@ -145,6 +172,7 @@ export function AccidentesDashboard({ kpis }: Props) {
           title="Horas hombre (est.)"
           value={kpis.manHours.toLocaleString('es-PE')}
           subtitle={`${kpis.totalAccidents} incidentes · ${kpis.totalLostDays} días perdidos`}
+          help="Estimación de horas hombre del periodo: trabajadores activos × horas mensuales configuradas × meses del filtro. Base de cálculo para IF e IG."
           icon={AlertTriangle}
           accent="#64748b"
         />
@@ -163,7 +191,7 @@ export function AccidentesDashboard({ kpis }: Props) {
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                    <Tooltip content={<ChartTooltip />} />
+                    <RechartsTooltip content={<ChartTooltip />} />
                     <Line type="monotone" dataKey="count" name="Accidentes" stroke="#8b5cf6" strokeWidth={2} />
                     <Line type="monotone" dataKey="lostDays" name="Días perdidos" stroke="#f97316" strokeWidth={2} />
                   </LineChart>
@@ -187,7 +215,7 @@ export function AccidentesDashboard({ kpis }: Props) {
                         <Cell key={entry.name} fill={entry.fill} />
                       ))}
                     </Pie>
-                    <Tooltip content={<ChartTooltip />} />
+                    <RechartsTooltip content={<ChartTooltip />} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -209,7 +237,7 @@ export function AccidentesDashboard({ kpis }: Props) {
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="area" width={110} tick={{ fontSize: 10 }} />
-                    <Tooltip content={<ChartTooltip />} />
+                    <RechartsTooltip content={<ChartTooltip />} />
                     <Bar dataKey="count" name="Accidentes" fill="#6366f1" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

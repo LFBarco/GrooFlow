@@ -63,6 +63,7 @@ import {
   UserCheck,
   CalendarRange,
   HardHat,
+  Shirt,
   GitCompare,
   ListTree,
   ShieldCheck,
@@ -96,6 +97,7 @@ import {
   AsistenciaModule,
   TurnosModule,
   AccidentesModule,
+  UniformesModule,
   ReconciliationModule,
   Overview,
   CashFlowChart,
@@ -3106,6 +3108,7 @@ export default function App() {
     hasPermission("Asistencia") ||
     hasPermission("Turnos") ||
     hasPermission("Accidentes de Trabajo") ||
+    hasPermission("Entrega de Uniformes") ||
     hasPermission("Conciliación");
 
   const handleSelectView = useCallback(
@@ -3611,6 +3614,7 @@ export default function App() {
            <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Asistencia" />
            <NavButton targetView="turnos" icon={CalendarRange} label="Turnos" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Turnos" />
            <NavButton targetView="accidentes" icon={HardHat} label="Accidentes SST" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Accidentes de Trabajo" />
+           <NavButton targetView="uniformes" icon={Shirt} label="Entrega Uniformes" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Entrega de Uniformes" />
            <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Productos" />
            <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
@@ -3761,6 +3765,7 @@ export default function App() {
                     <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400" requiredModule="Asistencia" />
                     <NavButton targetView="turnos" icon={CalendarRange} label="Turnos" iconColorClass="text-violet-400" requiredModule="Turnos" />
                     <NavButton targetView="accidentes" icon={HardHat} label="Accidentes SST" iconColorClass="text-rose-400" requiredModule="Accidentes de Trabajo" />
+                    <NavButton targetView="uniformes" icon={Shirt} label="Entrega Uniformes" iconColorClass="text-indigo-400" requiredModule="Entrega de Uniformes" />
                     <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400" requiredModule="Productos" />
                     <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400" requiredModule="Compras" />
                     <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
@@ -4345,6 +4350,20 @@ export default function App() {
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                   canEdit={hasPermission('Accidentes de Trabajo')}
                   reportedBy={currentUser.name}
+                />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'uniformes' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <UniformesModule
+                  users={users}
+                  systemSettings={systemSettings}
+                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  canEdit={hasPermission('Entrega de Uniformes')}
+                  deliveredBy={currentUser.name}
                 />
               </Suspense>
             </div>

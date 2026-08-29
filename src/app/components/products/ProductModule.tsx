@@ -40,6 +40,7 @@ import { PRODUCT_CATEGORIES, PRODUCT_LINES } from './productCatalogConstants';
 import { cloneProduct, createDraftProduct, normalizeProductForWorkspace } from './productDraftUtils';
 import { ProductWorkspace } from './ProductWorkspace';
 import { useModuleSurfaces } from '../../utils/moduleSurfaces';
+import { useSupplierProductsState } from '../../hooks/useSupplierProductsState';
 
 const PAGE_SIZE = 10;
 
@@ -87,6 +88,10 @@ export function ProductModule({
   currentUserName,
 }: ProductModuleProps) {
   const s = useModuleSurfaces();
+  const {
+    settings: supplierProductsSettings,
+    updateSettings: onUpdateSupplierProducts,
+  } = useSupplierProductsState(true);
   const nextSystemCode = useMemo(
     () => Math.max(0, ...products.map((product) => product.systemCode || 0)) + 1,
     [products],
@@ -294,6 +299,9 @@ export function ProductModule({
           isNew={workspace.isNew}
           onClose={() => setWorkspace(null)}
           onSave={commitWorkspace}
+          supplierProductsSettings={supplierProductsSettings}
+          onUpdateSupplierProducts={onUpdateSupplierProducts}
+          canEditSupplierOffers
         />
       )}
 

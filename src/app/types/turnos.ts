@@ -26,6 +26,8 @@ export interface TurnosRosterEntry {
   fullName: string;
   initials: string;
   roleLabel: string;
+  /** Área operativa (médica, grooming, mantenimiento, etc.). */
+  workArea?: string;
   homeSede: string;
   email?: string;
   active: boolean;
