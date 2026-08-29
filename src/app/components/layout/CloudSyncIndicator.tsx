@@ -23,6 +23,14 @@ const LABELS: Record<CloudSyncPhase, string> = {
   error: 'Error al guardar',
 };
 
+const COMPACT_LABELS: Record<CloudSyncPhase, string> = {
+  idle: 'Nube',
+  loading: 'Cargando',
+  saving: 'Guardando',
+  synced: 'Sincronizado',
+  error: 'Error',
+};
+
 export function CloudSyncIndicator({
   phase,
   visible,
@@ -64,10 +72,12 @@ export function CloudSyncIndicator({
             : 'rgba(255,255,255,0.35)';
 
   const phaseLabel = offline ? 'Sin conexión' : LABELS[phase];
+  const compactPhaseLabel = offline ? 'Sin red' : COMPACT_LABELS[phase];
   const errorModule =
     isError && errorKey && errorKeyLabel ? errorKeyLabel(errorKey) : null;
   const title = errorModule ? `${phaseLabel} · ${errorModule}` : phaseLabel;
   const label = errorModule && !compact ? `${phaseLabel} · ${errorModule}` : phaseLabel;
+  const displayLabel = compact ? compactPhaseLabel : label;
 
   const border = offline
     ? isLight
@@ -93,7 +103,11 @@ export function CloudSyncIndicator({
       title={title}
     >
       <Icon className={`h-3.5 w-3.5 shrink-0 ${isSaving ? 'animate-spin' : ''}`} />
-      {!compact && <span className="font-medium whitespace-nowrap max-w-[180px] truncate">{label}</span>}
+      <span
+        className={`font-medium whitespace-nowrap truncate ${compact ? 'text-[10px] max-w-[96px]' : 'max-w-[180px]'}`}
+      >
+        {displayLabel}
+      </span>
       {isError && onRetry && (
         <Button
           type="button"

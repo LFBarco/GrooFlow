@@ -565,7 +565,7 @@ export function ConfigPanel({
             <Settings className="w-7 h-7 text-orange-500 shrink-0" />
             Configuración del Sistema
         </h2>
-        <p className="text-sm text-muted-foreground">Administra la configuración general de tu negocio</p>
+        <p className="text-sm text-muted-foreground">Administra la configuración operativa de GrooFlow. Usuarios, niveles y sedes se gestionan en el panel Gestión.</p>
       </div>
 
       <Tabs defaultValue="business" className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -587,24 +587,6 @@ export function ConfigPanel({
             className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
           >
             Contabilidad
-          </TabsTrigger>
-          <TabsTrigger 
-            value="system" 
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
-          >
-            Sistema
-          </TabsTrigger>
-          <TabsTrigger 
-            value="security" 
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
-          >
-            Seguridad
-          </TabsTrigger>
-          <TabsTrigger 
-            value="sedes" 
-            className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-4 py-2"
-          >
-            Sedes
           </TabsTrigger>
           {isSystemAdmin && (
             <TabsTrigger

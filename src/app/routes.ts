@@ -15,6 +15,8 @@ export type ViewType =
   | 'accounting'
   | 'requests'
   | 'users'
+  | 'menuConfig'
+  | 'menuAssignment'
   | 'pettycash'
   | 'treasury'
   | 'fees'
@@ -46,6 +48,8 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   requests: '/solicitudes',
   audit: '/auditoria',
   users: '/usuarios',
+  menuConfig: '/config/menu',
+  menuAssignment: '/config/asignacion-menu',
   config: '/configuracion',
   fleet: '/flota-clinica',
   inventory: '/inventario-equipos',
@@ -92,6 +96,8 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   requests: 'Compras',
   audit: 'Auditoría',
   users: 'Usuarios',
+  menuConfig: 'Admin Menú GrooFlow',
+  menuAssignment: 'Asignación Menú GrooFlow',
   config: 'Configuración',
   fleet: 'Gestión Vehicular',
   inventory: 'Gestión de Inventario',
@@ -118,7 +124,8 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'requests',
   'audit',
   'analytics',
-  'users',
+  'menuConfig',
+  'menuAssignment',
   'config',
   'fleet',
   'inventory',

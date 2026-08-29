@@ -66,6 +66,7 @@ import {
 } from '../../utils/tripleLayerCashFlow';
 import { buildAIIncomeEstimateMap } from '../../utils/tripleLayerAi';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip } from 'recharts';
+import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 
 interface CashFlowGridProps {
   transactions: Transaction[];
@@ -127,7 +128,7 @@ function cellClasses(
   let text = 'text-muted-foreground';
   if (!past && cell.dominantLayer === 'PROJ' && Math.abs(cell.amount) > 1e-6) text = 'text-sky-500 font-medium';
   else if (!past && cell.dominantLayer === 'EST' && Math.abs(cell.amount) > 1e-6) text = 'text-muted-foreground italic';
-  else if (past && Math.abs(cell.amount) > 1e-6) text = 'text-zinc-300';
+  else if (past && Math.abs(cell.amount) > 1e-6) text = 'text-muted-foreground dark:text-zinc-300';
   else if (!past && Math.abs(cell.amount) > 1e-6) text = 'text-foreground';
 
   const ring = isCur ? 'ring-2 ring-sky-500 ring-inset z-[1]' : '';
@@ -152,6 +153,8 @@ export function CashFlowGrid({
   onViewDateChange,
   onUpsertProjectedCell,
 }: CashFlowGridProps) {
+  const s = useModuleSurfaces();
+  const a = s.assistant;
   const safeCurrentDate = isValid(currentDate) ? currentDate : new Date();
   const TODAY = new Date();
   const treasuryEnabled = goLiveIncludesTreasury();
@@ -917,20 +920,20 @@ export function CashFlowGrid({
       >
         <td
           className={clsx(
-            'sticky left-0 z-20 w-[120px] max-w-[120px] p-2 border-r border-white/10 font-medium text-[11px] bg-[#161222]/95 backdrop-blur',
+            'sticky left-0 z-20 w-[120px] max-w-[120px] p-2 border-r border-border font-medium text-[11px] bg-muted/95 backdrop-blur dark:border-white/10 dark:bg-[#161222]/95',
             headerBg
           )}
           title={row.subcategoryName}
         >
-          <span className="block truncate text-zinc-100">{row.subcategoryName}</span>
+          <span className="block truncate text-foreground dark:text-zinc-100">{row.subcategoryName}</span>
         </td>
         <td
-          className="sticky left-[120px] z-20 w-[180px] max-w-[180px] p-2 border-r border-white/10 font-medium text-[11px] bg-[#161222]/95 backdrop-blur"
-          style={{ boxShadow: '4px 0 12px rgba(0,0,0,0.35)' }}
+          className="sticky left-[120px] z-20 w-[180px] max-w-[180px] p-2 border-r border-border font-medium text-[11px] bg-muted/95 backdrop-blur dark:border-white/10 dark:bg-[#161222]/95"
+          style={{ boxShadow: s.isDark ? '4px 0 12px rgba(0,0,0,0.35)' : '4px 0 12px rgba(148,163,184,0.1)' }}
           title={concept.name}
         >
           <div className="flex items-start justify-between gap-2 flex-wrap">
-            <span className="min-w-0 truncate text-zinc-100">
+            <span className="min-w-0 truncate text-foreground dark:text-zinc-100">
               {concept.name}
             </span>
             {!isIncome && (
@@ -938,8 +941,8 @@ export function CashFlowGrid({
                 className={clsx(
                   'text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap',
                   concept.flexibility === 'fixed'
-                    ? 'bg-red-600/25 text-red-300 border border-red-600/40'
-                    : 'bg-amber-500/20 text-amber-200 border border-amber-500/40'
+                    ? 'bg-red-100 text-red-800 border border-red-300 dark:bg-red-600/25 dark:text-red-300 dark:border-red-600/40'
+                    : 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-500/20 dark:text-amber-200 dark:border-amber-500/40'
                 )}
               >
                 {concept.flexibility === 'fixed' ? 'Fijo' : 'Flexible'}
@@ -1063,20 +1066,36 @@ export function CashFlowGrid({
     const entries = sortEntriesByOrder(Array.from(structure.entries()), isIncome ? 'income' : 'expense');
     if (!entries.length) return null;
 
-    const sectionColor = isIncome ? '#38bdf8' : '#fb7185';
-    const sectionBg = isIncome ? 'rgba(56,189,248,0.06)' : 'rgba(251,113,133,0.06)';
+    const sectionColor = isIncome ? (s.isDark ? '#38bdf8' : '#0369a1') : s.isDark ? '#fb7185' : '#be123c';
+    const sectionBg = isIncome
+      ? s.isDark
+        ? 'rgba(56,189,248,0.06)'
+        : 'rgba(224,242,254,0.85)'
+      : s.isDark
+        ? 'rgba(251,113,133,0.06)'
+        : 'rgba(255,228,230,0.85)';
+    const sectionHeaderBg = isIncome
+      ? s.isDark
+        ? '#13101f'
+        : '#e0f2fe'
+      : s.isDark
+        ? '#13101f'
+        : '#ffe4e6';
 
     return (
       <>
-        <tbody className="border-t-4 border-white/10">
+        <tbody className="border-t-4 border-border dark:border-white/10">
           <tr style={{ background: sectionBg }}>
             <td
               colSpan={2}
-              className="sticky left-0 z-20 p-3 font-bold text-xs uppercase min-w-[300px] border-r border-white/10"
+              className={clsx(
+                'sticky left-0 z-20 p-3 font-bold text-xs uppercase min-w-[300px] border-r border-border dark:border-white/10',
+                isIncome ? 'text-sky-800 dark:text-sky-400' : 'text-rose-800 dark:text-rose-400'
+              )}
               style={{
-                background: '#13101f',
+                background: sectionHeaderBg,
                 color: sectionColor,
-                boxShadow: '4px 0 24px rgba(0,0,0,0.45)',
+                boxShadow: s.isDark ? '4px 0 24px rgba(0,0,0,0.45)' : '4px 0 16px rgba(148,163,184,0.12)',
               }}
             >
               <div className="flex items-center gap-2">
@@ -1085,9 +1104,9 @@ export function CashFlowGrid({
               </div>
             </td>
             {columns.map((d) => (
-              <td key={String(d)} className="border-r border-white/5 bg-[#161222]/95" />
+              <td key={String(d)} className="border-r border-border bg-muted/40 dark:border-white/5 dark:bg-[#161222]/95" />
             ))}
-            <td className="sticky right-0 z-20 bg-[#13101f] border-l border-white/10" />
+            <td className="sticky right-0 z-20 border-l border-border dark:border-white/10" style={{ background: sectionHeaderBg }} />
           </tr>
         </tbody>
 
@@ -1111,8 +1130,10 @@ export function CashFlowGrid({
                 onDragEnd={() => setDraggedCategory(null)}
               >
                 <td
-                  className="sticky left-0 z-20 w-[120px] max-w-[120px] p-2 border-r border-white/10 bg-[#161222]"
-                  style={{ color: categoryColorVis }}
+                  className={clsx(
+                    'sticky left-0 z-20 w-[120px] max-w-[120px] p-2 border-r border-border font-bold text-[11px] uppercase bg-muted/95 dark:border-white/10 dark:bg-[#161222]',
+                    isIncome ? 'text-sky-800 dark:text-sky-400' : 'text-rose-800 dark:text-rose-400'
+                  )}
                   title={category}
                 >
                   <div className="flex items-center gap-1">
@@ -1123,7 +1144,7 @@ export function CashFlowGrid({
                     <span className="truncate">{category}</span>
                   </div>
                 </td>
-                <td className="sticky left-[120px] z-20 w-[180px] max-w-[180px] p-2 border-r border-white/10 bg-[#161222]">
+                <td className="sticky left-[120px] z-20 w-[180px] max-w-[180px] p-2 border-r border-border bg-muted/95 dark:border-white/10 dark:bg-[#161222]">
                   <span className="ml-auto flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       type="button"
@@ -1150,7 +1171,7 @@ export function CashFlowGrid({
                 {columns.map((date) => {
                   const sodCol = startOfDay(date);
                   const sodToday = startOfDay(TODAY);
-                  const cls = sodCol < sodToday ? 'bg-zinc-800/70' : 'bg-transparent';
+                  const cls = sodCol < sodToday ? 'bg-slate-200/80 dark:bg-zinc-800/70' : 'bg-transparent';
                   return (
                     <td
                       key={`cat-tot-${category}-${dateKey(date)}`}
@@ -1158,7 +1179,7 @@ export function CashFlowGrid({
                     />
                   );
                 })}
-                <td className="sticky right-0 z-20 bg-[#161222] border-l border-white/10 font-bold tabular-nums text-right text-xs text-white">
+                <td className="sticky right-0 z-20 bg-muted/95 border-l border-border font-bold tabular-nums text-right text-xs text-foreground dark:border-white/10 dark:bg-[#161222] dark:text-white">
                 </td>
               </tr>
 
@@ -1176,8 +1197,8 @@ export function CashFlowGrid({
           <tr className="font-bold text-[11px] uppercase" style={{ background: sectionBg }}>
             <td
               colSpan={2}
-              className="sticky left-0 z-20 p-2 border-r border-white/10 min-w-[300px] bg-[#13101f]"
-              style={{ color: sectionColor }}
+              className="sticky left-0 z-20 p-2 border-r border-border min-w-[300px] dark:border-white/10"
+              style={{ background: sectionHeaderBg, color: sectionColor }}
             >
               TOTAL {title}
             </td>
@@ -1195,8 +1216,8 @@ export function CashFlowGrid({
               );
             })}
             <td
-              className="sticky right-0 z-20 p-2 bg-[#13101f] border-l border-white/10 tabular-nums font-bold text-right"
-              style={{ color: sectionColor }}
+              className="sticky right-0 z-20 p-2 border-l border-border tabular-nums font-bold text-right dark:border-white/10"
+              style={{ background: sectionHeaderBg, color: sectionColor }}
             >
               {formatMoney(
                 Math.abs(
@@ -1326,8 +1347,11 @@ export function CashFlowGrid({
           : 'h-full max-h-full min-h-[280px] flex-col gap-4 rounded-2xl lg:flex-row lg:gap-4 gf-cashflow-grid'
       )}
       style={{
-        background: 'linear-gradient(155deg,#141226 0%,#0f0d1a 100%)',
-        border: '1px solid rgba(99,102,241,0.18)',
+        background: s.isDark
+          ? 'linear-gradient(155deg,#141226 0%,#0f0d1a 100%)'
+          : s.chartCard.background,
+        border: s.isDark ? '1px solid rgba(99,102,241,0.18)' : s.chartCard.border,
+        boxShadow: s.isDark ? undefined : s.chartCard.boxShadow,
       }}
     >
       <div className={clsx('flex min-h-0 w-full flex-1 min-w-0 flex-col', isFullscreen && 'w-full')}>
@@ -1338,16 +1362,16 @@ export function CashFlowGrid({
         >
           <div className="space-y-1">
             <h3 className="font-bold text-base md:text-lg text-foreground dark:text-white tracking-tight">Flujo de Caja · Triple Capa</h3>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-violet-200/75">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground dark:text-violet-200/75">
               <span className="font-mono">TODAY:</span>
-              <span className="rounded bg-sky-500/20 px-2 py-0.5 border border-sky-500/30 text-sky-200">{format(TODAY, "dd/MM/yyyy EEE", { locale: es })}</span>
+              <span className="rounded bg-sky-100 px-2 py-0.5 border border-sky-300/50 text-sky-800 dark:bg-sky-500/20 dark:border-sky-500/30 dark:text-sky-200">{format(TODAY, "dd/MM/yyyy EEE", { locale: es })}</span>
               <span className="opacity-75 max-w-[min(100%,520px)]">
                 Días pasados solo lectura · Filas bajo cada categoría (plegar con la fila gris) · Celda editable: día de hoy o futuro y sin
                 movimiento real; un clic o doble clic.
               </span>
             </div>
             {viewIsEntirelyPastMonth && (
-              <p className="text-[11px] text-amber-200/95 rounded-lg border border-amber-500/35 bg-amber-950/35 px-3 py-2 max-w-2xl">
+              <p className="text-[11px] text-amber-900 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 max-w-2xl dark:text-amber-200/95 dark:border-amber-500/35 dark:bg-amber-950/35">
                 Este mes es anterior al actual: toda la grilla es solo revisión. Elige el mes vigente o uno con fechas futuras para poder
                 proyectar importes en la matriz.
               </p>
@@ -1394,7 +1418,7 @@ export function CashFlowGrid({
               </div>
             )}
 
-            <div className="flex gap-4 items-center text-[11px] text-zinc-300">
+            <div className="flex gap-4 items-center text-[11px] text-muted-foreground dark:text-zinc-300">
               <label className="flex items-center gap-1 cursor-pointer whitespace-nowrap">
                 <Checkbox checked={layerEst} onCheckedChange={(v) => setLayerEst(!!v)} />
                 Estimado
@@ -1419,7 +1443,7 @@ export function CashFlowGrid({
               Actualizar proyección ingresos
             </Button>
 
-            <div className="flex gap-1 p-1 rounded-lg bg-zinc-900/80 border border-white/10">
+            <div className="flex gap-1 p-1 rounded-lg bg-muted/80 border border-border dark:bg-zinc-900/80 dark:border-white/10">
               {(['daily', 'annual'] as const).map((mode) => (
                 <button
                   key={mode}
@@ -1429,7 +1453,7 @@ export function CashFlowGrid({
                     'px-3 py-1.5 rounded-md text-xs font-semibold transition-all',
                     viewMode === mode
                       ? 'bg-sky-600/50 text-sky-50 border border-sky-500/40'
-                      : 'text-zinc-500 border border-transparent'
+                      : 'text-muted-foreground border border-transparent dark:text-zinc-500'
                   )}
                 >
                   {mode === 'daily' ? (
@@ -1452,7 +1476,7 @@ export function CashFlowGrid({
               title={isFullscreen ? 'Salir de vista ampliada' : 'Ampliar vista'}
               aria-label={isFullscreen ? 'Salir de vista ampliada' : 'Ampliar vista'}
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="h-8 w-8 flex items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10"
+              className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:bg-muted dark:text-zinc-400 dark:hover:bg-white/10"
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
@@ -1460,7 +1484,7 @@ export function CashFlowGrid({
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 text-xs border-violet-500/30 text-violet-200"
+              className="h-8 text-xs border-violet-300/50 text-violet-800 dark:border-violet-500/30 dark:text-violet-200"
               onClick={handleExportCsv}
             >
               <Download className="w-3.5 h-3.5 mr-1" />
@@ -1471,7 +1495,7 @@ export function CashFlowGrid({
                 type="button"
                 size="sm"
                 variant="secondary"
-                className="h-8 text-xs bg-cyan-900/40 text-cyan-100 border border-cyan-600/30"
+                className="h-8 text-xs bg-cyan-50 text-cyan-900 border border-cyan-300/50 dark:bg-cyan-900/40 dark:text-cyan-100 dark:border-cyan-600/30"
                 onClick={handleProjectMonth}
               >
                 <CalendarCheck className="w-3.5 h-3.5 mr-1" />
@@ -1483,7 +1507,7 @@ export function CashFlowGrid({
 
         {viewMode === 'daily' && chartDataDaily.length > 0 && (
           <div className="h-[120px] min-h-[120px] shrink-0 px-4 pt-2">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 mb-1">Evolución saldo final (mes)</p>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Evolución saldo final (mes)</p>
             <div style={{ width: '100%', height: 96 }}>
               <ResponsiveContainer width="100%" height={96}>
                 <LineChart data={chartDataDaily}>
@@ -1491,7 +1515,17 @@ export function CashFlowGrid({
                   <YAxis tick={{ fontSize: 9, fill: '#64748b' }} width={44} tickFormatter={(v) => formatMoney(Number(v), true)} />
                   <Tooltip
                     formatter={(v: number) => [formatMoney(v), 'Saldo']}
-                    contentStyle={{ background: '#1e1b2e', border: '1px solid #4c1d95', fontSize: 11 }}
+                    contentStyle={
+                      s.isDark
+                        ? { background: '#1e1b2e', border: '1px solid #4c1d95', fontSize: 11 }
+                        : {
+                            background: s.tooltip.backgroundColor,
+                            border: s.tooltip.border,
+                            fontSize: 11,
+                            borderRadius: s.tooltip.borderRadius,
+                            boxShadow: s.tooltip.boxShadow,
+                          }
+                    }
                   />
                   <Line type="monotone" dataKey="saldo" stroke="#38bdf8" strokeWidth={2} dot={false} />
                 </LineChart>
@@ -1503,12 +1537,12 @@ export function CashFlowGrid({
         <div className="min-h-0 flex-1 w-full overflow-auto">
           <div className="w-max min-w-full pb-4">
             <table className="w-full text-sm text-left border-collapse">
-              <thead className="sticky top-0 z-30 border-b border-white/10" style={{ background: '#120f1c' }}>
+              <thead className="sticky top-0 z-30 border-b border-border bg-muted/95 dark:border-white/10 dark:bg-[#120f1c]">
                 <tr>
-                  <th className="sticky left-0 z-40 w-[120px] min-w-[120px] p-2 text-[10px] font-bold uppercase tracking-widest border-r border-white/10 text-zinc-500 bg-[#120f1c]">
+                  <th className="sticky left-0 z-40 w-[120px] min-w-[120px] p-2 text-[10px] font-bold uppercase tracking-widest border-r border-border text-muted-foreground bg-muted/95 dark:border-white/10 dark:bg-[#120f1c]">
                     Categoría
                   </th>
-                  <th className="sticky left-[120px] z-40 w-[180px] min-w-[180px] p-2 text-[10px] font-bold uppercase tracking-widest border-r border-white/10 text-zinc-500 bg-[#120f1c]">
+                  <th className="sticky left-[120px] z-40 w-[180px] min-w-[180px] p-2 text-[10px] font-bold uppercase tracking-widest border-r border-border text-muted-foreground bg-muted/95 dark:border-white/10 dark:bg-[#120f1c]">
                     Detalle
                   </th>
                   {columns.map((date) => {
@@ -1520,21 +1554,21 @@ export function CashFlowGrid({
                       <th
                         key={dateKey(date)}
                         className={clsx(
-                          'p-1.5 min-w-[72px] text-center border-r border-white/10 font-medium',
-                          todayCol && 'bg-sky-900/30',
-                          past && 'bg-zinc-800/90'
+                          'p-1.5 min-w-[72px] text-center border-r border-border font-medium dark:border-white/10',
+                          todayCol && 'bg-sky-100 dark:bg-sky-900/30',
+                          past && 'bg-slate-200/90 dark:bg-zinc-800/90'
                         )}
                       >
-                        <div className={clsx('text-[10px]', todayCol ? 'text-sky-300' : past ? 'text-zinc-500' : 'text-zinc-400')}>
+                        <div className={clsx('text-[10px]', todayCol ? 'text-sky-700 dark:text-sky-300' : past ? 'text-muted-foreground' : 'text-muted-foreground')}>
                           {isDaily ? safeFormat(date, 'EEE').slice(0, 3) : safeFormat(date, 'yyyy')}
                         </div>
-                        <div className={clsx('text-sm font-bold', todayCol ? 'text-sky-200' : 'text-violet-200')}>
+                        <div className={clsx('text-sm font-bold', todayCol ? 'text-sky-900 dark:text-sky-200' : 'text-violet-800 dark:text-violet-200')}>
                           {isDaily ? safeFormat(date, 'd') : safeFormat(date, 'MMM')}
                         </div>
                       </th>
                     );
                   })}
-                  <th className="sticky right-0 z-40 p-2 min-w-[100px] text-center text-[10px] font-bold uppercase tracking-widest border-l border-white/10 text-zinc-500 bg-[#120f1c]">
+                  <th className="sticky right-0 z-40 p-2 min-w-[100px] text-center text-[10px] font-bold uppercase tracking-widest border-l border-border text-muted-foreground bg-muted/95 dark:border-white/10 dark:bg-[#120f1c]">
                     Total
                   </th>
                 </tr>
@@ -1542,15 +1576,15 @@ export function CashFlowGrid({
 
               {/* Saldo inicial */}
               <tbody>
-                <tr className="border-b border-amber-500/20">
+                <tr className="border-b border-amber-300/40 dark:border-amber-500/20">
                   <td
                     colSpan={2}
-                    className="sticky left-0 z-20 p-2 border-r border-white/10 bg-[#1a1528]"
+                    className="sticky left-0 z-20 p-2 border-r border-border bg-amber-50 dark:border-white/10 dark:bg-[#1a1528]"
                   >
                     <div className="flex items-center justify-between pl-1">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300">Saldo inicial</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">Saldo inicial</span>
                       {onUpdateSettings && (
-                        <button type="button" className="text-amber-400 hover:bg-amber-500/10 rounded p-1" onClick={openSettings}>
+                        <button type="button" className="text-amber-700 hover:bg-amber-100 rounded p-1 dark:text-amber-400 dark:hover:bg-amber-500/10" onClick={openSettings}>
                           <SettingsIcon className="w-3.5 h-3.5" />
                         </button>
                       )}
@@ -1559,12 +1593,12 @@ export function CashFlowGrid({
                   {columns.map((date, i) => (
                     <td
                       key={`s-${i}`}
-                      className="p-2 text-right border-r border-white/10 text-[11px] font-mono text-amber-200/90 bg-zinc-900/40"
+                      className="p-2 text-right border-r border-border text-[11px] font-mono text-amber-900/90 bg-amber-50/80 dark:border-white/10 dark:text-amber-200/90 dark:bg-zinc-900/40"
                     >
                       {formatMoney(startBalances[i] ?? 0, true)}
                     </td>
                   ))}
-                  <td className="sticky right-0 z-20 p-2 text-right font-mono font-bold text-amber-200 border-l border-white/10 bg-[#1a1528]">
+                  <td className="sticky right-0 z-20 p-2 text-right font-mono font-bold text-amber-900 border-l border-border bg-amber-50 dark:text-amber-200 dark:border-white/10 dark:bg-[#1a1528]">
                     {formatMoney(initialBalance, true)}
                   </td>
                 </tr>
@@ -1607,7 +1641,7 @@ export function CashFlowGrid({
 
               <tbody className="border-t-2 border-violet-500/30">
                 <tr>
-                  <td colSpan={2} className="sticky left-0 z-20 p-2 text-[10px] font-bold uppercase text-zinc-400 bg-[#141022] border-r border-white/10">
+                  <td colSpan={2} className="sticky left-0 z-20 p-2 text-[10px] font-bold uppercase text-muted-foreground bg-muted/80 border-r border-border dark:bg-[#141022] dark:border-white/10">
                     Variación neta
                   </td>
                   {columns.map((date, i) => {
@@ -1624,7 +1658,7 @@ export function CashFlowGrid({
                       </td>
                     );
                   })}
-                  <td className="sticky right-0 z-20 p-2 text-right font-mono font-bold border-l border-white/10 bg-[#141022] text-zinc-200">
+                  <td className="sticky right-0 z-20 p-2 text-right font-mono font-bold border-l border-border bg-muted/80 text-foreground dark:border-white/10 dark:bg-[#141022] dark:text-zinc-200">
                     {formatMoney(
                       columns.reduce((s, d) => s + getNetPeriodTotal(d), 0),
                       true
@@ -1633,7 +1667,7 @@ export function CashFlowGrid({
                 </tr>
 
                 <tr className="border-t border-sky-500/30">
-                  <td colSpan={2} className="sticky left-0 z-20 p-2 text-xs font-bold uppercase text-sky-300 bg-[#0f1628] border-r border-white/10">
+                  <td colSpan={2} className="sticky left-0 z-20 p-2 text-xs font-bold uppercase text-sky-800 bg-sky-50 border-r border-border dark:text-sky-300 dark:bg-[#0f1628] dark:border-white/10">
                     Saldo final
                   </td>
                   {columns.map((date, i) => {
@@ -1644,7 +1678,7 @@ export function CashFlowGrid({
                         key={`e-${i}`}
                         className={clsx(
                           'p-2 text-right border-r border-white/10 text-[11px] font-bold font-mono',
-                          neg ? 'text-red-400 bg-red-950/30' : 'text-sky-200'
+                          neg ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/30' : 'text-sky-800 dark:text-sky-200'
                         )}
                       >
                         <div className="flex flex-col items-end gap-0.5">
@@ -1654,7 +1688,7 @@ export function CashFlowGrid({
                       </td>
                     );
                   })}
-                  <td className="sticky right-0 z-20 p-2 text-right text-sm font-bold font-mono border-l border-white/10 bg-[#0f1628] text-sky-100">
+                  <td className="sticky right-0 z-20 p-2 text-right text-sm font-bold font-mono border-l border-border bg-sky-50 text-sky-900 dark:border-white/10 dark:bg-[#0f1628] dark:text-sky-100">
                     {formatMoney(endBalances[endBalances.length - 1] ?? 0, true)}
                   </td>
                 </tr>
@@ -1682,10 +1716,20 @@ export function CashFlowGrid({
         <aside
           className={clsx(
             'shrink-0 border-t lg:border-t-0 lg:border-l border-border bg-card/80 dark:border-white/10 dark:bg-[#110e1a] lg:sticky lg:top-16 lg:self-start lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto transition-all duration-300',
+            !s.isDark && 'gf-glass-card',
             isDecisionPanelCollapsed
               ? 'w-full lg:w-12 p-2'
               : 'w-full lg:w-[min(100%,clamp(268px,34vw,420px))] p-4 space-y-4'
           )}
+          style={
+            s.isDark
+              ? undefined
+              : {
+                  background: a.background,
+                  border: a.border,
+                  boxShadow: a.boxShadow,
+                }
+          }
         >
           {isDecisionPanelCollapsed ? (
             <button
@@ -1706,32 +1750,32 @@ export function CashFlowGrid({
             <button
               type="button"
               onClick={() => setIsDecisionPanelCollapsed(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-zinc-400 hover:bg-white/10 hover:text-cyan-200"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-cyan-200"
               title="Ocultar asistente"
             >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
 
-          <div className="rounded-xl border border-red-500/30 bg-red-950/25 p-3 space-y-3">
-            <p className="text-[11px] font-bold text-red-300 flex items-center gap-1">
+          <div className="rounded-xl border border-red-300/50 bg-red-50 p-3 space-y-3 dark:border-red-500/30 dark:bg-red-950/25">
+            <p className="text-[11px] font-bold text-red-800 flex items-center gap-1 dark:text-red-300">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> Alertas de liquidez
             </p>
             {liquidityAlerts.length === 0 ? (
               <p className="text-[11px] text-zinc-500">Sin quiebres de saldo detectados este mes con las capas activas.</p>
             ) : (
               <>
-                <p className="text-[12px] text-red-100/95 leading-snug">
+                <p className="text-[12px] text-red-900 leading-snug dark:text-red-100/95">
                   Falta de fondos proyectada el día <strong>{safeFormat(liquidityAlerts[0]!.d, 'dd/MM')}</strong>.
                 </p>
-                <p className="text-[11px] text-zinc-300">
+                <p className="text-[11px] text-muted-foreground dark:text-zinc-300">
                   Saldo proyectado ese día:{' '}
-                  <span className="text-red-300 font-mono font-semibold tabular-nums">
+                  <span className="text-red-700 font-mono font-semibold tabular-nums dark:text-red-300">
                     {formatMoney(endBalances[liquidityAlerts[0]!.i] ?? 0)}
                   </span>
                 </p>
-                <p className="text-[11px] text-amber-200/90">
-                  <span className="font-semibold text-amber-300">Sugerencia:</span> revisa pagos proyectados después de esa fecha;
+                <p className="text-[11px] text-amber-900 dark:text-amber-200/90">
+                  <span className="font-semibold text-amber-950 dark:text-amber-300">Sugerencia:</span> revisa pagos proyectados después de esa fecha;
                   mueve cargos flexibles hacia fechas con mayor saldo o reduce capa proyectada en la matriz.
                 </p>
                 <Button
@@ -1748,7 +1792,10 @@ export function CashFlowGrid({
           </div>
 
           {sidebarDailyFlow.length > 0 && (
-            <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-3 space-y-3">
+            <div
+              className="rounded-xl border p-3 space-y-3 dark:border-white/10 dark:bg-zinc-900/40"
+              style={s.isDark ? undefined : { background: a.innerBg, border: a.innerBorder }}
+            >
               <p className="text-[11px] font-bold text-foreground dark:text-white flex items-center gap-1.5">
                 Cumplimiento del presupuesto
                 <Info className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -1756,7 +1803,7 @@ export function CashFlowGrid({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between text-[10px] text-zinc-500 mb-1">
-                    <span className="text-emerald-300">Ingresos</span>
+                    <span className="text-emerald-700 dark:text-emerald-300">Ingresos</span>
                     <span className={clsx('font-mono font-semibold', sidebarBudgetTrend.incPct >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
                       {sidebarBudgetTrend.incPct >= 0 ? '+' : ''}
                       {sidebarBudgetTrend.incPct}%
@@ -1772,7 +1819,7 @@ export function CashFlowGrid({
                 </div>
                 <div>
                   <div className="flex items-center justify-between text-[10px] text-zinc-500 mb-1">
-                    <span className="text-amber-200">Gastos</span>
+                    <span className="text-amber-800 dark:text-amber-200">Gastos</span>
                     <span className={clsx('font-mono font-semibold', sidebarBudgetTrend.expPct <= 0 ? 'text-emerald-400' : 'text-amber-300')}>
                       {sidebarBudgetTrend.expPct >= 0 ? '+' : ''}
                       {sidebarBudgetTrend.expPct}%
@@ -1790,7 +1837,10 @@ export function CashFlowGrid({
             </div>
           )}
 
-          <div className="rounded-xl border border-white/10 bg-zinc-900/40 p-3 space-y-2">
+          <div
+            className="rounded-xl border p-3 space-y-2 dark:border-white/10 dark:bg-zinc-900/40"
+            style={s.isDark ? undefined : { background: a.innerBg, border: a.innerBorder }}
+          >
             <p className="text-[11px] font-bold text-foreground dark:text-white flex items-center gap-1.5">
               Proyección de saldo final
               <Info className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
@@ -1798,7 +1848,7 @@ export function CashFlowGrid({
             <p
               className={clsx(
                 'text-2xl font-bold font-mono',
-                (endBalances[endBalances.length - 1] ?? 0) < 0 ? 'text-red-400' : 'text-sky-200'
+                (endBalances[endBalances.length - 1] ?? 0) < 0 ? 'text-red-600 dark:text-red-400' : 'text-sky-800 dark:text-sky-200'
               )}
             >
               {formatMoney(endBalances[endBalances.length - 1] ?? 0, true)}
@@ -1818,8 +1868,8 @@ export function CashFlowGrid({
           </div>
 
           {monthSummary && (
-            <div className="rounded-xl border border-violet-500/20 bg-violet-950/15 p-3 space-y-2 text-[11px] text-zinc-300">
-              <p className="text-[10px] font-bold uppercase text-violet-300">Resumen del mes</p>
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2 text-[11px] text-foreground dark:border-violet-500/20 dark:bg-violet-950/15 dark:text-zinc-300">
+              <p className="text-[10px] font-bold uppercase text-violet-800 dark:text-violet-300">Resumen del mes</p>
               <div className="flex justify-between">
                 <span>Ingresos (reales/matriz)</span>
                 <span className="text-emerald-400 tabular-nums">{formatMoney(monthSummary.ti, true)}</span>
@@ -1829,12 +1879,12 @@ export function CashFlowGrid({
                 <span className="text-rose-400 tabular-nums">{formatMoney(monthSummary.te, true)}</span>
               </div>
               {treasuryEnabled && monthSummary.draftTotal > 0 && (
-                <div className="flex justify-between text-amber-200/90">
+                <div className="flex justify-between text-amber-900 dark:text-amber-200/90">
                   <span>+ Facturas borrador</span>
                   <span className="tabular-nums">−{formatMoney(monthSummary.draftTotal, true)}</span>
                 </div>
               )}
-              <div className="flex justify-between font-bold text-amber-200 border-t border-white/10 pt-2">
+              <div className="flex justify-between font-bold text-amber-900 border-t border-border pt-2 dark:text-amber-200 dark:border-white/10">
                 <span>Saldo final (reales)</span>
                 <span className="tabular-nums">{formatMoney(endBalances[endBalances.length - 1] ?? 0, true)}</span>
               </div>

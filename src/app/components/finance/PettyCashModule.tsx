@@ -646,7 +646,7 @@ export function PettyCashModule({
                     <Button
                         type="button"
                         variant="outline"
-                        className="border-[#3D3B5C] bg-transparent text-[#e4e0ff] hover:bg-white/10"
+                        className="border-border bg-background text-foreground hover:bg-muted dark:border-[#3D3B5C] dark:bg-transparent dark:text-[#e4e0ff] dark:hover:bg-white/10"
                         onClick={() => setPrintFormsOpen(true)}
                         disabled={sedeOptions.length === 0}
                         title="Recibo interno y planilla de movilidad (serie y correlativo global)"
@@ -683,7 +683,7 @@ export function PettyCashModule({
             <Dialog open={isExpenseModalOpen} onOpenChange={setIsExpenseModalOpen}>
                 <DialogContent
                     data-testid="petty-cash-expense-dialog"
-                    className="w-[97vw] sm:max-w-[980px] h-auto bg-[#161427]/95 border-[#3D3B5C]/70 text-white max-h-[calc(100vh-2rem)] overflow-y-auto shadow-[0_35px_120px_rgba(0,0,0,0.7)]"
+                    className="w-[97vw] sm:max-w-[980px] h-auto bg-background border-border text-foreground max-h-[calc(100vh-2rem)] overflow-y-auto shadow-lg dark:bg-[#161427]/95 dark:border-[#3D3B5C]/70 dark:text-white dark:shadow-[0_35px_120px_rgba(0,0,0,0.7)]"
                     onPointerDownOutside={(e) => e.preventDefault()}
                     onEscapeKeyDown={(e) => e.preventDefault()}
                 >
@@ -726,7 +726,7 @@ export function PettyCashModule({
                                     : ''}
                                 :{' '}
                             </span>
-                            <span className="font-mono font-semibold text-cyan-300">
+                            <span className="font-mono font-semibold text-cyan-800 dark:text-cyan-300">
                                 {formatCurrencyEs(availablePettyBalance.balance)}
                             </span>
                             {Number.isFinite(total) && total > 0 ? (
@@ -756,10 +756,10 @@ export function PettyCashModule({
                                     </div>
                                 ) : (
                                     <Select value={location} onValueChange={setLocation}>
-                                        <SelectTrigger className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                        <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                             <SelectValue placeholder="Seleccionar Sede" />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                             {sedeOptions.map(s => (
                                                 <SelectItem key={s} value={s}>{s}</SelectItem>
                                             ))}
@@ -774,10 +774,10 @@ export function PettyCashModule({
                                     value={area || '__choose__'}
                                     onValueChange={(v) => setArea(v === '__choose__' ? '' : v)}
                                 >
-                                    <SelectTrigger className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                    <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                         <SelectValue placeholder="Seleccionar área" />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                    <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                         <SelectItem value="__choose__">Seleccionar área</SelectItem>
                                         {commercialAreas.map((a) => (
                                             <SelectItem key={a} value={a}>{a}</SelectItem>
@@ -799,7 +799,7 @@ export function PettyCashModule({
                                     type="date"
                                     value={documentDate}
                                     onChange={(e) => setDocumentDate(e.target.value)}
-                                    className="bg-[#22203A] border-[#3D3B5C] text-white"
+                                    className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white"
                                 />
                                 <p className="text-[10px] text-slate-500">
                                     La rendición usa la semana seleccionada arriba ({registrationWeek}), no la fecha del comprobante.
@@ -810,10 +810,10 @@ export function PettyCashModule({
                                 <div className="space-y-2">
                                     <Label className="text-xs font-medium text-slate-400">Tipo de documento</Label>
                                     <Select value={classification} onValueChange={setClassification}>
-                                        <SelectTrigger className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                        <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                             <SelectItem value="Boleta">Boleta</SelectItem>
                                             <SelectItem value="Factura">Factura</SelectItem>
                                             <SelectItem value="RXH">Recibo por Honorarios</SelectItem>
@@ -822,7 +822,7 @@ export function PettyCashModule({
                                         </SelectContent>
                                     </Select>
                                     {usesIgv ? (
-                                        <p className="text-[10px] text-cyan-300/80">
+                                        <p className="text-[10px] text-cyan-800 dark:text-cyan-300/80">
                                             Factura: se calcula IGV 18% (base + IGV = total a pagar).
                                         </p>
                                     ) : (
@@ -841,10 +841,10 @@ export function PettyCashModule({
                                             setDocNumber((prev) => normalizeDocIdentityDigits(prev, val));
                                         }}
                                     >
-                                        <SelectTrigger className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                        <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                             <SelectItem value="RUC">RUC</SelectItem>
                                             <SelectItem value="DNI">DNI</SelectItem>
                                             <SelectItem value="CE">CE</SelectItem>
@@ -872,7 +872,7 @@ export function PettyCashModule({
                                     }
                                     inputMode="numeric"
                                     autoComplete="off"
-                                    className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600 font-mono"
+                                    className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 font-mono"
                                 />
                                 {normalizedDoc.length > 0 && (
                                     <p
@@ -908,7 +908,7 @@ export function PettyCashModule({
                                     value={providerName}
                                     onChange={(e) => setProviderName(e.target.value)}
                                     placeholder="Se completa al validar el RUC o documento en el directorio"
-                                    className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600"
+                                    className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600"
                                     readOnly={!!matchedProvider}
                                 />
                                 {docIdentityComplete && !matchedProvider && (
@@ -942,7 +942,7 @@ export function PettyCashModule({
                                         value={docSeries}
                                         onChange={(e) => setDocSeries(e.target.value)}
                                         placeholder="Ej. F001, B002"
-                                        className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600 font-mono"
+                                        className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 font-mono"
                                     />
                                 </div>
                                 <div className="space-y-2">
@@ -954,7 +954,7 @@ export function PettyCashModule({
                                         value={voucherNumber}
                                         onChange={(e) => setVoucherNumber(e.target.value)}
                                         placeholder="Correlativo del comprobante"
-                                        className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600 font-mono"
+                                        className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 font-mono"
                                     />
                                 </div>
                             </div>
@@ -973,10 +973,10 @@ export function PettyCashModule({
                                         Motivo del gasto <span className="text-red-400">*</span>
                                     </Label>
                                     <Select value={category} onValueChange={setCategory}>
-                                        <SelectTrigger id="category" className="bg-[#22203A] border-[#3D3B5C] text-white">
+                                        <SelectTrigger id="category" className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
                                             <SelectValue placeholder="Seleccione el motivo" />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-[#22203A] border-[#3D3B5C] text-white max-h-60">
+                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white max-h-60">
                                             {expenseCategoryOptions.map((c) => (
                                                 <SelectItem key={c} value={c}>
                                                     {c}
@@ -1001,7 +1001,7 @@ export function PettyCashModule({
                                     {suggestedAccountingAccount ? (
                                         <span>
                                             Cuenta de gasto sugerida:{' '}
-                                            <span className="font-mono text-cyan-300">{suggestedAccountingAccount}</span>
+                                            <span className="font-mono text-cyan-800 dark:text-cyan-300">{suggestedAccountingAccount}</span>
                                         </span>
                                     ) : (
                                         <span className="text-amber-300/90">
@@ -1040,8 +1040,8 @@ export function PettyCashModule({
                                 </Alert>
                             )}
 
-                            <div className="flex items-center justify-between rounded-md border border-[#3D3B5C] bg-[#22203A] p-2">
-                                <Label htmlFor="extra-expense" className="text-sm font-medium text-white cursor-pointer">
+                            <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 p-2 dark:border-[#3D3B5C] dark:bg-[#22203A]">
+                                <Label htmlFor="extra-expense" className="text-sm font-medium text-foreground cursor-pointer dark:text-white">
                                     ¿Gasto extra?
                                 </Label>
                                 <Switch
@@ -1086,7 +1086,7 @@ export function PettyCashModule({
                                                     onChange={(e) => setAmountBI(e.target.value)}
                                                     min={0}
                                                     placeholder="0.00"
-                                                    className="pl-7 bg-[#22203A] border-[#3D3B5C] text-white font-mono text-sm h-9"
+                                                    className="pl-7 bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white font-mono text-sm h-9"
                                                 />
                                             </div>
                                         </div>
@@ -1136,7 +1136,7 @@ export function PettyCashModule({
                                                 value={amountExempt}
                                                 onChange={(e) => setAmountExempt(e.target.value)}
                                                 placeholder="0.00"
-                                                className="pl-7 bg-[#22203A] border-[#3D3B5C] text-white font-mono text-sm h-9"
+                                                className="pl-7 bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white font-mono text-sm h-9"
                                             />
                                         </div>
                                         <p className="text-[10px] text-slate-500 leading-snug">
@@ -1158,7 +1158,7 @@ export function PettyCashModule({
                                                 value={amountBI}
                                                 onChange={(e) => setAmountBI(e.target.value)}
                                                 placeholder="0.00"
-                                                className="pl-7 bg-[#22203A] border-[#3D3B5C] text-white font-mono"
+                                                className="pl-7 bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white font-mono"
                                             />
                                         </div>
                                         <p className="text-[10px] text-slate-500">
@@ -1179,7 +1179,7 @@ export function PettyCashModule({
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder="Describa brevemente en qué se incurrió (opcional pero recomendado)…"
-                                className="bg-[#22203A] border-[#3D3B5C] text-white placeholder:text-slate-600 min-h-[72px]"
+                                className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 min-h-[72px]"
                             />
                         </div>
 

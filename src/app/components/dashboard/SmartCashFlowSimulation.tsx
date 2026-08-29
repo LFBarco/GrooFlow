@@ -330,7 +330,7 @@ export function SmartCashFlowSimulation({
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/10"
             style={{ boxShadow: '0 0 24px rgba(34,211,238,0.12)' }}
           >
-            <BrainCircuit className="h-6 w-6 text-cyan-300" />
+            <BrainCircuit className="h-6 w-6 text-cyan-800 dark:text-cyan-300" />
           </div>
           <div>
             <h2 className="text-lg font-bold tracking-tight" style={{ color: '#22d3ee' }}>
@@ -363,7 +363,7 @@ export function SmartCashFlowSimulation({
       <div className="grid gap-4 xl:grid-cols-12 shrink-0">
         <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] xl:col-span-3">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-cyan-200">Horizonte</CardTitle>
+            <CardTitle className="text-sm text-cyan-900 dark:text-cyan-200">Horizonte</CardTitle>
             <CardDescription className="text-xs">Rango inclusivo yyyy-MM-dd</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -408,7 +408,7 @@ export function SmartCashFlowSimulation({
               />
               <p className="text-[11px] text-muted-foreground mt-1">
                 Vacío = saldo inicial de{' '}
-                <span className="text-cyan-300">{formatCurrencyEs(systemSettings.initialBalance ?? 0)}</span>{' '}
+                <span className="text-cyan-800 dark:text-cyan-300">{formatCurrencyEs(systemSettings.initialBalance ?? 0)}</span>{' '}
                 (Operaciones → Flujo de caja).
               </p>
             </div>
@@ -429,7 +429,7 @@ export function SmartCashFlowSimulation({
 
         <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] xl:col-span-4">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-cyan-200 flex items-center gap-2">
+            <CardTitle className="text-sm text-cyan-900 flex items-center gap-2 dark:text-cyan-200">
               <History className="h-4 w-4" /> Historial → programa (Fase 3)
             </CardTitle>
             <CardDescription className="text-xs">
@@ -498,9 +498,9 @@ export function SmartCashFlowSimulation({
                 Por mes proyectado
               </Button>
             </div>
-            <p className="text-[10px] text-muted-foreground rounded bg-black/25 px-2 py-1 border border-white/10">
+            <p className="text-[10px] text-muted-foreground rounded bg-muted/50 px-2 py-1 border border-border dark:bg-black/25 dark:border-white/10">
               Modo activo:{' '}
-              <strong className="text-cyan-200">
+              <strong className="text-cyan-900 dark:text-cyan-200">
                 {histDistribution === 'lump_at_start'
                   ? 'Consolidado al inicio del horizonte'
                   : 'Mensual (promedio del período histórico repetido cada mes natural)'}
@@ -585,7 +585,7 @@ export function SmartCashFlowSimulation({
 
       <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] shrink-0">
         <CardHeader className="py-3 pb-2 flex flex-row items-start gap-2">
-          <BarChart3 className="h-4 w-4 text-cyan-300 mt-1 shrink-0" />
+          <BarChart3 className="h-4 w-4 text-cyan-800 dark:text-cyan-300 mt-1 shrink-0" />
           <div>
             <CardTitle className="text-sm text-cyan-100">Comparativa en el horizonte (Fase 3)</CardTitle>
             <CardDescription className="text-xs">
@@ -598,19 +598,19 @@ export function SmartCashFlowSimulation({
         </CardHeader>
         <CardContent className="pb-4">
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
-            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+            <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 dark:border-white/10 dark:bg-black/20">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                 Programa · ingresos
               </p>
               <p className="font-mono text-emerald-300">{formatCurrencyEs(programTotalsInHorizon.income)}</p>
             </div>
-            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+            <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 dark:border-white/10 dark:bg-black/20">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                 Programa · egresos
               </p>
               <p className="font-mono text-rose-300">{formatCurrencyEs(programTotalsInHorizon.expense)}</p>
             </div>
-            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+            <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 dark:border-white/10 dark:bg-black/20">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                 Realizado · ingreso − egreso
               </p>
@@ -622,11 +622,11 @@ export function SmartCashFlowSimulation({
                 </span>
               </p>
             </div>
-            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+            <div className="rounded-lg border border-border bg-muted/50 px-3 py-2 dark:border-white/10 dark:bg-black/20">
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
                 Líneas en programa ({horizonStart} … {horizonEnd})
               </p>
-              <p className="font-mono text-cyan-200">{programTotalsInHorizon.count}</p>
+              <p className="font-mono text-cyan-900 dark:text-cyan-200">{programTotalsInHorizon.count}</p>
             </div>
           </div>
         </CardContent>
@@ -787,7 +787,7 @@ export function SmartCashFlowSimulation({
                   {result.alerts.map((a, i) => (
                     <li
                       key={`${a.kind}-${a.date}-${i}`}
-                      className="rounded-md border border-white/10 bg-black/20 px-2 py-1.5 text-xs"
+                      className="rounded-md border border-border bg-muted/50 px-2 py-1.5 text-xs dark:border-white/10 dark:bg-black/20"
                     >
                       <span className="flex flex-wrap items-center gap-1 mb-1">
                         <Badge variant={alertBadgeVariant(a.kind)} className="text-[10px]">
@@ -835,7 +835,7 @@ export function SmartCashFlowSimulation({
             </CardContent>
           </Card>
 
-          <div className="rounded-md border border-white/10 bg-black/25 p-3 text-[11px] text-muted-foreground leading-snug">
+          <div className="rounded-md border border-border bg-muted/50 p-3 text-[11px] text-muted-foreground leading-snug dark:border-white/10 dark:bg-black/25">
             Los <strong className="text-slate-200">egresos fijos</strong> aplican ese día sí o sí. Los{' '}
             <strong className="text-slate-200">flexibles</strong> pueden aplazarse según disponibilidad y orden
             de prioridad (número más bajo = primero).

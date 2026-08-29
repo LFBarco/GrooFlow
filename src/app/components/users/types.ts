@@ -36,8 +36,9 @@ export const SYSTEM_MODULES = [
     'Reportes',
     'Auditoría',
     'Conciliación',
-    'Usuarios',
     'Configuración',
+    'Admin Menú GrooFlow',
+    'Asignación Menú GrooFlow',
 ] as const;
 
 export type ModuleName = typeof SYSTEM_MODULES[number];

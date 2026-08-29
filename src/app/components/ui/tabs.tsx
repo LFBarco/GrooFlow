@@ -27,7 +27,8 @@ function TabsList({
       data-slot="tabs-list"
       className={cn(
         "inline-flex h-9 w-fit items-center justify-center rounded-xl p-[3px] flex",
-        "bg-[rgba(255,255,255,0.04)] border border-[rgba(139,92,246,0.15)] text-muted-foreground",
+        "bg-muted/80 border border-border text-muted-foreground",
+        "dark:bg-[rgba(255,255,255,0.04)] dark:border-[rgba(139,92,246,0.15)]",
         className,
       )}
       {...props}
@@ -45,7 +46,8 @@ function TabsTrigger({
       className={cn(
         "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:outline-ring",
         "text-muted-foreground inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-transparent px-2.5 py-1 text-xs font-semibold whitespace-nowrap transition-all focus-visible:ring-[3px] focus-visible:outline-1 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "data-[state=active]:bg-[rgba(34,211,238,0.12)] data-[state=active]:text-cyan-300 data-[state=active]:border-[rgba(34,211,238,0.25)] data-[state=active]:shadow-[0_0_12px_rgba(34,211,238,0.1)]",
+        "data-[state=active]:bg-cyan-100 data-[state=active]:text-cyan-900 data-[state=active]:border-cyan-300/50 data-[state=active]:shadow-sm",
+        "dark:data-[state=active]:bg-[rgba(34,211,238,0.12)] dark:data-[state=active]:text-cyan-300 dark:data-[state=active]:border-[rgba(34,211,238,0.25)] dark:data-[state=active]:shadow-[0_0_12px_rgba(34,211,238,0.1)]",
         className,
       )}
       {...props}

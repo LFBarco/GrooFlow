@@ -62,6 +62,8 @@ import {
   Truck,
   UserCheck,
   GitCompare,
+  ListTree,
+  ShieldCheck,
 } from "lucide-react";
 import { GrooflowBrandLogo } from "./config/brandLogo";
 import {
@@ -85,6 +87,8 @@ import {
   TransactionImporter,
   TreasuryModule,
   UserManager,
+  MenuConfigPage,
+  MenuAssignmentPage,
   FleetModule,
   InventoryModule,
   AsistenciaModule,
@@ -135,7 +139,9 @@ import {
 } from "./utils/userListMerge";
 import { mergePettyCashFilterCatalog } from "./utils/providerCatalog";
 import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
-import { getFirstAllowedViewPath, roleRecordHasModuleAccess } from "./utils/rolePermissions";
+import { getFirstAllowedViewPath, roleHasModuleAccess, roleRecordHasModuleAccess } from "./utils/rolePermissions";
+import { GrooFlowSidebarNav } from "./components/layout/GrooFlowSidebarNav";
+import { fetchAuthMenuPayload, type GrooflowAuthMenuSection, type MenuPermissionsMap } from "./services/menuApi";
 import { getSuperAdminEmails } from "./config/superAdmins";
 import { goLiveAlertSources } from "./config/goLive";
 import { isUserSessionBlocked } from "./utils/userSessionGuard";
@@ -280,6 +286,8 @@ export default function App() {
   });
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
+  const [menuPermissions, setMenuPermissions] = useState<MenuPermissionsMap | null>(null);
+  const [menuSections, setMenuSections] = useState<GrooflowAuthMenuSection[] | null>(null);
   const [currentUser, setCurrentUser] = useState<User>(() => readCachedAppUser() ?? GUEST_USER);
   const [transactions, setTransactions] = useState<Transaction[]>(EMPTY_INITIAL_TRANSACTIONS);
   const [invoices, setInvoices] = useState<InvoiceDraft[]>(() =>
@@ -3010,25 +3018,65 @@ export default function App() {
 
   const canViewAuditLogs = isAdminAppUser(currentUser);
 
-  const hasPermission = (moduleName: string): boolean => {
-    if (isSuperAdmin) return true;
-    return roleRecordHasModuleAccess(userRole, moduleName);
-  };
+  const reloadMenuPayload = useCallback(() => {
+    if (!isAuthenticated || APP_BACKEND !== 'rest') return;
+    void fetchAuthMenuPayload()
+      .then((payload) => {
+        setMenuPermissions(payload.menu_permissions);
+        setMenuSections(payload.menu_sections);
+      })
+      .catch(() => {
+        setMenuPermissions(null);
+        setMenuSections(null);
+      });
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || APP_BACKEND !== 'rest') {
+      setMenuPermissions(null);
+      setMenuSections(null);
+      return;
+    }
+    reloadMenuPayload();
+  }, [isAuthenticated, currentUser.id, currentUser.role, reloadMenuPayload]);
+
+  useEffect(() => {
+    const onMenuChanged = () => reloadMenuPayload();
+    window.addEventListener('grooflow:menu-changed', onMenuChanged);
+    return () => window.removeEventListener('grooflow:menu-changed', onMenuChanged);
+  }, [reloadMenuPayload]);
+
+  const hasPermission = useCallback(
+    (moduleName: string): boolean => {
+      if (isSuperAdmin) return true;
+      if (menuPermissions && Object.keys(menuPermissions).length > 0) {
+        return roleHasModuleAccess(menuPermissions, moduleName);
+      }
+      return roleRecordHasModuleAccess(userRole, moduleName);
+    },
+    [isSuperAdmin, menuPermissions, userRole]
+  );
 
   // Enlace / URL: no se puede abrir un módulo sin permiso (antes solo se ocultaba el botón)
   useEffect(() => {
     if (!isAuthenticated || !isDataLoaded) return;
+    if (urlView === 'users') {
+      navigate(hasPermission('Configuración') ? viewToPath('config') : viewToPath('dashboard'), { replace: true });
+      return;
+    }
     if (isSuperAdmin) return;
     const mod = VIEW_REQUIRED_MODULE[urlView];
     if (!mod) return;
-    if (roleRecordHasModuleAccess(userRole, mod)) return;
-    const targetPath = getFirstAllowedViewPath(userRole, isSuperAdmin);
+    if (hasPermission(mod)) return;
+    const targetPath = getFirstAllowedViewPath(userRole, isSuperAdmin, menuPermissions ?? undefined);
     if (targetPath === viewToPath(urlView)) {
       return;
     }
     navigate(targetPath, { replace: true });
     toast.error('No tienes permiso para acceder a esta sección. Se redirigió a un módulo permitido.');
-  }, [isAuthenticated, isDataLoaded, isSuperAdmin, urlView, userRole, navigate]);
+  }, [isAuthenticated, isDataLoaded, isSuperAdmin, urlView, userRole, menuPermissions, navigate, hasPermission]);
+
+  const useDbMenuNav = APP_BACKEND === 'rest' && menuSections !== null;
 
   const FINANCE_NAV_MODULES = [
     "Finanzas",
@@ -3519,6 +3567,10 @@ export default function App() {
         
         {/* Navigation Content */}
         <nav className="flex-1 overflow-y-auto py-2.5 space-y-0.5 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/5 [&::-webkit-scrollbar-track]:bg-transparent">
+          {useDbMenuNav ? (
+            <GrooFlowSidebarNav sections={menuSections ?? []} showSectionLabels={!isSidebarCollapsed} />
+          ) : (
+            <>
           {!isSidebarCollapsed && (
             <div className="px-3 pb-1 pt-0.5">
               <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Principal</span>
@@ -3556,12 +3608,21 @@ export default function App() {
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
            <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Conciliación" />
            
-           {(hasPermission('Usuarios') || hasPermission('Configuración')) && (
+           {(hasPermission('Configuración') || canViewAuditLogs) && (
            <div className="mt-2 pt-2 space-y-0.5" style={{ borderTop: '1px solid var(--gf-sidebar-divider)' }}>
-             <NavButton targetView="users" icon={Users} label="Usuarios y Roles" iconColorClass="text-lime-400 group-hover/btn:text-lime-300" requiredModule="Usuarios" />
-             <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400 group-hover/btn:text-slate-300" requiredModule="Configuración" />
+             {hasPermission('Configuración') && (
+               <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400 group-hover/btn:text-slate-300" requiredModule="Configuración" />
+             )}
+             {canViewAuditLogs && hasPermission('Admin Menú GrooFlow') && (
+               <NavButton targetView="menuConfig" icon={ListTree} label="Configuración de menú" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Admin Menú GrooFlow" />
+             )}
+             {canViewAuditLogs && hasPermission('Asignación Menú GrooFlow') && (
+               <NavButton targetView="menuAssignment" icon={ShieldCheck} label="Asignación de menú" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Asignación Menú GrooFlow" />
+             )}
            </div>
            )}
+            </>
+          )}
         </nav>
         
         {/* Footer */}
@@ -3662,6 +3723,10 @@ export default function App() {
                 </div>
                 <AppNavigationContext.Provider value={appNavigationMobileValue}>
                 <nav className="flex-1 overflow-y-auto px-1 py-3 space-y-0.5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                    {useDbMenuNav ? (
+                      <GrooFlowSidebarNav sections={menuSections ?? []} />
+                    ) : (
+                      <>
                     <div className="px-3 pb-1 pt-0.5">
                       <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Principal</span>
                     </div>
@@ -3691,9 +3756,18 @@ export default function App() {
                     <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
                     <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400" requiredModule="Conciliación" />
                     <div className="pt-3 mt-2 space-y-0.5" style={{ borderTop: '1px solid var(--gf-sidebar-divider)' }}>
-                        <NavButton targetView="users" icon={Users} label="Usuarios y Roles" iconColorClass="text-lime-400" requiredModule="Usuarios" />
-                        <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400" requiredModule="Configuración" />
+                        {hasPermission('Configuración') && (
+                          <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400" requiredModule="Configuración" />
+                        )}
+                        {canViewAuditLogs && hasPermission('Admin Menú GrooFlow') && (
+                          <NavButton targetView="menuConfig" icon={ListTree} label="Configuración de menú" iconColorClass="text-cyan-400" requiredModule="Admin Menú GrooFlow" />
+                        )}
+                        {canViewAuditLogs && hasPermission('Asignación Menú GrooFlow') && (
+                          <NavButton targetView="menuAssignment" icon={ShieldCheck} label="Asignación de menú" iconColorClass="text-emerald-400" requiredModule="Asignación Menú GrooFlow" />
+                        )}
                     </div>
+                      </>
+                    )}
                 </nav>
                 </AppNavigationContext.Provider>
             </div>
@@ -3941,7 +4015,7 @@ export default function App() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-8 border-cyan-500/30 bg-transparent text-cyan-200 hover:bg-cyan-500/10"
+                          className="h-8 border-cyan-300/60 bg-background text-cyan-900 hover:bg-cyan-50 dark:border-cyan-500/30 dark:bg-transparent dark:text-cyan-200 dark:hover:bg-cyan-500/10"
                           onClick={() => setIsTransactionImporterOpen(true)}
                         >
                           Importar Excel
@@ -4272,66 +4346,16 @@ export default function App() {
              </div>
           )}
 
-          {view === 'users' && (
-             <div className="animate-in fade-in duration-150">
-                <UserManager 
-                    users={users} 
-                    roles={roles}
-                    sedesCatalog={enabledSedesForForms}
-                    knownSedeNames={catalogSedes}
-                    sedesCatalogEntries={sedesEntriesForDialog}
-                    onSaveSedesCatalog={handleSaveSedesCatalog}
-                    onUpdateRoles={handleUpdateRoles}
-                    onUpdateUser={async (updatedUser) => {
-                        const prev = users.find((u) => u.id === updatedUser.id);
-                        if (prev?.status !== updatedUser.status) {
-                          const ok = await syncUserAuthAccess(
-                            updatedUser,
-                            updatedUser.status !== 'inactive'
-                          );
-                          if (!ok) return;
-                        }
-                        setUsers((prevList) => {
-                          const next = prevList.map((u) =>
-                            u.id === updatedUser.id ? updatedUser : u
-                          );
-                          void persistUsersToCloud(next);
-                          return next;
-                        });
-                        if (prev?.status !== updatedUser.status) {
-                          toast.success(
-                            updatedUser.status === 'inactive'
-                              ? `Usuario desactivado: ${updatedUser.name}`
-                              : `Usuario activado: ${updatedUser.name}`
-                          );
-                        } else {
-                          toast.success('Usuario actualizado correctamente');
-                        }
-                    }}
-                    onAddUser={(newUser) => {
-                        setUsers(prev => {
-                            const e = newUser.email?.toLowerCase();
-                            const rest = e ? prev.filter(u => u.email?.toLowerCase() !== e) : prev;
-                            const next = [...rest, newUser];
-                            void persistUsersToCloud(next);
-                            return next;
-                        });
-                    }}
-                    onDeleteUser={async (userId) => {
-                        const target = users.find((u) => u.id === userId);
-                        if (target) {
-                          const ok = await syncUserAuthAccess(target, false);
-                          if (!ok) return;
-                        }
-                        setUsers((prev) => {
-                          const next = prev.filter((u) => u.id !== userId);
-                          void persistUsersToCloud(next);
-                          return next;
-                        });
-                    }}
-                    onRefreshUsers={() => hydrateFromKvRef.current?.()}
-                />
-             </div>
+          {view === 'menuConfig' && canViewAuditLogs && (
+            <Suspense fallback={<RouteLoader />}>
+              <MenuConfigPage onMenuChanged={reloadMenuPayload} />
+            </Suspense>
+          )}
+
+          {view === 'menuAssignment' && canViewAuditLogs && (
+            <Suspense fallback={<RouteLoader />}>
+              <MenuAssignmentPage />
+            </Suspense>
           )}
 
           {view === 'config' && (

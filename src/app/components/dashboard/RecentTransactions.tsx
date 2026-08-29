@@ -302,7 +302,7 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
               setCurrentPage(1);
             }}
           >
-            <SelectTrigger className="h-8 w-[86px] border-white/10 bg-transparent text-slate-200">
+            <SelectTrigger className="h-8 w-[86px] border-border bg-background text-foreground dark:border-white/10 dark:bg-transparent dark:text-slate-200">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

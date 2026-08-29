@@ -59,17 +59,22 @@ export function roleRecordHasModuleAccess(role: Role | undefined | null, moduleN
   return roleHasModuleAccess(role?.permissions, moduleName);
 }
 
-/**
- * Primer módulo permitido (para redirigir si la URL pide un módulo bloqueado).
- */
+  /** Primer módulo permitido (para redirigir si la URL pide un módulo bloqueado). */
 export function getFirstAllowedViewPath(
   userRole: Role | undefined | null,
-  isSuper: boolean
+  isSuper: boolean,
+  menuPermissions?: Record<string, boolean>
 ): string {
   if (isSuper) return VIEW_TO_PATH.dashboard;
   for (const v of VIEW_REDIRECT_PRIORITY) {
+    if (v === 'users') continue;
     const mod = VIEW_REQUIRED_MODULE[v];
-    if (mod && roleRecordHasModuleAccess(userRole, mod)) {
+    if (!mod) continue;
+    const allowed =
+      menuPermissions && Object.keys(menuPermissions).length > 0
+        ? roleHasModuleAccess(menuPermissions, mod)
+        : roleRecordHasModuleAccess(userRole, mod);
+    if (allowed) {
       return VIEW_TO_PATH[v];
     }
   }

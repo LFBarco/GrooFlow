@@ -46,6 +46,7 @@ async function restFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (init?.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
+  headers.set('X-Groomers-Client', 'grooflow');
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const res = await fetch(`${getGrooflowApiBase()}${path}`, {
@@ -120,6 +121,7 @@ class RestAuthRepository implements IAuthRepository {
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${token}`,
+          'X-Groomers-Client': 'grooflow',
         },
       });
     } catch {

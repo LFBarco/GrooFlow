@@ -1311,7 +1311,7 @@ ${signatures}
                         </div>
                         <div>
                             <h3 className="font-semibold text-sm text-foreground">Responsable de Caja Chica</h3>
-                            <p className="text-xs text-cyan-200/70">
+                            <p className="text-xs text-cyan-800/80 dark:text-cyan-200/70">
                                 {canPickMultipleCustodians
                                     ? 'Gestionando fondo de:'
                                     : 'Solo puede ver y operar su propio fondo en sus sedes asignadas.'}
@@ -1352,7 +1352,7 @@ ${signatures}
                             ) : null}
                             <span className="text-xs whitespace-nowrap">
                                 <span className="font-semibold text-foreground/90">Periodo:</span>{' '}
-                                <span className="text-violet-300/95">{selectedWeekRangeLabel}</span>
+                                <span className="text-violet-800 dark:text-violet-300/95">{selectedWeekRangeLabel}</span>
                             </span>
                             <Select value={selectedWeek} onValueChange={setSelectedWeek}>
                                 <SelectTrigger className="w-[200px] h-9 border-cyan-500/30 bg-cyan-950/25 text-foreground">
@@ -1388,7 +1388,7 @@ ${signatures}
                             <div className="text-sm font-semibold rounded-lg border border-cyan-500/35 bg-cyan-950/30 px-3 py-2 min-w-[200px] shadow-inner whitespace-nowrap">
                                 {selectedCustodian?.name ?? currentUser.name}
                                 {selectedCustodian && userHasPettyCashFund(selectedCustodian) ? (
-                                    <span className="text-violet-300/90 font-normal">
+                                    <span className="text-violet-800 dark:text-violet-300/90 font-normal">
                                         {' '}
                                         — Límite {formatCurrencyEs(effectivePettyCashFundLimit(selectedCustodian, settings.totalFundLimit))}
                                     </span>

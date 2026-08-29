@@ -297,6 +297,159 @@ html.light .gf-cashflow-grid .text-zinc-200 {
   color: #334155 !important;
 }
 
+html.light .gf-cashflow-grid .text-amber-300,
+html.light .gf-cashflow-grid .text-amber-400 {
+  color: #b45309 !important;
+}
+
+html.light .gf-cashflow-grid .text-red-100,
+html.light .gf-cashflow-grid .text-red-100\/95 {
+  color: #991b1b !important;
+}
+
+html.light .gf-cashflow-grid .text-zinc-300 {
+  color: #334155 !important;
+}
+
+html.light .gf-cashflow-grid .text-violet-300 {
+  color: #5b21b6 !important;
+}
+
+html.light .gf-cashflow-grid .text-white {
+  color: #0f172a !important;
+}
+
+html.light .gf-cashflow-grid .bg-zinc-800\/90 {
+  background-color: #e2e8f0 !important;
+}
+
+html.light .gf-cashflow-grid thead[style] {
+  background: rgba(241, 245, 249, 0.98) !important;
+}
+
+html.light .gf-cashflow-grid[style] {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.92) 0%, rgba(238, 242, 255, 0.95) 100%) !important;
+  border-color: rgba(148, 163, 184, 0.4) !important;
+}
+
+/* ─── GROOFLOW LIGHT — utilidades oscuras legacy (app-wide) ─── */
+html.light .text-zinc-100 { color: #0f172a !important; }
+html.light .text-zinc-200 { color: #1e293b !important; }
+html.light .text-zinc-300 { color: #334155 !important; }
+html.light .text-zinc-400 { color: #475569 !important; }
+
+html.light .text-red-100,
+html.light .text-red-100\/95 { color: #991b1b !important; }
+
+html.light .text-amber-200,
+html.light .text-amber-200\/90,
+html.light .text-amber-200\/95 { color: #b45309 !important; }
+html.light .text-amber-300 { color: #92400e !important; }
+
+html.light .text-sky-100 { color: #0369a1 !important; }
+html.light .text-sky-200 { color: #0284c7 !important; }
+html.light .text-sky-300 { color: #0369a1 !important; }
+
+html.light .text-violet-200 { color: #5b21b6 !important; }
+html.light .text-violet-200\/75 { color: #6d28d9 !important; }
+html.light .text-violet-300 { color: #5b21b6 !important; }
+html.light .text-violet-300\/95,
+html.light .text-violet-300\/90 { color: #5b21b6 !important; }
+
+html.light .text-emerald-300 { color: #047857 !important; }
+html.light .text-emerald-400 { color: #059669 !important; }
+html.light .text-rose-300 { color: #be123c !important; }
+html.light .text-cyan-100 { color: #0e7490 !important; }
+html.light .text-cyan-200 { color: #0369a1 !important; }
+html.light .text-cyan-300 { color: #0e7490 !important; }
+html.light .text-cyan-300\/80 { color: #0e7490 !important; }
+html.light .text-cyan-200\/70 { color: #0369a1 !important; }
+html.light .text-\[\#e4e0ff\] { color: #0f172a !important; }
+html.light .text-\[\#E4E0FF\] { color: #0f172a !important; }
+
+html.light button.text-\[\#e4e0ff\],
+html.light button.border-\[\#3D3B5C\] {
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+  background-color: rgba(255, 255, 255, 0.88) !important;
+}
+
+html.light button.text-\[\#e4e0ff\]:hover,
+html.light button.border-\[\#3D3B5C\]:hover {
+  background-color: #f1f5f9 !important;
+}
+
+html.light [data-slot="tabs-trigger"]:not([data-state="active"]) {
+  color: #64748b !important;
+}
+
+html.light [data-slot="tabs-trigger"]:not([data-state="active"]) svg {
+  color: #64748b !important;
+}
+
+html.light [data-slot="tabs-list"] {
+  background: rgba(241, 245, 249, 0.95) !important;
+  border-color: rgba(148, 163, 184, 0.45) !important;
+}
+
+html.light button.bg-transparent.text-cyan-200,
+html.light button.border-cyan-500\/30.text-cyan-200 {
+  color: #0e7490 !important;
+  border-color: rgba(14, 116, 144, 0.35) !important;
+  background-color: rgba(255, 255, 255, 0.85) !important;
+}
+
+html.light button.bg-transparent.text-cyan-200:hover {
+  background-color: rgba(224, 242, 254, 0.85) !important;
+  color: #0c4a6e !important;
+}
+
+html.light button.variant-ghost.text-cyan-300,
+html.light button.text-cyan-300.hover\:text-cyan-100 {
+  color: #0e7490 !important;
+}
+
+html.light .border-white\/10.bg-transparent.text-slate-200 {
+  border-color: #cbd5e1 !important;
+  color: #334155 !important;
+  background-color: #ffffff !important;
+}
+
+html.light .border-white\/5,
+html.light .border-white\/10,
+html.light .border-white\/15 { border-color: rgba(148, 163, 184, 0.45) !important; }
+
+html.light .bg-zinc-900\/80,
+html.light .bg-zinc-900\/90,
+html.light .bg-zinc-900\/40,
+html.light .bg-zinc-900\/25 { background-color: rgba(248, 250, 252, 0.95) !important; }
+
+html.light .bg-zinc-800\/90,
+html.light .bg-zinc-800 { background-color: #f1f5f9 !important; }
+
+html.light .bg-black\/20,
+html.light .bg-black\/25 { background-color: rgba(241, 245, 249, 0.88) !important; }
+
+html.light .bg-sky-900\/30 { background-color: rgba(224, 242, 254, 0.92) !important; }
+html.light .bg-red-950\/25 { background-color: rgba(254, 226, 226, 0.72) !important; }
+html.light .bg-amber-950\/35 { background-color: rgba(254, 243, 199, 0.78) !important; }
+html.light .bg-violet-950\/15,
+html.light .bg-violet-950\/30 { background-color: rgba(237, 233, 254, 0.78) !important; }
+html.light .bg-cyan-900\/40 { background-color: rgba(224, 242, 254, 0.65) !important; }
+
+html.light .hover\:bg-white\/10:hover { background-color: rgba(148, 163, 184, 0.14) !important; }
+html.light .hover\:text-cyan-200:hover { color: #0891b2 !important; }
+
+html.light button.bg-violet-600,
+html.light button.bg-violet-600.text-white,
+html.light button.bg-cyan-600,
+html.light button.bg-cyan-600.text-white,
+html.light .bg-violet-600.text-white,
+html.light .bg-violet-500.text-white,
+html.light .text-primary-foreground {
+  color: #ffffff !important;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -892,7 +1045,6 @@ html.light .gf-cashflow-grid .text-zinc-200 {
     box-shadow: var(--card-shadow);
   }
 
-  html.light button[class*="bg-primary"],
   html.light .gf-glass-btn {
     background: rgba(255, 255, 255, 0.65) !important;
     backdrop-filter: blur(12px);
@@ -902,7 +1054,6 @@ html.light .gf-cashflow-grid .text-zinc-200 {
     transition: all 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  html.light button[class*="bg-primary"]:hover,
   html.light .gf-glass-btn:hover {
     box-shadow: 0 8px 28px -6px rgba(34, 211, 238, 0.4), 0 0 20px rgba(34, 211, 238, 0.15);
     transform: translateY(-2px);

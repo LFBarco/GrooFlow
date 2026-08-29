@@ -63,6 +63,11 @@ const loadPurchaseRequestManager = named(
 );
 const loadProductModule = named(() => import('./components/products/ProductModule'), 'ProductModule');
 const loadUserManager = named(() => import('./components/users/UserManager'), 'UserManager');
+const loadMenuConfigPage = named(() => import('./components/admin/MenuConfigPage'), 'MenuConfigPage');
+const loadMenuAssignmentPage = named(
+  () => import('./components/admin/MenuAssignmentPage'),
+  'MenuAssignmentPage'
+);
 const loadTreasuryModule = named(() => import('./components/treasury/TreasuryModule'), 'TreasuryModule');
 const loadProfessionalFeesModule = named(
   () => import('./components/finance/ProfessionalFeesModule'),
@@ -96,6 +101,8 @@ export const ChartOfAccountsModule = lazy(loadChartOfAccountsModule);
 export const PurchaseRequestManager = lazy(loadPurchaseRequestManager);
 export const ProductModule = lazy(loadProductModule);
 export const UserManager = lazy(loadUserManager);
+export const MenuConfigPage = lazy(loadMenuConfigPage);
+export const MenuAssignmentPage = lazy(loadMenuAssignmentPage);
 export const TreasuryModule = lazy(loadTreasuryModule);
 export const ProfessionalFeesModule = lazy(loadProfessionalFeesModule);
 export const AlertsCenter = lazy(loadAlertsCenter);
@@ -122,6 +129,8 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   requests: [loadPurchaseRequestManager],
   audit: [loadAuditPanel],
   users: [loadUserManager],
+  menuConfig: [loadMenuConfigPage],
+  menuAssignment: [loadMenuAssignmentPage],
   config: [loadConfigPanel],
   fleet: [loadFleetModule],
   inventory: [loadInventoryModule],

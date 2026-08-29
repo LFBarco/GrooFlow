@@ -403,7 +403,7 @@ export function ProductModule({
           </div>
 
           {(searchTerm || providerFilter !== 'all' || lineFilter !== 'all' || categoryFilter !== 'all' || stockFilter !== 'all') && (
-            <Button variant="ghost" size="sm" className="text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-100" onClick={clearFilters}>
+            <Button variant="ghost" size="sm" className="text-cyan-800 hover:bg-cyan-50 hover:text-cyan-950 dark:text-cyan-300 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-100" onClick={clearFilters}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Limpiar filtros
             </Button>
@@ -473,7 +473,7 @@ export function ProductModule({
                     <TableCell className="text-slate-300">{product.line}</TableCell>
                     <TableCell className="text-right font-medium text-foreground">{formatCurrencyEs(product.salePrice)}</TableCell>
                     <TableCell className="text-center">
-                      <Badge className="border border-cyan-500/25 bg-cyan-500/15 text-cyan-200">{product.stockAccounting}</Badge>
+                      <Badge className="border border-cyan-300/50 bg-cyan-50 text-cyan-900 dark:border-cyan-500/25 dark:bg-cyan-500/15 dark:text-cyan-200">{product.stockAccounting}</Badge>
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge className="border border-emerald-500/25 bg-emerald-500/15 text-emerald-200">{product.stockAvailable}</Badge>
@@ -481,7 +481,7 @@ export function ProductModule({
                     <TableCell className="text-center">{statusBadge(product.status)}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="text-cyan-300 hover:bg-cyan-500/10 hover:text-cyan-100" onClick={() => openWorkspaceProduct(product)}>
+                        <Button variant="ghost" size="icon" className="text-cyan-800 hover:bg-cyan-50 hover:text-cyan-950 dark:text-cyan-300 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-100" onClick={() => openWorkspaceProduct(product)}>
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" className="text-amber-300 hover:bg-amber-500/10 hover:text-amber-100" onClick={() => openWorkspaceProduct(product)}>
