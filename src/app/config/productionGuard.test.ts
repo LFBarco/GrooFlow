@@ -32,4 +32,16 @@ describe('productionGuard', () => {
     }).map((i) => i.code);
     expect(codes).toContain('sql_disabled');
   });
+
+  it('no alerta SQL desactivado cuando el backend efectivo es REST (Vercel)', () => {
+    expect(
+      getProductionConfigIssues({
+        prod: true,
+        backend: 'supabase',
+        productionSql: 'false',
+        supabaseUrl: 'https://x.supabase.co',
+        hostname: 'grooflow.vercel.app',
+      })
+    ).toEqual([]);
+  });
 });

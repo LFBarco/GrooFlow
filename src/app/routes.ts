@@ -32,6 +32,18 @@ export type ViewType =
 /** Path por defecto (raíz) */
 export const DEFAULT_VIEW: ViewType = 'dashboard';
 
+/** Hostinger y Vite sirven la app bajo `/grooflow`. En Vercel la URL pública es `/`. */
+export const HOSTINGER_BASENAME = '/grooflow';
+
+export function getRouterBasename(pathname?: string): string {
+  const path =
+    pathname ?? (typeof window !== 'undefined' ? window.location.pathname : HOSTINGER_BASENAME);
+  if (path === HOSTINGER_BASENAME || path.startsWith(`${HOSTINGER_BASENAME}/`)) {
+    return HOSTINGER_BASENAME;
+  }
+  return '/';
+}
+
 /** Mapa vista → path (una sola ruta por vista) */
 export const VIEW_TO_PATH: Record<ViewType, string> = {
   dashboard: '/',

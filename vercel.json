@@ -3,24 +3,14 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "env": {
-    "VITE_BACKEND": "rest",
-    "VITE_GROOFLOW_API_URL": "https://gestionveterinariagroomers.com/grooflow/api",
-    "VITE_PRODUCTION_SQL": "false",
-    "VITE_TRANSACTIONS_SQL": "false",
-    "VITE_FLEET_SQL": "false",
-    "VITE_INVENTORY_SQL": "false"
-  },
   "rewrites": [
     {
       "source": "/grooflow/api/:path*",
       "destination": "https://gestionveterinariagroomers.com/grooflow/api/:path*"
     },
     { "source": "/grooflow/assets/:path*", "destination": "/assets/:path*" },
-    { "source": "/grooflow/:file", "destination": "/:file" },
-    { "source": "/grooflow/:path*", "destination": "/index.html" }
-  ],
-  "redirects": [
-    { "source": "/grooflow", "destination": "/grooflow/", "permanent": false }
+    { "source": "/grooflow", "destination": "/index.html" },
+    { "source": "/grooflow/:path*", "destination": "/index.html" },
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }

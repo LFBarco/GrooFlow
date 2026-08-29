@@ -1,3 +1,5 @@
+import { browserHostname, resolveGrooflowBackend } from './backend'
+
 export type ProductionConfigIssue = {
   code: string
   message: string
@@ -8,6 +10,7 @@ export type ProductionGuardEnv = {
   backend: string
   productionSql: string | undefined
   supabaseUrl: string | undefined
+  hostname?: string
 }
 
 export function readProductionGuardEnv(): ProductionGuardEnv {
@@ -16,6 +19,7 @@ export function readProductionGuardEnv(): ProductionGuardEnv {
     backend: import.meta.env.VITE_BACKEND ?? 'rest',
     productionSql: import.meta.env.VITE_PRODUCTION_SQL,
     supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+    hostname: browserHostname(),
   }
 }
 
@@ -25,23 +29,24 @@ export function getProductionConfigIssues(
 ): ProductionConfigIssue[] {
   if (!env.prod) return []
 
+  const backend = resolveGrooflowBackend(env.backend, env.hostname ?? '')
   const issues: ProductionConfigIssue[] = []
 
-  if (env.backend === 'local') {
+  if (backend === 'local') {
     issues.push({
       code: 'backend_local',
       message: 'VITE_BACKEND=local en un build de producción. Use supabase o rest.',
     })
   }
 
-  if (env.backend === 'supabase' && env.productionSql === 'false') {
+  if (backend === 'supabase' && env.productionSql === 'false') {
     issues.push({
       code: 'sql_disabled',
       message: 'VITE_PRODUCTION_SQL=false en producción. Los datos pueden no replicarse a SQL.',
     })
   }
 
-  if (env.backend === 'supabase' && !env.supabaseUrl?.startsWith('https://')) {
+  if (backend === 'supabase' && !env.supabaseUrl?.startsWith('https://')) {
     issues.push({
       code: 'missing_supabase_url',
       message: 'Falta VITE_SUPABASE_URL en el build de producción.',
