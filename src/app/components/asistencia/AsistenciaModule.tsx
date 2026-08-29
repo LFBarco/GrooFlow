@@ -198,9 +198,15 @@ export function AsistenciaModule({
         return r.dia_entrada === key || (r.entrada && formatSedeDateLabel(new Date(r.entrada)) === key);
       });
       const delta = Math.max(0, merged.length - priorCount);
-      toast.success(
-        `${merged.length} registros (${delta > 0 ? `+${delta} nuevos · ` : ''}${onDate.length} hoy para ${activeSede}). Caché 48 h.`
-      );
+      if (merged.length === 0) {
+        toast.warning(
+          'Buk respondió sin registros. Vuelve a «Probar conexión» en Integraciones; si ahí sí hay datos, el proxy del servidor puede estar incompleto (pide al backend revisar /proxy/buk/fetch).'
+        );
+      } else {
+        toast.success(
+          `${merged.length} registros (${delta > 0 ? `+${delta} nuevos · ` : ''}${onDate.length} hoy para ${activeSede}). Caché 48 h.`
+        );
+      }
     } catch (err) {
       if (cached?.records.length) {
         toast.error(

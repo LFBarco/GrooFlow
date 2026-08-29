@@ -61,6 +61,8 @@ import {
   BookOpen,
   Truck,
   UserCheck,
+  CalendarRange,
+  HardHat,
   GitCompare,
   ListTree,
   ShieldCheck,
@@ -92,6 +94,8 @@ import {
   FleetModule,
   InventoryModule,
   AsistenciaModule,
+  TurnosModule,
+  AccidentesModule,
   ReconciliationModule,
   Overview,
   CashFlowChart,
@@ -3100,6 +3104,8 @@ export default function App() {
     hasPermission("Gestión Vehicular") ||
     hasPermission("Gestión de Inventario") ||
     hasPermission("Asistencia") ||
+    hasPermission("Turnos") ||
+    hasPermission("Accidentes de Trabajo") ||
     hasPermission("Conciliación");
 
   const handleSelectView = useCallback(
@@ -3603,6 +3609,8 @@ export default function App() {
            <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Gestión Vehicular" />
            <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Gestión de Inventario" />
            <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Asistencia" />
+           <NavButton targetView="turnos" icon={CalendarRange} label="Turnos" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Turnos" />
+           <NavButton targetView="accidentes" icon={HardHat} label="Accidentes SST" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Accidentes de Trabajo" />
            <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Productos" />
            <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
            <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
@@ -3751,6 +3759,8 @@ export default function App() {
                     <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400" requiredModule="Gestión Vehicular" />
                     <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400" requiredModule="Gestión de Inventario" />
                     <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400" requiredModule="Asistencia" />
+                    <NavButton targetView="turnos" icon={CalendarRange} label="Turnos" iconColorClass="text-violet-400" requiredModule="Turnos" />
+                    <NavButton targetView="accidentes" icon={HardHat} label="Accidentes SST" iconColorClass="text-rose-400" requiredModule="Accidentes de Trabajo" />
                     <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400" requiredModule="Productos" />
                     <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400" requiredModule="Compras" />
                     <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
@@ -4308,6 +4318,33 @@ export default function App() {
                   onPersistSystemSettings={persistSystemSettingsNow}
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                   canConfigure={canConfigureAsistencia(currentUser, userRole)}
+                />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'turnos' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <TurnosModule
+                  users={users}
+                  systemSettings={systemSettings}
+                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  canEdit={hasPermission('Turnos')}
+                />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'accidentes' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <AccidentesModule
+                  users={users}
+                  systemSettings={systemSettings}
+                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  canEdit={hasPermission('Accidentes de Trabajo')}
+                  reportedBy={currentUser.name}
                 />
               </Suspense>
             </div>

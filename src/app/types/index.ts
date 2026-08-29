@@ -165,6 +165,16 @@ export interface User {
   avatarUrl?: string;
   /** Preferencia de tema (grooflow_perfiles.extra_json / settings:theme). */
   theme?: 'dark' | 'light';
+  /** Puesto laboral (distinto del rol RBAC del sistema). */
+  jobTitle?: string;
+  /** Área operativa: médica, grooming, mantenimiento, etc. */
+  workArea?: string;
+  /** Fecha de ingreso — yyyy-MM-dd (antigüedad para SST). */
+  hireDate?: string;
+  /** Tipo de contrato laboral. */
+  contractType?: 'planta' | 'temporal' | 'practicante' | 'honorarios' | 'locacion' | 'otro';
+  /** Horas semanales contratadas (referencia para KPI horas-hombre). */
+  weeklyHours?: number;
 }
 
 export interface PurchaseRequest {

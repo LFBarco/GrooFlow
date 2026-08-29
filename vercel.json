@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/grooflow/assets/:path*", "destination": "/assets/:path*" },
+    { "source": "/grooflow/:file", "destination": "/:file" },
+    { "source": "/grooflow/:path*", "destination": "/index.html" }
+  ],
+  "redirects": [
+    { "source": "/grooflow", "destination": "/grooflow/", "permanent": false }
+  ]
+}

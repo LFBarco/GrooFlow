@@ -25,6 +25,8 @@ export type ViewType =
   | 'fleet'
   | 'inventory'
   | 'asistencia'
+  | 'turnos'
+  | 'accidentes'
   | 'reconciliation';
 
 /** Path por defecto (raíz) */
@@ -54,6 +56,8 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   fleet: '/flota-clinica',
   inventory: '/inventario-equipos',
   asistencia: '/asistencia',
+  turnos: '/turnos',
+  accidentes: '/accidentes-trabajo',
   reconciliation: '/conciliacion',
 };
 
@@ -102,6 +106,8 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   fleet: 'Gestión Vehicular',
   inventory: 'Gestión de Inventario',
   asistencia: 'Asistencia',
+  turnos: 'Turnos',
+  accidentes: 'Accidentes de Trabajo',
   reconciliation: 'Conciliación',
 };
 
@@ -130,5 +136,7 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'fleet',
   'inventory',
   'asistencia',
+  'turnos',
+  'accidentes',
   'reconciliation',
 ];
