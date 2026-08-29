@@ -16,7 +16,8 @@ Flujo seguro:
 3. Si está bien, alguien con el panel Gestión y `ssh.env` corre el deploy a propósito.
 
 - App: https://gestionveterinariagroomers.com/grooflow
-- `dev` → trabajo; Hostinger solo cuando se pida explícitamente.
+- `Lbarco` → frontend (previews Vercel); ver `docs/DESPLIEGUE_VERCEL_LBARCO.md`
+- `dev` → rama histórica de pruebas; Hostinger solo cuando se pida explícitamente
 
 ## Variables de producción
 
