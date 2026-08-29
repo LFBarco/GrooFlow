@@ -9,6 +9,10 @@ build/
 .env
 .env.local
 .env.*.local
+.env.development
+.env.test
+!.env.production
+!.env.example
 
 # IDE / OS
 .idea/
@@ -23,4 +27,3 @@ supabase/.temp/
 tmp_public_data.sql
 tools/
 .vercel
-.env*

@@ -1,11 +1,12 @@
-# Flujo recomendado: GitHub vs Hostinger
+# Flujo recomendado: GitHub, Hostinger y Vercel
 
-Producción es Hostinger, no Vercel. **Un `git push` no despliega el sitio.**
+Hostinger sirve la app de usuarios y el API PHP. Vercel sirve el mismo frontend contra ese API.
 
-| Acción | ¿Llega a producción? |
-|--------|----------------------|
-| Push / PR a GitHub (`LFBarco/GrooFlow` o `oscarcalle/grooflow-backend`) | No. Sirve para revisar el código. |
-| `./deploy/hostinger/deploy-ssh.sh` en el repo del panel Gestión | Sí. Solo quien tenga `deploy/hostinger/ssh.env`. |
+| Acción | ¿Qué actualiza? |
+|--------|-----------------|
+| Push a `LFBarco/GrooFlow` | Vercel (preview/prod). No Hostinger. |
+| Push a `oscarcalle/grooflow-backend` | Solo GitHub. El API en Hostinger no cambia. |
+| `./deploy/hostinger/deploy-ssh.sh` | Hostinger (SPA + PHP). |
 
 Este repositorio **no** incluye credenciales SSH ni el script de deploy. Quien clone solo GrooFlow no puede subir a Hostinger desde el IDE, aunque pida “despliega”.
 

@@ -1,10 +1,11 @@
 # GrooFlow — Producción
 
-Producción vive en Hostinger (PHP + MySQL). No se despliega en Vercel.
+La app de usuarios vive en Hostinger (PHP + MySQL). El mismo frontend también se despliega en **Vercel** contra el mismo API.
 
 ## URLs
 
-- **App:** https://gestionveterinariagroomers.com/grooflow
+- **App (Hostinger):** https://gestionveterinariagroomers.com/grooflow
+- **App (Vercel):** `https://<proyecto>.vercel.app/grooflow/`
 - **API:** https://gestionveterinariagroomers.com/grooflow/api/
 
 ## Variables de build (Hostinger)

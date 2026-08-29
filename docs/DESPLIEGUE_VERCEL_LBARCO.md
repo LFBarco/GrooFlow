@@ -139,6 +139,6 @@ Abrir: `http://localhost:4173/grooflow/`
 | Datos no guardan | `VITE_BACKEND` incorrecto | Debe ser `rest`, no `supabase` |
 | Cambios de env no aplican | Build cache | Redeploy sin cache en Vercel |
 
-## 8. Producción (recordatorio)
+## 8. Producción
 
-La app real de usuarios está en Hostinger, no en Vercel. Vercel es para **previews de desarrollo**. Ver `PRODUCTION.md` y `docs/DEPLOY_RAMAS.md`.
+Hostinger sigue siendo la app de usuarios y el API. Cada push de frontend a GitHub también despliega Vercel (`/grooflow/`), apuntando al mismo API. CORS de `*.vercel.app` lo cubre `grooflow-backend/lib/grooflow_cors.php`. Ver `PRODUCTION.md` y `docs/DEPLOY_RAMAS.md`.
