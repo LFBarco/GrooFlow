@@ -8,6 +8,7 @@ import type {
   AsistenciaSettings,
   AsistenciaStaffLiveState,
 } from '../../types/asistencia';
+import type { TurnosPlanVsReal } from '../../types/turnos';
 import { shiftLabelForStaff } from '../../utils/asistenciaShift';
 import { applyAreaLayoutReorder, applyStaffLayoutMove } from '../../utils/asistenciaLayoutUtils';
 import { ManagerPlaceholder, StaffLiveCard, themeForColumnId } from './asistenciaLiveUi';
@@ -38,6 +39,8 @@ function DraggableStaffCard({
   index,
   editLayout,
   viewDate,
+  onStaffClick,
+  getPlanVsReal,
 }: {
   live: AsistenciaStaffLiveState;
   sedeName: string;
@@ -45,6 +48,8 @@ function DraggableStaffCard({
   index: number;
   editLayout: boolean;
   viewDate?: Date;
+  onStaffClick?: (live: AsistenciaStaffLiveState) => void;
+  getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
 }) {
   const ref = useRef<HTMLDivElement>(null);
 
@@ -101,6 +106,8 @@ function DraggableStaffCard({
       editLayout={editLayout}
       dragHandleRef={ref}
       isDragging={isDragging}
+      onClick={!editLayout && onStaffClick ? () => onStaffClick(live) : undefined}
+      planVsReal={getPlanVsReal?.(live)}
     />
   );
 }
@@ -152,6 +159,8 @@ function DraggableAreaColumn({
   onAreaReorder,
   onStaffDrop,
   viewDate,
+  onStaffClick,
+  getPlanVsReal,
 }: {
   block: AsistenciaLiveAreaBlock;
   sedeName: string;
@@ -159,6 +168,8 @@ function DraggableAreaColumn({
   onAreaReorder: (dragArea: string, hoverArea: string) => void;
   onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: string) => void;
   viewDate?: Date;
+  onStaffClick?: (live: AsistenciaStaffLiveState) => void;
+  getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
 }) {
   const headerRef = useRef<HTMLDivElement>(null);
   const theme = themeForColumnId(block.area);
@@ -242,6 +253,8 @@ function DraggableAreaColumn({
                 index={idx}
                 editLayout={editLayout}
                 viewDate={viewDate}
+                onStaffClick={onStaffClick}
+                getPlanVsReal={getPlanVsReal}
               />
             </div>
           ))
@@ -266,6 +279,8 @@ type SedeBlockProps = {
   onPersistLayout: LayoutPersist;
   compact?: boolean;
   viewDate?: Date;
+  onStaffClick?: (live: AsistenciaStaffLiveState) => void;
+  getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
 };
 
 export function AsistenciaLiveSedeBlock({
@@ -274,6 +289,8 @@ export function AsistenciaLiveSedeBlock({
   onPersistLayout,
   compact,
   viewDate,
+  onStaffClick,
+  getPlanVsReal,
 }: SedeBlockProps) {
   const handleStaffDrop = useCallback(
     (item: StaffDragItem, toIndex: number, toArea: string) => {
@@ -328,6 +345,8 @@ export function AsistenciaLiveSedeBlock({
               matchHint={summary.manager.matchHint}
               statusNote={summary.manager.statusNote}
               shiftLabel={shiftLabelForStaff(summary.manager.staff, viewDate)}
+              onClick={!editLayout && onStaffClick ? () => onStaffClick(summary.manager!) : undefined}
+              planVsReal={summary.manager && getPlanVsReal ? getPlanVsReal(summary.manager) : undefined}
             />
           ) : (
             <ManagerPlaceholder />
@@ -352,6 +371,8 @@ export function AsistenciaLiveSedeBlock({
               onAreaReorder={handleAreaReorder}
               onStaffDrop={handleStaffDrop}
               viewDate={viewDate}
+              onStaffClick={onStaffClick}
+              getPlanVsReal={getPlanVsReal}
             />
           ))}
         </div>

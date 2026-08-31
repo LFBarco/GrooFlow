@@ -1,23 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
+import { Paperclip, Plus, Trash2, X } from 'lucide-react';
 
 import type {
+  AccidentCorrectiveAction,
+  AccidentEventType,
   AccidentImmediateCare,
   AccidentSeverity,
   AccidentWorkShift,
+  AccidentWorkflowStatus,
   WorkplaceAccidentRecord,
 } from '../../types/accidentes';
 import {
   ACCIDENT_CARE_LABELS,
+  ACCIDENT_EVENT_TYPE_LABELS,
   ACCIDENT_SEVERITY_LABELS,
   ACCIDENT_SHIFT_LABELS,
+  ACCIDENT_WORKFLOW_LABELS,
   BODY_PART_OPTIONS,
   CAUSING_AGENT_OPTIONS,
   INJURY_NATURE_OPTIONS,
   VET_WORK_AREAS,
 } from '../../types/accidentes';
 import type { StaffOption } from '../../utils/accidentesData';
-import { computeSeniorityMonths, formatSeniorityLabel } from '../../utils/accidentesData';
+import {
+  computeSeniorityMonths,
+  formatSeniorityLabel,
+  newAccidentAttachmentId,
+  newCorrectiveActionId,
+} from '../../utils/accidentesData';
 import { Button } from '../ui/button';
 import {
   Dialog,
@@ -70,7 +81,13 @@ const emptyForm = (): Omit<WorkplaceAccidentRecord, 'id' | 'createdAt' | 'update
   indemnizationCost: 0,
   description: '',
   preventiveActions: '',
+  eventType: 'accidente',
+  workflowStatus: 'reportado',
+  attachments: [],
+  correctiveActions: [],
 });
+
+const MAX_ATTACHMENT_BYTES = 512_000;
 
 export function AccidenteFormDialog({
   open,
@@ -133,8 +150,69 @@ export function AccidenteFormDialog({
       ...form,
       id: record?.id,
       reportedBy: form.reportedBy ?? reportedBy,
+      attachments: form.attachments ?? [],
+      correctiveActions: form.correctiveActions ?? [],
     });
     onOpenChange(false);
+  };
+
+  const addAttachment = (file: File) => {
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      window.alert('El archivo supera 500 KB. Use una imagen más liviana o un PDF comprimido.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setForm((prev) => ({
+        ...prev,
+        attachments: [
+          ...(prev.attachments ?? []),
+          {
+            id: newAccidentAttachmentId(),
+            name: file.name,
+            dataUrl,
+            uploadedAt: new Date().toISOString(),
+          },
+        ],
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeAttachment = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      attachments: (prev.attachments ?? []).filter((a) => a.id !== id),
+    }));
+  };
+
+  const addCorrectiveAction = () => {
+    const action: AccidentCorrectiveAction = {
+      id: newCorrectiveActionId(),
+      description: '',
+      status: 'pendiente',
+    };
+    setForm((prev) => ({
+      ...prev,
+      correctiveActions: [...(prev.correctiveActions ?? []), action],
+    }));
+  };
+
+  const patchAction = (id: string, p: Partial<AccidentCorrectiveAction>) => {
+    setForm((prev) => ({
+      ...prev,
+      correctiveActions: (prev.correctiveActions ?? []).map((a) =>
+        a.id === id ? { ...a, ...p } : a
+      ),
+    }));
+  };
+
+  const removeAction = (id: string) => {
+    setForm((prev) => ({
+      ...prev,
+      correctiveActions: (prev.correctiveActions ?? []).filter((a) => a.id !== id),
+    }));
   };
 
   return (
@@ -302,6 +380,44 @@ export function AccidenteFormDialog({
             </p>
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
+                <Label>Tipo de evento</Label>
+                <Select
+                  value={form.eventType ?? 'accidente'}
+                  onValueChange={(v) => patch({ eventType: v as AccidentEventType })}
+                  disabled={!canEdit}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ACCIDENT_EVENT_TYPE_LABELS).map(([k, label]) => (
+                      <SelectItem key={k} value={k}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Estado del flujo</Label>
+                <Select
+                  value={form.workflowStatus ?? 'reportado'}
+                  onValueChange={(v) => patch({ workflowStatus: v as AccidentWorkflowStatus })}
+                  disabled={!canEdit}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ACCIDENT_WORKFLOW_LABELS).map(([k, label]) => (
+                      <SelectItem key={k} value={k}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
                 <Label>Gravedad</Label>
                 <Select
                   value={form.severity}
@@ -455,6 +571,145 @@ export function AccidenteFormDialog({
                 />
               </div>
             </div>
+          </div>
+
+          <div className="rounded-lg border border-border p-3 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Acciones correctivas
+              </p>
+              {canEdit ? (
+                <Button type="button" size="sm" variant="outline" onClick={addCorrectiveAction}>
+                  <Plus className="mr-1 h-3 w-3" />
+                  Agregar
+                </Button>
+              ) : null}
+            </div>
+            {(form.correctiveActions ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sin acciones registradas.</p>
+            ) : (
+              <div className="space-y-2">
+                {(form.correctiveActions ?? []).map((action) => (
+                  <div
+                    key={action.id}
+                    className="grid gap-2 rounded-md border border-border/60 p-2 sm:grid-cols-12 dark:border-slate-700"
+                  >
+                    <div className="space-y-1 sm:col-span-5">
+                      <Label className="text-xs">Descripción</Label>
+                      <Input
+                        value={action.description}
+                        onChange={(e) => patchAction(action.id, { description: e.target.value })}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div className="space-y-1 sm:col-span-3">
+                      <Label className="text-xs">Responsable</Label>
+                      <Input
+                        value={action.responsible ?? ''}
+                        onChange={(e) => patchAction(action.id, { responsible: e.target.value })}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-xs">Fecha límite</Label>
+                      <Input
+                        type="date"
+                        value={action.dueDate ?? ''}
+                        onChange={(e) => patchAction(action.id, { dueDate: e.target.value })}
+                        disabled={!canEdit}
+                      />
+                    </div>
+                    <div className="space-y-1 sm:col-span-1">
+                      <Label className="text-xs">Estado</Label>
+                      <Select
+                        value={action.status}
+                        onValueChange={(v) =>
+                          patchAction(action.id, { status: v as AccidentCorrectiveAction['status'] })
+                        }
+                        disabled={!canEdit}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pendiente">Pend.</SelectItem>
+                          <SelectItem value="completada">OK</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {canEdit ? (
+                      <div className="flex items-end sm:col-span-1">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="text-rose-600"
+                          onClick={() => removeAction(action.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-border p-3 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Adjuntos (fotos / actas)
+              </p>
+              {canEdit ? (
+                <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-primary hover:underline">
+                  <Paperclip className="h-3 w-3" />
+                  Subir archivo
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) addAttachment(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              ) : null}
+            </div>
+            {(form.attachments ?? []).length === 0 ? (
+              <p className="text-xs text-muted-foreground">Sin archivos adjuntos.</p>
+            ) : (
+              <ul className="space-y-1">
+                {(form.attachments ?? []).map((att) => (
+                  <li
+                    key={att.id}
+                    className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5 text-xs dark:border-slate-700"
+                  >
+                    <a
+                      href={att.dataUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="truncate text-primary hover:underline"
+                    >
+                      {att.name}
+                    </a>
+                    {canEdit ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => removeAttachment(att.id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 

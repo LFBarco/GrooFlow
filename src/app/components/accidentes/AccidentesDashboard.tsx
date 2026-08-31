@@ -23,7 +23,12 @@ import {
 } from 'lucide-react';
 
 import type { AccidentesKpiSnapshot } from '../../types/accidentes';
-import { ACCIDENT_SEVERITY_LABELS } from '../../types/accidentes';
+import {
+  ACCIDENT_EVENT_TYPE_LABELS,
+  ACCIDENT_SEVERITY_LABELS,
+  ACCIDENT_SHIFT_LABELS,
+  ACCIDENT_WORKFLOW_LABELS,
+} from '../../types/accidentes';
 import { Card, CardContent } from '../ui/card';
 import { ChartEmptyState } from '../ui/ChartEmptyState';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -121,6 +126,21 @@ export function AccidentesDashboard({ kpis }: Props) {
     fill: SEVERITY_COLORS[s.severity],
   }));
 
+  const shiftData = kpis.byShift.map((s) => ({
+    name: ACCIDENT_SHIFT_LABELS[s.shift],
+    count: s.count,
+  }));
+
+  const eventTypeData = kpis.byEventType.map((e) => ({
+    name: ACCIDENT_EVENT_TYPE_LABELS[e.eventType],
+    count: e.count,
+  }));
+
+  const workflowData = kpis.byWorkflow.map((w) => ({
+    name: ACCIDENT_WORKFLOW_LABELS[w.status],
+    count: w.count,
+  }));
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -156,7 +176,7 @@ export function AccidentesDashboard({ kpis }: Props) {
               ? `Último: ${kpis.lastAccidentDate}`
               : 'Sin registros con baja'
           }
-          help="Contador de días calendario desde el último accidente con baja registrado. Sirve como indicador de cultura preventiva en tiempo real."
+          help="Días calendario desde el último accidente con baja dentro del periodo filtrado."
           icon={CalendarCheck}
           accent="#22c55e"
         />
@@ -171,11 +191,55 @@ export function AccidentesDashboard({ kpis }: Props) {
         <KpiCard
           title="Horas hombre (est.)"
           value={kpis.manHours.toLocaleString('es-PE')}
-          subtitle={`${kpis.totalAccidents} incidentes · ${kpis.totalLostDays} días perdidos`}
-          help="Estimación de horas hombre del periodo: trabajadores activos × horas mensuales configuradas × meses del filtro. Base de cálculo para IF e IG."
+          subtitle={`${kpis.openInvestigations} casos abiertos · ${kpis.totalLostDays} días perdidos`}
+          help="Estimación de horas hombre del periodo: trabajadores activos × horas mensuales configuradas × meses del filtro. Los casos abiertos son registros cuyo flujo aún no está cerrado."
           icon={AlertTriangle}
           accent="#64748b"
         />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="border-border dark:border-slate-700">
+          <CardContent className="pt-4">
+            <h3 className="mb-3 text-sm font-semibold">Por tipo de evento</h3>
+            {eventTypeData.length === 0 ? (
+              <ChartEmptyState message="Sin datos en el periodo" />
+            ) : (
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={eventTypeData} margin={{ left: 8, right: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <RechartsTooltip content={<ChartTooltip />} />
+                    <Bar dataKey="count" name="Eventos" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border dark:border-slate-700">
+          <CardContent className="pt-4">
+            <h3 className="mb-3 text-sm font-semibold">Estado del flujo SST</h3>
+            {workflowData.length === 0 ? (
+              <ChartEmptyState message="Sin datos en el periodo" />
+            ) : (
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={workflowData} margin={{ left: 8, right: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <RechartsTooltip content={<ChartTooltip />} />
+                    <Bar dataKey="count" name="Casos" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -248,6 +312,27 @@ export function AccidentesDashboard({ kpis }: Props) {
 
         <BodyHeatMap data={kpis.byBodyPart} />
       </div>
+
+      <Card className="border-border dark:border-slate-700">
+        <CardContent className="pt-4">
+          <h3 className="mb-3 text-sm font-semibold">Por turno de trabajo</h3>
+          {shiftData.length === 0 ? (
+            <ChartEmptyState message="Sin datos en el periodo" />
+          ) : (
+            <div className="h-[220px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={shiftData} margin={{ left: 8, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <RechartsTooltip content={<ChartTooltip />} />
+                  <Bar dataKey="count" name="Accidentes" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

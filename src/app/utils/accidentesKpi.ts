@@ -3,8 +3,10 @@ import { es } from 'date-fns/locale';
 
 import type { User } from '../types';
 import type {
+  AccidentEventType,
   AccidentSeverity,
   AccidentWorkShift,
+  AccidentWorkflowStatus,
   AccidentesFilters,
   AccidentesKpiSnapshot,
   AccidentesSettings,
@@ -66,6 +68,8 @@ export function computeAccidentesKpis(input: {
   const bySeverityMap = new Map<AccidentSeverity, number>();
   const byBodyMap = new Map<string, number>();
   const byShiftMap = new Map<AccidentWorkShift, number>();
+  const byEventTypeMap = new Map<AccidentEventType, number>();
+  const byWorkflowMap = new Map<AccidentWorkflowStatus, number>();
   const byMonthMap = new Map<string, { count: number; lostDays: number }>();
 
   for (const r of records) {
@@ -73,6 +77,10 @@ export function computeAccidentesKpis(input: {
     bySeverityMap.set(r.severity, (bySeverityMap.get(r.severity) ?? 0) + 1);
     byBodyMap.set(r.bodyPart, (byBodyMap.get(r.bodyPart) ?? 0) + 1);
     byShiftMap.set(r.workShift, (byShiftMap.get(r.workShift) ?? 0) + 1);
+    const eventType: AccidentEventType = r.eventType ?? 'accidente';
+    byEventTypeMap.set(eventType, (byEventTypeMap.get(eventType) ?? 0) + 1);
+    const workflow: AccidentWorkflowStatus = r.workflowStatus ?? 'reportado';
+    byWorkflowMap.set(workflow, (byWorkflowMap.get(workflow) ?? 0) + 1);
     const monthKey = r.eventDate.slice(0, 7);
     const prev = byMonthMap.get(monthKey) ?? { count: 0, lostDays: 0 };
     byMonthMap.set(monthKey, {
@@ -88,7 +96,7 @@ export function computeAccidentesKpis(input: {
     frequencyIndex: Math.round(frequencyIndex * 100) / 100,
     gravityIndex: Math.round(gravityIndex * 100) / 100,
     sinistralityRate: Math.round(sinistralityRate * 10) / 10,
-    daysWithoutAccident: daysWithoutAccident(settings.records),
+    daysWithoutAccident: daysWithoutAccident(records.filter(hasLostTime)),
     lastAccidentDate: lastAccident?.eventDate ?? null,
     totalCost,
     medicalCost,
@@ -121,5 +129,19 @@ export function computeAccidentesKpis(input: {
         count: byShiftMap.get(shift) ?? 0,
       }))
       .filter((x) => x.count > 0),
+    byEventType: (['accidente', 'incidente', 'casi_accidente'] as AccidentEventType[])
+      .map((eventType) => ({
+        eventType,
+        count: byEventTypeMap.get(eventType) ?? 0,
+      }))
+      .filter((x) => x.count > 0),
+    byWorkflow: (['reportado', 'investigacion', 'acciones', 'cerrado'] as AccidentWorkflowStatus[])
+      .map((status) => ({
+        status,
+        count: byWorkflowMap.get(status) ?? 0,
+      }))
+      .filter((x) => x.count > 0),
+    openInvestigations: records.filter((r) => (r.workflowStatus ?? 'reportado') !== 'cerrado')
+      .length,
   };
 }

@@ -58,6 +58,42 @@ export type BukDashboardSummary = {
   areaGroups: BukDashboardAreaGroup[];
 };
 
+export type BukMultiSedeDashboard = {
+  sedes: { sedeName: string; summary: BukDashboardSummary }[];
+  totals: Omit<BukDashboardSummary, 'rows' | 'specialtyGroups' | 'areaGroups'>;
+};
+
+export function buildBukMultiSedeDashboard(input: {
+  records: BukAsistenciaRecord[];
+  sedeNames: string[];
+  settings: AsistenciaSettings;
+  date: Date;
+}): BukMultiSedeDashboard {
+  const sedes = input.sedeNames.map((sedeName) => ({
+    sedeName,
+    summary: buildBukDashboardSummary({
+      records: input.records,
+      sedeName,
+      settings: input.settings,
+      date: input.date,
+    }),
+  }));
+
+  const totals = sedes.reduce(
+    (acc, s) => ({
+      total: acc.total + s.summary.total,
+      arrived: acc.arrived + s.summary.arrived,
+      absent: acc.absent + s.summary.absent,
+      leftSameDay: acc.leftSameDay + s.summary.leftSameDay,
+      onTime: acc.onTime + s.summary.onTime,
+      late: acc.late + s.summary.late,
+    }),
+    { total: 0, arrived: 0, absent: 0, leftSameDay: 0, onTime: 0, late: 0 }
+  );
+
+  return { sedes, totals };
+}
+
 function apellidosFromRecord(r: BukAsistenciaRecord): string {
   return [r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ').trim();
 }

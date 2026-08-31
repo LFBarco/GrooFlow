@@ -1,5 +1,11 @@
 import { useState, useRef, useMemo, useEffect } from 'react';
-import { PurchaseRequest, Provider, Priority, RequestStatus, PaymentCondition } from '../../types';
+import { PurchaseRequest, PurchaseRequestLineItem, Product, Provider, Priority, RequestStatus, PaymentCondition } from '../../types';
+import type { SupplierProductsSettings } from '../../types/supplierProducts';
+import {
+  bestOfferForProduct,
+  compareOfferChoice,
+  offerForProductAndProvider,
+} from '../../utils/supplierProductsData';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -13,12 +19,31 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
 import { 
     Plus, CheckCircle2, XCircle, AlertCircle, ShoppingCart, MapPin, DollarSign, Clock, 
     CreditCard, Banknote, Paperclip, FileText, Image as ImageIcon, X, Search, Filter, 
-    Calendar, ArrowUpRight, ArrowDownRight, LayoutList, History
+    Calendar, ArrowUpRight, ArrowDownRight, LayoutList, History, Sparkles, Trash2, Package
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { formatCurrencyEs } from '../../utils/numberFormat';
+import { Checkbox } from '../ui/checkbox';
+import { useSupplierProductsState } from '../../hooks/useSupplierProductsState';
+
+function newLineId(): string {
+  return `prl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+type DraftLine = {
+  id: string;
+  productId: string;
+  quantity: string;
+  providerId: string;
+  unitPrice: string;
+  notes: string;
+};
+
+function emptyDraftLine(): DraftLine {
+  return { id: newLineId(), productId: '', quantity: '1', providerId: '', unitPrice: '', notes: '' };
+}
 
 function toRequestDate(d: Date | string | undefined | null): Date {
   if (d instanceof Date && !isNaN(d.getTime())) return d;
@@ -30,13 +55,26 @@ function toRequestDate(d: Date | string | undefined | null): Date {
 interface PurchaseRequestManagerProps {
     requests: PurchaseRequest[];
     providers: Provider[];
+    products?: Product[];
+    supplierProductsSettings?: SupplierProductsSettings;
     onRequestCreate: (req: PurchaseRequest) => void;
     onRequestStatusChange: (id: string, status: RequestStatus, comment?: string) => void;
     currentUser?: any;
     visibleSedes?: string[];
 }
 
-export function PurchaseRequestManager({ requests, providers, onRequestCreate, onRequestStatusChange, currentUser, visibleSedes }: PurchaseRequestManagerProps) {
+export function PurchaseRequestManager({
+    requests,
+    providers,
+    products = [],
+    supplierProductsSettings: supplierProductsSettingsProp,
+    onRequestCreate,
+    onRequestStatusChange,
+    currentUser,
+    visibleSedes,
+}: PurchaseRequestManagerProps) {
+    const { settings: supplierProductsFromHook } = useSupplierProductsState(false);
+    const supplierProductsSettings = supplierProductsSettingsProp ?? supplierProductsFromHook;
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('pending');
     const [searchTerm, setSearchTerm] = useState('');
@@ -61,6 +99,139 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
     const [paymentCondition, setPaymentCondition] = useState<PaymentCondition>('credit');
     const [attachment, setAttachment] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [useLineDetail, setUseLineDetail] = useState(false);
+    const [draftLines, setDraftLines] = useState<DraftLine[]>([emptyDraftLine()]);
+
+    const activeProducts = useMemo(
+        () => products.filter((p) => p.status !== 'inactive').sort((a, b) => a.name.localeCompare(b.name, 'es')),
+        [products]
+    );
+
+    const linesTotal = useMemo(() => {
+        return draftLines.reduce((sum, line) => {
+            const qty = Number(line.quantity) || 0;
+            const price = Number(line.unitPrice) || 0;
+            return sum + qty * price;
+        }, 0);
+    }, [draftLines]);
+
+    const applyBestOfferToLine = (lineId: string, silent = false) => {
+        if (!supplierProductsSettings) {
+            if (!silent) toast.error('No hay catálogo proveedor-producto cargado.');
+            return;
+        }
+        setDraftLines((prev) =>
+            prev.map((line) => {
+                if (line.id !== lineId || !line.productId) return line;
+                const comparison = compareOfferChoice(
+                    supplierProductsSettings,
+                    line.productId,
+                    line.providerId || selectedProviderId || undefined
+                );
+                const pick = comparison.best;
+                if (!pick) {
+                    if (!silent) toast.warning('Sin ofertas activas para este producto.');
+                    return line;
+                }
+                if (comparison.cheaperAvailable && !silent) {
+                    toast.info(
+                        `Mejor precio: ${pick.providerName} (${formatCurrencyEs(pick.lastPrice, 2)}). Ahorro vs selección: ${comparison.savingsPercent.toFixed(1)}%`
+                    );
+                }
+                return {
+                    ...line,
+                    providerId: pick.providerId,
+                    unitPrice: String(pick.lastPrice),
+                };
+            })
+        );
+    };
+
+    const applyBestOfferToAllLines = () => {
+        if (!supplierProductsSettings) {
+            toast.error('No hay catálogo proveedor-producto cargado.');
+            return;
+        }
+        setDraftLines((prev) =>
+            prev.map((line) => {
+                if (!line.productId) return line;
+                const comparison = compareOfferChoice(
+                    supplierProductsSettings,
+                    line.productId,
+                    line.providerId || selectedProviderId || undefined
+                );
+                const pick = comparison.best;
+                if (!pick) return line;
+                return {
+                    ...line,
+                    providerId: pick.providerId,
+                    unitPrice: String(pick.lastPrice),
+                };
+            })
+        );
+        toast.success('Mejor opción aplicada a las líneas con producto.');
+    };
+
+    const patchLine = (lineId: string, patch: Partial<DraftLine>) => {
+        setDraftLines((prev) =>
+            prev.map((line) => {
+                if (line.id !== lineId) return line;
+                const next = { ...line, ...patch };
+                if (patch.productId && supplierProductsSettings) {
+                    const providerId = next.providerId || selectedProviderId;
+                    const offer = providerId
+                        ? offerForProductAndProvider(supplierProductsSettings, patch.productId, providerId)
+                        : bestOfferForProduct(supplierProductsSettings, patch.productId);
+                    if (offer) {
+                        next.providerId = offer.providerId;
+                        next.unitPrice = String(offer.lastPrice);
+                    }
+                }
+                if (patch.providerId && next.productId && supplierProductsSettings) {
+                    const offer = offerForProductAndProvider(
+                        supplierProductsSettings,
+                        next.productId,
+                        patch.providerId
+                    );
+                    if (offer) next.unitPrice = String(offer.lastPrice);
+                }
+                return next;
+            })
+        );
+    };
+
+    const buildLineItems = (): PurchaseRequestLineItem[] => {
+        return draftLines
+            .filter((l) => l.productId && Number(l.quantity) > 0)
+            .map((line) => {
+                const product = activeProducts.find((p) => p.id === line.productId);
+                const provider =
+                    providers.find((p) => p.id === line.providerId) ??
+                    providers.find((p) => p.id === selectedProviderId);
+                const qty = Number(line.quantity) || 0;
+                const unitPrice = Number(line.unitPrice) || 0;
+                const offer = supplierProductsSettings
+                    ? offerForProductAndProvider(
+                          supplierProductsSettings,
+                          line.productId,
+                          provider?.id ?? ''
+                      )
+                    : undefined;
+                return {
+                    id: line.id,
+                    productId: line.productId,
+                    productName: product?.name ?? 'Producto',
+                    providerId: provider?.id ?? selectedProviderId,
+                    providerName: provider?.name ?? '',
+                    supplierOfferId: offer?.id,
+                    quantity: qty,
+                    unitPrice,
+                    lineTotal: Math.round(qty * unitPrice * 100) / 100,
+                    supplierSku: offer?.supplierSku,
+                    notes: line.notes || undefined,
+                };
+            });
+    };
 
     /**
      * `visibleSedes || [fallback]` NO sirve: `[]` es truthy y deja 0 <SelectItem />
@@ -153,34 +324,58 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
     };
 
     const handleCreate = () => {
-        if (!selectedProviderId || !amount || !description) {
-            toast.error("Complete todos los campos obligatorios");
+        const lineItems = useLineDetail ? buildLineItems() : [];
+        const computedAmount = useLineDetail ? linesTotal : parseFloat(amount);
+
+        if (useLineDetail) {
+            if (lineItems.length === 0) {
+                toast.error('Agrega al menos una línea de producto válida.');
+                return;
+            }
+            if (!lineItems.every((l) => l.providerId)) {
+                toast.error('Cada línea debe tener proveedor (usa «Mejor opción» o selecciona uno).');
+                return;
+            }
+        } else if (!selectedProviderId || !amount || !description) {
+            toast.error('Complete todos los campos obligatorios');
             return;
         }
 
-        const provider = providers.find(p => p.id === selectedProviderId);
-        if (!provider) return;
+        const headerProviderId =
+            useLineDetail && lineItems.length === 1
+                ? lineItems[0]!.providerId
+                : selectedProviderId || lineItems[0]?.providerId || '';
+        const provider = providers.find((p) => p.id === headerProviderId);
+        if (!provider && !useLineDetail) return;
+
+        const autoDescription =
+            useLineDetail && lineItems.length > 0
+                ? lineItems
+                    .map((l) => `${l.productName} ×${l.quantity} (${l.providerName})`)
+                    .join('; ')
+                : description;
 
         const newRequest: PurchaseRequest = {
             id: Math.random().toString(36).substring(7),
-            providerId: provider.id,
-            providerName: provider.name,
+            providerId: provider?.id ?? headerProviderId,
+            providerName: provider?.name ?? lineItems[0]?.providerName ?? 'Varios',
             requestDate: new Date(),
-            amount: parseFloat(amount),
-            description: description,
+            amount: computedAmount,
+            description: useLineDetail ? autoDescription : description,
             location: location,
             priority: priority,
             paymentCondition: paymentCondition,
             status: 'pending',
-            requesterName: '', // Se llena en App.tsx
-            requesterInitials: '', // Se llena en App.tsx
-            attachmentUrl: attachment || undefined
+            requesterName: '',
+            requesterInitials: '',
+            attachmentUrl: attachment || undefined,
+            lineItems: lineItems.length > 0 ? lineItems : undefined,
         };
 
         onRequestCreate(newRequest);
         setIsCreateOpen(false);
         resetForm();
-        toast.success("Solicitud enviada a aprobación");
+        toast.success('Solicitud enviada a aprobación');
     };
 
     const handleAction = () => {
@@ -211,6 +406,8 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
         setPriority('medium');
         setPaymentCondition('credit');
         setAttachment(null);
+        setUseLineDetail(false);
+        setDraftLines([emptyDraftLine()]);
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -322,8 +519,10 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                                                 type="number" 
                                                 className="pl-8 bg-background"
                                                 placeholder="0.00"
-                                                value={amount}
+                                                value={useLineDetail ? linesTotal.toFixed(2) : amount}
                                                 onChange={e => setAmount(e.target.value)}
+                                                disabled={useLineDetail}
+                                                readOnly={useLineDetail}
                                             />
                                         </div>
                                     </div>
@@ -352,7 +551,182 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                                 </div>
                             </div>
 
+                            <div className="flex items-center justify-between rounded-lg border border-dashed border-border bg-muted/20 p-3">
+                                <div className="flex items-center gap-2">
+                                    <Checkbox
+                                        id="use-line-detail"
+                                        checked={useLineDetail}
+                                        onCheckedChange={(v) => setUseLineDetail(Boolean(v))}
+                                    />
+                                    <Label htmlFor="use-line-detail" className="cursor-pointer text-sm font-medium">
+                                        Detallar por productos (catálogo proveedor)
+                                    </Label>
+                                </div>
+                                {useLineDetail && activeProducts.length > 0 ? (
+                                    <Button type="button" size="sm" variant="outline" onClick={applyBestOfferToAllLines}>
+                                        <Sparkles className="mr-1 h-3.5 w-3.5" />
+                                        Mejor opción (todas)
+                                    </Button>
+                                ) : null}
+                            </div>
+
+                            {useLineDetail ? (
+                                <div className="space-y-3 rounded-lg border border-border p-3">
+                                    <div className="flex items-center gap-2 text-sm font-medium">
+                                        <Package className="h-4 w-4 text-primary" />
+                                        Líneas de la solicitud
+                                    </div>
+                                    {activeProducts.length === 0 ? (
+                                        <p className="text-sm text-muted-foreground">
+                                            No hay productos activos. Registra productos y ofertas en el módulo Productos.
+                                        </p>
+                                    ) : (
+                                        <>
+                                            {draftLines.map((line) => {
+                                                const comparison =
+                                                    line.productId && supplierProductsSettings
+                                                        ? compareOfferChoice(
+                                                              supplierProductsSettings,
+                                                              line.productId,
+                                                              line.providerId || selectedProviderId || undefined
+                                                          )
+                                                        : null;
+                                                return (
+                                                    <div
+                                                        key={line.id}
+                                                        className="grid gap-2 rounded-md border border-border/70 bg-background p-2 sm:grid-cols-12"
+                                                    >
+                                                        <div className="space-y-1 sm:col-span-4">
+                                                            <Label className="text-xs">Producto</Label>
+                                                            <Select
+                                                                value={line.productId || '__none__'}
+                                                                onValueChange={(v) =>
+                                                                    patchLine(line.id, {
+                                                                        productId: v === '__none__' ? '' : v,
+                                                                    })
+                                                                }
+                                                            >
+                                                                <SelectTrigger className="h-9">
+                                                                    <SelectValue placeholder="Seleccionar…" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="__none__">—</SelectItem>
+                                                                    {activeProducts.map((p) => (
+                                                                        <SelectItem key={p.id} value={p.id}>
+                                                                            {p.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1 sm:col-span-2">
+                                                            <Label className="text-xs">Cant.</Label>
+                                                            <Input
+                                                                type="number"
+                                                                min={0.01}
+                                                                step="0.01"
+                                                                className="h-9"
+                                                                value={line.quantity}
+                                                                onChange={(e) =>
+                                                                    patchLine(line.id, { quantity: e.target.value })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1 sm:col-span-2">
+                                                            <Label className="text-xs">P. unit. (S/)</Label>
+                                                            <Input
+                                                                type="number"
+                                                                min={0}
+                                                                step="0.01"
+                                                                className="h-9"
+                                                                value={line.unitPrice}
+                                                                onChange={(e) =>
+                                                                    patchLine(line.id, { unitPrice: e.target.value })
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1 sm:col-span-3">
+                                                            <Label className="text-xs">Proveedor</Label>
+                                                            <Select
+                                                                value={line.providerId || '__none__'}
+                                                                onValueChange={(v) =>
+                                                                    patchLine(line.id, {
+                                                                        providerId: v === '__none__' ? '' : v,
+                                                                    })
+                                                                }
+                                                            >
+                                                                <SelectTrigger className="h-9">
+                                                                    <SelectValue placeholder="Proveedor" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem value="__none__">—</SelectItem>
+                                                                    {providers.map((p) => (
+                                                                        <SelectItem key={p.id} value={p.id}>
+                                                                            {p.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="flex items-end gap-1 sm:col-span-1">
+                                                            <Button
+                                                                type="button"
+                                                                size="icon"
+                                                                variant="outline"
+                                                                className="h-9 w-9 shrink-0"
+                                                                title="Mejor opción"
+                                                                onClick={() => applyBestOfferToLine(line.id)}
+                                                            >
+                                                                <Sparkles className="h-4 w-4" />
+                                                            </Button>
+                                                            {draftLines.length > 1 ? (
+                                                                <Button
+                                                                    type="button"
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-9 w-9 shrink-0 text-rose-600"
+                                                                    onClick={() =>
+                                                                        setDraftLines((prev) =>
+                                                                            prev.filter((l) => l.id !== line.id)
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            ) : null}
+                                                        </div>
+                                                        {comparison?.cheaperAvailable ? (
+                                                            <p className="text-xs text-amber-700 sm:col-span-12 dark:text-amber-300">
+                                                                <AlertCircle className="mr-1 inline h-3.5 w-3.5" />
+                                                                Hay proveedor más barato: {comparison.best?.providerName} (
+                                                                {formatCurrencyEs(comparison.best?.lastPrice ?? 0, 2)}). Usa
+                                                                «Mejor opción».
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })}
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                    setDraftLines((prev) => [...prev, emptyDraftLine()])
+                                                }
+                                            >
+                                                <Plus className="mr-1 h-3.5 w-3.5" />
+                                                Agregar línea
+                                            </Button>
+                                            <p className="text-right text-sm font-medium tabular-nums">
+                                                Total líneas: {formatCurrencyEs(linesTotal, 2)}
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                            ) : null}
+
                             {/* Section 3: Details */}
+                            {!useLineDetail ? (
                             <div className="space-y-2">
                                 <Label>Descripción del Requerimiento</Label>
                                 <Textarea 
@@ -362,6 +736,7 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                                     onChange={e => setDescription(e.target.value)}
                                 />
                             </div>
+                            ) : null}
 
                             {/* Section 4: Attachments */}
                             <div className="space-y-2">
@@ -558,6 +933,18 @@ export function PurchaseRequestManager({ requests, providers, onRequestCreate, o
                                             <div className="text-xs text-muted-foreground truncate max-w-[250px]" title={req.description}>
                                                 {req.description}
                                             </div>
+                                            {req.lineItems && req.lineItems.length > 0 ? (
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                    <Badge variant="secondary" className="text-[10px] font-normal">
+                                                        {req.lineItems.length} producto{req.lineItems.length === 1 ? '' : 's'}
+                                                    </Badge>
+                                                    {[...new Set(req.lineItems.map((l) => l.providerName))].map((name) => (
+                                                        <Badge key={name} variant="outline" className="text-[10px] font-normal">
+                                                            {name}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            ) : null}
                                             <div className="flex items-center gap-2 mt-1.5">
                                                 <Badge variant="outline" className="text-[10px] py-0 h-5 font-normal bg-background">
                                                     {req.paymentCondition === 'cash' ? 'Contado' : 'Crédito 30d'}

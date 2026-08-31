@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
-import { HardHat, Loader2, Plus, Settings2 } from 'lucide-react';
+import { Download, HardHat, Loader2, Plus, Settings2 } from 'lucide-react';
 
 import type { SystemSettings, User } from '../../types';
-import type { AccidentesFilters, WorkplaceAccidentRecord } from '../../types/accidentes';
+import type { WorkplaceAccidentRecord, AccidentWorkflowStatus } from '../../types/accidentes';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
+import { exportAccidentesExcel } from '../../utils/accidentesExport';
 import {
   buildStaffOptions,
   filterAccidentRecords,
@@ -13,13 +13,16 @@ import {
 } from '../../utils/accidentesData';
 import { computeAccidentesKpis } from '../../utils/accidentesKpi';
 import { useAccidentesModuleState } from '../../hooks/useAccidentesModuleState';
+import { useHrStaffRecords } from '../../hooks/useHrStaffRecords';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { AccidentesAlertBanner } from './AccidentesAlertBanner';
 import { AccidenteFormDialog } from './AccidenteFormDialog';
+import { AccidenteDetailDialog } from './AccidenteDetailDialog';
 import { AccidentesDashboard } from './AccidentesDashboard';
-import { AccidentesFiltersBar } from './AccidentesFilters';
+import { AccidentesFiltersBar, defaultAccidentesFilters } from './AccidentesFilters';
 import { AccidentesTable } from './AccidentesTable';
 
 export interface AccidentesModuleProps {
@@ -30,18 +33,8 @@ export interface AccidentesModuleProps {
   reportedBy?: string;
 }
 
-function defaultFilters(): AccidentesFilters {
-  const now = new Date();
-  const from = startOfMonth(subMonths(now, 11));
-  return {
-    dateFrom: format(from, 'yyyy-MM-dd'),
-    dateTo: format(endOfMonth(now), 'yyyy-MM-dd'),
-    sede: 'Todas',
-    workArea: 'Todas',
-    workShift: 'Todas',
-    bodyPart: 'Todas',
-    injuryNature: 'Todas',
-  };
+function defaultFilters() {
+  return defaultAccidentesFilters();
 }
 
 export function AccidentesModule({
@@ -53,10 +46,12 @@ export function AccidentesModule({
 }: AccidentesModuleProps) {
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
   const { settings, loading, saving, updateSettings } = useAccidentesModuleState(canEdit);
+  const { uniforms: uniformRecords } = useHrStaffRecords();
   const [filters, setFilters] = useState(defaultFilters);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<WorkplaceAccidentRecord | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<WorkplaceAccidentRecord | null>(null);
 
   const sedeOptions = useMemo(() => {
     const fromRecords = settings.records.map((r) => r.sede);
@@ -105,6 +100,17 @@ export function AccidentesModule({
     updateSettings((prev) => removeAccidentRecord(prev, id), 'Registro eliminado.');
   };
 
+  const handleAdvanceWorkflow = (recordId: string, status: AccidentWorkflowStatus) => {
+    updateSettings((prev) => {
+      const record = prev.records.find((r) => r.id === recordId);
+      if (!record) return prev;
+      const next = upsertAccidentRecord(prev, { ...record, workflowStatus: status });
+      const updated = next.records.find((r) => r.id === recordId);
+      if (updated) setDetailRecord(updated);
+      return next;
+    }, 'Flujo de investigación actualizado.');
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
@@ -139,11 +145,19 @@ export function AccidentesModule({
             <Settings2 className="mr-1 h-4 w-4" />
             Config KPI
           </Button>
+          <Button
+            variant="outline"
+            onClick={() => exportAccidentesExcel(filteredRecords, filters.dateFrom, filters.dateTo)}
+            disabled={filteredRecords.length === 0}
+          >
+            <Download className="mr-1 h-4 w-4" />
+            Exportar Excel
+          </Button>
         </div>
       </div>
 
       {configOpen ? (
-        <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-3 dark:border-slate-700">
+        <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-3 lg:grid-cols-5 dark:border-slate-700">
           <div className="space-y-1">
             <Label className="text-xs">Horas hombre / trabajador / mes</Label>
             <Input
@@ -199,11 +213,53 @@ export function AccidentesModule({
               }
             />
           </div>
-          {saving ? <p className="text-xs text-muted-foreground sm:col-span-3">Guardando…</p> : null}
+          <div className="space-y-1">
+            <Label className="text-xs">Alerta IF máx.</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.1"
+              placeholder="Ej. 25"
+              value={settings.config.alertMaxFrequencyIndex ?? ''}
+              disabled={!canEdit}
+              onChange={(e) =>
+                updateSettings((prev) => ({
+                  ...prev,
+                  config: {
+                    ...prev.config,
+                    alertMaxFrequencyIndex: e.target.value ? Number(e.target.value) : undefined,
+                  },
+                }))
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Alerta IG máx.</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.1"
+              placeholder="Ej. 5"
+              value={settings.config.alertMaxGravityIndex ?? ''}
+              disabled={!canEdit}
+              onChange={(e) =>
+                updateSettings((prev) => ({
+                  ...prev,
+                  config: {
+                    ...prev.config,
+                    alertMaxGravityIndex: e.target.value ? Number(e.target.value) : undefined,
+                  },
+                }))
+              }
+            />
+          </div>
+          {saving ? <p className="text-xs text-muted-foreground sm:col-span-5">Guardando…</p> : null}
         </div>
       ) : null}
 
       <AccidentesFiltersBar filters={filters} sedeOptions={sedeOptions} onChange={setFilters} />
+
+      <AccidentesAlertBanner kpis={kpis} config={settings.config} />
 
       <Tabs defaultValue="dashboard">
         <TabsList>
@@ -217,11 +273,22 @@ export function AccidentesModule({
           <AccidentesTable
             records={filteredRecords}
             canEdit={canEdit}
+            onView={setDetailRecord}
             onEdit={openEdit}
             onDelete={handleDelete}
           />
         </TabsContent>
       </Tabs>
+
+      <AccidenteDetailDialog
+        record={detailRecord}
+        open={Boolean(detailRecord)}
+        onOpenChange={(open) => !open && setDetailRecord(null)}
+        canEdit={canEdit}
+        allRecords={settings.records}
+        uniformRecords={uniformRecords}
+        onAdvanceWorkflow={handleAdvanceWorkflow}
+      />
 
       <AccidenteFormDialog
         open={formOpen}

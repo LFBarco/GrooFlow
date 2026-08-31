@@ -12,8 +12,10 @@ import {
 } from 'lucide-react';
 
 import type { AsistenciaLiveStatus } from '../../types/asistencia';
+import type { TurnosPlanVsReal } from '../../types/turnos';
 import { ASISTENCIA_LIVE_STATUS_LABELS } from '../../types/asistencia';
 import { isBuiltinOrgColumnId } from '../../utils/asistenciaOrgColumns';
+import { TurnosPlanVsRealBadge } from '../turnos/TurnosPlanVsRealBadge';
 
 const BUILTIN_THEME = {
   administracion: {
@@ -24,15 +26,15 @@ const BUILTIN_THEME = {
   },
   medica: {
     icon: Stethoscope,
-    card: 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-950/20',
-    bar: 'bg-emerald-500',
-    glow: 'shadow-sm dark:shadow-[0_0_24px_rgba(16,185,129,0.15)]',
-  },
-  peluqueria: {
-    icon: Scissors,
     card: 'border-sky-200 bg-sky-50 dark:border-sky-500/40 dark:bg-sky-950/20',
     bar: 'bg-sky-500',
     glow: 'shadow-sm dark:shadow-[0_0_24px_rgba(14,165,233,0.15)]',
+  },
+  peluqueria: {
+    icon: Scissors,
+    card: 'border-pink-200 bg-pink-50 dark:border-pink-500/40 dark:bg-pink-950/20',
+    bar: 'bg-pink-500',
+    glow: 'shadow-sm dark:shadow-[0_0_24px_rgba(236,72,153,0.15)]',
   },
 } as const;
 
@@ -55,7 +57,7 @@ export function themeForColumnId(columnId: string): {
 
 export const STATUS_DOT: Record<AsistenciaLiveStatus, string> = {
   trabajando: 'bg-emerald-500',
-  presente: 'bg-cyan-400',
+  presente: 'bg-slate-400',
   tarde: 'bg-amber-500',
   ausente: 'bg-red-500',
 };
@@ -73,6 +75,8 @@ export function StaffLiveCard({
   dragHandleRef,
   isDragging,
   shiftLabel,
+  onClick,
+  planVsReal,
 }: {
   name: string;
   cargo: string;
@@ -86,19 +90,34 @@ export function StaffLiveCard({
   dragHandleRef?: (node: HTMLDivElement | null) => void;
   isDragging?: boolean;
   shiftLabel?: string;
+  onClick?: () => void;
+  planVsReal?: TurnosPlanVsReal;
 }) {
   const absent = status === 'ausente';
   const detailHint = statusNote ?? (absent ? matchHint : undefined);
   return (
     <div
       ref={editLayout ? dragHandleRef : undefined}
+      role={!editLayout && onClick ? 'button' : undefined}
+      tabIndex={!editLayout && onClick ? 0 : undefined}
+      onClick={!editLayout ? onClick : undefined}
+      onKeyDown={
+        !editLayout && onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       className={`relative min-w-[160px] max-w-[220px] rounded-xl border p-3 transition-opacity ${
         isDragging ? 'opacity-40' : ''
       } ${
         absent
           ? 'border-red-200 bg-red-50/90 dark:border-red-500/30 dark:bg-slate-900/80'
           : 'border-border bg-card dark:border-slate-700 dark:bg-slate-900/90'
-      } ${editLayout ? 'cursor-grab ring-1 ring-indigo-500/30 active:cursor-grabbing' : ''}`}
+      } ${editLayout ? 'cursor-grab ring-1 ring-indigo-500/30 active:cursor-grabbing' : onClick ? 'cursor-pointer hover:border-teal-400/60 hover:shadow-sm' : ''}`}
     >
       {editLayout ? (
         <GripVertical className="absolute right-2 top-2 h-3.5 w-3.5 text-indigo-500/70 dark:text-indigo-400/70" />
@@ -133,7 +152,10 @@ export function StaffLiveCard({
       </div>
       <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground">
         <span>{time ?? '—'}</span>
-        <span>{ASISTENCIA_LIVE_STATUS_LABELS[status]}</span>
+        <span className="flex items-center gap-1">
+          {planVsReal ? <TurnosPlanVsRealBadge compare={planVsReal} compact /> : null}
+          {ASISTENCIA_LIVE_STATUS_LABELS[status]}
+        </span>
       </div>
       {detailHint ? (
         <p

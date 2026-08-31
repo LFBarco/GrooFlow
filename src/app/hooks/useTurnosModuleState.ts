@@ -49,7 +49,9 @@ export function useTurnosModuleState(input: {
     return () => {
       cancelled = true;
     };
-  }, [input.users, input.asistencia]);
+    // Carga inicial única; syncRoster actualiza el roster bajo demanda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const persistNow = useCallback(async (next: TurnosSettings, message?: string) => {
     setSaving(true);

@@ -1,7 +1,11 @@
-import { Pencil, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Trash2 } from 'lucide-react';
 
 import type { WorkplaceAccidentRecord } from '../../types/accidentes';
-import { ACCIDENT_SEVERITY_LABELS } from '../../types/accidentes';
+import {
+  ACCIDENT_EVENT_TYPE_LABELS,
+  ACCIDENT_SEVERITY_LABELS,
+  ACCIDENT_WORKFLOW_LABELS,
+} from '../../types/accidentes';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
@@ -21,14 +25,22 @@ const SEVERITY_VARIANT: Record<string, string> = {
   mortal: 'bg-slate-900 text-white dark:bg-red-950 dark:text-red-100',
 };
 
+const WORKFLOW_VARIANT: Record<string, string> = {
+  reportado: 'bg-slate-100 text-slate-700 dark:bg-slate-600/30',
+  investigacion: 'bg-sky-100 text-sky-800 dark:bg-sky-500/20',
+  acciones: 'bg-violet-100 text-violet-800 dark:bg-violet-500/20',
+  cerrado: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20',
+};
+
 type Props = {
   records: WorkplaceAccidentRecord[];
   canEdit: boolean;
+  onView: (record: WorkplaceAccidentRecord) => void;
   onEdit: (record: WorkplaceAccidentRecord) => void;
   onDelete: (id: string) => void;
 };
 
-export function AccidentesTable({ records, canEdit, onEdit, onDelete }: Props) {
+export function AccidentesTable({ records, canEdit, onView, onEdit, onDelete }: Props) {
   if (records.length === 0) {
     return (
       <Card className="border-dashed border-border dark:border-slate-700">
@@ -47,11 +59,12 @@ export function AccidentesTable({ records, canEdit, onEdit, onDelete }: Props) {
             <TableRow>
               <TableHead>Fecha</TableHead>
               <TableHead>Afectado</TableHead>
+              <TableHead>Tipo / Flujo</TableHead>
               <TableHead>Sede / Área</TableHead>
               <TableHead>Lesión</TableHead>
               <TableHead>Gravedad</TableHead>
               <TableHead className="text-right">Días baja</TableHead>
-              {canEdit ? <TableHead className="w-[90px]" /> : null}
+              <TableHead className="w-[110px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -65,6 +78,14 @@ export function AccidentesTable({ records, canEdit, onEdit, onDelete }: Props) {
                 <TableCell>
                   <p className="font-medium">{r.affectedName}</p>
                   <p className="text-xs text-muted-foreground">{r.jobTitle}</p>
+                </TableCell>
+                <TableCell className="text-xs">
+                  <p>{ACCIDENT_EVENT_TYPE_LABELS[r.eventType ?? 'accidente']}</p>
+                  <Badge
+                    className={`mt-1 text-[10px] ${WORKFLOW_VARIANT[r.workflowStatus ?? 'reportado'] ?? ''}`}
+                  >
+                    {ACCIDENT_WORKFLOW_LABELS[r.workflowStatus ?? 'reportado']}
+                  </Badge>
                 </TableCell>
                 <TableCell className="text-xs">
                   {r.sede}
@@ -82,24 +103,29 @@ export function AccidentesTable({ records, canEdit, onEdit, onDelete }: Props) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{r.estimatedLostDays}</TableCell>
-                {canEdit ? (
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button type="button" size="icon" variant="ghost" onClick={() => onEdit(r)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="text-rose-600"
-                        onClick={() => onDelete(r.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                ) : null}
+                <TableCell>
+                  <div className="flex justify-end gap-1">
+                    <Button type="button" size="icon" variant="ghost" onClick={() => onView(r)}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    {canEdit ? (
+                      <>
+                        <Button type="button" size="icon" variant="ghost" onClick={() => onEdit(r)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="text-rose-600"
+                          onClick={() => onDelete(r.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

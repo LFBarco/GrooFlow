@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Trash2 } from 'lucide-react';
 
 import type { UniformDeliveryRecord } from '../../types/uniformes';
 import {
@@ -28,6 +28,7 @@ const STATUS_VARIANT: Record<string, string> = {
 type Props = {
   records: UniformDeliveryRecord[];
   canEdit: boolean;
+  onView: (record: UniformDeliveryRecord) => void;
   onEdit: (record: UniformDeliveryRecord) => void;
   onDelete: (id: string) => void;
 };
@@ -42,7 +43,7 @@ function formatItemsSummary(record: UniformDeliveryRecord): string {
     .join(', ');
 }
 
-export function UniformesTable({ records, canEdit, onEdit, onDelete }: Props) {
+export function UniformesTable({ records, canEdit, onView, onEdit, onDelete }: Props) {
   if (records.length === 0) {
     return (
       <Card className="border-dashed border-border dark:border-slate-700">
@@ -66,7 +67,7 @@ export function UniformesTable({ records, canEdit, onEdit, onDelete }: Props) {
               <TableHead>Motivo</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="text-right">Cant.</TableHead>
-              {canEdit ? <TableHead className="w-[90px]" /> : null}
+              <TableHead className="w-[110px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -92,24 +93,29 @@ export function UniformesTable({ records, canEdit, onEdit, onDelete }: Props) {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{countItemsInRecord(r)}</TableCell>
-                {canEdit ? (
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button type="button" size="icon" variant="ghost" onClick={() => onEdit(r)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="text-rose-600"
-                        onClick={() => onDelete(r.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                ) : null}
+                <TableCell>
+                  <div className="flex justify-end gap-1">
+                    <Button type="button" size="icon" variant="ghost" onClick={() => onView(r)}>
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    {canEdit ? (
+                      <>
+                        <Button type="button" size="icon" variant="ghost" onClick={() => onEdit(r)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="text-rose-600"
+                          onClick={() => onDelete(r.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>

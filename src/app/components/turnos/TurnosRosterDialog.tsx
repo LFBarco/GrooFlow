@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../ui/select';
+import { Checkbox } from '../ui/checkbox';
 
 type Props = {
   open: boolean;
@@ -46,6 +47,7 @@ export function TurnosRosterDialog({
   const [workArea, setWorkArea] = useState<string>(VET_WORK_AREAS[0]);
   const [homeSede, setHomeSede] = useState(sedeOptions[0] ?? 'Principal');
   const [initials, setInitials] = useState('');
+  const [isExternal, setIsExternal] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -55,6 +57,7 @@ export function TurnosRosterDialog({
       setWorkArea(VET_WORK_AREAS[0]);
       setHomeSede(sedeOptions[0] ?? 'Principal');
       setInitials('');
+      setIsExternal(false);
     }
   }, [open, sedeOptions]);
 
@@ -66,6 +69,7 @@ export function TurnosRosterDialog({
     setWorkArea(entry.workArea || VET_WORK_AREAS[0]);
     setHomeSede(entry.homeSede);
     setInitials(entry.initials);
+    setIsExternal(Boolean(entry.isExternal));
   };
 
   const saveManual = () => {
@@ -79,6 +83,7 @@ export function TurnosRosterDialog({
           workArea,
           homeSede,
           initials: initials.trim(),
+          isExternal,
         }),
       editing ? 'Personal actualizado.' : 'Personal agregado al roster.'
     );
@@ -87,6 +92,7 @@ export function TurnosRosterDialog({
     setRoleLabel('');
     setWorkArea(VET_WORK_AREAS[0]);
     setInitials('');
+    setIsExternal(false);
   };
 
   const removeManual = (id: string) => {
@@ -165,6 +171,10 @@ export function TurnosRosterDialog({
                   placeholder="CM"
                 />
               </div>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <Checkbox checked={isExternal} onCheckedChange={(v) => setIsExternal(Boolean(v))} />
+                Personal externo (marcará turnos con badge EXT)
+              </label>
             </div>
             <Button type="button" onClick={saveManual} disabled={!fullName.trim()}>
               <UserPlus className="mr-1 h-4 w-4" />
@@ -186,6 +196,7 @@ export function TurnosRosterDialog({
                   {entry.workArea ? ` · ${entry.workArea}` : ''}
                   {' · '}
                   {entry.homeSede}
+                  {entry.isExternal ? ' · EXT' : ''}
                   {entry.source !== 'manual' ? ` · ${entry.source}` : ''}
                 </p>
               </div>

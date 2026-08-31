@@ -95,13 +95,32 @@ export interface UniformDeliveryRecord {
   items: UniformDeliveryItem[];
   notes?: string;
   deliveredBy?: string;
+  /** Acta de entrega firmada (data URL imagen/PDF). */
+  signatureActDataUrl?: string;
+  signatureActName?: string;
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface UniformKitItem {
+  itemType: UniformItemType;
+  quantity: number;
+  defaultSize?: string;
+}
+
+/** Kit de indumentaria por cargo o área. */
+export interface UniformKit {
+  id: string;
+  name: string;
+  jobTitle?: string;
+  workArea?: string;
+  items: UniformKitItem[];
 }
 
 export interface UniformesSettings {
   version: 1;
   records: UniformDeliveryRecord[];
+  kits?: UniformKit[];
 }
 
 export interface UniformesFilters {
@@ -112,6 +131,7 @@ export interface UniformesFilters {
   itemType: string;
   status: string;
   reason: string;
+  search: string;
 }
 
 export interface UniformesKpiSnapshot {
@@ -123,4 +143,6 @@ export interface UniformesKpiSnapshot {
   bySede: Array<{ sede: string; count: number }>;
   byReason: Array<{ reason: UniformDeliveryReason; count: number }>;
   byMonth: Array<{ month: string; deliveries: number; items: number }>;
+  renewalsDueSoon: number;
+  renewalsOverdue: number;
 }

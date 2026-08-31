@@ -29,6 +29,24 @@ export type AsistenciaWorkShift = 'day' | 'night';
 
 export type AsistenciaShiftFilter = 'all' | AsistenciaWorkShift;
 
+/** Filtros unificados del módulo (live + dashboard Buk). */
+export type AsistenciaArrivalFilter = 'all' | 'arrived' | 'absent' | 'on_time' | 'late';
+
+export type AsistenciaLiveStatusFilter = 'all' | AsistenciaLiveStatus;
+
+export interface AsistenciaFilters {
+  search: string;
+  shift: AsistenciaShiftFilter;
+  liveStatus: AsistenciaLiveStatusFilter;
+  arrivalFilter: AsistenciaArrivalFilter;
+  areaFilter: string;
+  specialtyFilter: string;
+  criticalOnly: boolean;
+  noBukMatchOnly: boolean;
+}
+
+export const ASISTENCIA_FILTERS_ALL = '__all__';
+
 export const ASISTENCIA_WORK_SHIFT_LABELS: Record<AsistenciaWorkShift, string> = {
   day: 'Día',
   night: 'Noche',
@@ -285,6 +303,38 @@ export interface BukAsistenciaIntegrationSettings {
   lastValidatedAt?: string;
   lastValidationOk?: boolean;
   lastValidationMessage?: string;
+  /** Auto-refresh Buk en horario operativo (módulo Asistencia). */
+  autoRefreshEnabled?: boolean;
+  autoRefreshIntervalMinutes?: number;
+  autoRefreshWindowStart?: string;
+  autoRefreshWindowEnd?: string;
+  lastAutoRefreshAt?: string;
+}
+
+/** Snapshot diario de dotación (persistido localmente). */
+export interface AsistenciaDailySnapshot {
+  id: string;
+  dateYmd: string;
+  sedeName: string;
+  capturedAt: string;
+  source: 'manual' | 'auto';
+  workingCount: number;
+  absentCount: number;
+  lateCount: number;
+  criticalAbsentCount: number;
+  totalRequired: number;
+  totalPresent: number;
+  bukRecordsOnDate: number;
+}
+
+/** Contexto operativo para alertas globales (session/local). */
+export interface AsistenciaOperationalContext {
+  updatedAt: string;
+  dateYmd: string;
+  cacheFetchedAt: number | null;
+  criticalMissing: { id: string; fullName: string; cargoLabel: string; sedeName: string }[];
+  coverageGaps: { sedeName: string; cargoLabel: string; required: number; present: number }[];
+  bukEnabled: boolean;
 }
 
 export interface AsistenciaSettings {

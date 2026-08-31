@@ -1,3 +1,34 @@
 @import './fonts.css';
 @import './tailwind.css';
 @import './theme.css';
+
+/* Turnos — tokens y modo impresión (fase G) */
+:root {
+  --turno-day-bg: #fef3c7;
+  --turno-day-fg: #92400e;
+  --turno-night-bg: #ede9fe;
+  --turno-night-fg: #5b21b6;
+  --turno-off-bg: #f1f5f9;
+  --turno-training-bg: #d1fae5;
+  --turno-training-fg: #047857;
+  --turno-cov-ring: #06b6d4;
+  --turno-ext-ring: #f97316;
+}
+
+@media print {
+  .turnos-print-root {
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+  }
+  .turnos-print-root table {
+    page-break-inside: auto;
+  }
+  .turnos-print-root tr {
+    page-break-inside: avoid;
+  }
+  .turnos-print-root button {
+    pointer-events: none;
+  }
+}

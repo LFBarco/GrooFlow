@@ -47,6 +47,8 @@ import { Role } from './types';
 import { RoleConfigDialog } from './RoleConfigDialog';
 import { SedeConfigDialog } from './SedeConfigDialog';
 import { UserOccupationalFields } from './UserOccupationalFields';
+import { UserHrProfilePanel } from '../hr/UserHrProfilePanel';
+import { useHrStaffRecords } from '../../hooks/useHrStaffRecords';
 import { repository } from '../../services/api';
 import { describeAuthOrNetworkError } from '../../utils/authErrors';
 import { isSupabaseBackend } from '../../config/backend';
@@ -85,6 +87,7 @@ export function UserManager({
     onDeleteUser,
     onRefreshUsers,
 }: UserManagerProps) {
+    const { accidents: hrAccidents, uniforms: hrUniforms, loading: hrLoading } = useHrStaffRecords();
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
@@ -944,6 +947,19 @@ export function UserManager({
                             sedesCatalog={sedesCatalog}
                             onChange={(patch) => setCurrentUserForm((prev) => ({ ...prev, ...patch }))}
                         />
+                        {currentUserForm.id && currentUserForm.name ? (
+                            <UserHrProfilePanel
+                                user={{
+                                    id: currentUserForm.id,
+                                    name: currentUserForm.name,
+                                    jobTitle: currentUserForm.jobTitle,
+                                    workArea: currentUserForm.workArea,
+                                }}
+                                accidents={hrAccidents}
+                                uniforms={hrUniforms}
+                                loading={hrLoading}
+                            />
+                        ) : null}
                         {/* Sede Access Section */}
                         <div className="space-y-3 border rounded-lg p-3 bg-muted/20">
                             <div className="flex items-center justify-between">

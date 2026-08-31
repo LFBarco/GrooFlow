@@ -1,39 +1,73 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   AlertTriangle,
   Building2,
+  CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  Download,
   LayoutDashboard,
   LayoutGrid,
   Loader2,
   Moon,
+  Printer,
   RefreshCw,
   Settings2,
   Sun,
+  UserPlus,
   Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import type { SystemSettings } from '../../types';
-import type { AsistenciaSettings, AsistenciaShiftFilter } from '../../types/asistencia';
+import type { SystemSettings, User } from '../../types';
+import type { AsistenciaFilters, AsistenciaSettings, AsistenciaStaffLiveState } from '../../types/asistencia';
+import type { AsistenciaAreaGroup } from '../../types/asistencia';
 import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
-import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
-import { fetchBukAsistenciaAll, sanitizeBukBaseUrl } from '../../utils/bukAsistenciaApi';
+import { useAsistenciaModuleState } from '../../hooks/useAsistenciaModuleState';
+import { buildAsistenciaDaySummary, mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import {
   cacheAgeLabel,
-  loadBukAsistenciaCache,
-  mergeBukAsistenciaRecords,
-  saveBukAsistenciaCache,
 } from '../../utils/bukAsistenciaCache';
 import {
   buildExampleBukRecords,
   mergeExampleStaffIntoSettings,
 } from '../../utils/asistenciaExampleSeed';
-import { buildLiveConsolidatedSummary, buildLiveSedeSummary, formatSedeDateLabel, staffForSede } from '../../utils/asistenciaStaff';
+import { buildLiveConsolidatedSummary, buildLiveSedeSummary, staffForSede } from '../../utils/asistenciaStaff';
+import { buildBukDashboardSummary, buildBukMultiSedeDashboard, type BukDashboardRow } from '../../utils/asistenciaBukDashboard';
+import {
+  defaultAsistenciaFilters,
+  filterBukDashboardRows,
+  filterLiveConsolidatedSummary,
+  filterLiveSedeSummary,
+} from '../../utils/asistenciaFilters';
+import { exportAsistenciaBukExcel, exportAsistenciaLiveExcel, exportAsistenciaMonthlyHrExcel } from '../../utils/asistenciaExport';
+import { printAsistenciaLive } from '../../utils/asistenciaPrint';
+import { planVsRealForStaffMember } from '../../utils/asistenciaPlanVsReal';
+import { syncStaffFromUsers } from '../../utils/asistenciaStaffSync';
+import { buildAsistenciaMultiSedeWeekTrend, buildAsistenciaWeekTrend } from '../../utils/asistenciaTrend';
+import { buildAsistenciaOperationalAlerts } from '../../utils/asistenciaAlerts';
+import { autoRefreshIntervalMs, shouldRunAutoRefresh } from '../../utils/asistenciaAutoRefresh';
+import { saveAsistenciaOperationalContext } from '../../utils/asistenciaOperationalContext';
+import {
+  captureAsistenciaDailySnapshots,
+  hydrateAsistenciaSnapshotsFromCloud,
+  listAsistenciaSnapshots,
+} from '../../utils/asistenciaSnapshots';
+import { daysInWeek, weekRangeLabel } from '../../utils/turnosCalendar';
 import { AsistenciaBukDashboard } from './AsistenciaBukDashboard';
+import { AsistenciaBukMultiSedePanel } from './AsistenciaBukMultiSedePanel';
+import { AsistenciaCriticalBanner } from './AsistenciaCriticalBanner';
+import { AsistenciaCoveragePanel } from './AsistenciaCoveragePanel';
+import { AsistenciaAlertBanner } from './AsistenciaAlertBanner';
+import { AsistenciaCoverageDetailPanel } from './AsistenciaCoverageDetailPanel';
+import { AsistenciaHistoryPanel } from './AsistenciaHistoryPanel';
+import { AsistenciaFiltersBar } from './AsistenciaFiltersBar';
 import { AsistenciaLiveView } from './AsistenciaLiveView';
 import { AsistenciaSedeConfigPanel } from './AsistenciaSedeConfigPanel';
+import { AsistenciaStaffDetailDialog } from './AsistenciaStaffDetailDialog';
+import { AsistenciaWeekTrendPanel } from './AsistenciaWeekTrendPanel';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -59,7 +93,10 @@ export interface AsistenciaModuleProps {
   ) => Promise<boolean>;
   visibleSedes?: string[];
   canConfigure?: boolean;
+  users?: User[];
 }
+
+const AREA_GROUPS: AsistenciaAreaGroup[] = ['medica', 'peluqueria', 'global'];
 
 export function AsistenciaModule({
   systemSettings,
@@ -68,29 +105,47 @@ export function AsistenciaModule({
   onPersistSystemSettings,
   visibleSedes = [],
   canConfigure = false,
+  users = [],
 }: AsistenciaModuleProps) {
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
-  const [loading, setLoading] = useState(false);
-  const [records, setRecords] = useState<Awaited<ReturnType<typeof fetchBukAsistenciaAll>>>([]);
-  const [cacheFetchedAt, setCacheFetchedAt] = useState<number | null>(null);
-  const [fetchProgress, setFetchProgress] = useState<string | null>(null);
+  const {
+    records,
+    setRecords,
+    cacheFetchedAt,
+    loading,
+    fetchProgress,
+    moduleReady,
+    turnosSettings,
+    turnosLoading,
+    refreshBuk,
+    bukEnabled,
+  } = useAsistenciaModuleState(asistencia);
   const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
   const [liveViewMode, setLiveViewMode] = useState<'single' | 'consolidated'>('single');
-  const [shiftFilter, setShiftFilter] = useState<AsistenciaShiftFilter>('all');
+  const [dashboardMultiSede, setDashboardMultiSede] = useState(false);
+  const [showPlanVsReal, setShowPlanVsReal] = useState(false);
+  const [filters, setFilters] = useState(defaultAsistenciaFilters);
   const [editLayout, setEditLayout] = useState(false);
-
-  const bukBaseUrl = sanitizeBukBaseUrl(asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
-  const bukToken = asistencia.buk?.apiToken?.trim() ?? '';
+  const [detailLive, setDetailLive] = useState<AsistenciaStaffLiveState | null>(null);
+  const [detailBukRow, setDetailBukRow] = useState<BukDashboardRow | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState(() => listAsistenciaSnapshots());
+  const [documentVisible, setDocumentVisible] = useState(
+    () => typeof document === 'undefined' || !document.hidden
+  );
 
   useEffect(() => {
-    if (!asistencia.buk?.enabled || !bukToken) return;
-    const cached = loadBukAsistenciaCache({ baseUrl: bukBaseUrl, apiToken: bukToken });
-    if (cached?.records.length) {
-      setRecords(cached.records);
-      setCacheFetchedAt(cached.fetchedAt);
-    }
-  }, [asistencia.buk?.enabled, bukBaseUrl, bukToken]);
+    let cancelled = false;
+    void hydrateAsistenciaSnapshotsFromCloud().then((list) => {
+      if (!cancelled) setSnapshots(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const shiftFilter = filters.shift;
 
   const sedeOptions = useMemo(() => {
     const fromStaff = (asistencia.staff ?? []).map((s) => s.sedeName);
@@ -106,6 +161,11 @@ export function AsistenciaModule({
   const activeSede = sedeOptions.includes(selectedSede) ? selectedSede : sedeOptions[0];
 
   const dateObj = useMemo(() => new Date(`${selectedDate}T12:00:00`), [selectedDate]);
+  const weekDays = useMemo(() => daysInWeek(dateObj), [dateObj]);
+  const weekLabel = useMemo(() => weekRangeLabel(dateObj), [dateObj]);
+
+  const dashboardUsesMulti =
+    dashboardMultiSede || (liveViewMode === 'consolidated' && mainTab === 'dashboard');
 
   const liveSummary = useMemo(
     () =>
@@ -131,97 +191,248 @@ export function AsistenciaModule({
     [sedeOptions, asistencia, records, dateObj, shiftFilter]
   );
 
+  const filteredLiveSummary = useMemo(
+    () => (liveSummary ? filterLiveSedeSummary(liveSummary, filters) : undefined),
+    [liveSummary, filters]
+  );
+
+  const filteredConsolidatedSummary = useMemo(
+    () => filterLiveConsolidatedSummary(consolidatedSummary, filters),
+    [consolidatedSummary, filters]
+  );
+
+  const coverageSummary = useMemo(
+    () =>
+      buildAsistenciaDaySummary({
+        date: dateObj,
+        records,
+        settings: asistencia,
+        visibleSedes: liveViewMode === 'consolidated' && mainTab === 'live' ? sedeOptions : [activeSede],
+      }),
+    [dateObj, records, asistencia, liveViewMode, mainTab, sedeOptions, activeSede]
+  );
+
+  const bukDashboardSummary = useMemo(
+    () =>
+      buildBukDashboardSummary({
+        records,
+        sedeName: activeSede,
+        settings: asistencia,
+        date: dateObj,
+      }),
+    [records, activeSede, asistencia, dateObj]
+  );
+
+  const bukAreaOptions = useMemo(
+    () =>
+      [...new Set(bukDashboardSummary.rows.map((r) => r.area).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, 'es')
+      ),
+    [bukDashboardSummary.rows]
+  );
+
+  const bukSpecialtyOptions = useMemo(
+    () =>
+      [...new Set(bukDashboardSummary.rows.map((r) => r.especialidad).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, 'es')
+      ),
+    [bukDashboardSummary.rows]
+  );
+
+  const bukMultiDashboardSummary = useMemo(
+    () =>
+      buildBukMultiSedeDashboard({
+        records,
+        sedeNames: sedeOptions,
+        settings: asistencia,
+        date: dateObj,
+      }),
+    [records, sedeOptions, asistencia, dateObj]
+  );
+
+  const weekTrend = useMemo(
+    () =>
+      dashboardUsesMulti || liveViewMode === 'consolidated'
+        ? buildAsistenciaMultiSedeWeekTrend({
+            records,
+            settings: asistencia,
+            sedeNames: sedeOptions,
+            weekDays,
+          })
+        : buildAsistenciaWeekTrend({
+            records,
+            settings: asistencia,
+            sedeName: activeSede,
+            weekDays,
+          }),
+    [
+      records,
+      asistencia,
+      sedeOptions,
+      weekDays,
+      activeSede,
+      dashboardUsesMulti,
+      liveViewMode,
+    ]
+  );
+
+  const criticalMissing = useMemo(() => {
+    if (liveViewMode === 'consolidated') {
+      return consolidatedSummary.sedes.flatMap((s) => s.criticalMissing);
+    }
+    return liveSummary.criticalMissing;
+  }, [liveViewMode, consolidatedSummary, liveSummary]);
+
+  const operationalAlerts = useMemo(() => {
+    const coverageGaps = coverageSummary.sedes.flatMap((sede) =>
+      AREA_GROUPS.flatMap((group) =>
+        sede.byArea[group].map((cov) => ({
+          sedeName: cov.requirement.sedeName,
+          cargoLabel: cov.requirement.cargoLabel,
+          required: cov.requiredCount,
+          present: cov.presentCount,
+        }))
+      )
+    );
+    return buildAsistenciaOperationalAlerts({
+      updatedAt: new Date().toISOString(),
+      dateYmd: selectedDate,
+      cacheFetchedAt,
+      criticalMissing: criticalMissing.map((s) => ({
+        id: s.id,
+        fullName: s.fullName,
+        cargoLabel: s.cargoLabel,
+        sedeName: s.sedeName,
+      })),
+      coverageGaps,
+      bukEnabled,
+    });
+  }, [coverageSummary, selectedDate, cacheFetchedAt, criticalMissing, bukEnabled]);
+
+  useEffect(() => {
+    const coverageGaps = coverageSummary.sedes.flatMap((sede) =>
+      AREA_GROUPS.flatMap((group) =>
+        sede.byArea[group].map((cov) => ({
+          sedeName: cov.requirement.sedeName,
+          cargoLabel: cov.requirement.cargoLabel,
+          required: cov.requiredCount,
+          present: cov.presentCount,
+        }))
+      )
+    );
+    saveAsistenciaOperationalContext({
+      updatedAt: new Date().toISOString(),
+      dateYmd: selectedDate,
+      cacheFetchedAt,
+      criticalMissing: criticalMissing.map((s) => ({
+        id: s.id,
+        fullName: s.fullName,
+        cargoLabel: s.cargoLabel,
+        sedeName: s.sedeName,
+      })),
+      coverageGaps,
+      bukEnabled,
+    });
+  }, [coverageSummary, selectedDate, cacheFetchedAt, criticalMissing, bukEnabled]);
+
+  useEffect(() => {
+    const onVis = () => setDocumentVisible(!document.hidden);
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
+  const monthPrefix = selectedDate.slice(0, 7);
+  const monthLabel = format(dateObj, 'MMMM yyyy', { locale: es });
+
+  const getPlanVsReal = useCallback(
+    (live: AsistenciaStaffLiveState) => {
+      if (!showPlanVsReal || !bukEnabled) return undefined;
+      const compare = planVsRealForStaffMember({
+        staff: live.staff,
+        turnosSettings,
+        asistencia,
+        bukRecords: records,
+        date: dateObj,
+      });
+      return compare.status === 'na' ? undefined : compare;
+    },
+    [showPlanVsReal, bukEnabled, turnosSettings, asistencia, records, dateObj]
+  );
+
+  const allLiveStaff = useMemo(() => {
+    const fromSede = (s: typeof liveSummary) =>
+      s
+        ? [
+            ...s.areas.flatMap((a) => a.staff),
+            ...(s.manager ? [s.manager] : []),
+          ]
+        : [];
+    if (liveViewMode === 'consolidated') {
+      return consolidatedSummary.sedes.flatMap((s) => fromSede(s));
+    }
+    return fromSede(liveSummary);
+  }, [consolidatedSummary, liveSummary, liveViewMode]);
+
+  const openStaffDetail = useCallback((live: AsistenciaStaffLiveState) => {
+    setDetailLive(live);
+    setDetailBukRow(null);
+    setDetailOpen(true);
+  }, []);
+
+  const openBukRowDetail = useCallback(
+    (row: BukDashboardRow) => {
+      const norm = (r: string) => r.replace(/[.\-\s]/g, '').toLowerCase();
+      const live = allLiveStaff.find(
+        (s) => s.staff.rut && norm(s.staff.rut) === norm(row.rut)
+      );
+      setDetailLive(live ?? null);
+      setDetailBukRow(row);
+      setDetailOpen(true);
+    },
+    [allLiveStaff]
+  );
+
+  const handleExportBuk = useCallback(() => {
+    const rows = filterBukDashboardRows(bukDashboardSummary.rows, filters);
+    if (rows.length === 0) {
+      toast.error('No hay filas para exportar con los filtros actuales.');
+      return;
+    }
+    exportAsistenciaBukExcel(rows, activeSede, selectedDate);
+    toast.success(`Exportados ${rows.length} registro(s) Buk.`);
+  }, [bukDashboardSummary.rows, filters, activeSede, selectedDate]);
+
+  const handleExportLive = useCallback(() => {
+    const staff =
+      liveViewMode === 'consolidated'
+        ? filteredConsolidatedSummary.sedes.flatMap((s) =>
+            s.areas.flatMap((a) => a.staff)
+          )
+        : (filteredLiveSummary?.areas.flatMap((a) => a.staff) ?? []);
+    if (staff.length === 0) {
+      toast.error('No hay personal visible para exportar.');
+      return;
+    }
+    const label =
+      liveViewMode === 'consolidated' ? 'consolidado' : activeSede.replace(/\s+/g, '-');
+    exportAsistenciaLiveExcel(staff, label, selectedDate);
+    toast.success(`Exportados ${staff.length} colaborador(es) del organigrama.`);
+  }, [
+    liveViewMode,
+    filteredConsolidatedSummary,
+    filteredLiveSummary,
+    activeSede,
+    selectedDate,
+  ]);
+
+  const setShiftFilter = useCallback((shift: AsistenciaFilters['shift']) => {
+    setFilters((prev) => ({ ...prev, shift }));
+  }, []);
+
   const hasAnyStaff = useMemo(
     () => sedeOptions.some((s) => staffForSede(asistencia, s).length > 0),
     [sedeOptions, asistencia]
   );
-
-  const refresh = useCallback(async () => {
-    const bukCfg = asistencia.buk;
-    const resolvedBase = sanitizeBukBaseUrl(bukCfg?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
-    if (!bukCfg?.enabled || !bukCfg.apiToken?.trim()) {
-      toast.error('Activa Buk Asistencia y configura el token en Configuración → Integraciones.');
-      return;
-    }
-    if (
-      mainTab === 'live' &&
-      !hasAnyStaff
-    ) {
-      toast.error('Registra personal en al menos una sede para el organigrama en vivo.');
-      setMainTab('config');
-      return;
-    }
-    if (
-      mainTab === 'live' &&
-      liveViewMode === 'single' &&
-      staffForSede(asistencia, activeSede).length === 0
-    ) {
-      toast.error('Registra personal en la sede seleccionada o usa vista consolidada.');
-      setMainTab('config');
-      return;
-    }
-    setLoading(true);
-    setFetchProgress(null);
-    const cached = loadBukAsistenciaCache({
-      baseUrl: resolvedBase,
-      apiToken: bukCfg.apiToken,
-    });
-    const priorCount = cached?.records.length ?? 0;
-    if (cached?.records.length) {
-      setRecords(cached.records);
-      setCacheFetchedAt(cached.fetchedAt);
-    }
-    try {
-      const fresh = await fetchBukAsistenciaAll({
-        baseUrl: resolvedBase,
-        apiToken: bukCfg.apiToken,
-        onProgress: (loaded, total) => {
-          setFetchProgress(
-            loaded === 0
-              ? 'Conectando con Buk vía servidor…'
-              : `Buk ${loaded}/${total} páginas…`
-          );
-        },
-      });
-      const merged = mergeBukAsistenciaRecords(cached?.records ?? [], fresh);
-      const now = Date.now();
-      saveBukAsistenciaCache({
-        baseUrl: resolvedBase,
-        apiToken: bukCfg.apiToken,
-        records: merged,
-        fetchedAt: now,
-      });
-      setRecords(merged);
-      setCacheFetchedAt(now);
-      const onDate = merged.filter((r) => {
-        const key = formatSedeDateLabel(dateObj);
-        return r.dia_entrada === key || (r.entrada && formatSedeDateLabel(new Date(r.entrada)) === key);
-      });
-      const delta = Math.max(0, merged.length - priorCount);
-      if (merged.length === 0) {
-        toast.warning(
-          'Buk respondió sin registros. Vuelve a «Probar conexión» en Integraciones; si ahí sí hay datos, el proxy del servidor puede estar incompleto (pide al backend revisar /proxy/buk/fetch).'
-        );
-      } else {
-        toast.success(
-          `${merged.length} registros (${delta > 0 ? `+${delta} nuevos · ` : ''}${onDate.length} hoy para ${activeSede}). Caché 48 h.`
-        );
-      }
-    } catch (err) {
-      if (cached?.records.length) {
-        toast.error(
-          err instanceof Error
-            ? `${err.message} — mostrando caché ${cacheAgeLabel(cached.fetchedAt)}.`
-            : 'Error Buk — mostrando caché local.'
-        );
-      } else {
-        toast.error(err instanceof Error ? err.message : 'No se pudo cargar asistencia.');
-      }
-    } finally {
-      setLoading(false);
-      setFetchProgress(null);
-    }
-  }, [asistencia, activeSede, dateObj, bukBaseUrl, bukToken, mainTab, liveViewMode, hasAnyStaff]);
 
   const saveAsistencia = useCallback(
     async (
@@ -256,6 +467,108 @@ export function AsistenciaModule({
     [onPersistAsistenciaSettings, onPersistSystemSettings, onUpdateSystemSettings, systemSettings]
   );
 
+  const refresh = useCallback(
+    async (opts?: { silent?: boolean; source?: 'manual' | 'auto'; skipStaffCheck?: boolean }) => {
+      const source = opts?.source ?? 'manual';
+      if (!opts?.skipStaffCheck) {
+        if (mainTab === 'live' && !hasAnyStaff) {
+          toast.error('Registra personal en al menos una sede para el organigrama en vivo.');
+          setMainTab('config');
+          return;
+        }
+        if (
+          mainTab === 'live' &&
+          liveViewMode === 'single' &&
+          staffForSede(asistencia, activeSede).length === 0
+        ) {
+          toast.error('Registra personal en la sede seleccionada o usa vista consolidada.');
+          setMainTab('config');
+          return;
+        }
+      }
+      const result = await refreshBuk({
+        activeSede,
+        date: dateObj,
+        silent: opts?.silent,
+      });
+      if (result.ok && result.records) {
+        captureAsistenciaDailySnapshots({
+          date: dateObj,
+          sedeNames: sedeOptions,
+          settings: asistencia,
+          records: result.records,
+          source,
+        });
+        setSnapshots(listAsistenciaSnapshots());
+        if (source === 'auto') {
+          void saveAsistencia(
+            (prev) => ({
+              ...prev,
+              buk: {
+                ...prev.buk,
+                lastAutoRefreshAt: new Date().toISOString(),
+              },
+            }),
+            undefined
+          );
+        }
+      }
+    },
+    [
+      mainTab,
+      hasAnyStaff,
+      liveViewMode,
+      asistencia,
+      activeSede,
+      dateObj,
+      refreshBuk,
+      sedeOptions,
+      saveAsistencia,
+    ]
+  );
+
+  const handlePrintLive = useCallback(() => {
+    const summaries =
+      liveViewMode === 'consolidated'
+        ? filteredConsolidatedSummary.sedes
+        : filteredLiveSummary
+          ? [filteredLiveSummary]
+          : [];
+    if (summaries.length === 0) {
+      toast.error('No hay organigrama visible para imprimir.');
+      return;
+    }
+    printAsistenciaLive({
+      summaries,
+      date: dateObj,
+      titleSuffix: liveViewMode === 'consolidated' ? 'Consolidado' : activeSede,
+    });
+  }, [liveViewMode, filteredConsolidatedSummary, filteredLiveSummary, dateObj, activeSede]);
+
+  const shiftWeek = useCallback((delta: number) => {
+    setSelectedDate(format(addDays(dateObj, delta * 7), 'yyyy-MM-dd'));
+  }, [dateObj]);
+
+  const handleSyncUsers = useCallback(async () => {
+    if (users.length === 0) {
+      toast.error('No hay usuarios activos para importar.');
+      return;
+    }
+    const targets = mainTab === 'config' ? [activeSede] : sedeOptions;
+    const result = syncStaffFromUsers({
+      users,
+      settings: asistencia,
+      sedeNames: targets,
+    });
+    const ok = await saveAsistencia(
+      () => result.settings,
+      `Personal sincronizado: ${result.added} nuevo(s), ${result.updated} actualizado(s).`
+    );
+    if (ok && result.skipped > 0) {
+      toast.message(`${result.skipped} usuario(s) fuera de las sedes objetivo.`);
+    }
+  }, [users, mainTab, activeSede, sedeOptions, asistencia, saveAsistencia]);
+
   const loadExampleData = useCallback(async () => {
     const targets =
       liveViewMode === 'consolidated' || mainTab !== 'live' ? sedeOptions : [activeSede];
@@ -279,8 +592,7 @@ export function AsistenciaModule({
         staff: staffForSede(nextSettings, sede),
       })
     );
-    setRecords(exampleRecords);
-    setCacheFetchedAt(Date.now());
+    setRecords(exampleRecords, Date.now());
     toast.success(
       `Ejemplo listo: ${exampleRecords.length} marcaciones simuladas para ${format(dateObj, "d 'de' MMMM", { locale: es })}.`
     );
@@ -294,6 +606,61 @@ export function AsistenciaModule({
     selectedDate,
     sedeOptions,
   ]);
+
+  const handleExportMonthly = useCallback(() => {
+    const monthSnapshots = snapshots.filter((s) => s.dateYmd.startsWith(monthPrefix));
+    if (monthSnapshots.length === 0 && records.length === 0) {
+      toast.error(`No hay datos de ${monthLabel} para exportar.`);
+      return;
+    }
+    exportAsistenciaMonthlyHrExcel({
+      monthPrefix,
+      monthLabel,
+      snapshots: monthSnapshots,
+      records,
+    });
+    toast.success(`Reporte RRHH ${monthLabel} descargado.`);
+  }, [snapshots, monthPrefix, monthLabel, records]);
+
+  useEffect(() => {
+    if (
+      !shouldRunAutoRefresh({
+        buk: asistencia.buk,
+        loading,
+        documentVisible,
+      })
+    ) {
+      return;
+    }
+    const ms = autoRefreshIntervalMs(asistencia.buk);
+    const id = window.setInterval(() => {
+      if (
+        !shouldRunAutoRefresh({
+          buk: asistencia.buk,
+          loading,
+          documentVisible: !document.hidden,
+        })
+      ) {
+        return;
+      }
+      void refresh({ silent: true, source: 'auto', skipStaffCheck: true });
+    }, ms);
+    return () => window.clearInterval(id);
+  }, [
+    asistencia.buk,
+    loading,
+    documentVisible,
+    refresh,
+  ]);
+
+  if (!moduleReady || turnosLoading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Cargando módulo de asistencia…
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6" data-testid="asistencia-module">
@@ -327,18 +694,43 @@ export function AsistenciaModule({
             </Select>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-1">Fecha</label>
-            <Input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-[160px] bg-background border-border text-foreground dark:bg-slate-900/60 dark:border-slate-700 dark:text-white"
-            />
+            <label className="text-xs text-muted-foreground block mb-1">Semana · {weekLabel}</label>
+            <div className="flex items-center gap-1">
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(-1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-[160px] bg-background border-border text-foreground dark:bg-slate-900/60 dark:border-slate-700 dark:text-white"
+              />
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(1)}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <Button variant="secondary" onClick={() => void refresh()} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
             {loading && fetchProgress ? fetchProgress : 'Actualizar Buk'}
           </Button>
+          {bukEnabled ? (
+            <Button
+              type="button"
+              variant={showPlanVsReal ? 'default' : 'outline'}
+              size="sm"
+              className={showPlanVsReal ? 'bg-teal-600 hover:bg-teal-500 text-white border-0' : ''}
+              onClick={() => setShowPlanVsReal((v) => !v)}
+            >
+              Plan vs real
+            </Button>
+          ) : null}
+          {canConfigure && users.length > 0 ? (
+            <Button type="button" variant="outline" size="sm" onClick={() => void handleSyncUsers()}>
+              <UserPlus className="h-4 w-4 mr-1" />
+              Sync usuarios
+            </Button>
+          ) : null}
           {canConfigure ? (
             <Button
               type="button"
@@ -350,6 +742,16 @@ export function AsistenciaModule({
               Datos de ejemplo
             </Button>
           ) : null}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={records.length === 0 && snapshots.length === 0}
+            onClick={handleExportMonthly}
+          >
+            <CalendarRange className="h-4 w-4 mr-1" />
+            RRHH mensual
+          </Button>
           {mainTab === 'live' ? (
             <>
               <div className="flex rounded-lg border border-border overflow-hidden dark:border-slate-700">
@@ -399,9 +801,14 @@ export function AsistenciaModule({
         {cacheFetchedAt && records.length > 0 ? (
           <p className="w-full text-xs text-muted-foreground">
             Caché local: {records.length} registros · actualizado {cacheAgeLabel(cacheFetchedAt)} · válido 48 h
+            {asistencia.buk?.autoRefreshEnabled ? (
+              <> · auto-refresh cada {asistencia.buk.autoRefreshIntervalMinutes ?? 30} min</>
+            ) : null}
           </p>
         ) : null}
       </div>
+
+      <AsistenciaAlertBanner alerts={operationalAlerts} />
 
       {!asistencia.buk?.enabled ? (
         <Card className="border-amber-200 bg-amber-50/50 dark:bg-amber-950/20">
@@ -415,6 +822,35 @@ export function AsistenciaModule({
             </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      <AsistenciaFiltersBar
+        filters={filters}
+        onChange={setFilters}
+        areaOptions={bukAreaOptions}
+        specialtyOptions={bukSpecialtyOptions}
+        showLiveFilters={mainTab === 'live'}
+        showBukFilters={mainTab === 'dashboard' || mainTab === 'live'}
+      />
+
+      {criticalMissing.length > 0 && mainTab === 'live' ? (
+        <AsistenciaCriticalBanner
+          missing={criticalMissing}
+          sedeLabel={liveViewMode === 'consolidated' ? 'Todas las sedes' : activeSede}
+        />
+      ) : null}
+
+      {records.length > 0 ? (
+        <AsistenciaWeekTrendPanel
+          days={weekTrend}
+          selectedDateKey={selectedDate}
+          onSelectDate={setSelectedDate}
+          sedeLabel={
+            liveViewMode === 'consolidated' || dashboardUsesMulti
+              ? `${sedeOptions.length} sedes`
+              : activeSede
+          }
+        />
       ) : null}
 
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'live' | 'dashboard' | 'config')}>
@@ -433,6 +869,19 @@ export function AsistenciaModule({
         </TabsList>
 
         <TabsContent value="live" className="mt-4 space-y-4">
+          {records.length > 0 ? (
+            <>
+              <AsistenciaCoveragePanel
+                summary={coverageSummary}
+                sedeName={liveViewMode === 'single' ? activeSede : undefined}
+                compact
+              />
+              <AsistenciaCoverageDetailPanel
+                summary={coverageSummary}
+                sedeName={liveViewMode === 'single' ? activeSede : undefined}
+              />
+            </>
+          ) : null}
           {records.length === 0 && !loading ? (
             <Card className="border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-950/50">
               <CardContent className="py-8 text-center text-sm text-muted-foreground">
@@ -441,18 +890,42 @@ export function AsistenciaModule({
               </CardContent>
             </Card>
           ) : null}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={records.length === 0}
+              onClick={handlePrintLive}
+            >
+              <Printer className="mr-1 h-4 w-4" />
+              Imprimir
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={records.length === 0}
+              onClick={handleExportLive}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Exportar organigrama
+            </Button>
+          </div>
           <AsistenciaLiveView
             mode={liveViewMode}
             shiftFilter={shiftFilter}
             viewDate={dateObj}
-            summary={liveViewMode === 'single' ? liveSummary : undefined}
-            consolidated={liveViewMode === 'consolidated' ? consolidatedSummary : undefined}
+            summary={liveViewMode === 'single' ? filteredLiveSummary : undefined}
+            consolidated={liveViewMode === 'consolidated' ? filteredConsolidatedSummary : undefined}
             editLayout={editLayout}
             canEditLayout={canConfigure}
             onEditLayoutChange={setEditLayout}
             onPersistLayout={saveAsistencia}
             onRefresh={() => void refresh()}
             loading={loading}
+            onStaffClick={openStaffDetail}
+            getPlanVsReal={getPlanVsReal}
           />
           {records.length > 0 &&
           (liveViewMode === 'consolidated'
@@ -494,20 +967,70 @@ export function AsistenciaModule({
           ) : null}
         </TabsContent>
 
-        <TabsContent value="dashboard" className="mt-4">
-          <AsistenciaBukDashboard
-            records={records}
-            settings={asistencia}
-            sedeName={activeSede}
-            date={dateObj}
-          />
+        <TabsContent value="dashboard" className="mt-4 space-y-4">
+          {records.length > 0 ? (
+            <>
+              <AsistenciaCoveragePanel
+                summary={coverageSummary}
+                sedeName={dashboardUsesMulti ? undefined : activeSede}
+                compact
+              />
+              <AsistenciaCoverageDetailPanel
+                summary={coverageSummary}
+                sedeName={dashboardUsesMulti ? undefined : activeSede}
+              />
+            </>
+          ) : null}
+          <AsistenciaHistoryPanel snapshots={snapshots} onSelectDate={setSelectedDate} />
+          {sedeOptions.length > 1 ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant={dashboardMultiSede ? 'default' : 'outline'}
+                className={dashboardMultiSede ? 'bg-teal-600 hover:bg-teal-500 text-white border-0' : ''}
+                onClick={() => setDashboardMultiSede((v) => !v)}
+              >
+                <Building2 className="h-4 w-4 mr-1" />
+                {dashboardMultiSede ? 'Multi-sede activo' : 'Ver todas las sedes'}
+              </Button>
+            </div>
+          ) : null}
+          {dashboardUsesMulti ? (
+            <AsistenciaBukMultiSedePanel
+              multi={bukMultiDashboardSummary}
+              filters={filters}
+              onRowClick={(row, sedeName) => {
+                setSelectedSede(sedeName);
+                openBukRowDetail(row);
+              }}
+            />
+          ) : (
+            <AsistenciaBukDashboard
+              records={records}
+              settings={asistencia}
+              sedeName={activeSede}
+              date={dateObj}
+              filters={filters}
+              onRowClick={openBukRowDetail}
+              onExport={handleExportBuk}
+            />
+          )}
         </TabsContent>
 
         {canConfigure ? (
           <TabsContent value="config" className="mt-4">
-            <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
-              <Building2 className="h-4 w-4" />
-              Configurando: <strong className="text-foreground">{activeSede}</strong>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Building2 className="h-4 w-4" />
+                Configurando: <strong className="text-foreground">{activeSede}</strong>
+              </div>
+              {canConfigure && users.length > 0 ? (
+                <Button type="button" size="sm" variant="outline" onClick={() => void handleSyncUsers()}>
+                  <UserPlus className="h-4 w-4 mr-1" />
+                  Importar usuarios a esta sede
+                </Button>
+              ) : null}
             </div>
             <AsistenciaSedeConfigPanel
               sedeName={activeSede}
@@ -519,6 +1042,14 @@ export function AsistenciaModule({
           </TabsContent>
         ) : null}
       </Tabs>
+
+      <AsistenciaStaffDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        live={detailLive}
+        bukRow={detailBukRow}
+        viewDate={dateObj}
+      />
     </div>
   );
 }

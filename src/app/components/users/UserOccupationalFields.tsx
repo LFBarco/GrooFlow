@@ -1,5 +1,7 @@
 import type { User } from '../../types';
 import { VET_WORK_AREAS } from '../../types/accidentes';
+import { UNIFORM_ITEM_LABELS, UNIFORM_SIZE_OPTIONS } from '../../types/uniformes';
+import type { UniformItemType } from '../../types/uniformes';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import {
@@ -115,6 +117,38 @@ export function UserOccupationalFields({ form, sedesCatalog, onChange }: Props) 
               onChange({ weeklyHours: e.target.value ? Number(e.target.value) : undefined })
             }
           />
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t border-border pt-3 dark:border-slate-700">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Tallas de uniforme
+        </p>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {(Object.keys(UNIFORM_ITEM_LABELS) as UniformItemType[]).slice(0, 6).map((itemType) => (
+            <div key={itemType} className="space-y-1">
+              <Label className="text-xs">{UNIFORM_ITEM_LABELS[itemType]}</Label>
+              <Select
+                value={form.uniformSizes?.[itemType] ?? ''}
+                onValueChange={(v) =>
+                  onChange({
+                    uniformSizes: { ...(form.uniformSizes ?? {}), [itemType]: v },
+                  })
+                }
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue placeholder="—" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIFORM_SIZE_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {s}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -281,6 +281,74 @@ export function BukAsistenciaIntegrationSection({
             Pulsa «Probar conexión» para verificar URL y token. El resultado aparecerá aquí.
           </p>
         )}
+
+        <div className="rounded-lg border p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Auto-refresh en módulo Asistencia</p>
+              <p className="text-xs text-muted-foreground">
+                Actualiza Buk automáticamente dentro de la ventana horaria operativa.
+              </p>
+            </div>
+            <Switch
+              checked={buk.autoRefreshEnabled === true}
+              disabled={readOnly || buk.enabled !== true}
+              onCheckedChange={(v) =>
+                patchBuk(
+                  { autoRefreshEnabled: v },
+                  { persist: true, message: v ? 'Auto-refresh activado.' : 'Auto-refresh desactivado.' }
+                )
+              }
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1">
+              <Label htmlFor="buk-auto-interval">Intervalo (min)</Label>
+              <Input
+                id="buk-auto-interval"
+                type="number"
+                min={5}
+                max={120}
+                defaultValue={buk.autoRefreshIntervalMinutes ?? 30}
+                disabled={readOnly}
+                onBlur={(e) => {
+                  const n = Math.max(5, Math.min(120, Number(e.target.value) || 30));
+                  patchBuk({ autoRefreshIntervalMinutes: n }, { persist: true });
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="buk-auto-start">Desde</Label>
+              <Input
+                id="buk-auto-start"
+                type="time"
+                defaultValue={buk.autoRefreshWindowStart ?? '06:00'}
+                disabled={readOnly}
+                onBlur={(e) =>
+                  patchBuk({ autoRefreshWindowStart: e.target.value || '06:00' }, { persist: true })
+                }
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="buk-auto-end">Hasta</Label>
+              <Input
+                id="buk-auto-end"
+                type="time"
+                defaultValue={buk.autoRefreshWindowEnd ?? '22:00'}
+                disabled={readOnly}
+                onBlur={(e) =>
+                  patchBuk({ autoRefreshWindowEnd: e.target.value || '22:00' }, { persist: true })
+                }
+              />
+            </div>
+          </div>
+          {buk.lastAutoRefreshAt ? (
+            <p className="text-xs text-muted-foreground">
+              Último auto-refresh:{' '}
+              {format(new Date(buk.lastAutoRefreshAt), "d MMM yyyy, HH:mm", { locale: es })}
+            </p>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

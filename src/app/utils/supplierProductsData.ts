@@ -88,6 +88,70 @@ export function bestOfferForProduct(
   return [...list].sort((a, b) => a.unitComparablePrice - b.unitComparablePrice)[0];
 }
 
+/** Oferta activa de un proveedor para un producto. */
+export function offerForProductAndProvider(
+  settings: SupplierProductsSettings,
+  productId: string,
+  providerId: string
+): SupplierProductOffer | undefined {
+  return settings.offers.find(
+    (o) =>
+      o.productId === productId &&
+      o.providerId === providerId &&
+      o.isActive &&
+      !hasPendingPriceForOffer(settings, o.id)
+  );
+}
+
+function hasPendingPriceForOffer(
+  settings: SupplierProductsSettings,
+  supplierProductId: string
+): boolean {
+  return settings.priceHistory.some(
+    (p) => p.supplierProductId === supplierProductId && p.status === 'pending_approval'
+  );
+}
+
+export function rankOffersForProduct(
+  settings: SupplierProductsSettings,
+  productId: string
+): SupplierProductOffer[] {
+  return [...offersForProduct(settings, productId, true)].sort(
+    (a, b) => a.unitComparablePrice - b.unitComparablePrice
+  );
+}
+
+export function compareOfferChoice(
+  settings: SupplierProductsSettings,
+  productId: string,
+  selectedProviderId?: string
+): {
+  best: SupplierProductOffer | undefined;
+  selected: SupplierProductOffer | undefined;
+  cheaperAvailable: boolean;
+  savingsPercent: number;
+} {
+  const ranked = rankOffersForProduct(settings, productId);
+  const best = ranked[0];
+  const selected = selectedProviderId
+    ? ranked.find((o) => o.providerId === selectedProviderId) ??
+      offerForProductAndProvider(settings, productId, selectedProviderId)
+    : undefined;
+  if (!best || !selected || selected.id === best.id) {
+    return { best, selected, cheaperAvailable: false, savingsPercent: 0 };
+  }
+  const savingsPercent = variationPercent(
+    selected.unitComparablePrice,
+    best.unitComparablePrice
+  );
+  return {
+    best,
+    selected,
+    cheaperAvailable: best.unitComparablePrice < selected.unitComparablePrice,
+    savingsPercent: Math.abs(savingsPercent),
+  };
+}
+
 export type UpsertOfferInput = {
   id?: string;
   productId: string;

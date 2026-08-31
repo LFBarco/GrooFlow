@@ -194,6 +194,22 @@ export interface User {
   contractType?: 'planta' | 'temporal' | 'practicante' | 'honorarios' | 'locacion' | 'otro';
   /** Horas semanales contratadas (referencia para KPI horas-hombre). */
   weeklyHours?: number;
+  /** Tallas de uniforme preferidas por tipo de prenda. */
+  uniformSizes?: Partial<Record<string, string>>;
+}
+
+export interface PurchaseRequestLineItem {
+  id: string;
+  productId: string;
+  productName: string;
+  providerId: string;
+  providerName: string;
+  supplierOfferId?: string;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  supplierSku?: string;
+  notes?: string;
 }
 
 export interface PurchaseRequest {
@@ -207,6 +223,8 @@ export interface PurchaseRequest {
   priority: Priority;
   paymentCondition: PaymentCondition;
   status: RequestStatus;
+  /** Detalle por producto (opcional; si existe, amount = suma de líneas). */
+  lineItems?: PurchaseRequestLineItem[];
   
   // Auditoría
   requesterName: string;

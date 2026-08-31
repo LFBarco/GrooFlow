@@ -9,7 +9,10 @@ import type {
   AsistenciaShiftFilter,
 } from '../../types/asistencia';
 import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
+import type { AsistenciaStaffLiveState } from '../../types/asistencia';
+import type { TurnosPlanVsReal } from '../../types/turnos';
 import { AsistenciaLiveSedeBlock } from './AsistenciaLiveDnd';
+import { AsistenciaStatusLegend } from './AsistenciaStatusLegend';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
@@ -30,6 +33,8 @@ type Props = {
   onPersistLayout: LayoutPersist;
   onRefresh?: () => void;
   loading?: boolean;
+  onStaffClick?: (live: AsistenciaStaffLiveState) => void;
+  getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
 };
 
 function LiveHeaderBadges({
@@ -72,6 +77,8 @@ export function AsistenciaLiveView({
   onPersistLayout,
   onRefresh,
   loading,
+  onStaffClick,
+  getPlanVsReal,
 }: Props) {
   const isConsolidated = mode === 'consolidated' && consolidated;
   const workingCount = isConsolidated ? consolidated.workingCount : (summary?.workingCount ?? 0);
@@ -167,6 +174,7 @@ export function AsistenciaLiveView({
                 : `Dotación crítica cubierta · Horario ${summary?.scheduleLabel ?? ''}`}
             </div>
           ) : null}
+          {!editLayout ? <AsistenciaStatusLegend className="mt-3" /> : null}
         </CardHeader>
 
         <CardContent className="space-y-2 pb-10 pt-8">
@@ -179,6 +187,8 @@ export function AsistenciaLiveView({
                 onPersistLayout={onPersistLayout}
                 compact
                 viewDate={viewDate}
+                onStaffClick={onStaffClick}
+                getPlanVsReal={getPlanVsReal}
               />
             ))
           ) : summary ? (
@@ -187,6 +197,8 @@ export function AsistenciaLiveView({
               editLayout={editLayout}
               onPersistLayout={onPersistLayout}
               viewDate={viewDate}
+              onStaffClick={onStaffClick}
+              getPlanVsReal={getPlanVsReal}
             />
           ) : null}
         </CardContent>

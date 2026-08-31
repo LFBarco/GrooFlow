@@ -2108,6 +2108,7 @@ export default function App() {
         thresholds: alertThresholds,
         fleetDataset,
         alertSources: goLiveAlertSources(),
+        asistenciaSettings: systemSettings.asistencia,
       });
       setAlerts(applyReadState(newAlerts));
     };
@@ -2133,6 +2134,7 @@ export default function App() {
     fleetDataset,
     isDataLoaded,
     applyReadState,
+    systemSettings.asistencia,
   ]);
 
   const handleMarkAlertAsRead = (id: string) => {
@@ -4323,6 +4325,7 @@ export default function App() {
                   onPersistSystemSettings={persistSystemSettingsNow}
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                   canConfigure={canConfigureAsistencia(currentUser, userRole)}
+                  users={users}
                 />
               </Suspense>
             </div>
@@ -4336,6 +4339,7 @@ export default function App() {
                   systemSettings={systemSettings}
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                   canEdit={hasPermission('Turnos')}
+                  currentUser={currentUser}
                 />
               </Suspense>
             </div>
@@ -4386,6 +4390,7 @@ export default function App() {
                 <PurchaseRequestManager 
                     requests={filteredRequestsBySede} 
                     providers={providers}
+                    products={products}
                     onRequestCreate={(req) => {
                         const signedRequest = {
                             ...req,

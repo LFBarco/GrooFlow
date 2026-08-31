@@ -9,7 +9,9 @@ import {
     AlertThresholds
 } from "../../types";
 import type { FleetDataset } from "../../types/fleet";
+import type { AsistenciaSettings } from "../../types/asistencia";
 import { buildFleetSystemAlerts } from "../../utils/fleetData";
+import { buildAsistenciaSystemAlerts } from "../../utils/asistenciaAlerts";
 import { formatNumberEs } from '../../utils/numberFormat';
 import { 
     addDays, 
@@ -50,6 +52,8 @@ interface AlertContext {
         invoices?: boolean;
         purchaseRequests?: boolean;
     };
+    /** Config asistencia (Buk + staff) para alertas operativas. */
+    asistenciaSettings?: AsistenciaSettings | null;
 }
 
 export function generateAlerts(context: AlertContext): SystemAlert[] {
@@ -278,6 +282,8 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
     if (context.fleetDataset && context.fleetDataset.vehicles?.length > 0) {
         alerts.push(...buildFleetSystemAlerts(context.fleetDataset));
     }
+
+    alerts.push(...buildAsistenciaSystemAlerts(context.asistenciaSettings));
 
     return alerts.sort((a, b) => {
         // Ordenar primero por severidad, luego por fecha

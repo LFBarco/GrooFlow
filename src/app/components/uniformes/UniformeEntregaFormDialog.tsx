@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { Plus, Trash2 } from 'lucide-react';
+import { Paperclip, Plus, Trash2, X } from 'lucide-react';
 
 import type {
   UniformDeliveryItem,
@@ -8,6 +8,7 @@ import type {
   UniformDeliveryRecord,
   UniformDeliveryStatus,
   UniformItemType,
+  UniformKit,
 } from '../../types/uniformes';
 import {
   UNIFORM_ITEM_LABELS,
@@ -17,6 +18,7 @@ import {
 } from '../../types/uniformes';
 import { VET_WORK_AREAS } from '../../types/accidentes';
 import type { StaffOption } from '../../utils/accidentesData';
+import { buildItemsFromKit, findMatchingKit } from '../../utils/uniformesKits';
 import { Button } from '../ui/button';
 import {
   Dialog,
@@ -43,6 +45,7 @@ type Props = {
   record?: UniformDeliveryRecord | null;
   staffOptions: StaffOption[];
   sedeOptions: string[];
+  kits?: UniformKit[];
   canEdit: boolean;
   deliveredBy?: string;
   onSave: (
@@ -69,18 +72,27 @@ const emptyForm = (): Omit<UniformDeliveryRecord, 'id' | 'createdAt' | 'updatedA
   notes: '',
 });
 
+const MAX_SIGNATURE_BYTES = 512_000;
+
 export function UniformeEntregaFormDialog({
   open,
   onOpenChange,
   record,
   staffOptions,
   sedeOptions,
+  kits = [],
   canEdit,
   deliveredBy,
   onSave,
 }: Props) {
   const [form, setForm] = useState(emptyForm);
   const [staffKey, setStaffKey] = useState<string>('manual');
+  const [selectedKitId, setSelectedKitId] = useState<string>('');
+
+  const selectedStaff = useMemo(
+    () => staffOptions.find((s) => s.id === staffKey),
+    [staffOptions, staffKey]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -90,21 +102,52 @@ export function UniformeEntregaFormDialog({
     } else {
       setForm(emptyForm());
       setStaffKey(staffOptions[0]?.id ?? 'manual');
+      setSelectedKitId('');
     }
   }, [open, record, staffOptions]);
+
+  const applyKit = (kitId: string) => {
+    setSelectedKitId(kitId);
+    const kit = kits.find((k) => k.id === kitId);
+    if (!kit) return;
+    setForm((prev) => ({
+      ...prev,
+      items: buildItemsFromKit(kit, selectedStaff?.uniformSizes),
+    }));
+  };
 
   const applyStaff = (key: string) => {
     setStaffKey(key);
     const staff = staffOptions.find((s) => s.id === key);
     if (!staff) return;
-    setForm((prev) => ({
-      ...prev,
-      userId: staff.userId,
-      staffName: staff.name,
-      jobTitle: staff.jobTitle,
-      workArea: staff.workArea,
-      sede: staff.homeSede || prev.sede,
-    }));
+    setForm((prev) => {
+      const next = {
+        ...prev,
+        userId: staff.userId,
+        staffName: staff.name,
+        jobTitle: staff.jobTitle,
+        workArea: staff.workArea,
+        sede: staff.homeSede || prev.sede,
+      };
+      const matchedKit = findMatchingKit(kits, {
+        jobTitle: staff.jobTitle,
+        workArea: staff.workArea,
+      });
+      if (matchedKit && !record) {
+        setSelectedKitId(matchedKit.id);
+        return { ...next, items: buildItemsFromKit(matchedKit, staff.uniformSizes) };
+      }
+      if (staff.uniformSizes && prev.items.length > 0) {
+        return {
+          ...next,
+          items: prev.items.map((item) => ({
+            ...item,
+            size: staff.uniformSizes?.[item.itemType] ?? item.size,
+          })),
+        };
+      }
+      return next;
+    });
   };
 
   const patch = (p: Partial<typeof form>) => setForm((prev) => ({ ...prev, ...p }));
@@ -138,6 +181,22 @@ export function UniformeEntregaFormDialog({
       deliveredBy: form.deliveredBy ?? deliveredBy,
     });
     onOpenChange(false);
+  };
+
+  const addSignature = (file: File) => {
+    if (file.size > MAX_SIGNATURE_BYTES) {
+      window.alert('El archivo supera 500 KB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      patch({
+        signatureActDataUrl: reader.result as string,
+        signatureActName: file.name,
+        status: form.status === 'pendiente_firma' ? 'entregado' : form.status,
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   return (
@@ -285,16 +344,36 @@ export function UniformeEntregaFormDialog({
           </div>
 
           <div className="rounded-lg border border-border p-3 dark:border-slate-700">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Prendas entregadas
               </p>
-              {canEdit ? (
-                <Button type="button" size="sm" variant="outline" onClick={addItem}>
-                  <Plus className="mr-1 h-3 w-3" />
-                  Agregar prenda
-                </Button>
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {kits.length > 0 && canEdit ? (
+                  <Select value={selectedKitId || '__none__'} onValueChange={(v) => {
+                    if (v === '__none__') setSelectedKitId('');
+                    else applyKit(v);
+                  }}>
+                    <SelectTrigger className="h-8 w-[180px] text-xs">
+                      <SelectValue placeholder="Aplicar kit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sin kit</SelectItem>
+                      {kits.map((k) => (
+                        <SelectItem key={k.id} value={k.id}>
+                          {k.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : null}
+                {canEdit ? (
+                  <Button type="button" size="sm" variant="outline" onClick={addItem}>
+                    <Plus className="mr-1 h-3 w-3" />
+                    Agregar prenda
+                  </Button>
+                ) : null}
+              </div>
             </div>
             <div className="space-y-3">
               {form.items.map((item, index) => (
@@ -388,6 +467,57 @@ export function UniformeEntregaFormDialog({
               onChange={(e) => patch({ notes: e.target.value })}
               disabled={!canEdit}
             />
+          </div>
+
+          <div className="rounded-lg border border-border p-3 dark:border-slate-700">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Acta de entrega firmada
+              </p>
+              {canEdit ? (
+                <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-primary hover:underline">
+                  <Paperclip className="h-3 w-3" />
+                  Subir acta
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) addSignature(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              ) : null}
+            </div>
+            {form.signatureActDataUrl ? (
+              <div className="flex items-center justify-between rounded-md border border-border/60 px-2 py-1.5 text-xs dark:border-slate-700">
+                <a
+                  href={form.signatureActDataUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate text-primary hover:underline"
+                >
+                  {form.signatureActName ?? 'Acta firmada'}
+                </a>
+                {canEdit ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => patch({ signatureActDataUrl: undefined, signatureActName: undefined })}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Opcional. Al adjuntar el acta puede marcar la entrega como confirmada.
+              </p>
+            )}
           </div>
         </div>
 

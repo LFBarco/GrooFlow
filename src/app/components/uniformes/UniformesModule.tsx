@@ -1,24 +1,30 @@
 import { useMemo, useState } from 'react';
-import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
-import { Loader2, Plus, Shirt } from 'lucide-react';
+import { Download, Loader2, Plus, Settings2, Shirt } from 'lucide-react';
 
 import type { SystemSettings, User } from '../../types';
-import type { UniformDeliveryRecord, UniformesFilters } from '../../types/uniformes';
+import type { UniformDeliveryRecord } from '../../types/uniformes';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { buildStaffOptions } from '../../utils/accidentesData';
+import { exportUniformesExcel } from '../../utils/uniformesExport';
 import {
   computeUniformesKpis,
+  defaultUniformesFilters,
   filterUniformDeliveries,
   removeUniformDelivery,
   upsertUniformDelivery,
 } from '../../utils/uniformesData';
 import { useUniformesModuleState } from '../../hooks/useUniformesModuleState';
+import { useHrStaffRecords } from '../../hooks/useHrStaffRecords';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { UniformeEntregaFormDialog } from './UniformeEntregaFormDialog';
+import { UniformeDetailDialog } from './UniformeDetailDialog';
 import { UniformesDashboard } from './UniformesDashboard';
 import { UniformesFiltersBar } from './UniformesFilters';
+import { UniformesKitsDialog } from './UniformesKitsDialog';
+import { UniformesRenewalPanel } from './UniformesRenewalPanel';
 import { UniformesTable } from './UniformesTable';
+import { listUniformRenewals } from '../../utils/uniformesRenewal';
 
 export interface UniformesModuleProps {
   users: User[];
@@ -28,18 +34,8 @@ export interface UniformesModuleProps {
   deliveredBy?: string;
 }
 
-function defaultFilters(): UniformesFilters {
-  const now = new Date();
-  const from = startOfMonth(subMonths(now, 11));
-  return {
-    dateFrom: format(from, 'yyyy-MM-dd'),
-    dateTo: format(endOfMonth(now), 'yyyy-MM-dd'),
-    sede: 'Todas',
-    workArea: 'Todas',
-    itemType: 'Todas',
-    status: 'Todas',
-    reason: 'Todas',
-  };
+function defaultFilters() {
+  return defaultUniformesFilters();
 }
 
 export function UniformesModule({
@@ -51,9 +47,14 @@ export function UniformesModule({
 }: UniformesModuleProps) {
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
   const { settings, loading, saving, updateSettings } = useUniformesModuleState(canEdit);
+  const { accidents: accidentRecords } = useHrStaffRecords();
   const [filters, setFilters] = useState(defaultFilters);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<UniformDeliveryRecord | null>(null);
+  const [detailRecord, setDetailRecord] = useState<UniformDeliveryRecord | null>(null);
+  const [kitsOpen, setKitsOpen] = useState(false);
+
+  const kits = settings.kits ?? [];
 
   const sedeOptions = useMemo(() => {
     const fromRecords = settings.records.map((r) => r.sede);
@@ -73,7 +74,15 @@ export function UniformesModule({
     [settings.records, filters]
   );
 
-  const kpis = useMemo(() => computeUniformesKpis(filteredRecords), [filteredRecords]);
+  const kpis = useMemo(
+    () => computeUniformesKpis(filteredRecords, { allRecords: settings.records, users }),
+    [filteredRecords, settings.records, users]
+  );
+
+  const renewalList = useMemo(
+    () => listUniformRenewals(settings.records, users),
+    [settings.records, users]
+  );
 
   const openNew = () => {
     setEditing(null);
@@ -129,6 +138,20 @@ export function UniformesModule({
               Nueva entrega
             </Button>
           ) : null}
+          {canEdit ? (
+            <Button variant="outline" onClick={() => setKitsOpen(true)}>
+              <Settings2 className="mr-1 h-4 w-4" />
+              Kits
+            </Button>
+          ) : null}
+          <Button
+            variant="outline"
+            onClick={() => exportUniformesExcel(filteredRecords, filters.dateFrom, filters.dateTo)}
+            disabled={filteredRecords.length === 0}
+          >
+            <Download className="mr-1 h-4 w-4" />
+            Exportar Excel
+          </Button>
         </div>
       </div>
 
@@ -136,23 +159,44 @@ export function UniformesModule({
 
       <UniformesFiltersBar filters={filters} sedeOptions={sedeOptions} onChange={setFilters} />
 
-      <Tabs defaultValue="registros">
+      <UniformesRenewalPanel renewals={renewalList} />
+
+      <Tabs defaultValue="dashboard">
         <TabsList>
-          <TabsTrigger value="registros">Entregas ({filteredRecords.length})</TabsTrigger>
           <TabsTrigger value="dashboard">Resumen</TabsTrigger>
+          <TabsTrigger value="registros">Entregas ({filteredRecords.length})</TabsTrigger>
         </TabsList>
+        <TabsContent value="dashboard" className="mt-4">
+          <UniformesDashboard kpis={kpis} />
+        </TabsContent>
         <TabsContent value="registros" className="mt-4">
           <UniformesTable
             records={filteredRecords}
             canEdit={canEdit}
+            onView={setDetailRecord}
             onEdit={openEdit}
             onDelete={handleDelete}
           />
         </TabsContent>
-        <TabsContent value="dashboard" className="mt-4">
-          <UniformesDashboard kpis={kpis} />
-        </TabsContent>
       </Tabs>
+
+      <UniformeDetailDialog
+        record={detailRecord}
+        open={Boolean(detailRecord)}
+        onOpenChange={(open) => !open && setDetailRecord(null)}
+        allRecords={settings.records}
+        accidentRecords={accidentRecords}
+      />
+
+      <UniformesKitsDialog
+        open={kitsOpen}
+        onOpenChange={setKitsOpen}
+        kits={kits}
+        canEdit={canEdit}
+        onSave={(nextKits) =>
+          updateSettings((prev) => ({ ...prev, kits: nextKits }), 'Kits actualizados.')
+        }
+      />
 
       <UniformeEntregaFormDialog
         open={formOpen}
@@ -160,6 +204,7 @@ export function UniformesModule({
         record={editing}
         staffOptions={staffOptions}
         sedeOptions={sedeOptions}
+        kits={kits}
         canEdit={canEdit}
         deliveredBy={deliveredBy}
         onSave={handleSave}

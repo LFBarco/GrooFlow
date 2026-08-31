@@ -1,6 +1,42 @@
 /** Gravedad del accidente de trabajo. */
 export type AccidentSeverity = 'leve' | 'grave' | 'muy_grave' | 'mortal';
 
+/** Clasificación del evento SST. */
+export type AccidentEventType = 'accidente' | 'incidente' | 'casi_accidente';
+
+/** Estado del flujo de investigación. */
+export type AccidentWorkflowStatus = 'reportado' | 'investigacion' | 'acciones' | 'cerrado';
+
+export const ACCIDENT_EVENT_TYPE_LABELS: Record<AccidentEventType, string> = {
+  accidente: 'Accidente de trabajo',
+  incidente: 'Incidente (sin baja)',
+  casi_accidente: 'Casi accidente',
+};
+
+export const ACCIDENT_WORKFLOW_LABELS: Record<AccidentWorkflowStatus, string> = {
+  reportado: 'Reportado',
+  investigacion: 'En investigación',
+  acciones: 'Acciones en curso',
+  cerrado: 'Cerrado',
+};
+
+export interface AccidentAttachment {
+  id: string;
+  name: string;
+  /** Data URL (imagen o PDF). */
+  dataUrl: string;
+  uploadedAt: string;
+}
+
+export interface AccidentCorrectiveAction {
+  id: string;
+  description: string;
+  responsible?: string;
+  /** yyyy-MM-dd */
+  dueDate?: string;
+  status: 'pendiente' | 'completada';
+}
+
 /** Turno en el momento del evento. */
 export type AccidentWorkShift = 'day' | 'night' | 'mixed' | 'off_duty';
 
@@ -141,6 +177,10 @@ export interface WorkplaceAccidentRecord {
   description?: string;
   preventiveActions?: string;
   reportedBy?: string;
+  eventType?: AccidentEventType;
+  workflowStatus?: AccidentWorkflowStatus;
+  attachments?: AccidentAttachment[];
+  correctiveActions?: AccidentCorrectiveAction[];
   createdAt: string;
   updatedAt?: string;
 }
@@ -152,6 +192,10 @@ export interface AccidentesKpiConfig {
   dailyLostDayCost: number;
   /** Headcount manual si no hay usuarios activos suficientes. */
   manualHeadcount?: number;
+  /** Umbral IF: alerta si supera este valor (accidentes c/baja × 10⁶ / HH). */
+  alertMaxFrequencyIndex?: number;
+  /** Umbral IG: alerta si supera este valor (días perdidos × 10³ / HH). */
+  alertMaxGravityIndex?: number;
 }
 
 export interface AccidentesSettings {
@@ -168,6 +212,11 @@ export interface AccidentesFilters {
   workShift: string;
   bodyPart: string;
   injuryNature: string;
+  search: string;
+  severity: string;
+  withLostTimeOnly: boolean;
+  eventType: string;
+  workflowStatus: string;
 }
 
 export interface AccidentesKpiSnapshot {
@@ -190,4 +239,7 @@ export interface AccidentesKpiSnapshot {
   byBodyPart: Array<{ part: string; count: number }>;
   byMonth: Array<{ month: string; count: number; lostDays: number }>;
   byShift: Array<{ shift: AccidentWorkShift; count: number }>;
+  byEventType: Array<{ eventType: AccidentEventType; count: number }>;
+  byWorkflow: Array<{ status: AccidentWorkflowStatus; count: number }>;
+  openInvestigations: number;
 }

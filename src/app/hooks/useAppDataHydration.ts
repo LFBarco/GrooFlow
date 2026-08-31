@@ -327,7 +327,20 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
         if (!cancelled && sessionEffective?.user) {
           clearLocalDemoSession();
           const em = (sessionEffective.user.email || '').trim().toLowerCase();
-          const row = resolveCurrentUserRow(nextUsers, em, sessionEffective.user.id);
+          let row = resolveCurrentUserRow(nextUsers, em, sessionEffective.user.id);
+          if (!row && backend === 'local' && em) {
+            const localRow: User = {
+              ...createLocalDemoAdminUser(em),
+              id: sessionEffective.user.id,
+            };
+            nextUsers = dedupeUsersByEmail(applySuperAdminRoleFromConfig([...nextUsers, localRow]));
+            try {
+              await api.saveKey('data:users', nextUsers);
+            } catch (seedErr) {
+              console.warn('[GrooFlow] No se pudo registrar usuario local de sesión:', seedErr);
+            }
+            row = localRow;
+          }
           sessionUserRow = row;
           if (!row) {
             await (backend === 'rest' || backend === 'local' ? repository.auth.signOut() : sqlClient!.auth.signOut());

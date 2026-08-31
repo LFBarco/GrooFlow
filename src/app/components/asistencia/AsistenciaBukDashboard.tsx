@@ -2,11 +2,12 @@ import {
   Check,
   CheckCircle2,
   BarChart3,
+  CircleHelp,
+  Download,
   LayoutDashboard,
   Layers,
   List,
   MapPin,
-  Search,
   X,
   XCircle,
 } from 'lucide-react';
@@ -14,21 +15,16 @@ import { useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-import type { AsistenciaSettings, BukAsistenciaRecord, BukPunctualityStatus } from '../../types/asistencia';
+import type { AsistenciaFilters, AsistenciaSettings, BukAsistenciaRecord, BukPunctualityStatus } from '../../types/asistencia';
 import {
   buildBukDashboardSummary,
   type BukDashboardRow,
 } from '../../utils/asistenciaBukDashboard';
+import { filterBukDashboardRows } from '../../utils/asistenciaFilters';
 import { getSedeProfile } from '../../utils/asistenciaStaff';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
-import { Input } from '../ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../ui/select';
+import { Button } from '../ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
 import {
   Table,
   TableBody,
@@ -45,10 +41,57 @@ type Props = {
   settings: AsistenciaSettings;
   sedeName: string;
   date: Date;
+  filters: AsistenciaFilters;
+  onRowClick?: (row: BukDashboardRow) => void;
+  onExport?: () => void;
 };
 
-type ArrivalFilter = 'all' | 'arrived' | 'absent' | 'on_time' | 'late';
-const ALL_FILTER = '__all__';
+function KpiCard({
+  title,
+  value,
+  subtitle,
+  help,
+  icon: Icon,
+  accent,
+}: {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  help: string;
+  icon: typeof CheckCircle2;
+  accent: string;
+}) {
+  return (
+    <Card className={`relative border-border dark:border-slate-800 ${accent}`}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="absolute right-2.5 top-2.5 z-10 rounded-full text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={`Qué significa: ${title}`}
+          >
+            <CircleHelp className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          sideOffset={6}
+          className="max-w-[260px] bg-popover text-popover-foreground border border-border shadow-md dark:border-slate-700"
+        >
+          <p className="text-xs leading-relaxed">{help}</p>
+        </TooltipContent>
+      </Tooltip>
+      <CardContent className="pt-5 pr-8 flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs text-muted-foreground uppercase tracking-wide">{title}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{value}</p>
+          {subtitle ? <p className="text-[10px] text-muted-foreground mt-1">{subtitle}</p> : null}
+        </div>
+        <Icon className="h-8 w-8 opacity-60 shrink-0" />
+      </CardContent>
+    </Card>
+  );
+}
 
 function PunctualityCell({ status, arrived }: { status: BukPunctualityStatus; arrived: boolean }) {
   if (!arrived || status === 'pending') {
@@ -68,28 +111,13 @@ function PunctualityCell({ status, arrived }: { status: BukPunctualityStatus; ar
   );
 }
 
-function filterRows(
-  rows: BukDashboardRow[],
-  search: string,
-  arrivalFilter: ArrivalFilter,
-  areaFilter: string,
-  specialtyFilter: string
-): BukDashboardRow[] {
-  const q = search.trim().toLowerCase();
-  return rows.filter((row) => {
-    if (arrivalFilter === 'arrived' && !row.arrived) return false;
-    if (arrivalFilter === 'absent' && row.arrived) return false;
-    if (arrivalFilter === 'on_time' && row.punctuality !== 'on_time') return false;
-    if (arrivalFilter === 'late' && row.punctuality !== 'late') return false;
-    if (areaFilter !== ALL_FILTER && row.area !== areaFilter) return false;
-    if (specialtyFilter !== ALL_FILTER && row.especialidad !== specialtyFilter) return false;
-    if (!q) return true;
-    const hay = `${row.nombre} ${row.apellidos} ${row.especialidad} ${row.area} ${row.rut}`.toLowerCase();
-    return hay.includes(q);
-  });
-}
-
-function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
+function BukRowsTable({
+  rows,
+  onRowClick,
+}: {
+  rows: BukDashboardRow[];
+  onRowClick?: (row: BukDashboardRow) => void;
+}) {
   if (rows.length === 0) {
     return (
       <p className="text-center text-slate-500 py-6 text-sm">Sin resultados para los filtros aplicados.</p>
@@ -113,7 +141,13 @@ function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
       </TableHeader>
       <TableBody>
         {rows.map((row) => (
-          <TableRow key={row.id} className="border-border/80 hover:bg-muted/40 dark:border-slate-800/80 dark:hover:bg-slate-900/50">
+          <TableRow
+            key={row.id}
+            className={`border-border/80 dark:border-slate-800/80 dark:hover:bg-slate-900/50 ${
+              onRowClick ? 'cursor-pointer hover:bg-muted/40' : 'hover:bg-muted/40'
+            }`}
+            onClick={onRowClick ? () => onRowClick(row) : undefined}
+          >
             <TableCell className="font-medium text-foreground">{row.nombre}</TableCell>
             <TableCell className="text-slate-300">{row.apellidos || '—'}</TableCell>
             <TableCell className="text-slate-300 max-w-[180px] truncate" title={row.area}>
@@ -150,11 +184,15 @@ function BukRowsTable({ rows }: { rows: BukDashboardRow[] }) {
   );
 }
 
-export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Props) {
-  const [search, setSearch] = useState('');
-  const [arrivalFilter, setArrivalFilter] = useState<ArrivalFilter>('all');
-  const [areaFilter, setAreaFilter] = useState(ALL_FILTER);
-  const [specialtyFilter, setSpecialtyFilter] = useState(ALL_FILTER);
+export function AsistenciaBukDashboard({
+  records,
+  settings,
+  sedeName,
+  date,
+  filters,
+  onRowClick,
+  onExport,
+}: Props) {
   const [view, setView] = useState<'list' | 'specialty' | 'area' | 'charts'>('list');
 
   const summary = useMemo(
@@ -178,22 +216,21 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
     return `entrada ≤ ${deadline} turno día`;
   }, [dayStart, toleranceMin]);
 
-  const areaOptions = useMemo(
-    () => [...new Set(summary.rows.map((r) => r.area).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es')),
-    [summary.rows]
-  );
-
-  const specialtyOptions = useMemo(
-    () =>
-      [...new Set(summary.rows.map((r) => r.especialidad).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b, 'es')
-      ),
-    [summary.rows]
-  );
-
   const filteredRows = useMemo(
-    () => filterRows(summary.rows, search, arrivalFilter, areaFilter, specialtyFilter),
-    [summary.rows, search, arrivalFilter, areaFilter, specialtyFilter]
+    () => filterBukDashboardRows(summary.rows, filters),
+    [summary.rows, filters]
+  );
+
+  const filteredStats = useMemo(
+    () => ({
+      total: filteredRows.length,
+      arrived: filteredRows.filter((r) => r.arrived).length,
+      absent: filteredRows.filter((r) => !r.arrived).length,
+      onTime: filteredRows.filter((r) => r.punctuality === 'on_time').length,
+      late: filteredRows.filter((r) => r.punctuality === 'late').length,
+      leftSameDay: filteredRows.filter((r) => r.leftSameDay).length,
+    }),
+    [filteredRows]
   );
 
   const filteredSpecialtyGroups = useMemo(
@@ -201,10 +238,10 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
       summary.specialtyGroups
         .map((group) => ({
           ...group,
-          rows: filterRows(group.rows, search, arrivalFilter, areaFilter, specialtyFilter),
+          rows: filterBukDashboardRows(group.rows, filters),
         }))
         .filter((group) => group.rows.length > 0),
-    [summary.specialtyGroups, search, arrivalFilter, areaFilter, specialtyFilter]
+    [summary.specialtyGroups, filters]
   );
 
   const filteredAreaGroups = useMemo(
@@ -212,10 +249,10 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
       summary.areaGroups
         .map((group) => ({
           ...group,
-          rows: filterRows(group.rows, search, arrivalFilter, areaFilter, specialtyFilter),
+          rows: filterBukDashboardRows(group.rows, filters),
         }))
         .filter((group) => group.rows.length > 0),
-    [summary.areaGroups, search, arrivalFilter, areaFilter, specialtyFilter]
+    [summary.areaGroups, filters]
   );
 
   const dateLabel = format(date, "d 'de' MMMM yyyy", { locale: es });
@@ -233,116 +270,74 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
-          <CardContent className="pt-5">
-            <p className="text-xs text-muted-foreground uppercase tracking-wide">En sede ese día</p>
-            <p className="text-2xl font-bold text-foreground mt-1">{summary.total}</p>
-            <p className="text-xs text-muted-foreground mt-1">{sedeName}</p>
-          </CardContent>
-        </Card>
-        <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-950/20">
-          <CardContent className="pt-5 flex items-start justify-between gap-2">
-            <div>
-              <p className="text-xs text-emerald-400/80 uppercase tracking-wide">Llegaron</p>
-              <p className="text-2xl font-bold text-emerald-300 mt-1">{summary.arrived}</p>
-            </div>
-            <CheckCircle2 className="h-8 w-8 text-emerald-500/60 shrink-0" />
-          </CardContent>
-        </Card>
-        <Card className="border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-950/20">
-          <CardContent className="pt-5 flex items-start justify-between gap-2">
-            <div>
-              <p className="text-xs text-red-400/80 uppercase tracking-wide">Sin entrada</p>
-              <p className="text-2xl font-bold text-red-300 mt-1">{summary.absent}</p>
-            </div>
-            <XCircle className="h-8 w-8 text-red-500/60 shrink-0" />
-          </CardContent>
-        </Card>
-        <Card className="border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-950/20">
-          <CardContent className="pt-5 flex items-start justify-between gap-2">
-            <div>
-              <p className="text-xs text-emerald-400/80 uppercase tracking-wide">A tiempo</p>
-              <p className="text-2xl font-bold text-emerald-300 mt-1">{summary.onTime}</p>
-              <p className="text-[10px] text-slate-500 mt-1">{punctualityHint}</p>
-            </div>
-            <Check className="h-8 w-8 text-emerald-500/60 shrink-0" strokeWidth={2} />
-          </CardContent>
-        </Card>
-        <Card className="border-orange-500/30 bg-orange-950/20">
-          <CardContent className="pt-5 flex items-start justify-between gap-2">
-            <div>
-              <p className="text-xs text-orange-400/80 uppercase tracking-wide">Tardanza</p>
-              <p className="text-2xl font-bold text-orange-300 mt-1">{summary.late}</p>
-            </div>
-            <X className="h-8 w-8 text-orange-500/60 shrink-0" strokeWidth={2.5} />
-          </CardContent>
-        </Card>
-        <Card className="border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-950/20">
-          <CardContent className="pt-5">
-            <p className="text-xs text-amber-400/80 uppercase tracking-wide">Con salida</p>
-            <p className="text-2xl font-bold text-amber-300 mt-1">{summary.leftSameDay}</p>
-            <p className="text-xs text-muted-foreground mt-1">salida_format mismo día</p>
-          </CardContent>
-        </Card>
+        <KpiCard
+          title="En sede ese día"
+          value={filteredStats.total}
+          subtitle={sedeName}
+          help="Personas con registro Buk asociado a esta sede y fecha, según los filtros activos."
+          icon={LayoutDashboard}
+          accent="bg-card dark:bg-slate-950/80"
+        />
+        <KpiCard
+          title="Llegaron"
+          value={filteredStats.arrived}
+          help="Marcaron entrada válida ese día en Buk (entrada_format o timestamp de entrada)."
+          icon={CheckCircle2}
+          accent="border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-950/20"
+        />
+        <KpiCard
+          title="Sin entrada"
+          value={filteredStats.absent}
+          help="Registros del día sin hora de entrada válida en Buk."
+          icon={XCircle}
+          accent="border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-950/20"
+        />
+        <KpiCard
+          title="A tiempo"
+          value={filteredStats.onTime}
+          subtitle={punctualityHint}
+          help={`Puntualidad turno día: entrada antes o igual a ${dayStart} + ${toleranceMin} min de tolerancia configurados en la sede.`}
+          icon={Check}
+          accent="border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-950/20"
+        />
+        <KpiCard
+          title="Tardanza"
+          value={filteredStats.late}
+          help="Entrada registrada después del límite de puntualidad del turno día."
+          icon={X}
+          accent="border-orange-500/30 bg-orange-950/20"
+        />
+        <KpiCard
+          title="Con salida"
+          value={filteredStats.leftSameDay}
+          subtitle="salida mismo día"
+          help="Personas que marcaron salida el mismo día calendario (salida_format)."
+          icon={CheckCircle2}
+          accent="border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-950/20"
+        />
       </div>
 
       <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
         <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-foreground text-lg">
-            <LayoutDashboard className="h-5 w-5 text-indigo-400" />
-            Dashboard Buk — {dateLabel}
-          </CardTitle>
-          <CardDescription className="text-slate-400">
-            Datos directos de la API. Puntualidad turno día: entrada a las {dayStart} con {toleranceMin} min de tolerancia.
-          </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-foreground text-lg">
+                <LayoutDashboard className="h-5 w-5 text-indigo-400" />
+                Dashboard Buk — {dateLabel}
+              </CardTitle>
+              <CardDescription className="text-slate-400">
+                Datos directos de la API. Puntualidad turno día: entrada a las {dayStart} con {toleranceMin} min de tolerancia.
+              </CardDescription>
+            </div>
+            {onExport ? (
+              <Button type="button" variant="outline" size="sm" onClick={onExport}>
+                <Download className="mr-1 h-4 w-4" />
+                Exportar Excel
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-3">
-            <div className="relative flex-1 min-w-[200px] max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar nombre, apellido, área, especialidad o RUT…"
-                className="pl-9 bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white"
-              />
-            </div>
-            <Select value={areaFilter} onValueChange={setAreaFilter}>
-              <SelectTrigger className="w-[200px] bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white">
-                <SelectValue placeholder="Área" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_FILTER}>Todas las áreas</SelectItem>
-                {areaOptions.map((area) => (
-                  <SelectItem key={area} value={area}>{area}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={specialtyFilter} onValueChange={setSpecialtyFilter}>
-              <SelectTrigger className="w-[220px] bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white">
-                <SelectValue placeholder="Especialidad" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_FILTER}>Todas las especialidades</SelectItem>
-                {specialtyOptions.map((esp) => (
-                  <SelectItem key={esp} value={esp}>{esp}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={arrivalFilter} onValueChange={(v) => setArrivalFilter(v as ArrivalFilter)}>
-              <SelectTrigger className="w-[180px] bg-background border-border text-foreground dark:bg-slate-900 dark:border-slate-700 dark:text-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos ({summary.total})</SelectItem>
-                <SelectItem value="arrived">Llegaron ({summary.arrived})</SelectItem>
-                <SelectItem value="absent">Sin entrada ({summary.absent})</SelectItem>
-                <SelectItem value="on_time">A tiempo ({summary.onTime})</SelectItem>
-                <SelectItem value="late">Tardanza ({summary.late})</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           <Tabs value={view} onValueChange={(v) => setView(v as 'list' | 'specialty' | 'area' | 'charts')}>
             <TabsList className="bg-muted/60 border border-border dark:bg-slate-900 dark:border-slate-800">
               <TabsTrigger
@@ -377,10 +372,11 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
 
             <TabsContent value="list" className="mt-4">
               <div className="rounded-xl border border-border overflow-hidden dark:border-slate-800">
-                <BukRowsTable rows={filteredRows} />
+                <BukRowsTable rows={filteredRows} onRowClick={onRowClick} />
               </div>
               <p className="text-xs text-muted-foreground mt-3">
                 Mostrando {filteredRows.length} de {summary.total} persona(s).
+                {onRowClick ? ' Clic en una fila para ver detalle.' : ''}
               </p>
             </TabsContent>
 
@@ -415,7 +411,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                         </span>
                       </div>
                     </div>
-                    <BukRowsTable rows={group.rows} />
+                    <BukRowsTable rows={group.rows} onRowClick={onRowClick} />
                   </div>
                 ))
               )}
@@ -460,7 +456,7 @@ export function AsistenciaBukDashboard({ records, settings, sedeName, date }: Pr
                         </span>
                       </div>
                     </div>
-                    <BukRowsTable rows={group.rows} />
+                    <BukRowsTable rows={group.rows} onRowClick={onRowClick} />
                   </div>
                 ))
               )}

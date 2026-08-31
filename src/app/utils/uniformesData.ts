@@ -7,11 +7,14 @@ import type {
   UniformesKpiSnapshot,
   UniformesSettings,
 } from '../types/uniformes';
+import { countUniformRenewals } from './uniformesRenewal';
+import type { User } from '../types';
+import { mergeUniformKits } from './uniformesKits';
 
 export const UNIFORMES_SETTINGS_KV_KEY = 'settings:entrega-uniformes';
 
 export function defaultUniformesSettings(): UniformesSettings {
-  return { version: 1, records: [] };
+  return { version: 1, records: [], kits: mergeUniformKits() };
 }
 
 export function mergeUniformesSettings(
@@ -22,6 +25,7 @@ export function mergeUniformesSettings(
   return {
     version: 1,
     records: Array.isArray(partial.records) ? partial.records : base.records,
+    kits: mergeUniformKits(partial.kits),
   };
 }
 
@@ -63,6 +67,7 @@ export function filterUniformDeliveries(
   records: UniformDeliveryRecord[],
   filters: UniformesFilters
 ): UniformDeliveryRecord[] {
+  const q = filters.search?.trim().toLowerCase() ?? '';
   return records.filter((r) => {
     if (filters.dateFrom && r.deliveryDate < filters.dateFrom) return false;
     if (filters.dateTo && r.deliveryDate > filters.dateTo) return false;
@@ -76,11 +81,49 @@ export function filterUniformDeliveries(
       const hasItem = r.items.some((i) => i.itemType === filters.itemType);
       if (!hasItem) return false;
     }
+    if (q) {
+      const haystack = [r.staffName, r.jobTitle, r.workArea, r.notes ?? '', r.deliveredBy ?? '']
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     return true;
   });
 }
 
-export function computeUniformesKpis(records: UniformDeliveryRecord[]): UniformesKpiSnapshot {
+export function countUniformesActiveFilters(filters: UniformesFilters): number {
+  let n = 0;
+  if (filters.search?.trim()) n += 1;
+  if (filters.sede !== 'Todas') n += 1;
+  if (filters.workArea !== 'Todas') n += 1;
+  if (filters.itemType !== 'Todas') n += 1;
+  if (filters.status !== 'Todas') n += 1;
+  if (filters.reason !== 'Todas') n += 1;
+  return n;
+}
+
+export function defaultUniformesFilters(): UniformesFilters {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return {
+    dateFrom: fmt(from),
+    dateTo: fmt(to),
+    sede: 'Todas',
+    workArea: 'Todas',
+    itemType: 'Todas',
+    status: 'Todas',
+    reason: 'Todas',
+    search: '',
+  };
+}
+
+export function computeUniformesKpis(
+  records: UniformDeliveryRecord[],
+  context?: { allRecords?: UniformDeliveryRecord[]; users?: User[] }
+): UniformesKpiSnapshot {
   const byItemTypeMap = new Map<string, { count: number; items: number }>();
   const bySedeMap = new Map<string, number>();
   const byReasonMap = new Map<string, number>();
@@ -120,6 +163,11 @@ export function computeUniformesKpis(records: UniformDeliveryRecord[]): Uniforme
       ...data,
     }));
 
+  const renewalCounts = countUniformRenewals(
+    context?.allRecords ?? records,
+    context?.users ?? []
+  );
+
   return {
     totalDeliveries: records.length,
     totalItems,
@@ -137,5 +185,7 @@ export function computeUniformesKpis(records: UniformDeliveryRecord[]): Uniforme
       count,
     })),
     byMonth,
+    renewalsDueSoon: renewalCounts.renewalsDueSoon,
+    renewalsOverdue: renewalCounts.renewalsOverdue,
   };
 }

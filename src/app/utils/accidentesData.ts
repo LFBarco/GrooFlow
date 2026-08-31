@@ -6,6 +6,8 @@ import type {
   AccidentesFilters,
   AccidentesKpiConfig,
   AccidentesSettings,
+  AccidentEventType,
+  AccidentWorkflowStatus,
   WorkplaceAccidentRecord,
 } from '../types/accidentes';
 import { mergeAsistenciaSettings } from './asistenciaData';
@@ -34,9 +36,46 @@ export function mergeAccidentesSettings(
   if (!partial || typeof partial !== 'object') return { ...base };
   return {
     version: 1,
-    records: Array.isArray(partial.records) ? partial.records : base.records,
+    records: Array.isArray(partial.records)
+      ? partial.records.map(normalizeAccidentRecord)
+      : base.records,
     config: { ...base.config, ...(partial.config ?? {}) },
   };
+}
+
+export function normalizeAccidentRecord(
+  record: WorkplaceAccidentRecord
+): WorkplaceAccidentRecord {
+  return {
+    ...record,
+    eventType: record.eventType ?? 'accidente',
+    workflowStatus: record.workflowStatus ?? 'reportado',
+    attachments: record.attachments ?? [],
+    correctiveActions: record.correctiveActions ?? [],
+  };
+}
+
+export const ACCIDENT_WORKFLOW_ORDER: AccidentWorkflowStatus[] = [
+  'reportado',
+  'investigacion',
+  'acciones',
+  'cerrado',
+];
+
+export function nextAccidentWorkflowStatus(
+  current: AccidentWorkflowStatus
+): AccidentWorkflowStatus | null {
+  const idx = ACCIDENT_WORKFLOW_ORDER.indexOf(current);
+  if (idx < 0 || idx >= ACCIDENT_WORKFLOW_ORDER.length - 1) return null;
+  return ACCIDENT_WORKFLOW_ORDER[idx + 1]!;
+}
+
+export function newAccidentAttachmentId(): string {
+  return `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+export function newCorrectiveActionId(): string {
+  return `ca_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
 export function newAccidentId(): string {
@@ -52,12 +91,12 @@ export function upsertAccidentRecord(
 ): AccidentesSettings {
   const id = record.id ?? newAccidentId();
   const existing = settings.records.find((r) => r.id === id);
-  const next: WorkplaceAccidentRecord = {
+  const next: WorkplaceAccidentRecord = normalizeAccidentRecord({
     ...record,
     id,
     createdAt: existing?.createdAt ?? record.createdAt ?? new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  };
+  } as WorkplaceAccidentRecord);
   const rest = settings.records.filter((r) => r.id !== id);
   return { ...settings, records: [next, ...rest] };
 }
@@ -69,10 +108,15 @@ export function removeAccidentRecord(
   return { ...settings, records: settings.records.filter((r) => r.id !== recordId) };
 }
 
+function hasLostTime(r: WorkplaceAccidentRecord): boolean {
+  return r.estimatedLostDays > 0 || r.immediateCare === 'dias_baja';
+}
+
 export function filterAccidentRecords(
   records: WorkplaceAccidentRecord[],
   filters: AccidentesFilters
 ): WorkplaceAccidentRecord[] {
+  const q = filters.search?.trim().toLowerCase() ?? '';
   return records.filter((r) => {
     if (filters.dateFrom && r.eventDate < filters.dateFrom) return false;
     if (filters.dateTo && r.eventDate > filters.dateTo) return false;
@@ -87,8 +131,45 @@ export function filterAccidentRecords(
     ) {
       return false;
     }
+    if (filters.severity && filters.severity !== 'Todas' && r.severity !== filters.severity) {
+      return false;
+    }
+    if (filters.withLostTimeOnly && !hasLostTime(r)) return false;
+    if (filters.eventType && filters.eventType !== 'Todas') {
+      const et: AccidentEventType = r.eventType ?? 'accidente';
+      if (et !== filters.eventType) return false;
+    }
+    if (filters.workflowStatus && filters.workflowStatus !== 'Todas') {
+      const ws: AccidentWorkflowStatus = r.workflowStatus ?? 'reportado';
+      if (filters.workflowStatus === '__open__') {
+        if (ws === 'cerrado') return false;
+      } else if (ws !== filters.workflowStatus) {
+        return false;
+      }
+    }
+    if (q) {
+      const haystack = [r.affectedName, r.jobTitle, r.workArea, r.exactLocation, r.description ?? '']
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
     return true;
   });
+}
+
+export function countAccidentesActiveFilters(filters: AccidentesFilters): number {
+  let n = 0;
+  if (filters.search?.trim()) n += 1;
+  if (filters.sede !== 'Todas') n += 1;
+  if (filters.workArea !== 'Todas') n += 1;
+  if (filters.workShift !== 'Todas') n += 1;
+  if (filters.bodyPart !== 'Todas') n += 1;
+  if (filters.injuryNature !== 'Todas') n += 1;
+  if (filters.severity !== 'Todas') n += 1;
+  if (filters.withLostTimeOnly) n += 1;
+  if (filters.eventType !== 'Todas') n += 1;
+  if (filters.workflowStatus !== 'Todas') n += 1;
+  return n;
 }
 
 export function computeSeniorityMonths(hireDate?: string, eventDate?: string): number {
@@ -122,6 +203,7 @@ export interface StaffOption {
   homeSede: string;
   seniorityMonths: number;
   hireDate?: string;
+  uniformSizes?: Partial<Record<string, string>>;
 }
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -161,6 +243,7 @@ export function buildStaffOptions(input: {
       homeSede,
       seniorityMonths: computeSeniorityMonths(u.hireDate),
       hireDate: u.hireDate,
+      uniformSizes: u.uniformSizes,
     };
     map.set(opt.id, opt);
   }
@@ -207,9 +290,11 @@ function mapAreaFromAsistencia(area: string): string {
 
 export function daysWithoutAccident(records: WorkplaceAccidentRecord[]): number {
   const withLostTime = records
-    .filter((r) => r.estimatedLostDays > 0 || r.immediateCare === 'dias_baja')
+    .filter(hasLostTime)
     .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
-  if (withLostTime.length === 0) return differenceInCalendarDays(new Date(), parseISO('2020-01-01'));
+  if (withLostTime.length === 0) {
+    return differenceInCalendarDays(new Date(), parseISO('2020-01-01'));
+  }
   const last = withLostTime[0]!;
   return differenceInCalendarDays(new Date(), parseISO(`${last.eventDate}T12:00:00`));
 }
