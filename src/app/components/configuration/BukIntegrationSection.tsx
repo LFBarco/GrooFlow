@@ -4,6 +4,7 @@ import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { patchAsistenciaSettings } from '../../utils/asistenciaPersistence';
 import { BukAsistenciaIntegrationSection } from './BukAsistenciaIntegrationSection';
 import { BukEndpointsExplorer } from './BukEndpointsExplorer';
+import { BukPeIntegrationSection } from './BukPeIntegrationSection';
 
 type Props = {
   systemSettings: SystemSettings;
@@ -21,9 +22,7 @@ type Props = {
   readOnly?: boolean;
 };
 
-/**
- * Apartado unificado de integración Buk (Ctrlit): credenciales, asistencia y explorador de APIs.
- */
+/** Apartado unificado: Buk Asistencia (Ctrlit) + Buk.pe (RRHH). */
 export function BukIntegrationSection(props: Props) {
   const asistencia = mergeAsistenciaSettings(props.systemSettings.asistencia);
   const buk = asistencia.buk ?? {};
@@ -53,24 +52,41 @@ export function BukIntegrationSection(props: Props) {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-8 max-w-4xl">
       <div>
-        <h3 className="text-lg font-semibold">Integración Buk (Ctrlit)</h3>
+        <h3 className="text-lg font-semibold">Integraciones Buk</h3>
         <p className="text-sm text-muted-foreground mt-1">
-          Un solo token y URL base para todos los endpoints. Configura asistencia y explora otras APIs
-          para identificar campos útiles.
+          Dos APIs distintas con el mismo proveedor: <strong>Ctrlit</strong> (marcaciones / asistencia) y{' '}
+          <strong>Buk.pe</strong> (empleados / RRHH). Cada una tiene su URL base y token.
         </p>
       </div>
 
-      <BukAsistenciaIntegrationSection {...props} />
+      <div className="space-y-2">
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          Asistencia — Ctrlit
+        </h4>
+        <BukAsistenciaIntegrationSection {...props} />
+        <BukEndpointsExplorer
+          provider="ctrlit"
+          baseUrl={buk.apiBaseUrl ?? 'https://app.ctrlit.cl/ctrl/api/v2'}
+          apiToken={buk.apiToken ?? ''}
+          endpoints={endpoints}
+          readOnly={props.readOnly}
+          onChangeEndpoints={patchEndpoints}
+        />
+      </div>
 
-      <BukEndpointsExplorer
-        baseUrl={buk.apiBaseUrl ?? 'https://app.ctrlit.cl/ctrl/api/v2'}
-        apiToken={buk.apiToken ?? ''}
-        endpoints={endpoints}
-        readOnly={props.readOnly}
-        onChangeEndpoints={patchEndpoints}
-      />
+      <div className="space-y-2 border-t pt-6">
+        <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+          RRHH — Buk.pe
+        </h4>
+        <BukPeIntegrationSection
+          systemSettings={props.systemSettings}
+          onUpdateSystemSettings={props.onUpdateSystemSettings}
+          onPersistSystemSettings={props.onPersistSystemSettings}
+          readOnly={props.readOnly}
+        />
+      </div>
     </div>
   );
 }

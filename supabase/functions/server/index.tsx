@@ -418,6 +418,58 @@ function isAllowedBukUrl(targetUrl: string): boolean {
   }
 }
 
+function isAllowedBukPeUrl(targetUrl: string): boolean {
+  try {
+    const u = new URL(targetUrl);
+    const host = u.hostname.toLowerCase();
+    return (
+      host.endsWith(".buk.pe") ||
+      host.endsWith(".buk.cl") ||
+      host.endsWith(".buk.co") ||
+      host.endsWith(".buk.com.br")
+    );
+  } catch {
+    return false;
+  }
+}
+
+const DEFAULT_BUK_PE_BASE_URL = "https://veterinariagroomers.buk.pe/api/v1/peru";
+
+function sanitizeBukPeBaseUrl(raw: string): string {
+  let s = raw.trim();
+  if (!s) return DEFAULT_BUK_PE_BASE_URL;
+  s = s.split("#")[0].split("?")[0].trim();
+  s = s.replace(/\/+$/, "");
+  s = s.replace(/\/employees(\/.*)?$/i, "");
+  s = s.replace(/\/+$/, "");
+  try {
+    const u = new URL(s.startsWith("http") ? s : `https://${s}`);
+    const path = u.pathname.replace(/\/+$/, "");
+    if (!path.includes("/api/v1/")) return DEFAULT_BUK_PE_BASE_URL;
+    return `${u.origin}${path}`;
+  } catch {
+    return DEFAULT_BUK_PE_BASE_URL;
+  }
+}
+
+async function fetchBukPeApi(targetUrl: string, apiToken: string): Promise<Response> {
+  return fetch(targetUrl, {
+    method: "GET",
+    headers: {
+      auth_token: apiToken,
+      accept: "application/json",
+    },
+  });
+}
+
+function extractBukPeRecords(json: unknown): unknown[] {
+  if (!json || typeof json !== "object") return [];
+  const o = json as Record<string, unknown>;
+  if (Array.isArray(o.data)) return o.data;
+  if (Array.isArray(json)) return json;
+  return [];
+}
+
 const DEFAULT_BUK_BASE_URL = "https://app.ctrlit.cl/ctrl/api/v2";
 
 function sanitizeBukBaseUrl(raw: string): string {
@@ -709,6 +761,127 @@ for (const base of KV_PATH_BASES) {
     } catch (error) {
       console.error("buk/probe error:", error);
       return c.json({ error: "Error al consultar endpoint Buk." }, 500);
+    }
+  });
+
+  app.post(`${base}/buk-pe/test`, async (c) => {
+    const auth = await requireAdminRequest(c, "Solo administradores pueden probar Buk.pe.");
+    if (auth.response) return auth.response;
+    try {
+      const body = await c.req.json();
+      const baseUrl = sanitizeBukPeBaseUrl(typeof body?.baseUrl === "string" ? body.baseUrl : "");
+      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      let targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
+      if (!targetUrl) {
+        targetUrl = `${baseUrl.replace(/\/+$/, "")}/employees?page=1&page_size=5`;
+      }
+      if (!targetUrl || !apiToken) {
+        return c.json({ error: "Faltan targetUrl o apiToken." }, 400);
+      }
+      if (!isAllowedBukPeUrl(targetUrl)) {
+        return c.json({ error: "URL de destino no permitida." }, 400);
+      }
+      const started = Date.now();
+      const res = await fetchBukPeApi(targetUrl, apiToken);
+      const text = await res.text();
+      let json: unknown = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+      const records = extractBukPeRecords(json);
+      const durationMs = Date.now() - started;
+      if (!res.ok) {
+        return c.json({
+          ok: false,
+          status: res.status,
+          message: bukFailureMessage(res.status, targetUrl, text),
+          triedUrl: targetUrl,
+          durationMs,
+        });
+      }
+      return c.json({
+        ok: true,
+        status: res.status,
+        message: `Conexión OK. ${records.length} empleado(s) detectados.`,
+        triedUrl: targetUrl,
+        durationMs,
+      });
+    } catch (error) {
+      console.error("buk-pe/test error:", error);
+      return c.json({ error: "Error al contactar Buk.pe." }, 500);
+    }
+  });
+
+  app.post(`${base}/buk-pe/probe`, async (c) => {
+    const auth = await requireAdminRequest(c, "Solo administradores pueden explorar Buk.pe.");
+    if (auth.response) return auth.response;
+    try {
+      const body = await c.req.json();
+      const baseUrl = sanitizeBukPeBaseUrl(typeof body?.baseUrl === "string" ? body.baseUrl : "");
+      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      const pathOrUrl =
+        typeof body?.pathOrUrl === "string"
+          ? body.pathOrUrl.trim()
+          : typeof body?.path === "string"
+            ? body.path.trim()
+            : "";
+      let targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
+      if (!targetUrl && pathOrUrl) {
+        targetUrl = pathOrUrl.startsWith("http")
+          ? pathOrUrl
+          : `${baseUrl.replace(/\/+$/, "")}/${pathOrUrl.replace(/^\/+/, "")}`;
+      }
+      if (!targetUrl || !apiToken) {
+        return c.json({ error: "Faltan pathOrUrl/targetUrl o apiToken." }, 400);
+      }
+      if (!isAllowedBukPeUrl(targetUrl)) {
+        return c.json({ error: "URL de destino no permitida." }, 400);
+      }
+      const started = Date.now();
+      const res = await fetchBukPeApi(targetUrl, apiToken);
+      const text = await res.text();
+      let json: Record<string, unknown> | null = null;
+      try {
+        json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+      } catch {
+        json = null;
+      }
+      const records = extractBukPeRecords(json);
+      const durationMs = Date.now() - started;
+      if (!res.ok) {
+        return c.json({
+          ok: false,
+          status: res.status,
+          message: bukFailureMessage(res.status, targetUrl, text),
+          triedUrl: targetUrl,
+          durationMs,
+          data: [],
+          sample: [],
+          recordCount: 0,
+        });
+      }
+      return c.json({
+        ok: true,
+        status: res.status,
+        message:
+          records.length > 0
+            ? `OK. ${records.length} registro(s) detectados.`
+            : "OK. Sin arreglo de registros.",
+        triedUrl: targetUrl,
+        durationMs,
+        data: records,
+        sample: records.slice(0, 3),
+        recordCount: records.length,
+        pagination: json?.pagination ?? null,
+        rawPreview: json,
+      });
+    } catch (error) {
+      console.error("buk-pe/probe error:", error);
+      return c.json({ error: "Error al consultar endpoint Buk.pe." }, 500);
     }
   });
 }

@@ -2,6 +2,7 @@ import { getEdgeFunctionAccessTokenLazy, getSupabaseFunctionsUrlLazy } from '../
 import { getGrooflowApiBase, getGrooflowToken } from '../services/repository/apiBase';
 import { getGrooflowBackend } from '../config/backend';
 import { DEFAULT_BUK_ASISTENCIA_BASE_URL, normalizeBukToken, sanitizeBukBaseUrl } from './bukAsistenciaApi';
+import { buildBukPeEndpointUrl, normalizeBukPeToken, sanitizeBukPeBaseUrl } from './bukPeApi';
 import { analyzeBukRecordsFields, collectJsonFieldPaths } from './bukFieldPaths';
 
 export type BukEndpointProbeResult = {
@@ -18,17 +19,23 @@ export type BukEndpointProbeResult = {
   pagination?: Record<string, unknown> | null;
 };
 
+export type BukApiProvider = 'ctrlit' | 'bukpe';
+
 const PROBE_TIMEOUT_MS = 60_000;
 
-async function postBukProbe(body: Record<string, unknown>): Promise<Response> {
+async function postBukProbe(
+  provider: BukApiProvider,
+  body: Record<string, unknown>
+): Promise<Response> {
   const backend = getGrooflowBackend();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  const proxyPath = provider === 'bukpe' ? 'buk-pe/probe' : 'buk/probe';
   try {
     if (backend === 'rest') {
       const token = getGrooflowToken();
       if (!token) throw new Error('Sesión caducada. Vuelve a iniciar sesión.');
-      return await fetch(`${getGrooflowApiBase()}/proxy/buk/probe`, {
+      return await fetch(`${getGrooflowApiBase()}/proxy/${proxyPath}`, {
         method: 'POST',
         signal: controller.signal,
         headers: {
@@ -42,7 +49,8 @@ async function postBukProbe(body: Record<string, unknown>): Promise<Response> {
     if (!functionsUrl) throw new Error('Supabase no configurado.');
     const accessToken = await getEdgeFunctionAccessTokenLazy();
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-    return await fetch(`${functionsUrl}/buk/probe`, {
+    const fnPath = provider === 'bukpe' ? 'buk-pe/probe' : 'buk/probe';
+    return await fetch(`${functionsUrl}/${fnPath}`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
@@ -57,24 +65,37 @@ async function postBukProbe(body: Record<string, unknown>): Promise<Response> {
   }
 }
 
-export function buildBukEndpointUrl(baseUrl: string, pathOrUrl: string): string {
+export function buildBukEndpointUrl(
+  baseUrl: string,
+  pathOrUrl: string,
+  provider: BukApiProvider = 'ctrlit'
+): string {
   const raw = pathOrUrl.trim();
-  if (!raw) return sanitizeBukBaseUrl(baseUrl);
+  if (!raw) {
+    return provider === 'bukpe' ? sanitizeBukPeBaseUrl(baseUrl) : sanitizeBukBaseUrl(baseUrl);
+  }
   if (/^https?:\/\//i.test(raw)) return raw;
+  if (provider === 'bukpe') {
+    return buildBukPeEndpointUrl(baseUrl, raw);
+  }
   const base = sanitizeBukBaseUrl(baseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL);
   return `${base.replace(/\/+$/, '')}/${raw.replace(/^\/+/, '')}`;
 }
 
 export async function probeBukEndpoint(input: {
+  provider?: BukApiProvider;
   baseUrl: string;
   apiToken: string;
   pathOrUrl: string;
 }): Promise<BukEndpointProbeResult> {
+  const provider = input.provider ?? 'ctrlit';
   const start = Date.now();
-  const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
-  const apiToken = normalizeBukToken(input.apiToken);
+  const baseUrl =
+    provider === 'bukpe' ? sanitizeBukPeBaseUrl(input.baseUrl) : sanitizeBukBaseUrl(input.baseUrl);
+  const apiToken =
+    provider === 'bukpe' ? normalizeBukPeToken(input.apiToken) : normalizeBukToken(input.apiToken);
   const pathOrUrl = input.pathOrUrl.trim();
-  const triedUrl = buildBukEndpointUrl(baseUrl, pathOrUrl);
+  const triedUrl = buildBukEndpointUrl(baseUrl, pathOrUrl, provider);
 
   if (!apiToken) {
     return {
@@ -99,7 +120,7 @@ export async function probeBukEndpoint(input: {
   }
 
   try {
-    const res = await postBukProbe({
+    const res = await postBukProbe(provider, {
       baseUrl,
       apiToken,
       pathOrUrl,

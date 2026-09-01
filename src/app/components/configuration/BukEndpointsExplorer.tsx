@@ -11,9 +11,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import type { BukApiEndpointConfig } from '../../types/asistencia';
-import { buildBukEndpointUrl, probeBukEndpoint } from '../../utils/bukEndpointProbe';
+import type { BukCatalogEndpointConfig } from '../../types';
+import { buildBukEndpointUrl, probeBukEndpoint, type BukApiProvider } from '../../utils/bukEndpointProbe';
 import { DEFAULT_BUK_ASISTENCIA_BASE_URL, sanitizeBukBaseUrl } from '../../utils/bukAsistenciaApi';
+import { DEFAULT_BUK_PE_BASE_URL, sanitizeBukPeBaseUrl } from '../../utils/bukPeApi';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -31,11 +32,12 @@ import {
 } from '../ui/dialog';
 
 type Props = {
+  provider?: BukApiProvider;
   baseUrl: string;
   apiToken: string;
-  endpoints: BukApiEndpointConfig[];
+  endpoints: BukCatalogEndpointConfig[];
   readOnly?: boolean;
-  onChangeEndpoints: (next: BukApiEndpointConfig[], message?: string) => void;
+  onChangeEndpoints: (next: BukCatalogEndpointConfig[], message?: string) => void;
 };
 
 type ProbeView = {
@@ -48,6 +50,7 @@ function newEndpointId() {
 }
 
 export function BukEndpointsExplorer({
+  provider = 'ctrlit',
   baseUrl,
   apiToken,
   endpoints,
@@ -59,9 +62,12 @@ export function BukEndpointsExplorer({
   const [fieldFilter, setFieldFilter] = useState('');
   const [showJson, setShowJson] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [draft, setDraft] = useState<BukApiEndpointConfig | null>(null);
+  const [draft, setDraft] = useState<BukCatalogEndpointConfig | null>(null);
 
-  const resolvedBase = sanitizeBukBaseUrl(baseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL);
+  const resolvedBase =
+    provider === 'bukpe'
+      ? sanitizeBukPeBaseUrl(baseUrl || DEFAULT_BUK_PE_BASE_URL)
+      : sanitizeBukBaseUrl(baseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL);
 
   const filteredFields = useMemo(() => {
     const fields = probeView?.result.fields ?? [];
@@ -84,7 +90,7 @@ export function BukEndpointsExplorer({
     setEditorOpen(true);
   };
 
-  const openEdit = (ep: BukApiEndpointConfig) => {
+  const openEdit = (ep: BukCatalogEndpointConfig) => {
     setDraft({ ...ep });
     setEditorOpen(true);
   };
@@ -115,15 +121,20 @@ export function BukEndpointsExplorer({
     if (probeView?.endpointId === id) setProbeView(null);
   };
 
-  const runProbe = async (ep: BukApiEndpointConfig) => {
+  const runProbe = async (ep: BukCatalogEndpointConfig) => {
     if (!apiToken.trim()) {
-      toast.error('Configura el token Buk arriba antes de consultar endpoints.');
+      toast.error(
+        provider === 'bukpe'
+          ? 'Configura el auth_token de Buk.pe antes de consultar.'
+          : 'Configura el token Buk antes de consultar endpoints.'
+      );
       return;
     }
     setProbingId(ep.id);
     toast.info(`Consultando ${ep.name}…`);
     try {
       const result = await probeBukEndpoint({
+        provider,
         baseUrl: resolvedBase,
         apiToken,
         pathOrUrl: ep.pathOrUrl,
@@ -198,7 +209,7 @@ export function BukEndpointsExplorer({
                 </TableRow>
               ) : (
                 endpoints.map((ep) => {
-                  const fullUrl = buildBukEndpointUrl(resolvedBase, ep.pathOrUrl);
+                  const fullUrl = buildBukEndpointUrl(resolvedBase, ep.pathOrUrl, provider);
                   const isActive = probeView?.endpointId === ep.id;
                   return (
                     <TableRow key={ep.id} className={isActive ? 'bg-muted/40' : undefined}>
@@ -376,7 +387,7 @@ export function BukEndpointsExplorer({
                   className="font-mono text-sm"
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  URL final: {buildBukEndpointUrl(resolvedBase, draft.pathOrUrl || '…')}
+                  URL final: {buildBukEndpointUrl(resolvedBase, draft.pathOrUrl || '…', provider)}
                 </p>
               </div>
               <div className="space-y-1">

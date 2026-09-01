@@ -6,6 +6,12 @@ import {
   type VeterinariIntegrationSettings,
 } from '../types';
 import {
+  DEFAULT_BUK_PE_BASE_URL,
+  defaultBukPeSettings,
+  mergeBukPeSettings,
+  sanitizeBukPeBaseUrl,
+} from '../utils/bukPeApi';
+import {
   DEFAULT_PROVIDER_AREAS,
   DEFAULT_PROVIDER_CATEGORIES,
 } from '../utils/providerCatalog';
@@ -253,6 +259,7 @@ export const initialSystemSettings: SystemSettings = {
   },
   accounting: {},
   smartCashFlow: defaultSmartCashFlowSettings(),
+  bukPe: defaultBukPeSettings(),
 };
 
 /** Valores por defecto del submódulo Smart Cash Flow (Fase 2). */
@@ -298,6 +305,8 @@ export function mergeVeterinariSettings(
     testMonth: partial.testMonth ?? base.testMonth,
   };
 }
+
+export { DEFAULT_BUK_PE_BASE_URL, defaultBukPeSettings, mergeBukPeSettings, sanitizeBukPeBaseUrl };
 
 export function defaultSmartCashFlowSettings(): SmartCashFlowSettings {
   return {
@@ -388,6 +397,7 @@ export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | u
     },
     smartCashFlow: mergeSmartCashFlowSettings(incoming.smartCashFlow ?? base.smartCashFlow),
     veterinari: mergeVeterinariSettings(incoming.veterinari),
+    bukPe: mergeBukPeSettings(incoming.bukPe),
     asistencia: mergeAsistenciaSettings(incoming.asistencia),
   };
 }

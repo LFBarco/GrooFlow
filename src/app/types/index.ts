@@ -502,7 +502,6 @@ export interface BankAccountConfig {
  * Cuentas “puente” para armar asientos: IGV compras, salida caja chica, banco.
  * Los códigos deben existir en el plan importado (validación en UI).
  */
-/** Conexión API Veterinari (reportes e integración). Token solo visible para admins. */
 export interface VeterinariIntegrationSettings {
   /** Base sin barra final, ej. https://host/api/oapi */
   baseUrl?: string;
@@ -518,6 +517,34 @@ export interface VeterinariIntegrationSettings {
   lastValidationMessage?: string;
   lastValidationAuthMethod?: string;
   lastValidationHttpStatus?: number;
+}
+
+/** Endpoint configurable en el explorador Buk (Ctrlit o Buk.pe). */
+export interface BukCatalogEndpointConfig {
+  id: string;
+  name: string;
+  pathOrUrl: string;
+  description?: string;
+  notes?: string;
+  enabled?: boolean;
+  lastProbedAt?: string;
+  lastProbeOk?: boolean;
+  lastProbeStatus?: number;
+  lastProbeMessage?: string;
+  lastProbeRecordCount?: number;
+  lastProbeFieldPaths?: string[];
+}
+
+/** API Buk.pe — RRHH (empleados, áreas, vacaciones, etc.). Header: auth_token. */
+export interface BukPeIntegrationSettings {
+  /** Ej. https://veterinariagroomers.buk.pe/api/v1/peru */
+  apiBaseUrl?: string;
+  apiToken?: string;
+  enabled?: boolean;
+  lastValidatedAt?: string;
+  lastValidationOk?: boolean;
+  lastValidationMessage?: string;
+  catalogEndpoints?: BukCatalogEndpointConfig[];
 }
 
 export interface AccountingLinkSettings {
@@ -561,6 +588,8 @@ export interface SystemSettings {
   smartCashFlow?: SmartCashFlowSettings;
   /** API Veterinari — URL base y token para integración / reportes. */
   veterinari?: VeterinariIntegrationSettings;
+  /** API Buk.pe (RRHH / nómina): empleados, períodos, etc. */
+  bukPe?: BukPeIntegrationSettings;
   /** Buk Asistencia + estructura organizacional de dotación. */
   asistencia?: import('./asistencia').AsistenciaSettings;
   /**
