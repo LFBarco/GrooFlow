@@ -635,6 +635,82 @@ for (const base of KV_PATH_BASES) {
       return c.json({ error: "Error al obtener asistencia desde Buk." }, 500);
     }
   });
+
+  app.post(`${base}/buk/probe`, async (c) => {
+    const auth = await requireAdminRequest(c, "Solo administradores pueden explorar Buk.");
+    if (auth.response) return auth.response;
+    try {
+      const body = await c.req.json();
+      const baseUrl = sanitizeBukBaseUrl(typeof body?.baseUrl === "string" ? body.baseUrl : "");
+      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      const pathOrUrl =
+        typeof body?.pathOrUrl === "string"
+          ? body.pathOrUrl.trim()
+          : typeof body?.path === "string"
+            ? body.path.trim()
+            : "";
+      let targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
+      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
+      if (!targetUrl && pathOrUrl) {
+        targetUrl = pathOrUrl.startsWith("http")
+          ? pathOrUrl
+          : `${baseUrl.replace(/\/+$/, "")}/${pathOrUrl.replace(/^\/+/, "")}`;
+      }
+      if (!targetUrl || !apiToken) {
+        return c.json({ error: "Faltan pathOrUrl/targetUrl o apiToken." }, 400);
+      }
+      if (!isAllowedBukUrl(targetUrl)) {
+        return c.json({ error: "URL de destino no permitida." }, 400);
+      }
+      const started = Date.now();
+      const res = await fetchBukAsistencia(targetUrl, apiToken);
+      const text = await res.text();
+      let json: Record<string, unknown> | null = null;
+      try {
+        json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+      } catch {
+        json = null;
+      }
+      const records =
+        json && Array.isArray(json.data)
+          ? (json.data as unknown[])
+          : Array.isArray(json)
+            ? json
+            : [];
+      const count =
+        json && typeof json.pagination === "object" && json.pagination !== null
+          ? Number((json.pagination as { count?: number }).count ?? records.length)
+          : records.length;
+      const durationMs = Date.now() - started;
+      if (!res.ok) {
+        return c.json({
+          ok: false,
+          status: res.status,
+          message: bukFailureMessage(res.status, targetUrl, text),
+          triedUrl: targetUrl,
+          durationMs,
+          data: [],
+          sample: [],
+          recordCount: 0,
+        });
+      }
+      return c.json({
+        ok: true,
+        status: res.status,
+        message: count > 0 ? `OK. ${count} registro(s) detectados.` : "OK. Sin arreglo de registros.",
+        triedUrl: targetUrl,
+        durationMs,
+        data: records,
+        sample: records.slice(0, 3),
+        recordCount: count,
+        pagination: json?.pagination ?? null,
+        rawPreview: json,
+      });
+    } catch (error) {
+      console.error("buk/probe error:", error);
+      return c.json({ error: "Error al consultar endpoint Buk." }, 500);
+    }
+  });
 }
 
 for (const base of KV_PATH_BASES) {

@@ -39,6 +39,15 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
       autoRefreshIntervalMinutes: 30,
       autoRefreshWindowStart: '06:00',
       autoRefreshWindowEnd: '22:00',
+      catalogEndpoints: [
+        {
+          id: 'buk-asistencia-empresa',
+          name: 'Asistencia empresa',
+          pathOrUrl: 'asistencia-empresa?page=1&page_size=5',
+          description: 'Marcaciones de personal (módulo Asistencia).',
+          enabled: true,
+        },
+      ],
     },
     requirements: [],
     staff: [],
@@ -56,7 +65,13 @@ export function mergeAsistenciaSettings(
   const spread = { ...base, ...partial };
   return {
     ...spread,
-    buk: { ...base.buk, ...(partial.buk ?? {}) },
+    buk: {
+      ...base.buk,
+      ...(partial.buk ?? {}),
+      catalogEndpoints: Array.isArray(partial.buk?.catalogEndpoints)
+        ? partial.buk.catalogEndpoints
+        : base.buk?.catalogEndpoints ?? [],
+    },
     requirements: Array.isArray(partial.requirements) ? partial.requirements : spread.requirements,
     staff: Array.isArray(partial.staff)
       ? partial.staff.map(normalizeStaffShift)

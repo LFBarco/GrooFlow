@@ -316,6 +316,27 @@ export interface AsistenciaSedeMapping {
   bukRecintoName?: string;
 }
 
+export interface BukApiEndpointConfig {
+  id: string;
+  /** Nombre visible (ej. Asistencia empresa, Empleados). */
+  name: string;
+  /**
+   * Ruta relativa a la base (ej. `asistencia-empresa`) o URL https completa de Ctrlit.
+   * Puede incluir query string (`?page=1&page_size=5`).
+   */
+  pathOrUrl: string;
+  description?: string;
+  notes?: string;
+  enabled?: boolean;
+  lastProbedAt?: string;
+  lastProbeOk?: boolean;
+  lastProbeStatus?: number;
+  lastProbeMessage?: string;
+  lastProbeRecordCount?: number;
+  /** Campos detectados en la última consulta (rutas tipo `data[].rut_trabajador`). */
+  lastProbeFieldPaths?: string[];
+}
+
 export interface BukAsistenciaIntegrationSettings {
   apiBaseUrl?: string;
   apiToken?: string;
@@ -329,6 +350,8 @@ export interface BukAsistenciaIntegrationSettings {
   autoRefreshWindowStart?: string;
   autoRefreshWindowEnd?: string;
   lastAutoRefreshAt?: string;
+  /** Catálogo de endpoints Buk adicionales para explorar datos. */
+  catalogEndpoints?: BukApiEndpointConfig[];
 }
 
 /** Snapshot diario de dotación (persistido localmente). */
