@@ -1,5 +1,4 @@
 import type { SystemSettings, SedeCatalogEntry } from '../types';
-import { SYSTEM_SEDES } from '../types';
 
 /** Resultado al guardar el diálogo de sedes (migrar renombres en datos). */
 export type SedesCatalogSaveResult = {
@@ -7,16 +6,15 @@ export type SedesCatalogSaveResult = {
   renames: Record<string, string>;
 };
 
-function defaultEntries(): SedeCatalogEntry[] {
-  return SYSTEM_SEDES.map((name) => ({ name, enabled: true }));
-}
-
-/** Normaliza legacy `string[]` o entradas incompletas. */
+/**
+ * Normaliza el catálogo de sedes.
+ * Vacío ⇒ [] (nunca inventar sedes; la fuente es Gestión / tenants vía API).
+ */
 export function normalizeSedesCatalog(
   raw: SystemSettings['sedesCatalog'] | undefined | null
 ): SedeCatalogEntry[] {
   if (!Array.isArray(raw) || raw.length === 0) {
-    return defaultEntries();
+    return [];
   }
   const first = raw[0];
   if (typeof first === 'string') {
@@ -26,6 +24,8 @@ export function normalizeSedesCatalog(
     .map((e) => ({
       name: typeof e?.name === 'string' ? e.name.trim() : '',
       enabled: e?.enabled !== false,
+      tenant_id: typeof e?.tenant_id === 'number' ? e.tenant_id : undefined,
+      centro_id: typeof e?.centro_id === 'number' ? e.centro_id : undefined,
     }))
     .filter((e) => e.name.length > 0);
 }

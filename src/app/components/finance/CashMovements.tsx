@@ -71,11 +71,11 @@ export function CashMovements({
   const defaultSede =
     canUseConsolidatedOption && visibleSedes.length > 1
       ? "consolidated"
-      : visibleSedes[0] || "Principal";
+      : visibleSedes[0] || "";
   const [sede, setSede] = useState(defaultSede);
 
   const sedeFilterList = useMemo(() => {
-    const bases = visibleSedes.length > 0 ? visibleSedes : ["Principal"];
+    const bases = visibleSedes.length > 0 ? visibleSedes : [];
     if (canUseConsolidatedOption && bases.length > 1) {
       return [{ value: "consolidated", label: "Consolidado (todas)" }, ...bases.map((s) => ({ value: s, label: s }))];
     }

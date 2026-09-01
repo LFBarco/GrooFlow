@@ -239,7 +239,7 @@ export function PurchaseRequestManager({
      */
     const baseSedes = useMemo(() => {
         if (visibleSedes && visibleSedes.length > 0) return visibleSedes;
-        return ['Principal', 'Norte', 'Sur'];
+        return [];
     }, [visibleSedes]);
 
     const sedeSelectOptions = useMemo(() => {

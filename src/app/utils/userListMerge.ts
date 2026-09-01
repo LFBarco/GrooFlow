@@ -21,15 +21,30 @@ function pickBetterRow(a: User, b: User): User {
 export function dedupeUsersByEmail(users: User[]): User[] {
   const map = new Map<string, User>();
   const withoutEmail: User[] = [];
+  const seenNames = new Set<string>();
+
+  const normalizeName = (name: string) =>
+    name
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/\s+/g, ' ');
+
   for (const u of users) {
     const key = (u.email || '').trim().toLowerCase();
     if (!key) {
+      const nameKey = normalizeName(u.name || '');
+      if (nameKey && seenNames.has(nameKey)) continue;
+      if (nameKey) seenNames.add(nameKey);
       if (!withoutEmail.some((x) => x.id === u.id)) withoutEmail.push(u);
       continue;
     }
     const prev = map.get(key);
     if (!prev) {
       map.set(key, u);
+      const nameKey = normalizeName(u.name || '');
+      if (nameKey) seenNames.add(nameKey);
       continue;
     }
     map.set(key, pickBetterRow(prev, u));

@@ -13,7 +13,7 @@ import {
   isLocalDemoSessionActive,
 } from '../config/demoLogin';
 import { getSuperAdminEmails } from '../config/superAdmins';
-import { initialStructure, initialSystemSettings, mergeSystemSettings } from '../data/initialData';
+import { initialStructure, initialSystemSettings, mergeSystemSettings, mergeConfigStructure } from '../data/initialData';
 import { api } from '../services/api';
 import {
   loadAppUsersFromSql,
@@ -424,8 +424,9 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 )) as ConfigStructure | null | undefined) ?? remoteConfig ?? initialStructure;
             }
             if (finalConfig) {
-              deps.setConfig(finalConfig);
-              deps.configKvLatestRef.current = finalConfig;
+              const mergedConfig = mergeConfigStructure(finalConfig);
+              deps.setConfig(mergedConfig);
+              deps.configKvLatestRef.current = mergedConfig;
             } else {
               deps.configKvLatestRef.current = initialStructure;
             }

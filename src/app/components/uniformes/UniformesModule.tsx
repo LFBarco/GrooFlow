@@ -3,6 +3,7 @@ import { Download, Loader2, Plus, Settings2, Shirt } from 'lucide-react';
 
 import type { SystemSettings, User } from '../../types';
 import type { UniformDeliveryRecord } from '../../types/uniformes';
+import { buildFilterSedeOptions, buildFormSedeOptions } from '../../utils/gestionSedes';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { buildStaffOptions } from '../../utils/accidentesData';
 import { exportUniformesExcel } from '../../utils/uniformesExport';
@@ -57,16 +58,27 @@ export function UniformesModule({
   const kits = settings.kits ?? [];
 
   const sedeOptions = useMemo(() => {
-    const fromRecords = settings.records.map((r) => r.sede);
-    const fromUsers = users.flatMap((u) => u.sedes ?? (u.location ? [u.location] : []));
-    const fromStaff = (asistencia.staff ?? []).map((s) => s.sedeName);
-    const all = [...new Set([...visibleSedes, ...fromRecords, ...fromUsers, ...fromStaff])].filter(Boolean);
-    return all.length > 0 ? all : ['Principal'];
-  }, [visibleSedes, settings.records, users, asistencia]);
+    const extras = [
+      ...settings.records.map((r) => r.sede),
+      ...(asistencia.staff ?? []).map((s) => s.sedeName),
+    ];
+    return buildFilterSedeOptions({ visibleSedes, extra: extras });
+  }, [visibleSedes, settings.records, asistencia]);
+
+  const formSedeOptions = useMemo(
+    () => buildFormSedeOptions(visibleSedes),
+    [visibleSedes]
+  );
 
   const staffOptions = useMemo(
-    () => buildStaffOptions({ users, asistencia, visibleSedes: sedeOptions }),
-    [users, asistencia, sedeOptions]
+    () =>
+      buildStaffOptions({
+        users,
+        asistencia,
+        visibleSedes: formSedeOptions,
+        includeAsistencia: false,
+      }),
+    [users, asistencia, formSedeOptions]
   );
 
   const filteredRecords = useMemo(
@@ -203,7 +215,7 @@ export function UniformesModule({
         onOpenChange={setFormOpen}
         record={editing}
         staffOptions={staffOptions}
-        sedeOptions={sedeOptions}
+        sedeOptions={formSedeOptions}
         kits={kits}
         canEdit={canEdit}
         deliveredBy={deliveredBy}

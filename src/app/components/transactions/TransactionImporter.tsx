@@ -78,7 +78,7 @@ export function TransactionImporter({
   const [previewData, setPreviewData] = useState<Transaction[]>([]);
 
   const sedeOptions = useMemo(
-    () => (sedesCatalog.length > 0 ? sedesCatalog : ['Principal']),
+    () => (sedesCatalog.length > 0 ? sedesCatalog : []),
     [sedesCatalog]
   );
 

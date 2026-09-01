@@ -3,6 +3,7 @@ import { Download, HardHat, Loader2, Plus, Settings2 } from 'lucide-react';
 
 import type { SystemSettings, User } from '../../types';
 import type { WorkplaceAccidentRecord, AccidentWorkflowStatus } from '../../types/accidentes';
+import { buildFilterSedeOptions, buildFormSedeOptions } from '../../utils/gestionSedes';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { exportAccidentesExcel } from '../../utils/accidentesExport';
 import {
@@ -54,16 +55,21 @@ export function AccidentesModule({
   const [detailRecord, setDetailRecord] = useState<WorkplaceAccidentRecord | null>(null);
 
   const sedeOptions = useMemo(() => {
-    const fromRecords = settings.records.map((r) => r.sede);
-    const fromUsers = users.flatMap((u) => u.sedes ?? (u.location ? [u.location] : []));
-    const fromStaff = (asistencia.staff ?? []).map((s) => s.sedeName);
-    const all = [...new Set([...visibleSedes, ...fromRecords, ...fromUsers, ...fromStaff])].filter(Boolean);
-    return all.length > 0 ? all : ['Principal'];
-  }, [visibleSedes, settings.records, users, asistencia]);
+    const extras = [
+      ...settings.records.map((r) => r.sede),
+      ...(asistencia.staff ?? []).map((s) => s.sedeName),
+    ];
+    return buildFilterSedeOptions({ visibleSedes, extra: extras });
+  }, [visibleSedes, settings.records, asistencia]);
+
+  const formSedeOptions = useMemo(
+    () => buildFormSedeOptions(visibleSedes),
+    [visibleSedes]
+  );
 
   const staffOptions = useMemo(
-    () => buildStaffOptions({ users, asistencia, visibleSedes: sedeOptions }),
-    [users, asistencia, sedeOptions]
+    () => buildStaffOptions({ users, asistencia, visibleSedes: formSedeOptions }),
+    [users, asistencia, formSedeOptions]
   );
 
   const filteredRecords = useMemo(
@@ -295,7 +301,7 @@ export function AccidentesModule({
         onOpenChange={setFormOpen}
         record={editing}
         staffOptions={staffOptions}
-        sedeOptions={sedeOptions}
+        sedeOptions={formSedeOptions}
         canEdit={canEdit}
         reportedBy={reportedBy}
         onSave={handleSave}

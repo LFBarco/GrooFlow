@@ -1,8 +1,8 @@
 import { AppNavButton } from './AppNavigationContext';
 import {
-  menuItemColorClass,
-  menuItemIcon,
+  menuItemFaIcon,
   menuRouteToView,
+  resolveMenuIconColorClass,
   type GrooflowNavMenuSection,
 } from '../../utils/grooflowMenuNav';
 
@@ -29,14 +29,13 @@ export function GrooFlowSidebarNav({ sections, showSectionLabels = true }: Props
           {block.items.map((item) => {
             const view = menuRouteToView(item.route);
             if (!view) return null;
-            const Icon = menuItemIcon(item.modulo_key);
             return (
               <AppNavButton
                 key={`${block.section}-${item.id ?? item.route}-${item.modulo_key}`}
                 targetView={view}
-                icon={Icon}
+                iconFa={menuItemFaIcon(item.icono)}
                 label={item.label}
-                iconColorClass={menuItemColorClass(item.modulo_key)}
+                iconColorClass={resolveMenuIconColorClass(item.icon_color)}
                 requiredModule={item.modulo_key}
               />
             );

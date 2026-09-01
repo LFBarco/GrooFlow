@@ -173,7 +173,7 @@ export function PettyCashAuditConsole({
         if (detail?.id === row.id) setDetail({ ...row, status: 'rejected', auditComment: note.trim() || row.auditComment });
     };
 
-    const sedeOptions = visibleSedes.length > 0 ? visibleSedes : ['Principal'];
+    const sedeOptions = visibleSedes.length > 0 ? visibleSedes : [];
 
     return (
         <div className="space-y-4 animate-in fade-in duration-300">

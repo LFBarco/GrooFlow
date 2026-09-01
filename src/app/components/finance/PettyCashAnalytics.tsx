@@ -30,8 +30,7 @@ export function PettyCashAnalytics({ transactions, visibleSedes }: PettyCashAnal
     const [selectedLocation, setSelectedLocation] = useState<string>('all');
 
     const locationOptions = useMemo(() => {
-        if (visibleSedes === undefined) return ['Principal', 'Norte', 'Sur'];
-        if (visibleSedes.length === 0) return [];
+        if (!visibleSedes || visibleSedes.length === 0) return [];
         return visibleSedes;
     }, [visibleSedes]);
 

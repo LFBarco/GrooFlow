@@ -56,7 +56,7 @@ export function filterPettyCashCustodianUsersForViewer(
     return [self];
   }
 
-  const catalog = viewerVisibleSedes.length > 0 ? viewerVisibleSedes : ['Principal'];
+  const catalog = viewerVisibleSedes.length > 0 ? viewerVisibleSedes : [];
 
   return allUsers.filter((u) => {
     const hasFund = userHasPettyCashFund(u);

@@ -1,3 +1,4 @@
+import { buildFormSedeOptions } from '../../utils/gestionSedes';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarRange,
@@ -136,13 +137,7 @@ export function TurnosModule({
     setBukRecords(cached?.records ?? []);
   }, [bukEnabled, bukBaseUrl, bukToken]);
 
-  const sedeOptions = useMemo(() => {
-    const fromStaff = (asistencia.staff ?? []).map((s) => s.sedeName);
-    const fromRoster = settings.roster.map((r) => r.homeSede);
-    const fromUsers = users.flatMap((u) => u.sedes ?? (u.location ? [u.location] : []));
-    const all = [...new Set([...visibleSedes, ...fromStaff, ...fromRoster, ...fromUsers])].filter(Boolean);
-    return all.length > 0 ? all : ['Principal'];
-  }, [visibleSedes, asistencia, settings.roster, users]);
+  const sedeOptions = useMemo(() => buildFormSedeOptions(visibleSedes), [visibleSedes]);
 
   const weekDays = useMemo(() => daysInWeek(anchor), [anchor]);
   const dateKey = toDateKey(anchor);

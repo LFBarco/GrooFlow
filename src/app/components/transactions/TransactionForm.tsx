@@ -45,7 +45,7 @@ export function TransactionForm({
   const selectedSubcategory = watch("subcategory");
   const selectedAccountId = watch("account");
   const sedeOptions = useMemo(
-    () => (sedesCatalog.length > 0 ? sedesCatalog : ["Principal"]),
+    () => (sedesCatalog.length > 0 ? sedesCatalog : []),
     [sedesCatalog]
   );
   const primaryAccount = useMemo(() => getPrimaryBankAccount(bankAccounts), [bankAccounts]);

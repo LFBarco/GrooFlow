@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { getSuperAdminEmails } from '../../config/superAdmins';
 import { isStressTestEnabled } from '../../config/destructiveDebug';
 import { ConfigStructure, TransactionType, ConceptDefinition, SubcategoryDefinition, Flexibility, getSubcategories, subcategoryId } from '../../data/initialData';
@@ -120,6 +120,26 @@ export function ConfigPanel({
   const getRoleLabel = (roleId: string) =>
     roleNameById.get(roleId) || roleId.replace(/_/g, ' ');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(Object.keys(config)[0]);
+  const [categoryListFilter, setCategoryListFilter] = useState<'all' | TransactionType>('all');
+
+  const visibleCategories = useMemo(
+    () =>
+      Object.entries(config).filter(
+        ([, def]) => categoryListFilter === 'all' || def.type === categoryListFilter,
+      ),
+    [config, categoryListFilter],
+  );
+
+  useEffect(() => {
+    if (!selectedCategory) {
+      if (visibleCategories[0]?.[0]) setSelectedCategory(visibleCategories[0][0]);
+      return;
+    }
+    const def = config[selectedCategory];
+    if (!def || (categoryListFilter !== 'all' && def.type !== categoryListFilter)) {
+      setSelectedCategory(visibleCategories[0]?.[0] ?? null);
+    }
+  }, [categoryListFilter, config, selectedCategory, visibleCategories]);
 
   const [newCommercialCategory, setNewCommercialCategory] = useState('');
   const [newCommercialArea, setNewCommercialArea] = useState('');
@@ -151,12 +171,11 @@ export function ConfigPanel({
   const [editingSubcategoryId, setEditingSubcategoryId] = useState<string | null>(null);
   const [editSubcategoryName, setEditSubcategoryName] = useState('');
 
-  /** Ensure category has subcategories array (convert from legacy concepts if needed). */
+  /** Subcategorías visibles (incluye conceptos legacy si subcategories quedó vacía en KV). */
   const ensureSubcategories = (catName: string): SubcategoryDefinition[] => {
     const def = config[catName];
     if (!def) return [];
-    if (def.subcategories?.length) return def.subcategories;
-    return [{ id: 'general', name: catName || 'General', concepts: def.concepts ?? [] }];
+    return getSubcategories(def, catName);
   };
 
   const writeSubcategories = (catName: string, subcategories: SubcategoryDefinition[]) => {
@@ -842,10 +861,36 @@ export function ConfigPanel({
                       </Button>
                     </div>
                   </div>
+
+                  <div className="flex gap-1 p-1 rounded-lg bg-muted/40 border border-border">
+                    {([
+                      ['all', 'Todos'],
+                      ['income', 'Ingresos'],
+                      ['expense', 'Egresos'],
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+                          categoryListFilter === value
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        }`}
+                        onClick={() => setCategoryListFilter(value)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   
                   <ScrollArea className="flex-1 pr-2">
                     <div className="space-y-1">
-                      {Object.entries(config).map(([cat, def]) => (
+                      {visibleCategories.length === 0 ? (
+                        <p className="px-2 py-4 text-sm text-muted-foreground text-center">
+                          No hay categorías de {categoryListFilter === 'income' ? 'ingreso' : 'egreso'}.
+                        </p>
+                      ) : null}
+                      {visibleCategories.map(([cat, def]) => (
                         <div 
                           key={cat}
                           className={`flex items-center justify-between p-2 rounded-md cursor-pointer transition-colors border border-transparent ${
@@ -921,7 +966,7 @@ export function ConfigPanel({
                         Configura el comportamiento y fechas de tus conceptos
                       </CardDescription>
                     </div>
-                    {selectedCategory && (
+                    {selectedCategory && config[selectedCategory] && (
                       <div className={`px-3 py-1 rounded-full text-xs font-medium border ${
                         config[selectedCategory].type === 'income' 
                           ? 'bg-green-500/10 text-green-500 border-green-500/20' 
@@ -933,7 +978,7 @@ export function ConfigPanel({
                   </div>
                 </CardHeader>
                 
-                {selectedCategory && (() => {
+                {selectedCategory && config[selectedCategory] && (() => {
                   const subs = ensureSubcategories(selectedCategory);
                   return (
                   <CardContent className="flex-1 flex flex-col gap-4 pt-6 overflow-hidden">

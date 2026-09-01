@@ -78,6 +78,7 @@ interface ProfessionalFeesModuleProps {
   onSendToTreasury?: (receipts: FeeReceipt[]) => void;
   receipts?: FeeReceipt[];
   onUpdateReceipts?: (receipts: FeeReceipt[]) => void;
+  visibleSedes?: string[];
 }
 
 export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({ 
@@ -85,7 +86,8 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
   onUpdateProviders,
   onSendToTreasury,
   receipts: externalReceipts,
-  onUpdateReceipts
+  onUpdateReceipts,
+  visibleSedes = [],
 }) => {
   const [activeTab, setActiveTab] = useState<'professionals' | 'detail' | 'analytics'>('detail');
   const [searchTerm, setSearchTerm] = useState('');
@@ -135,6 +137,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
   const [hidePaid, setHidePaid] = useState(false);
 
   // Single Receipt Form State
+  const defaultFeeSede = visibleSedes[0] ?? '';
   const [singleReceiptForm, setSingleReceiptForm] = useState({
     professionalId: '',
     receiptNumber: '',
@@ -142,8 +145,17 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
     issueDate: format(new Date(), 'yyyy-MM-dd'),
     dueDate: format(new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
     description: '',
-    location: 'Principal'
+    location: defaultFeeSede,
   });
+
+  React.useEffect(() => {
+    if (!visibleSedes.length) return;
+    setSingleReceiptForm((prev) =>
+      prev.location && visibleSedes.includes(prev.location)
+        ? prev
+        : { ...prev, location: visibleSedes[0] },
+    );
+  }, [visibleSedes]);
 
   const handleRegisterSingleReceipt = () => {
     if (!singleReceiptForm.professionalId || !singleReceiptForm.receiptNumber || !singleReceiptForm.amount) {
@@ -177,7 +189,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
       issueDate: format(new Date(), 'yyyy-MM-dd'),
       dueDate: format(new Date(Date.now() + 15 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'),
       description: '',
-      location: 'Principal'
+      location: visibleSedes[0] ?? '',
     });
   };
 
@@ -592,7 +604,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
             amount: amount || 0,
             description: row['Descripción'] || 'Importación Masiva',
             status: 'pending',
-            location: row['Sede'] || 'Principal'
+            location: row['Sede'] || visibleSedes[0] || ''
           });
           
           processedCount++;
@@ -741,10 +753,13 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                             value={singleReceiptForm.location}
                             onChange={(e) => setSingleReceiptForm({...singleReceiptForm, location: e.target.value})}
                          >
-                            <option value="Principal">Principal</option>
-                            <option value="Norte">Norte</option>
-                            <option value="Sur">Sur</option>
-                            <option value="Este">Este</option>
+                            {visibleSedes.length === 0 ? (
+                              <option value="">Sin sedes en catálogo</option>
+                            ) : (
+                              visibleSedes.map((sede) => (
+                                <option key={sede} value={sede}>{sede}</option>
+                              ))
+                            )}
                          </select>
                        </div>
                        <div className="grid gap-2">

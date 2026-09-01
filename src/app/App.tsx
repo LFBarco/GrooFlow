@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, useTransition, type CSSProperties } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE } from "./routes";
+import { pathToView, viewToPath, type ViewType, VIEW_REQUIRED_MODULE, DEFAULT_VIEW } from "./routes";
 import { LoginPage } from "./pages/LoginPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
+import { AccessDeniedPage } from "./pages/AccessDeniedPage";
 import { PasswordRecoveryPage, isPasswordRecoveryUrl } from "./pages/PasswordRecoveryPage";
 import { Transaction, Category, TransactionType, InvoiceDraft, Provider, Product, PurchaseRequest, RequestStatus, User, SystemSettings, PettyCashTransaction, PettyCashWeekClosure, PettyCashWeekPreClosure, PettyCashFundDelivery, SystemAlert, AlertThresholds, ChartOfAccountEntry } from "./types";
 import {
@@ -13,7 +15,7 @@ import {
 } from "./utils/sedesCatalog";
 import { getBankAccounts } from "./utils/bankAccounts";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
-import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings, getSubcategories } from "./data/initialData";
+import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings, getSubcategories, mergeConfigStructure } from "./data/initialData";
 import {
   DEMO_INITIAL_INVOICES,
   DEMO_INITIAL_PRODUCTS,
@@ -26,7 +28,7 @@ import {
   GUEST_USER,
   type TransactionDatePreset,
 } from "./constants/appSession";
-import { AppNavButton, AppNavigationContext } from "./components/layout/AppNavigationContext";
+import { AppNavigationContext } from "./components/layout/AppNavigationContext";
 import type { FeeReceiptGlobal } from "./utils/buildSqlRetryRunners";
 import type { BankMovement, Subscription as TreasurySubscription } from "./components/treasury/types";
 import {
@@ -294,6 +296,7 @@ export default function App() {
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
   const [menuPermissions, setMenuPermissions] = useState<MenuPermissionsMap | null>(null);
   const [menuSections, setMenuSections] = useState<GrooflowAuthMenuSection[] | null>(null);
+  const [menuLoadError, setMenuLoadError] = useState('');
   const [currentUser, setCurrentUser] = useState<User>(() => readCachedAppUser() ?? GUEST_USER);
   const [transactions, setTransactions] = useState<Transaction[]>(EMPTY_INITIAL_TRANSACTIONS);
   const [invoices, setInvoices] = useState<InvoiceDraft[]>(() =>
@@ -330,10 +333,11 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const urlView = pathToView(location.pathname);
-  const [view, setRenderedView] = useState<ViewType>(urlView);
+  const routeNotFound = urlView === null;
+  const [view, setRenderedView] = useState<ViewType>(urlView ?? DEFAULT_VIEW);
   const [, startViewTransition] = useTransition();
   useEffect(() => {
-    if (urlView === view) return;
+    if (urlView === null || urlView === view) return;
     startViewTransition(() => {
       setRenderedView(urlView);
     });
@@ -1217,7 +1221,7 @@ export default function App() {
       case 'settings:config': {
         if (PRODUCTION_USE_SQL) return;
         if (!configHydratedFromKvRef.current) return;
-        const next = value as ConfigStructure;
+        const next = mergeConfigStructure(value as ConfigStructure);
         if (kvPayloadsEqual(configKvLatestRef.current, next)) return;
         configKvLatestRef.current = next;
         configKvCooldownUntilRef.current = Date.now() + CONFIG_KV_COOLDOWN_MS;
@@ -1815,18 +1819,19 @@ export default function App() {
   const applyConfigRemoteRef = useRef<((items: ConfigStructure) => void) | null>(null);
   applyConfigRemoteRef.current = (items) => {
     if (!isDataLoaded || signingOutRef.current || !configHydratedFromKvRef.current) return;
+    const merged = mergeConfigStructure(items);
     if (
       !shouldApplyObjectRemoteSnapshot(
         configKvLatestRef.current,
-        items,
+        merged,
         configKvCooldownUntilRef.current
       )
     ) {
       return;
     }
-    configKvLatestRef.current = items;
+    configKvLatestRef.current = merged;
     configKvCooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
-    setConfig(items);
+    setConfig(merged);
   };
 
   const applySystemSettingsRemoteRef = useRef<((items: SystemSettings) => void) | null>(null);
@@ -3028,14 +3033,17 @@ export default function App() {
 
   const reloadMenuPayload = useCallback(() => {
     if (!isAuthenticated || APP_BACKEND !== 'rest') return;
+    setMenuLoadError('');
     void fetchAuthMenuPayload()
       .then((payload) => {
         setMenuPermissions(payload.menu_permissions);
         setMenuSections(payload.menu_sections);
+        setMenuLoadError('');
       })
-      .catch(() => {
+      .catch((e) => {
         setMenuPermissions(null);
         setMenuSections(null);
+        setMenuLoadError(e instanceof Error ? e.message : 'No se pudo cargar el menú');
       });
   }, [isAuthenticated]);
 
@@ -3057,7 +3065,9 @@ export default function App() {
   const hasPermission = useCallback(
     (moduleName: string): boolean => {
       if (isSuperAdmin) return true;
-      if (menuPermissions && Object.keys(menuPermissions).length > 0) {
+      // REST: solo permisos del menú en BD (/auth/me). Sin mapa de roles local.
+      if (APP_BACKEND === 'rest') {
+        if (!menuPermissions) return false;
         return roleHasModuleAccess(menuPermissions, moduleName);
       }
       return roleRecordHasModuleAccess(userRole, moduleName);
@@ -3065,53 +3075,31 @@ export default function App() {
     [isSuperAdmin, menuPermissions, userRole]
   );
 
-  // Enlace / URL: no se puede abrir un módulo sin permiso (antes solo se ocultaba el botón)
+  // /usuarios no es vista propia: redirige a configuración o dashboard
   useEffect(() => {
     if (!isAuthenticated || !isDataLoaded) return;
-    if (urlView === 'users') {
-      navigate(hasPermission('Configuración') ? viewToPath('config') : viewToPath('dashboard'), { replace: true });
-      return;
-    }
-    if (isSuperAdmin) return;
-    const mod = VIEW_REQUIRED_MODULE[urlView];
-    if (!mod) return;
-    if (hasPermission(mod)) return;
-    const targetPath = getFirstAllowedViewPath(userRole, isSuperAdmin, menuPermissions ?? undefined);
-    if (targetPath === viewToPath(urlView)) {
-      return;
-    }
-    navigate(targetPath, { replace: true });
-    toast.error('No tienes permiso para acceder a esta sección. Se redirigió a un módulo permitido.');
-  }, [isAuthenticated, isDataLoaded, isSuperAdmin, urlView, userRole, menuPermissions, navigate, hasPermission]);
+    if (urlView !== 'users') return;
+    navigate(hasPermission('Configuración') ? viewToPath('config') : viewToPath('dashboard'), { replace: true });
+  }, [isAuthenticated, isDataLoaded, urlView, navigate, hasPermission]);
 
-  const useDbMenuNav = APP_BACKEND === 'rest' && menuSections !== null;
+  const accessDeniedModule =
+    !routeNotFound &&
+    urlView &&
+    isAuthenticated &&
+    isDataLoaded &&
+    !isSuperAdmin &&
+    !(APP_BACKEND === 'rest' && menuPermissions === null) &&
+    (() => {
+      const mod = VIEW_REQUIRED_MODULE[urlView];
+      if (!mod) return null;
+      return hasPermission(mod) ? null : mod;
+    })();
 
-  const FINANCE_NAV_MODULES = [
-    "Finanzas",
-    "Tesorería",
-    "Transacciones",
-    "Flujo de Caja",
-    "Estado de Resultados",
-    "Honorarios",
-    "Cuentas por Pagar",
-    "Caja Chica",
-    "Reportes",
-  ] as const;
-  const canSeeFinanzasNavGroup = FINANCE_NAV_MODULES.some((m) => hasPermission(m));
-
-  const canSeeGestionNavGroup =
-    hasPermission("Proveedores") ||
-    hasPermission("Contabilidad") ||
-    hasPermission("Compras") ||
-    hasPermission("Productos") ||
-    hasPermission("Auditoría") ||
-    hasPermission("Gestión Vehicular") ||
-    hasPermission("Gestión de Inventario") ||
-    hasPermission("Asistencia") ||
-    hasPermission("Turnos") ||
-    hasPermission("Accidentes de Trabajo") ||
-    hasPermission("Entrega de Uniformes") ||
-    hasPermission("Conciliación");
+  const goHomeFromRouteGuard = useCallback(() => {
+    const target = getFirstAllowedViewPath(userRole, isSuperAdmin, menuPermissions ?? undefined);
+    navigate(target);
+    setMobileMenuOpen(false);
+  }, [userRole, isSuperAdmin, menuPermissions, navigate]);
 
   const handleSelectView = useCallback(
     (targetView: ViewType) => {
@@ -3504,11 +3492,9 @@ export default function App() {
     );
   }
 
-  const NavButton = AppNavButton;
-
   const isDarkTheme = theme === 'dark';
   const surfaces = getModuleSurfaces(isDarkTheme);
-  const moduleIdentity = getModuleIdentity(view);
+  const moduleIdentity = getModuleIdentity(urlView ?? view);
 
   return (
     <AppNavigationContext.Provider value={appNavigationValue}>
@@ -3530,7 +3516,7 @@ export default function App() {
           <div className="bg-circuit fixed inset-0 z-0 pointer-events-none" style={{ opacity: 0.5 }} />
         </>
       )}
-      <AmbientBackground moduleId={view} isDark={isDarkTheme} />
+      <AmbientBackground moduleId={urlView ?? view} isDark={isDarkTheme} />
 
       {/* Sidebar — escritorio / tablet ancha */}
       <div 
@@ -3575,67 +3561,35 @@ export default function App() {
             )}
           </div>
         </div>
-        
-        {/* Navigation Content */}
         <nav className="flex-1 overflow-y-auto py-2.5 space-y-0.5 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-thumb]:bg-white/5 [&::-webkit-scrollbar-track]:bg-transparent">
-          {useDbMenuNav ? (
-            <GrooFlowSidebarNav sections={menuSections ?? []} showSectionLabels={!isSidebarCollapsed} />
+          {menuSections === null ? (
+            <div className="px-3 py-4 text-[12px]" style={{ color: 'var(--gf-sidebar-section)' }}>
+              {menuLoadError ? (
+                <div className="space-y-2">
+                  <p className="text-rose-400">{menuLoadError}</p>
+                  <button
+                    type="button"
+                    className="underline text-cyan-400"
+                    onClick={() => reloadMenuPayload()}
+                  >
+                    Reintentar
+                  </button>
+                </div>
+              ) : APP_BACKEND !== 'rest' ? (
+                <p>El menú solo se carga desde la API (BD).</p>
+              ) : (
+                <p>
+                  <i className="fa-solid fa-spinner fa-spin mr-2" aria-hidden />
+                  Cargando menú…
+                </p>
+              )}
+            </div>
+          ) : menuSections.length === 0 ? (
+            <div className="px-3 py-4 text-[12px]" style={{ color: 'var(--gf-sidebar-section)' }}>
+              Sin opciones de menú asignadas en BD.
+            </div>
           ) : (
-            <>
-          {!isSidebarCollapsed && (
-            <div className="px-3 pb-1 pt-0.5">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Principal</span>
-            </div>
-          )}
-           <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Dashboard" />
-           <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Alertas" />
-           <NavButton targetView="analytics" icon={Brain} label="Analítica" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Analítica" />
-           
-           {canSeeFinanzasNavGroup && !isSidebarCollapsed && (
-            <div className="px-3 pb-1 pt-2.5">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Finanzas</span>
-            </div>
-          )}
-           <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Tesorería" />
-           <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Transacciones" />
-           <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Flujo de Caja" />
-           <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400 group-hover/btn:text-pink-300" requiredModule="Estado de Resultados" />
-           <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400 group-hover/btn:text-amber-300" requiredModule="Reportes" />
-           <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400 group-hover/btn:text-teal-300" requiredModule="Caja Chica" />
-           <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Honorarios" />
-           
-           {canSeeGestionNavGroup && !isSidebarCollapsed && (
-            <div className="px-3 pb-1 pt-2.5">
-              <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Gestión</span>
-            </div>
-          )}
-           <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Proveedores" />
-           <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Contabilidad" />
-           <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Gestión Vehicular" />
-           <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400 group-hover/btn:text-sky-300" requiredModule="Gestión de Inventario" />
-           <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Asistencia" />
-           <NavButton targetView="turnos" icon={CalendarRange} label="Turnos" iconColorClass="text-violet-400 group-hover/btn:text-violet-300" requiredModule="Turnos" />
-           <NavButton targetView="accidentes" icon={HardHat} label="Accidentes SST" iconColorClass="text-rose-400 group-hover/btn:text-rose-300" requiredModule="Accidentes de Trabajo" />
-           <NavButton targetView="uniformes" icon={Shirt} label="Entrega Uniformes" iconColorClass="text-indigo-400 group-hover/btn:text-indigo-300" requiredModule="Entrega de Uniformes" />
-           <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400 group-hover/btn:text-fuchsia-300" requiredModule="Productos" />
-           <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400 group-hover/btn:text-purple-300" requiredModule="Compras" />
-           <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400 group-hover/btn:text-orange-300" requiredModule="Auditoría" />
-           <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Conciliación" />
-           
-           {(hasPermission('Configuración') || canViewAuditLogs) && (
-           <div className="mt-2 pt-2 space-y-0.5" style={{ borderTop: '1px solid var(--gf-sidebar-divider)' }}>
-             {hasPermission('Configuración') && (
-               <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400 group-hover/btn:text-slate-300" requiredModule="Configuración" />
-             )}
-             {canViewAuditLogs && hasPermission('Admin Menú GrooFlow') && (
-               <NavButton targetView="menuConfig" icon={ListTree} label="Configuración de menú" iconColorClass="text-cyan-400 group-hover/btn:text-cyan-300" requiredModule="Admin Menú GrooFlow" />
-             )}
-             {canViewAuditLogs && hasPermission('Asignación Menú GrooFlow') && (
-               <NavButton targetView="menuAssignment" icon={ShieldCheck} label="Asignación de menú" iconColorClass="text-emerald-400 group-hover/btn:text-emerald-300" requiredModule="Asignación Menú GrooFlow" />
-             )}
-           </div>
-           )}
-            </>
+            <GrooFlowSidebarNav sections={menuSections} showSectionLabels={!isSidebarCollapsed} />
           )}
         </nav>
         
@@ -3736,54 +3690,29 @@ export default function App() {
                   </button>
                 </div>
                 <AppNavigationContext.Provider value={appNavigationMobileValue}>
-                <nav className="flex-1 overflow-y-auto px-1 py-3 space-y-0.5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-                    {useDbMenuNav ? (
-                      <GrooFlowSidebarNav sections={menuSections ?? []} />
+                                <nav className="flex-1 overflow-y-auto px-1 py-3 space-y-0.5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                    {menuSections === null ? (
+                      <div className="px-3 py-4 text-[12px]" style={{ color: 'var(--gf-sidebar-section)' }}>
+                        {menuLoadError ? (
+                          <div className="space-y-2">
+                            <p className="text-rose-400">{menuLoadError}</p>
+                            <button type="button" className="underline text-cyan-400" onClick={() => reloadMenuPayload()}>
+                              Reintentar
+                            </button>
+                          </div>
+                        ) : (
+                          <p>
+                            <i className="fa-solid fa-spinner fa-spin mr-2" aria-hidden />
+                            Cargando menú…
+                          </p>
+                        )}
+                      </div>
+                    ) : menuSections.length === 0 ? (
+                      <div className="px-3 py-4 text-[12px]" style={{ color: 'var(--gf-sidebar-section)' }}>
+                        Sin opciones de menú asignadas en BD.
+                      </div>
                     ) : (
-                      <>
-                    <div className="px-3 pb-1 pt-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Principal</span>
-                    </div>
-                    <NavButton targetView="dashboard" icon={LayoutDashboard} label="Dashboard" iconColorClass="text-sky-400" requiredModule="Dashboard" />
-                    <NavButton targetView="alerts" icon={ShieldAlert} label="Alertas" iconColorClass="text-rose-400" requiredModule="Alertas" />
-                    <NavButton targetView="analytics" icon={Brain} label="Analítica" iconColorClass="text-violet-400" requiredModule="Analítica" />
-                    <div className="px-3 pb-1 pt-3">
-                      <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Finanzas</span>
-                    </div>
-                    <NavButton targetView="treasury" icon={Landmark} label="Tesorería" iconColorClass="text-amber-400" requiredModule="Tesorería" />
-                    <NavButton targetView="transactions" icon={Wallet} label="Transacciones" iconColorClass="text-emerald-400" requiredModule="Transacciones" />
-                    <NavButton targetView="cashflow" icon={CalendarDays} label="Flujo de Caja" iconColorClass="text-cyan-400" requiredModule="Flujo de Caja" />
-                    <NavButton targetView="pnl" icon={TrendingUp} label="Estado de Resultados" iconColorClass="text-pink-400" requiredModule="Estado de Resultados" />
-                    <NavButton targetView="reports" icon={FileText} label="Reportes" iconColorClass="text-amber-400" requiredModule="Reportes" />
-                    <NavButton targetView="pettycash" icon={Coins} label="Caja Chica" iconColorClass="text-teal-400" requiredModule="Caja Chica" />
-                    <NavButton targetView="fees" icon={Stethoscope} label="Honorarios" iconColorClass="text-violet-400" requiredModule="Honorarios" />
-                    <div className="px-3 pb-1 pt-3">
-                      <span className="text-[9px] font-bold uppercase tracking-[0.22em]" style={{ color: 'var(--gf-sidebar-section)' }}>Gestión</span>
-                    </div>
-                    <NavButton targetView="providers" icon={Users} label="Proveedores" iconColorClass="text-indigo-400" requiredModule="Proveedores" />
-                    <NavButton targetView="accounting" icon={BookOpen} label="Contabilidad" iconColorClass="text-sky-400" requiredModule="Contabilidad" />
-                    <NavButton targetView="fleet" icon={Truck} label="Flota Clínica" iconColorClass="text-cyan-400" requiredModule="Gestión Vehicular" />
-                    <NavButton targetView="inventory" icon={Package} label="Inventario Equipos" iconColorClass="text-sky-400" requiredModule="Gestión de Inventario" />
-                    <NavButton targetView="asistencia" icon={UserCheck} label="Asistencia" iconColorClass="text-indigo-400" requiredModule="Asistencia" />
-                    <NavButton targetView="turnos" icon={CalendarRange} label="Turnos" iconColorClass="text-violet-400" requiredModule="Turnos" />
-                    <NavButton targetView="accidentes" icon={HardHat} label="Accidentes SST" iconColorClass="text-rose-400" requiredModule="Accidentes de Trabajo" />
-                    <NavButton targetView="uniformes" icon={Shirt} label="Entrega Uniformes" iconColorClass="text-indigo-400" requiredModule="Entrega de Uniformes" />
-                    <NavButton targetView="products" icon={Package} label="Productos" iconColorClass="text-fuchsia-400" requiredModule="Productos" />
-                    <NavButton targetView="requests" icon={ShoppingCart} label="Solicitudes" iconColorClass="text-purple-400" requiredModule="Compras" />
-                    <NavButton targetView="audit" icon={ShieldAlert} label="Auditoría" iconColorClass="text-orange-400" requiredModule="Auditoría" />
-                    <NavButton targetView="reconciliation" icon={GitCompare} label="Conciliación" iconColorClass="text-emerald-400" requiredModule="Conciliación" />
-                    <div className="pt-3 mt-2 space-y-0.5" style={{ borderTop: '1px solid var(--gf-sidebar-divider)' }}>
-                        {hasPermission('Configuración') && (
-                          <NavButton targetView="config" icon={Settings} label="Configuración" iconColorClass="text-slate-400" requiredModule="Configuración" />
-                        )}
-                        {canViewAuditLogs && hasPermission('Admin Menú GrooFlow') && (
-                          <NavButton targetView="menuConfig" icon={ListTree} label="Configuración de menú" iconColorClass="text-cyan-400" requiredModule="Admin Menú GrooFlow" />
-                        )}
-                        {canViewAuditLogs && hasPermission('Asignación Menú GrooFlow') && (
-                          <NavButton targetView="menuAssignment" icon={ShieldCheck} label="Asignación de menú" iconColorClass="text-emerald-400" requiredModule="Asignación Menú GrooFlow" />
-                        )}
-                    </div>
-                      </>
+                      <GrooFlowSidebarNav sections={menuSections} />
                     )}
                 </nav>
                 </AppNavigationContext.Provider>
@@ -3795,7 +3724,17 @@ export default function App() {
       <main className={`min-h-dvh relative z-10 min-w-0 ${isSidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[256px]'}`}
         style={{ transition: 'padding-left 180ms cubic-bezier(0.2, 0, 0, 1)' }}
       >
-        <div className={`w-full min-w-0 ${view !== 'treasury' ? 'px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-4 sm:py-6 lg:py-8' : ''}`}>
+        <div className={`w-full min-w-0 ${(!routeNotFound && !accessDeniedModule && view === 'treasury') ? '' : 'px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-4 sm:py-6 lg:py-8'}`}>
+          {routeNotFound ? (
+            <NotFoundPage path={location.pathname} onGoHome={goHomeFromRouteGuard} />
+          ) : accessDeniedModule ? (
+            <AccessDeniedPage
+              moduleLabel={accessDeniedModule}
+              path={location.pathname}
+              onGoHome={goHomeFromRouteGuard}
+            />
+          ) : (
+          <>
           {/* Header fuera de Suspense: no desaparece al cambiar de módulo */}
           {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products'].includes(view) && (
             <ModuleHeader
@@ -3932,6 +3871,7 @@ export default function App() {
                 onUpdateProviders={handleUpdateProviders}
                 receipts={feeReceipts as any[]}
                 onUpdateReceipts={(receipts) => handleFeeReceiptsUpdate(receipts as FeeReceiptGlobal[])}
+                visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                 onSendToTreasury={(receipts) => {
                   setFeeReceipts((prev) => {
                     const existingIds = new Set(prev.map((r) => r.id));
@@ -4507,13 +4447,17 @@ export default function App() {
               open={isProfileOpen} 
               onOpenChange={setIsProfileOpen} 
               onLogout={handleLogout}
-              onUpdateUser={(updatedUser) => {
-                setUsers((prev) => {
-                  const next = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
-                  void persistUsersToCloud(next);
-                  return next;
-                });
-                setCurrentUser(updatedUser);
+              onProfileRefresh={(fresh) => {
+                setCurrentUser((prev) => ({
+                  ...prev,
+                  ...fresh,
+                  theme: prev.theme ?? fresh.theme,
+                }));
+                setUsers((prev) =>
+                  prev.map((u) =>
+                    u.id === fresh.id ? { ...u, ...fresh, theme: u.theme ?? fresh.theme } : u,
+                  ),
+                );
               }}
             />
           </Suspense>
@@ -4565,6 +4509,8 @@ export default function App() {
             </DialogContent>
           </Dialog>
         </Suspense>
+          </>
+          )}
         </div>
       </main>
       <Toaster />

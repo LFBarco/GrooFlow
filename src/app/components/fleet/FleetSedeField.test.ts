@@ -3,19 +3,29 @@ import { buildFleetSedeOptions } from './FleetSedeField';
 
 describe('buildFleetSedeOptions', () => {
   it('usa sedes visibles del sistema', () => {
-    const { baseSedes, resolvedDefault } = buildFleetSedeOptions(['Norte', 'Sur'], 'Norte', 'Norte');
-    expect(baseSedes).toEqual(['Norte', 'Sur']);
-    expect(resolvedDefault).toBe('Norte');
+    const { baseSedes, resolvedDefault } = buildFleetSedeOptions(
+      ['10. Benavides', '20. Miraflores'],
+      '10. Benavides',
+      '10. Benavides',
+    );
+    expect(baseSedes).toEqual(['10. Benavides', '20. Miraflores']);
+    expect(resolvedDefault).toBe('10. Benavides');
   });
 
-  it('fallback Principal si no hay sedes', () => {
-    const { baseSedes, resolvedDefault } = buildFleetSedeOptions([], undefined, undefined);
-    expect(baseSedes).toEqual(['Principal']);
-    expect(resolvedDefault).toBe('Principal');
+  it('sin catálogo no inventa Principal', () => {
+    const { baseSedes, resolvedDefault, options } = buildFleetSedeOptions([], undefined, undefined);
+    expect(baseSedes).toEqual([]);
+    expect(options).toEqual([]);
+    expect(resolvedDefault).toBe('');
   });
 
-  it('incluye valor actual aunque no esté en catálogo', () => {
-    const { options } = buildFleetSedeOptions(['Norte'], 'Norte', 'Legacy-Sede');
-    expect(options).toContain('Legacy-Sede');
+  it('mapea valor legacy al canónico del catálogo', () => {
+    const { options, resolvedDefault } = buildFleetSedeOptions(
+      ['10. Benavides'],
+      undefined,
+      'Benavides',
+    );
+    expect(options).toEqual(['10. Benavides']);
+    expect(resolvedDefault).toBe('10. Benavides');
   });
 });

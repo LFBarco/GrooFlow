@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -49,11 +50,14 @@ import {
   AlertDialogTitle,
 } from '../ui/alert-dialog';
 import { MenuIconPicker } from './MenuIconPicker';
+import { MenuIconColorPicker } from './MenuIconColorPicker';
+import { defaultMenuIconColorForModulo } from '../../utils/menuIconColors';
 import '../../styles/menu-config.css';
 
 interface MenuDraft {
   texto: string;
   icono: string;
+  icon_color: string;
   ruta: string;
   estado: string;
 }
@@ -83,10 +87,11 @@ function parseSortId(id: UniqueIdentifier): { kind: 'section' | 'child'; numeric
   return null;
 }
 
-function emptyDraft(isSection: boolean): MenuDraft {
+function emptyDraft(isSection: boolean, moduloKey = ''): MenuDraft {
   return {
     texto: '',
     icono: isSection ? 'fa-folder' : 'fa-link',
+    icon_color: isSection ? '' : defaultMenuIconColorForModulo(moduloKey),
     ruta: isSection ? '' : '/',
     estado: 'activo',
   };
@@ -194,6 +199,14 @@ function DraftForm({
         <button type="button" className="menu-builder__icon-btn" onClick={onOpenIcon}>
           <i className={`fa-solid ${iconClass(draft)}`} aria-hidden />
         </button>
+        {kind === 'child' ? (
+          <MenuIconColorPicker
+            value={draft.icon_color}
+            onChange={(icon_color) => onChange({ ...draft, icon_color })}
+          />
+        ) : (
+          <span />
+        )}
         <input
           className="menu-builder__input"
           value={draft.texto}
@@ -249,6 +262,10 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
   const [iconPickerTarget, setIconPickerTarget] = useState<IconPickerTarget | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null);
   const [activeDragId, setActiveDragId] = useState<UniqueIdentifier | null>(null);
+  const treeRef = useRef<{ sections: MenuSectionVm[]; orphans: MenuItem[] }>({
+    sections: [],
+    orphans: [],
+  });
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -260,6 +277,7 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
       const items = (res.items ?? []).map((item) => ({ ...item }));
       setAllItems(items);
       const view = rebuildView(items);
+      treeRef.current = view;
       setSections(view.sections);
       setOrphans(view.orphans);
     } catch (e) {
@@ -374,6 +392,7 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
       const items = await reorderMenuItems(payload);
       setAllItems(items.map((item) => ({ ...item })));
       const view = rebuildView(items);
+      treeRef.current = view;
       setSections(view.sections);
       setOrphans(view.orphans);
       toast.success('Orden guardado');
@@ -387,22 +406,26 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
   }
 
   function moveSection(sectionId: number, delta: number) {
-    const idx = sections.findIndex((b) => b.section.id === sectionId);
+    const { sections: curSections, orphans: curOrphans } = treeRef.current;
+    const idx = curSections.findIndex((b) => b.section.id === sectionId);
     const next = idx + delta;
-    if (idx < 0 || next < 0 || next >= sections.length) return;
-    const nextSections = arrayMove(sections, idx, next);
+    if (idx < 0 || next < 0 || next >= curSections.length) return;
+    const nextSections = arrayMove(curSections, idx, next);
+    treeRef.current = { sections: nextSections, orphans: curOrphans };
     setSections(nextSections);
-    void persistOrder(nextSections, orphans);
+    void persistOrder(nextSections, curOrphans);
   }
 
   function moveChild(childId: number, padreId: number | null, delta: number) {
+    const { sections: curSections, orphans: curOrphans } = treeRef.current;
     const containerId: ContainerId = padreId === null ? 'orphans' : `section-${padreId}`;
-    const list = [...getChildList(containerId)];
+    const list = [...getChildList(containerId, curSections, curOrphans)];
     const idx = list.findIndex((c) => c.id === childId);
     const next = idx + delta;
     if (idx < 0 || next < 0 || next >= list.length) return;
     const moved = arrayMove(list, idx, next);
-    const updated = setChildList(containerId, moved, sections, orphans);
+    const updated = setChildList(containerId, moved, curSections, curOrphans);
+    treeRef.current = updated;
     setSections(updated.sections);
     setOrphans(updated.orphans);
     void persistOrder(updated.sections, updated.orphans);
@@ -420,17 +443,18 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
     if (active.kind === 'section' && over.kind === 'section') return;
 
     if (active.kind === 'child') {
-      const activeContainer = findChildContainer(active.numericId);
+      const { sections: curSections, orphans: curOrphans } = treeRef.current;
+      const activeContainer = findChildContainer(active.numericId, curSections, curOrphans);
       let overContainer: ContainerId;
       if (over.kind === 'section') {
         overContainer = `section-${over.numericId}`;
       } else {
-        overContainer = findChildContainer(over.numericId);
+        overContainer = findChildContainer(over.numericId, curSections, curOrphans);
       }
       if (activeContainer === overContainer) return;
 
-      const activeItems = [...getChildList(activeContainer)];
-      const overItems = [...getChildList(overContainer)];
+      const activeItems = [...getChildList(activeContainer, curSections, curOrphans)];
+      const overItems = [...getChildList(overContainer, curSections, curOrphans)];
       const activeIndex = activeItems.findIndex((c) => c.id === active.numericId);
       if (activeIndex < 0) return;
       const [moved] = activeItems.splice(activeIndex, 1);
@@ -438,12 +462,9 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
       moved.es_padre = 0;
       const overIndex = over.kind === 'child' ? overItems.findIndex((c) => c.id === over.numericId) : overItems.length;
       overItems.splice(overIndex >= 0 ? overIndex : overItems.length, 0, moved);
-      let nextSections = sections;
-      let nextOrphans = orphans;
-      const removed = setChildList(activeContainer, activeItems, sections, orphans);
-      nextSections = removed.sections;
-      nextOrphans = removed.orphans;
-      const added = setChildList(overContainer, overItems, nextSections, nextOrphans);
+      const removed = setChildList(activeContainer, activeItems, curSections, curOrphans);
+      const added = setChildList(overContainer, overItems, removed.sections, removed.orphans);
+      treeRef.current = added;
       setSections(added.sections);
       setOrphans(added.orphans);
     }
@@ -453,31 +474,47 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
     setActiveDragId(null);
     const active = parseSortId(event.active.id);
     const over = event.over?.id ? parseSortId(event.over.id) : null;
-    if (!active || !over) return;
+    if (!active) return;
 
-    if (active.kind === 'section' && over.kind === 'section') {
-      const oldIndex = sections.findIndex((b) => b.section.id === active.numericId);
-      const newIndex = sections.findIndex((b) => b.section.id === over.numericId);
+    const { sections: curSections, orphans: curOrphans } = treeRef.current;
+
+    if (active.kind === 'section' && over?.kind === 'section') {
+      const oldIndex = curSections.findIndex((b) => b.section.id === active.numericId);
+      const newIndex = curSections.findIndex((b) => b.section.id === over.numericId);
       if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
-        const nextSections = arrayMove(sections, oldIndex, newIndex);
+        const nextSections = arrayMove(curSections, oldIndex, newIndex);
+        treeRef.current = { sections: nextSections, orphans: curOrphans };
         setSections(nextSections);
-        void persistOrder(nextSections, orphans);
+        void persistOrder(nextSections, curOrphans);
       }
       return;
     }
 
-    if (active.kind === 'child' && over.kind === 'child') {
-      const container = findChildContainer(active.numericId);
-      const list = [...getChildList(container)];
-      const oldIndex = list.findIndex((c) => c.id === active.numericId);
-      const newIndex = list.findIndex((c) => c.id === over.numericId);
-      if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
-        const moved = arrayMove(list, oldIndex, newIndex);
-        const updated = setChildList(container, moved, sections, orphans);
-        setSections(updated.sections);
-        setOrphans(updated.orphans);
-        void persistOrder(updated.sections, updated.orphans);
+    if (active.kind === 'child') {
+      if (over?.kind === 'section') {
+        void persistOrder(curSections, curOrphans);
+        return;
       }
+
+      if (over?.kind === 'child') {
+        const container = findChildContainer(active.numericId, curSections, curOrphans);
+        const list = [...getChildList(container, curSections, curOrphans)];
+        const oldIndex = list.findIndex((c) => c.id === active.numericId);
+        const newIndex = list.findIndex((c) => c.id === over.numericId);
+        if (oldIndex >= 0 && newIndex >= 0 && oldIndex !== newIndex) {
+          const moved = arrayMove(list, oldIndex, newIndex);
+          const updated = setChildList(container, moved, curSections, curOrphans);
+          treeRef.current = updated;
+          setSections(updated.sections);
+          setOrphans(updated.orphans);
+          void persistOrder(updated.sections, updated.orphans);
+        } else {
+          void persistOrder(curSections, curOrphans);
+        }
+        return;
+      }
+
+      void persistOrder(curSections, curOrphans);
     }
   }
 
@@ -486,6 +523,7 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
       const updated = await updateMenuItem(item.id, {
         texto: item.texto.trim(),
         icono: item.icono,
+        icon_color: item.icon_color ?? '',
         ruta: Number(item.es_padre) === 1 ? '' : (item.ruta ?? '').trim(),
         es_padre: item.es_padre,
         padre_id: item.padre_id ?? null,
@@ -586,6 +624,7 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
       await createMenuItem({
         texto: newChildDraft.draft.texto.trim(),
         icono: newChildDraft.draft.icono,
+        icon_color: newChildDraft.draft.icon_color,
         ruta,
         es_padre: 0,
         padre_id: newChildDraft.padreId,
@@ -656,6 +695,15 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
         >
           <i className={`fa-solid ${iconClass(child)}`} aria-hidden />
         </button>
+        <MenuIconColorPicker
+          value={child.icon_color}
+          disabled={reordering}
+          onChange={(icon_color) => {
+            child.icon_color = icon_color;
+            setSections([...sections]);
+            void saveRow(child, 'Color actualizado');
+          }}
+        />
         <input
           className="menu-builder__input"
           value={child.texto}

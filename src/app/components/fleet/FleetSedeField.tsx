@@ -1,22 +1,24 @@
 import { useMemo } from 'react';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { buildFormSedeOptions, resolveCanonicalSedeName } from '../../utils/gestionSedes';
 
 export function buildFleetSedeOptions(
   visibleSedes: string[] | undefined,
   defaultSede: string | undefined,
   currentValue?: string
 ) {
-  const resolvedDefault = defaultSede?.trim() || visibleSedes?.[0]?.trim() || 'Principal';
-  const baseSedes = visibleSedes && visibleSedes.length > 0 ? visibleSedes : ['Principal'];
-  const set = new Set<string>(baseSedes);
+  const baseSedes = buildFormSedeOptions(visibleSedes ?? []);
+  const resolvedDefault =
+    resolveCanonicalSedeName(defaultSede?.trim() || baseSedes[0] || '', baseSedes) ||
+    baseSedes[0] ||
+    '';
+  const current = currentValue?.trim() || '';
+  const canonicalCurrent = current ? resolveCanonicalSedeName(current, baseSedes) : '';
   const options = [...baseSedes];
-  for (const s of [resolvedDefault, currentValue]) {
-    const t = s?.trim();
-    if (t && !set.has(t)) {
-      set.add(t);
-      options.unshift(t);
-    }
+  // Solo añadir valor actual si no mapea a ninguna sede del catálogo (dato histórico).
+  if (canonicalCurrent && !baseSedes.includes(canonicalCurrent) && current && !options.includes(current)) {
+    options.unshift(current);
   }
   return { baseSedes, options, resolvedDefault };
 }
@@ -46,17 +48,28 @@ export function FleetSedeField({
   defaultSede?: string;
 }) {
   const { baseSedes, options } = useFleetSedeOptions(visibleSedes, defaultSede, value);
-  const display = value || options[0] || 'Principal';
+  const display = value || options[0] || '';
+
+  if (options.length === 0) {
+    return (
+      <div className="space-y-1.5">
+        <Label className="text-slate-300">{label}</Label>
+        <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-900/50 text-sm text-slate-400">
+          Sin sedes en catálogo de Gestión
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1.5">
       <Label className="text-slate-300">{label}</Label>
       {baseSedes.length === 1 ? (
         <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-900/50 text-sm text-slate-200">
-          {display}
+          {display || baseSedes[0]}
         </div>
       ) : (
-        <Select value={display} onValueChange={onChange}>
+        <Select value={display || options[0]} onValueChange={onChange}>
           <SelectTrigger>
             <SelectValue placeholder="Seleccione sede" />
           </SelectTrigger>

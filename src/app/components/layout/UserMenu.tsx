@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { Button } from "../ui/button";
 import { useApp } from "../../context/AppContext";
 import { getUserAvatarSrc } from "../../utils/userAvatar";
+import { getUserRoleLabel } from "../../utils/userDisplay";
 import { LogOut, User as UserIcon, Settings, Shield, Moon, Sun, ChevronsUpDown } from "lucide-react";
 
 interface UserMenuProps {
@@ -30,7 +31,7 @@ export function UserMenu({
     align = "end"
 }: UserMenuProps) {
     const { currentUser: user, roles = [], theme: currentTheme, toggleTheme: onToggleTheme } = useApp();
-    const roleLabel = roles.find((r) => r.id === user.role)?.name || user.role.replace(/_/g, ' ');
+    const roleLabel = getUserRoleLabel(user, roles);
     const isDark = currentTheme === 'dark';
     return (
         <DropdownMenu>

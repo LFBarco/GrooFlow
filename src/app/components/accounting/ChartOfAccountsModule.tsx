@@ -920,7 +920,7 @@ export function ChartOfAccountsModule({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 max-h-[52vh] overflow-auto pr-1">
-            {(enabledSedes.length > 0 ? enabledSedes : ['Principal']).map((sede) => {
+            {(enabledSedes.length > 0 ? enabledSedes : []).map((sede) => {
               const val = accounting.pettyCashCreditBySede?.[sede] || '__none__';
               const opts = sedeAccountOptions(sede);
               return (

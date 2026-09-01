@@ -1,10 +1,9 @@
 import type { User } from '../types';
+import { resolveGrooflowMediaUrl } from './userDisplay';
 
-/** Avatar personalizado o ilustración generada por email/id. */
+/** Avatar de Gestión; si no hay foto, cadena vacía → el UI muestra iniciales. */
 export function getUserAvatarSrc(user: User | null | undefined): string {
-  if (user?.avatarUrl?.trim()) return user.avatarUrl.trim();
-  const seed = encodeURIComponent(user?.email || user?.id || 'user');
-  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+  return resolveGrooflowMediaUrl(user?.avatarUrl);
 }
 
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {

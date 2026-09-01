@@ -147,25 +147,21 @@ export type RequestStatus = 'pending' | 'approved' | 'rejected';
 export type Priority = 'low' | 'medium' | 'high';
 export type PaymentCondition = 'cash' | 'credit';
 
-// Lista oficial de sedes del sistema
-export const SYSTEM_SEDES = [
-  'Benavides',
-  'Miraflores',
-  'La Molina',
-  'San Borja',
-  'Magdalena',
-  'Chavez',
-  'Norte',
-  'Principal',
-] as const;
+// Lista legacy (solo demo/tests). Producción: sedes desde Gestión (tenants) vía settings:system.sedesCatalog.
+/** @deprecated No usar en selects; catálogo vacío hasta hidratar desde BD. */
+export const SYSTEM_SEDES = [] as const;
 
-export type SedeType = typeof SYSTEM_SEDES[number] | string;
+export type SedeType = string;
 
 export interface User {
   id: string;
   name: string;
   initials: string;
   role: string;
+  /** Nombre del nivel/perfil en Gestión (`app_niveles.nombre`). */
+  nivelNombre?: string;
+  /** Etiqueta visible del perfil (igual que Gestión). */
+  roleLabel?: string;
   email?: string;
   location?: string; // Sede principal (legado)
   sedes?: string[]; // Sedes a las que tiene acceso (vacío o ausente = todas las sedes)
@@ -453,10 +449,12 @@ export interface ProviderSettings {
   areas: string[];      // Áreas de la empresa
 }
 
-/** Entrada del catálogo de sedes (no se borran; solo se deshabilitan). */
+/** Entrada del catálogo de sedes (origen: tenants de Gestión). */
 export interface SedeCatalogEntry {
   name: string;
   enabled: boolean;
+  tenant_id?: number;
+  centro_id?: number;
 }
 
 /** Una cuenta del plan contable importado (tu plantilla). */

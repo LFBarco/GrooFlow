@@ -1,7 +1,5 @@
 import {
   SystemSettings,
-  SYSTEM_SEDES,
-  type SedeCatalogEntry,
   type PettyCashPrintFormCounters,
   type PettyCashRenditionPrintSettings,
   type SmartCashFlowSettings,
@@ -74,15 +72,79 @@ export interface CategoryDefinition {
 
 export type ConfigStructure = Record<string, CategoryDefinition>;
 
-/** Returns subcategories for a category. If only `concepts` exist, returns one virtual subcategory "General". */
+function countCategoryConcepts(catDef: CategoryDefinition, categoryName?: string): number {
+  return getSubcategories(catDef, categoryName).reduce((total, sub) => total + sub.concepts.length, 0);
+}
+
+/** Returns subcategories for a category. Legacy `concepts` se muestran aunque exista `subcategories` vacía. */
 export function getSubcategories(catDef: CategoryDefinition, categoryName?: string): SubcategoryDefinition[] {
-  if (catDef.subcategories?.length) return catDef.subcategories;
-  const concepts = catDef.concepts ?? [];
+  const legacyConcepts = catDef.concepts ?? [];
+  const subs = catDef.subcategories ?? [];
+
+  if (subs.length > 0) {
+    const conceptsInSubs = subs.reduce((total, sub) => total + (sub.concepts?.length ?? 0), 0);
+    if (conceptsInSubs === 0 && legacyConcepts.length > 0) {
+      return [{
+        id: 'general',
+        name: categoryName ?? 'General',
+        concepts: legacyConcepts,
+      }];
+    }
+    return subs;
+  }
+
   return [{
     id: 'general',
     name: categoryName ?? 'General',
-    concepts
+    concepts: legacyConcepts,
   }];
+}
+
+/** Fusiona config remota con defaults: restaura conceptos por defecto si la categoría quedó vacía en KV. */
+export function mergeConfigStructure(
+  remote: ConfigStructure | null | undefined,
+  defaults: ConfigStructure = initialStructure,
+): ConfigStructure {
+  if (!remote || typeof remote !== 'object') {
+    return { ...defaults };
+  }
+
+  const merged: ConfigStructure = { ...defaults, ...remote };
+
+  for (const [name, defaultDef] of Object.entries(defaults)) {
+    const remoteDef = remote[name];
+    if (!remoteDef) {
+      merged[name] = defaultDef;
+      continue;
+    }
+
+    const remoteConceptCount = countCategoryConcepts(remoteDef, name);
+    const defaultConceptCount = countCategoryConcepts(defaultDef, name);
+    if (remoteConceptCount === 0 && defaultConceptCount > 0) {
+      merged[name] = {
+        ...remoteDef,
+        type: remoteDef.type ?? defaultDef.type,
+        ...(defaultDef.subcategories?.length
+          ? { subcategories: defaultDef.subcategories, concepts: undefined }
+          : { concepts: defaultDef.concepts, subcategories: undefined }),
+      };
+      continue;
+    }
+
+    merged[name] = {
+      ...defaultDef,
+      ...remoteDef,
+      type: remoteDef.type ?? defaultDef.type,
+    };
+  }
+
+  for (const [name, remoteDef] of Object.entries(remote)) {
+    if (!(name in defaults)) {
+      merged[name] = remoteDef;
+    }
+  }
+
+  return merged;
 }
 
 /** Flatten: all concepts for a category (from all subcategories). */
@@ -169,9 +231,7 @@ export const initialSystemSettings: SystemSettings = {
   businessName: 'GrooFlow',
   businessLegalName: '',
   businessRuc: '',
-  sedesCatalog: SYSTEM_SEDES.map(
-    (name): SedeCatalogEntry => ({ name, enabled: true })
-  ),
+  sedesCatalog: [],
   currency: 'PEN',
   initialBalance: 0,
   initialBalanceDate: '2025-01-01',
@@ -316,7 +376,9 @@ export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | u
           ? incoming.providers.areas
           : base.providers.areas,
     },
-    sedesCatalog: incoming.sedesCatalog ?? base.sedesCatalog,
+    sedesCatalog: Array.isArray(incoming.sedesCatalog)
+      ? incoming.sedesCatalog
+      : base.sedesCatalog,
     accounting: {
       ...base.accounting,
       ...(incoming.accounting || {}),

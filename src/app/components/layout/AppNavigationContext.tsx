@@ -2,9 +2,10 @@ import { createContext, useContext, type LucideIcon } from 'react';
 import type { ViewType } from '../../routes';
 import { useApp } from '../../context/AppContext';
 import { prefetchView } from '../../lazyRouteModules';
+import { normalizeMenuIcon } from '../../utils/menuIcon';
 
 export type AppNavigationContextValue = {
-  activeView: ViewType;
+  activeView: ViewType | null;
   isSidebarCollapsed: boolean;
   hasPermission: (moduleName: string) => boolean;
   onSelectView: (view: ViewType) => void;
@@ -22,7 +23,10 @@ export function useAppNavigation(): AppNavigationContextValue {
 
 export type AppNavButtonProps = {
   targetView: ViewType;
-  icon: LucideIcon;
+  /** Icono Lucide (legacy / módulos internos). Preferir `iconFa` desde BD. */
+  icon?: LucideIcon;
+  /** Clase Font Awesome desde `grooflow_menu_opciones.icono`. */
+  iconFa?: string;
   label: string;
   iconColorClass?: string;
   requiredModule?: string;
@@ -31,6 +35,7 @@ export type AppNavButtonProps = {
 export function AppNavButton({
   targetView,
   icon: Icon,
+  iconFa,
   label,
   iconColorClass,
   requiredModule,
@@ -42,6 +47,13 @@ export function AppNavButton({
   if (requiredModule && !hasPermission(requiredModule)) return null;
 
   const isActive = activeView === targetView;
+  const faClass = iconFa ? normalizeMenuIcon(iconFa) : '';
+  const colorClass = isActive
+    ? isDark
+      ? 'text-cyan-300'
+      : 'text-cyan-700'
+    : iconColorClass ||
+      (isDark ? 'text-slate-500 group-hover/btn:text-slate-200' : 'text-slate-500 group-hover/btn:text-slate-800');
 
   return (
     <div className="relative group/tooltip px-2">
@@ -86,12 +98,22 @@ export function AppNavButton({
           />
         )}
 
-        <Icon
-          className={`w-[19px] h-[19px] transition-colors duration-150 shrink-0
-            ${isActive ? (isDark ? 'text-cyan-300' : 'text-cyan-700') : iconColorClass || (isDark ? 'text-slate-500 group-hover/btn:text-slate-200' : 'text-slate-500 group-hover/btn:text-slate-800')}
-            ${!isSidebarCollapsed ? 'mr-3' : ''}`}
-          style={isActive && isDark ? { filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.7))' } : {}}
-        />
+        {faClass ? (
+          <i
+            className={`fa-solid ${faClass} text-[17px] leading-none transition-colors duration-150 shrink-0 ${colorClass} ${
+              !isSidebarCollapsed ? 'mr-3' : ''
+            }`}
+            style={isActive && isDark ? { filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.7))' } : {}}
+            aria-hidden
+          />
+        ) : Icon ? (
+          <Icon
+            className={`w-[19px] h-[19px] transition-colors duration-150 shrink-0 ${colorClass} ${
+              !isSidebarCollapsed ? 'mr-3' : ''
+            }`}
+            style={isActive && isDark ? { filter: 'drop-shadow(0 0 6px rgba(34,211,238,0.7))' } : {}}
+          />
+        ) : null}
 
         {!isSidebarCollapsed && (
           <>

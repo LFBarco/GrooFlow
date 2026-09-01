@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
     Dialog, 
     DialogContent, 
@@ -16,23 +16,45 @@ import { LogOut, Moon, Sun, Mail, KeyRound, User as UserIcon, Lock } from 'lucid
 import { Badge } from "../ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "../ui/tabs";
 import { toast } from "sonner";
+import { getUserRoleLabel } from '../../utils/userDisplay';
+import { fetchAuthProfile } from '../../services/menuApi';
 
 interface UserProfileDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onLogout: () => void;
-    onUpdateUser?: (user: User) => void;
+    onProfileRefresh?: (user: User) => void;
 }
 
 export function UserProfileDialog({ 
     open, 
     onOpenChange, 
     onLogout,
-    onUpdateUser,
+    onProfileRefresh,
 }: UserProfileDialogProps) {
     const { currentUser: user, roles = [], theme: currentTheme, toggleTheme: onToggleTheme } = useApp();
-    const roleLabel = roles.find((r) => r.id === user.role)?.name || user.role.replace(/_/g, ' ');
+    const roleLabel = getUserRoleLabel(user, roles);
     const [activeTab, setActiveTab] = useState("general");
+    const [refreshingProfile, setRefreshingProfile] = useState(false);
+
+    useEffect(() => {
+        if (!open || !onProfileRefresh) return;
+        let cancelled = false;
+        setRefreshingProfile(true);
+        void fetchAuthProfile()
+            .then((profile) => {
+                if (!cancelled && profile) onProfileRefresh(profile);
+            })
+            .catch(() => {
+                /* mantener datos en caché */
+            })
+            .finally(() => {
+                if (!cancelled) setRefreshingProfile(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [open, onProfileRefresh]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -41,11 +63,7 @@ export function UserProfileDialog({
                     <ProfilePhotoPicker
                         user={user}
                         size="lg"
-                        disabled={!onUpdateUser}
-                        onAvatarChange={(avatarUrl) => {
-                            if (!onUpdateUser) return;
-                            onUpdateUser({ ...user, avatarUrl });
-                        }}
+                        disabled
                     />
 
                     <DialogTitle className="text-2xl font-bold mt-2">{user.name}</DialogTitle>
@@ -55,6 +73,11 @@ export function UserProfileDialog({
                         </Badge>
                         <span className="text-xs text-muted-foreground">ID: {user.id}</span>
                     </DialogDescription>
+                    <p className="mt-3 text-xs text-muted-foreground leading-relaxed max-w-sm">
+                        {refreshingProfile
+                            ? 'Sincronizando con Gestión…'
+                            : 'Nombre, foto y nivel se administran en el panel Gestión → Mi perfil o Usuarios.'}
+                    </p>
                 </DialogHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">

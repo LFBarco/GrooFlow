@@ -80,13 +80,26 @@ const PATH_TO_VIEW = Object.fromEntries(
   (Object.entries(VIEW_TO_PATH) as [ViewType, string][]).map(([v, p]) => [p, v])
 ) as Record<string, ViewType>;
 
-export function pathToView(pathname: string): ViewType {
+/** Normaliza pathname relativo al basename (Hostinger `/grooflow` o Vercel `/`). */
+export function normalizeAppPath(pathname: string): string {
   let normalized = pathname.replace(/\/$/, '') || '/';
   if (normalized === '/grooflow') normalized = '/';
   else if (normalized.startsWith('/grooflow/')) {
     normalized = normalized.slice('/grooflow'.length) || '/';
   }
-  return PATH_TO_VIEW[normalized] ?? DEFAULT_VIEW;
+  return normalized;
+}
+
+/**
+ * Path → vista. Si la ruta no está en el catálogo, `null` (mostrar 404).
+ * Ya no cae en Dashboard en silencio.
+ */
+export function pathToView(pathname: string): ViewType | null {
+  return PATH_TO_VIEW[normalizeAppPath(pathname)] ?? null;
+}
+
+export function isKnownAppPath(pathname: string): boolean {
+  return pathToView(pathname) !== null;
 }
 
 export function viewToPath(view: ViewType): string {

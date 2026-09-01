@@ -11,6 +11,7 @@ import type {
   WorkplaceAccidentRecord,
 } from '../types/accidentes';
 import { mergeAsistenciaSettings } from './asistenciaData';
+import { normalizeSedeKey, resolveCanonicalSedeName } from './gestionSedes';
 
 export const ACCIDENTES_SETTINGS_KV_KEY = 'settings:accidentes-trabajo';
 
@@ -220,18 +221,48 @@ export function contractTypeLabel(type?: string): string {
   return CONTRACT_LABELS[type] ?? type;
 }
 
-/** Lista de colaboradores para autocomplete (usuarios + asistencia). */
+/** Lista de colaboradores para autocomplete (usuarios de Gestión; asistencia solo si no hay match). */
 export function buildStaffOptions(input: {
   users: User[];
   asistencia?: AsistenciaSettings | null;
   visibleSedes?: string[];
+  /** false = solo usuarios de Gestión (p. ej. entrega de uniformes). */
+  includeAsistencia?: boolean;
 }): StaffOption[] {
   const map = new Map<string, StaffOption>();
+  const identityKeys = new Set<string>();
   const asistencia = mergeAsistenciaSettings(input.asistencia);
+  const sedeNames = input.visibleSedes ?? [];
+  const includeAsistencia = input.includeAsistencia !== false;
+
+  const normalizePersonName = (name: string): string =>
+    name
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/\s+/g, ' ');
+
+  const register = (opt: StaffOption, identityKey: string) => {
+    if (identityKeys.has(identityKey)) return;
+    identityKeys.add(identityKey);
+    map.set(opt.id, opt);
+  };
+
+  const staffIdentityKey = (email: string | undefined, name: string): string => {
+    const normalizedEmail = email?.trim().toLowerCase();
+    if (normalizedEmail) return `email:${normalizedEmail}`;
+    return `name:${normalizePersonName(name)}`;
+  };
+
+  const userEmails = new Set<string>();
+  const userNames = new Set<string>();
 
   for (const u of input.users) {
     if (u.status === 'inactive') continue;
-    const homeSede = u.location ?? u.sedes?.[0] ?? 'Principal';
+    const rawSede = u.location ?? u.sedes?.[0] ?? 'Principal';
+    const homeSede =
+      sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
     const opt: StaffOption = {
       id: `user-${u.id}`,
       userId: u.id,
@@ -245,32 +276,57 @@ export function buildStaffOptions(input: {
       hireDate: u.hireDate,
       uniformSizes: u.uniformSizes,
     };
-    map.set(opt.id, opt);
+    if (u.email?.trim()) userEmails.add(u.email.trim().toLowerCase());
+    userNames.add(normalizePersonName(u.name));
+    register(opt, staffIdentityKey(u.email, u.name));
   }
 
-  for (const s of asistencia.staff ?? []) {
-    const id = `asist-${s.id}`;
-    if (map.has(id)) continue;
-    const opt: StaffOption = {
-      id,
-      label: s.fullName,
-      name: s.fullName,
-      jobTitle: s.cargoLabel,
-      workArea: s.area ? mapAreaFromAsistencia(s.area) : 'Otro',
-      contractType: 'No registrado',
-      homeSede: s.sedeName,
-      seniorityMonths: 0,
-    };
-    map.set(id, opt);
+  if (includeAsistencia) {
+    const asistSeen = new Set<string>();
+    for (const s of asistencia.staff ?? []) {
+      const email = (s.email ?? '').trim().toLowerCase();
+      const nameKey = normalizePersonName(s.fullName);
+      if (email && userEmails.has(email)) continue;
+      if (userNames.has(nameKey)) continue;
+
+      const identityKey = staffIdentityKey(s.email, s.fullName);
+      if (asistSeen.has(identityKey)) continue;
+      asistSeen.add(identityKey);
+
+      const id = `asist-${s.id}`;
+      if (map.has(id)) continue;
+      const rawSede = s.sedeName;
+      const homeSede =
+        sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
+      const opt: StaffOption = {
+        id,
+        label: s.fullName,
+        name: s.fullName,
+        jobTitle: s.cargoLabel,
+        workArea: s.area ? mapAreaFromAsistencia(s.area) : 'Otro',
+        contractType: 'No registrado',
+        homeSede,
+        seniorityMonths: 0,
+      };
+      register(opt, identityKey);
+    }
   }
 
   let list = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+  const displaySeen = new Set<string>();
+  list = list.filter((s) => {
+    const key = `${normalizePersonName(s.name)}::${normalizeSedeKey(s.homeSede)}::${(s.jobTitle ?? '').trim().toLowerCase()}`;
+    if (displaySeen.has(key)) return false;
+    displaySeen.add(key);
+    return true;
+  });
+
   if (input.visibleSedes?.length) {
-    list = list.filter(
-      (s) =>
-        input.visibleSedes!.includes(s.homeSede) ||
-        input.visibleSedes!.some((v) => s.homeSede.toLowerCase().includes(v.toLowerCase()))
-    );
+    list = list.filter((s) => {
+      const key = normalizeSedeKey(s.homeSede);
+      return input.visibleSedes!.some((v) => normalizeSedeKey(v) === key);
+    });
   }
   return list;
 }

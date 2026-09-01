@@ -27,6 +27,7 @@ import type { AsistenciaAreaGroup } from '../../types/asistencia';
 import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { useAsistenciaModuleState } from '../../hooks/useAsistenciaModuleState';
 import { buildAsistenciaDaySummary, mergeAsistenciaSettings } from '../../utils/asistenciaData';
+import { buildFilterSedeOptions, buildFormSedeOptions } from '../../utils/gestionSedes';
 import {
   cacheAgeLabel,
 } from '../../utils/bukAsistenciaCache';
@@ -148,13 +149,19 @@ export function AsistenciaModule({
   const shiftFilter = filters.shift;
 
   const sedeOptions = useMemo(() => {
-    const fromStaff = (asistencia.staff ?? []).map((s) => s.sedeName);
-    const fromProfiles = (asistencia.sedeProfiles ?? []).map((p) => p.sedeName);
-    const fromReqs = asistencia.requirements.map((r) => r.sedeName);
-    const fromMap = (asistencia.sedeMappings ?? []).map((m) => m.sedeName);
-    const all = [...new Set([...visibleSedes, ...fromStaff, ...fromProfiles, ...fromReqs, ...fromMap])].filter(Boolean);
-    return all.length > 0 ? all : ['Principal'];
+    const extras = [
+      ...(asistencia.staff ?? []).map((s) => s.sedeName),
+      ...(asistencia.sedeProfiles ?? []).map((p) => p.sedeName),
+      ...asistencia.requirements.map((r) => r.sedeName),
+      ...(asistencia.sedeMappings ?? []).map((m) => m.sedeName),
+    ];
+    return buildFilterSedeOptions({ visibleSedes, extra: extras });
   }, [visibleSedes, asistencia]);
+
+  const formSedeOptions = useMemo(
+    () => buildFormSedeOptions(visibleSedes),
+    [visibleSedes]
+  );
 
   const [selectedSede, setSelectedSede] = useState(() => sedeOptions[0] ?? 'Principal');
 

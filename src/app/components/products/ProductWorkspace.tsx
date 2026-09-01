@@ -187,7 +187,10 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
   const [calcTaxVenta, setCalcTaxVenta] = useState('18');
   const [calcMargenPct, setCalcMargenPct] = useState('60');
 
-  const warehouses = useMemo(() => [...new Set([...DEFAULT_WAREHOUSES, ...(visibleSedes ?? [])])], [visibleSedes]);
+  const warehouses = useMemo(
+    () => (visibleSedes && visibleSedes.length > 0 ? [...visibleSedes] : [...DEFAULT_WAREHOUSES]),
+    [visibleSedes],
+  );
   const providerOptions = useMemo(
     () => providers.slice().sort((a, b) => a.name.localeCompare(b.name)),
     [providers],

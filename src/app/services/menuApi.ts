@@ -1,4 +1,5 @@
 import { getGrooflowApiBase, getGrooflowToken } from './repository/apiBase';
+import type { User } from '../types';
 
 export type MenuActionKey = 'ver' | 'agregar' | 'editar' | 'eliminar' | 'exportar' | 'configurar';
 
@@ -14,6 +15,7 @@ export interface MenuItem {
   texto: string;
   icono?: string;
   icono_fa?: string;
+  icon_color?: string;
   ruta?: string;
   modulo_key?: string;
   es_padre: number;
@@ -127,6 +129,7 @@ export type GrooflowAuthMenuSection = {
     route: string;
     modulo_key: string;
     icono?: string;
+    icon_color?: string;
   }>;
 };
 
@@ -318,6 +321,12 @@ export async function fetchAuthMenuPayload(): Promise<GrooflowAuthMenuPayload> {
     menu_permissions: data.menu_permissions ?? {},
     menu_sections: data.menu_sections ?? [],
   };
+}
+
+/** Perfil canónico del usuario (Gestión: nombre, nivel, foto). */
+export async function fetchAuthProfile(): Promise<User | null> {
+  const data = await menuFetch<{ profile?: User }>('/auth/me');
+  return data.profile ?? null;
 }
 
 export async function fetchAuthMenuPermissions(): Promise<MenuPermissionsMap> {
