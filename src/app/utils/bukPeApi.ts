@@ -69,10 +69,25 @@ export function sanitizeBukPeBaseUrl(raw: string): string {
   }
 }
 
+export function isBukPeTokenRedacted(raw: string): boolean {
+  const t = raw.trim();
+  if (!t) return true;
+  if (t === '********') return true;
+  return /^\*+$/.test(t);
+}
+
+/** Limpia token pegado desde cURL, Postman o la documentación de Buk.pe. */
 export function normalizeBukPeToken(raw: string): string {
   let t = raw.trim();
+  if (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"))
+  ) {
+    t = t.slice(1, -1).trim();
+  }
+  t = t.replace(/^auth_token\s*:\s*/i, '');
   if (t.toLowerCase().startsWith('bearer ')) t = t.slice(7).trim();
-  return t;
+  return t.trim();
 }
 
 export function buildBukPeEndpointUrl(baseUrl: string, pathOrUrl: string): string {
@@ -155,7 +170,9 @@ export async function validateBukPeConnection(input: {
           ? json.error
           : res.ok
             ? 'Conexión OK.'
-            : `Error HTTP ${res.status}`;
+            : res.status === 401
+              ? 'HTTP 401 — auth_token inválido. Pega solo el valor del token (sin "auth_token:") y pulsa Probar conexión.'
+              : `Error HTTP ${res.status}`;
     return {
       ok,
       status: typeof json.status === 'number' ? json.status : res.status,

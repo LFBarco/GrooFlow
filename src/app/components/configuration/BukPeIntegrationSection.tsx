@@ -7,7 +7,9 @@ import { toast } from 'sonner';
 import type { BukCatalogEndpointConfig, SystemSettings } from '../../types';
 import {
   DEFAULT_BUK_PE_BASE_URL,
+  isBukPeTokenRedacted,
   mergeBukPeSettings,
+  normalizeBukPeToken,
   sanitizeBukPeBaseUrl,
   validateBukPeConnection,
 } from '../../utils/bukPeApi';
@@ -45,6 +47,7 @@ export function BukPeIntegrationSection({
     ok: boolean;
     message: string;
     status?: number;
+    triedUrl?: string;
     at: string;
   } | null>(null);
   const tokenRef = useRef<HTMLInputElement>(null);
@@ -75,19 +78,25 @@ export function BukPeIntegrationSection({
   };
 
   const handleTest = async () => {
-    const apiToken = (tokenRef.current?.value ?? bukPe.apiToken ?? '').trim();
+    const apiToken = normalizeBukPeToken(tokenRef.current?.value ?? bukPe.apiToken ?? '');
     const apiBaseUrl = sanitizeBukPeBaseUrl(
       (baseUrlRef.current?.value ?? bukPe.apiBaseUrl ?? DEFAULT_BUK_PE_BASE_URL).trim()
     );
-    if (!apiToken) {
-      toast.error('Indica el auth_token de Buk.pe.');
+    if (!apiToken || isBukPeTokenRedacted(apiToken)) {
+      toast.error('Indica el auth_token de Buk.pe (solo el valor, sin "auth_token:").');
       return;
     }
     setTesting(true);
     try {
       const result = await validateBukPeConnection({ baseUrl: apiBaseUrl, apiToken });
       const at = new Date().toISOString();
-      setLiveTest({ ok: result.ok, message: result.message, status: result.status, at });
+      setLiveTest({
+        ok: result.ok,
+        message: result.message,
+        status: result.status,
+        triedUrl: result.triedUrl,
+        at,
+      });
       patchBukPe(
         {
           apiToken,
@@ -165,7 +174,8 @@ export function BukPeIntegrationSection({
             />
             <p className="text-xs text-muted-foreground">
               Para Perú: <code className="text-[11px]">https://TU-TENANT.buk.pe/api/v1/peru</code> — sin{' '}
-              <code className="text-[11px]">/employees</code> al final.
+              <code className="text-[11px]">/employees</code> al final. La consulta usa{' '}
+              <code className="text-[11px]">…/peru/employees?page=1&amp;page_size=25</code>.
             </p>
           </div>
 
@@ -178,7 +188,9 @@ export function BukPeIntegrationSection({
                 type={showToken ? 'text' : 'password'}
                 defaultValue={bukPe.apiToken ?? ''}
                 disabled={readOnly}
-                onBlur={(e) => patchBukPe({ apiToken: e.target.value.trim() }, { persist: true })}
+                onBlur={(e) =>
+                  patchBukPe({ apiToken: normalizeBukPeToken(e.target.value) }, { persist: true })
+                }
                 autoComplete="off"
                 placeholder="Token de Configuración → Accesos API"
               />
@@ -216,7 +228,12 @@ export function BukPeIntegrationSection({
                 {format(new Date(displayTest.at), "d MMM yyyy, HH:mm", { locale: es })}
                 {displayTest.status != null ? ` · HTTP ${displayTest.status}` : ''}
               </AlertTitle>
-              <AlertDescription className="text-sm">{displayTest.message}</AlertDescription>
+              <AlertDescription className="text-sm space-y-1">
+                <p>{displayTest.message}</p>
+                {liveTest && typeof liveTest === 'object' && 'triedUrl' in liveTest && liveTest.triedUrl ? (
+                  <p className="text-xs text-muted-foreground break-all">URL: {String(liveTest.triedUrl)}</p>
+                ) : null}
+              </AlertDescription>
             </Alert>
           ) : null}
         </CardContent>
@@ -226,6 +243,7 @@ export function BukPeIntegrationSection({
         provider="bukpe"
         baseUrl={bukPe.apiBaseUrl ?? DEFAULT_BUK_PE_BASE_URL}
         apiToken={bukPe.apiToken ?? ''}
+        getApiToken={() => normalizeBukPeToken(tokenRef.current?.value ?? bukPe.apiToken ?? '')}
         endpoints={endpoints}
         readOnly={readOnly}
         onChangeEndpoints={(next: BukCatalogEndpointConfig[], message) =>

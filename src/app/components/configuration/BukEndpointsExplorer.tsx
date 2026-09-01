@@ -35,6 +35,8 @@ type Props = {
   provider?: BukApiProvider;
   baseUrl: string;
   apiToken: string;
+  /** Lee el token del input aunque aún no se haya guardado en settings. */
+  getApiToken?: () => string;
   endpoints: BukCatalogEndpointConfig[];
   readOnly?: boolean;
   onChangeEndpoints: (next: BukCatalogEndpointConfig[], message?: string) => void;
@@ -53,6 +55,7 @@ export function BukEndpointsExplorer({
   provider = 'ctrlit',
   baseUrl,
   apiToken,
+  getApiToken,
   endpoints,
   readOnly = false,
   onChangeEndpoints,
@@ -122,7 +125,8 @@ export function BukEndpointsExplorer({
   };
 
   const runProbe = async (ep: BukCatalogEndpointConfig) => {
-    if (!apiToken.trim()) {
+    const resolvedToken = (getApiToken?.() ?? apiToken).trim();
+    if (!resolvedToken) {
       toast.error(
         provider === 'bukpe'
           ? 'Configura el auth_token de Buk.pe antes de consultar.'
@@ -136,7 +140,7 @@ export function BukEndpointsExplorer({
       const result = await probeBukEndpoint({
         provider,
         baseUrl: resolvedBase,
-        apiToken,
+        apiToken: resolvedToken,
         pathOrUrl: ep.pathOrUrl,
       });
       setProbeView({ endpointId: ep.id, result });

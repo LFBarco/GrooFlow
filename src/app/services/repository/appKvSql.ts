@@ -63,6 +63,7 @@ export function mergeSystemSettingsSqlAndKv(
     asistencia,
     pettyCash: { ...fromKv.pettyCash, ...fromSql.pettyCash },
     veterinari: { ...fromKv.veterinari, ...fromSql.veterinari },
+    bukPe: { ...fromKv.bukPe, ...fromSql.bukPe },
     providers: { ...fromKv.providers, ...fromSql.providers },
     accounting: { ...fromKv.accounting, ...fromSql.accounting },
   });

@@ -452,11 +452,40 @@ function sanitizeBukPeBaseUrl(raw: string): string {
   }
 }
 
+function normalizeBukPeToken(raw: string): string {
+  let t = raw.trim();
+  if (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"))
+  ) {
+    t = t.slice(1, -1).trim();
+  }
+  t = t.replace(/^auth_token\s*:\s*/i, "");
+  if (t.toLowerCase().startsWith("bearer ")) t = t.slice(7).trim();
+  return t.trim();
+}
+
+function bukPeFailureMessage(status: number, targetUrl: string, text: string): string {
+  if (status === 401) {
+    return (
+      `HTTP 401 — auth_token inválido o no guardado. Pega solo el valor del token (sin "auth_token:"). ` +
+      `URL: ${targetUrl}`
+    );
+  }
+  if (status === 403) {
+    return `HTTP 403 — sin permiso en Buk.pe. URL: ${targetUrl}`;
+  }
+  if (text.includes("<!DOCTYPE")) {
+    return `HTTP ${status} — Buk.pe devolvió HTML (ruta incorrecta). URL: ${targetUrl}`;
+  }
+  return `HTTP ${status}: ${text.slice(0, 200).replace(/\s+/g, " ")}`;
+}
+
 async function fetchBukPeApi(targetUrl: string, apiToken: string): Promise<Response> {
   return fetch(targetUrl, {
     method: "GET",
     headers: {
-      auth_token: apiToken,
+      auth_token: normalizeBukPeToken(apiToken),
       accept: "application/json",
     },
   });
@@ -770,9 +799,8 @@ for (const base of KV_PATH_BASES) {
     try {
       const body = await c.req.json();
       const baseUrl = sanitizeBukPeBaseUrl(typeof body?.baseUrl === "string" ? body.baseUrl : "");
-      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      let apiToken = typeof body?.apiToken === "string" ? normalizeBukPeToken(body.apiToken) : "";
       let targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
-      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
       if (!targetUrl) {
         targetUrl = `${baseUrl.replace(/\/+$/, "")}/employees?page=1&page_size=5`;
       }
@@ -797,7 +825,7 @@ for (const base of KV_PATH_BASES) {
         return c.json({
           ok: false,
           status: res.status,
-          message: bukFailureMessage(res.status, targetUrl, text),
+          message: bukPeFailureMessage(res.status, targetUrl, text),
           triedUrl: targetUrl,
           durationMs,
         });
@@ -821,7 +849,7 @@ for (const base of KV_PATH_BASES) {
     try {
       const body = await c.req.json();
       const baseUrl = sanitizeBukPeBaseUrl(typeof body?.baseUrl === "string" ? body.baseUrl : "");
-      let apiToken = typeof body?.apiToken === "string" ? body.apiToken.trim() : "";
+      let apiToken = typeof body?.apiToken === "string" ? normalizeBukPeToken(body.apiToken) : "";
       const pathOrUrl =
         typeof body?.pathOrUrl === "string"
           ? body.pathOrUrl.trim()
@@ -829,7 +857,6 @@ for (const base of KV_PATH_BASES) {
             ? body.path.trim()
             : "";
       let targetUrl = typeof body?.targetUrl === "string" ? body.targetUrl.trim() : "";
-      if (apiToken.toLowerCase().startsWith("bearer ")) apiToken = apiToken.slice(7).trim();
       if (!targetUrl && pathOrUrl) {
         targetUrl = pathOrUrl.startsWith("http")
           ? pathOrUrl
@@ -856,7 +883,7 @@ for (const base of KV_PATH_BASES) {
         return c.json({
           ok: false,
           status: res.status,
-          message: bukFailureMessage(res.status, targetUrl, text),
+          message: bukPeFailureMessage(res.status, targetUrl, text),
           triedUrl: targetUrl,
           durationMs,
           data: [],
