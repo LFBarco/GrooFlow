@@ -35,6 +35,7 @@ const SEED_BY_MODULO: Record<string, string> = {
   Turnos: 'text-violet-400 group-hover/btn:text-violet-300',
   'Accidentes de Trabajo': 'text-rose-400 group-hover/btn:text-rose-300',
   'Entrega de Uniformes': 'text-indigo-400 group-hover/btn:text-indigo-300',
+  'Recursos Humanos': 'text-blue-400 group-hover/btn:text-blue-300',
   Productos: 'text-fuchsia-400 group-hover/btn:text-fuchsia-300',
   Compras: 'text-purple-400 group-hover/btn:text-purple-300',
   Auditoría: 'text-orange-400 group-hover/btn:text-orange-300',

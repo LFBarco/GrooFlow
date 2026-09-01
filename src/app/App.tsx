@@ -100,6 +100,7 @@ import {
   TurnosModule,
   AccidentesModule,
   UniformesModule,
+  RrhhModule,
   ReconciliationModule,
   Overview,
   CashFlowChart,
@@ -4308,6 +4309,20 @@ export default function App() {
                   visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
                   canEdit={hasPermission('Entrega de Uniformes')}
                   deliveredBy={currentUser.name}
+                />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'rrhh' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <RrhhModule
+                  users={users}
+                  systemSettings={systemSettings}
+                  canEdit={hasPermission('Recursos Humanos')}
+                  onUpdateUsers={setUsers}
+                  onPersistUsers={persistUsersToCloud}
                 />
               </Suspense>
             </div>
