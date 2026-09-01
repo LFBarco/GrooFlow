@@ -113,7 +113,7 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
         if (!input.silent) {
           if (merged.length === 0) {
             toast.warning(
-              'Buk respondió sin registros. Revisa la conexión en Configuración → Integraciones.'
+              'Buk respondió sin registros. Verifica URL/token en Integraciones, que la integración esté activa y que haya marcaciones en Buk para la fecha.'
             );
           } else {
             toast.success(

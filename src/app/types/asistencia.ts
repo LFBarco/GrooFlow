@@ -129,6 +129,13 @@ export interface AsistenciaCustomOrgColumn {
   label: string;
 }
 
+/** Subcolumna dentro de una columna del organigrama (área o custom). */
+export interface AsistenciaOrgSubColumn {
+  id: string;
+  label: string;
+  parentColumnId: string;
+}
+
 /** Configuración operativa de una sede. */
 export interface AsistenciaSedeProfile {
   sedeName: string;
@@ -142,6 +149,8 @@ export interface AsistenciaSedeProfile {
   bukRecintoCode?: string;
   /** Columnas extra del organigrama. */
   customOrgColumns?: AsistenciaCustomOrgColumn[];
+  /** Subcolumnas anidadas bajo columnas principales. */
+  subOrgColumns?: AsistenciaOrgSubColumn[];
   /** Etiquetas por id de columna. */
   areaLabels?: Record<string, string>;
   /** Orden de columnas (ids built-in + custom). */
@@ -163,11 +172,22 @@ export interface AsistenciaStaffLiveState {
   matchHint?: string;
 }
 
+export interface AsistenciaLiveSubAreaBlock {
+  area: string;
+  label: string;
+  staff: AsistenciaStaffLiveState[];
+  activeCount: number;
+  totalCount: number;
+}
+
 export interface AsistenciaLiveAreaBlock {
   area: string;
   /** Etiqueta visible (personalizable por sede). */
   label: string;
+  /** Personal asignado directamente a la columna (sin subcolumna). */
   staff: AsistenciaStaffLiveState[];
+  /** Subdivisiones dentro de la columna. */
+  subAreas?: AsistenciaLiveSubAreaBlock[];
   activeCount: number;
   totalCount: number;
 }

@@ -1,6 +1,6 @@
 import type { AsistenciaSettings, AsistenciaStaffMember } from '../types/asistencia';
 import { mergeAsistenciaSettings } from './asistenciaData';
-import { resolveOrgColumnOrder } from './asistenciaOrgColumns';
+import { resolveOrgColumnOrder, resolveOrgAssignableAreaIds } from './asistenciaOrgColumns';
 import { getSedeProfile } from './asistenciaStaff';
 
 function staffByColumnOrdered(
@@ -47,11 +47,12 @@ export function applyStaffLayoutMove(
   if (!member || member.sedeName !== input.sedeName || member.isManager) return merged;
 
   const columnOrder = resolveOrgColumnOrder(merged, input.sedeName);
-  if (!columnOrder.includes(input.toArea)) return merged;
+  const assignableIds = resolveOrgAssignableAreaIds(merged, input.sedeName);
+  if (!assignableIds.includes(input.toArea)) return merged;
 
-  const byColumn = staffByColumnOrdered(allStaff, input.sedeName, columnOrder);
+  const byColumn = staffByColumnOrdered(allStaff, input.sedeName, assignableIds);
 
-  for (const colId of columnOrder) {
+  for (const colId of assignableIds) {
     byColumn[colId] = (byColumn[colId] ?? []).filter((s) => s.id !== input.staffId);
   }
 
@@ -62,7 +63,7 @@ export function applyStaffLayoutMove(
 
   const managers = allStaff.filter((s) => s.sedeName === input.sedeName && s.isManager);
   const others = allStaff.filter((s) => s.sedeName !== input.sedeName);
-  const reassigned = flattenWithSortOrder(byColumn, columnOrder);
+  const reassigned = flattenWithSortOrder(byColumn, assignableIds);
 
   return mergeAsistenciaSettings({
     ...merged,

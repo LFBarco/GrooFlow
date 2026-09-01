@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Building2, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowDown, ArrowUp, Building2, CornerDownRight, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
-import type { AsistenciaSettings, AsistenciaStaffMember } from '../../types/asistencia';
+import type { AsistenciaOrgSubColumn, AsistenciaSettings, AsistenciaStaffMember } from '../../types/asistencia';
 import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { formatWeeklyShiftSummary } from '../../utils/asistenciaShift';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
@@ -9,13 +9,16 @@ import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { mergeExampleStaffIntoSettings } from '../../utils/asistenciaExampleSeed';
 import {
   applyAddOrgColumn,
+  applyAddOrgSubColumn,
   applyOrgColumnLabels,
   applyRemoveOrgColumn,
+  applyRemoveOrgSubColumn,
   cargosForOrgColumn,
   cargoListToText,
   isBuiltinOrgColumnId,
   parseCargoListText,
   resolveOrgColumns,
+  resolveOrgSubColumns,
 } from '../../utils/asistenciaOrgColumns';
 import { Textarea } from '../ui/textarea';
 import { AsistenciaOrgConfigDialog } from './AsistenciaOrgConfigDialog';
@@ -85,6 +88,44 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     );
   });
   const [newColumnLabel, setNewColumnLabel] = useState('');
+  const [newSubColumnByParent, setNewSubColumnByParent] = useState<Record<string, string>>({});
+
+  const syncOrgFormFromProfile = (p = profile) => {
+    const cols = resolveOrgColumns(p);
+    setAreaOrder(cols.map((c) => c.id));
+    const labels: Record<string, string> = {};
+    for (const col of cols) labels[col.id] = col.label;
+    for (const sub of p.subOrgColumns ?? []) {
+      labels[sub.id] = p.areaLabels?.[sub.id]?.trim() || sub.label;
+    }
+    setAreaLabels(labels);
+    setHideEmptyAreas(p.hideEmptyAreas ?? false);
+    setCargoByColumnText(
+      Object.fromEntries(
+        cols.flatMap((c) => {
+          const entries: [string, string][] = [
+            [c.id, cargoListToText(cargosForOrgColumn(p, c.id))],
+          ];
+          for (const sub of resolveOrgSubColumns(p, c.id)) {
+            entries.push([sub.id, cargoListToText(cargosForOrgColumn(p, sub.id))]);
+          }
+          return entries;
+        })
+      )
+    );
+  };
+
+  useEffect(() => {
+    syncOrgFormFromProfile(profile);
+  }, [
+    sedeName,
+    profile.areaOrder,
+    profile.customOrgColumns,
+    profile.subOrgColumns,
+    profile.areaLabels,
+    profile.cargoByColumn,
+    profile.hideEmptyAreas,
+  ]);
 
   const runSave = async (
     updater: (prev: AsistenciaSettings) => AsistenciaSettings,
@@ -101,13 +142,32 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
 
   const byColumn = useMemo(() => {
     const map: Record<string, AsistenciaStaffMember[]> = {};
-    for (const col of orgColumns) map[col.id] = [];
+    for (const col of orgColumns) {
+      map[col.id] = [];
+      for (const sub of resolveOrgSubColumns(profile, col.id)) map[sub.id] = [];
+    }
     for (const s of staff) {
       if (!map[s.area]) map[s.area] = [];
       map[s.area]!.push(s);
     }
     return map;
-  }, [staff, orgColumns]);
+  }, [staff, orgColumns, profile.subOrgColumns]);
+
+  const staffSections = useMemo(() => {
+    const sections: { id: string; label: string; parentId: string; parentLabel?: string }[] = [];
+    for (const col of orgColumns) {
+      sections.push({ id: col.id, label: areaLabels[col.id] ?? col.label, parentId: col.id });
+      for (const sub of resolveOrgSubColumns(profile, col.id)) {
+        sections.push({
+          id: sub.id,
+          label: areaLabels[sub.id]?.trim() || sub.label,
+          parentId: col.id,
+          parentLabel: areaLabels[col.id] ?? col.label,
+        });
+      }
+    }
+    return sections;
+  }, [orgColumns, profile.subOrgColumns, areaLabels]);
 
   const saveSedeProfile = async () => {
     const tolerance = Math.max(0, Math.min(120, Number(scheduleTolerance) || 10));
@@ -119,6 +179,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         sedeProfiles: [
           ...rest,
           {
+            ...profile,
             sedeName,
             scheduleStart,
             scheduleEnd,
@@ -137,8 +198,12 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   };
 
   const saveOrgLayout = async () => {
+    const allAreaIds = [
+      ...areaOrder,
+      ...(profile.subOrgColumns ?? []).map((s) => s.id),
+    ];
     const cargoByColumn = Object.fromEntries(
-      areaOrder.map((columnId) => {
+      allAreaIds.map((columnId) => {
         const text =
           cargoByColumnText[columnId] ?? cargoListToText(cargosForOrgColumn(profile, columnId));
         const cargos = parseCargoListText(text);
@@ -146,9 +211,21 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         return [columnId, cargos.length > 0 ? cargos : fallback] as const;
       })
     );
+    const subOrgColumns: AsistenciaOrgSubColumn[] = (profile.subOrgColumns ?? []).map((sub) => ({
+      ...sub,
+      label: areaLabels[sub.id]?.trim() || sub.label,
+    }));
     const ok = await runSave(
       (prev) =>
-        applyOrgColumnLabels(prev, sedeName, areaLabels, areaOrder, hideEmptyAreas, cargoByColumn),
+        applyOrgColumnLabels(
+          prev,
+          sedeName,
+          areaLabels,
+          areaOrder,
+          hideEmptyAreas,
+          cargoByColumn,
+          subOrgColumns
+        ),
       'Estructura del organigrama guardada.'
     );
     return ok;
@@ -161,42 +238,36 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
       (prev) => applyAddOrgColumn(prev, sedeName, label),
       'Columna agregada al organigrama.'
     );
+    if (ok) setNewColumnLabel('');
+  };
+
+  const addSubColumn = async (parentColumnId: string) => {
+    const label = (newSubColumnByParent[parentColumnId] ?? '').trim();
+    if (!label) return;
+    const ok = await runSave(
+      (prev) => applyAddOrgSubColumn(prev, sedeName, parentColumnId, label),
+      'Subcolumna agregada.'
+    );
     if (ok) {
-      setNewColumnLabel('');
-      const next = applyAddOrgColumn(settings, sedeName, label);
-      const nextProfile = getSedeProfile(next, sedeName);
-      const cols = resolveOrgColumns(nextProfile);
-      setAreaOrder(cols.map((c) => c.id));
-      setAreaLabels(Object.fromEntries(cols.map((c) => [c.id, c.label])));
-      setCargoByColumnText(
-        Object.fromEntries(
-          cols.map((c) => [c.id, cargoListToText(cargosForOrgColumn(nextProfile, c.id))])
-        )
-      );
+      setNewSubColumnByParent((prev) => ({ ...prev, [parentColumnId]: '' }));
     }
+  };
+
+  const removeSubColumn = async (subColumnId: string) => {
+    if (!window.confirm('¿Eliminar esta subcolumna? El personal pasará a la columna principal.')) return;
+    await runSave(
+      (prev) => applyRemoveOrgSubColumn(prev, sedeName, subColumnId),
+      'Subcolumna eliminada.'
+    );
   };
 
   const removeColumn = async (columnId: string) => {
     if (isBuiltinOrgColumnId(columnId)) return;
     if (!window.confirm('¿Eliminar esta columna del organigrama? El personal se moverá a Administración.')) return;
-    const ok = await runSave(
+    await runSave(
       (prev) => applyRemoveOrgColumn(prev, sedeName, columnId),
       'Columna eliminada.'
     );
-    if (ok) {
-      const nextProfile = getSedeProfile(
-        applyRemoveOrgColumn(settings, sedeName, columnId),
-        sedeName
-      );
-      const cols = resolveOrgColumns(nextProfile);
-      setAreaOrder(cols.map((c) => c.id));
-      setAreaLabels(Object.fromEntries(cols.map((c) => [c.id, c.label])));
-      setCargoByColumnText(
-        Object.fromEntries(
-          cols.map((c) => [c.id, cargoListToText(cargosForOrgColumn(nextProfile, c.id))])
-        )
-      );
-    }
   };
 
   const moveArea = (index: number, dir: -1 | 1) => {
@@ -359,7 +430,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 Estructura del organigrama
               </CardTitle>
               <CardDescription className="text-slate-400">
-                Agrega columnas, renómbralas, ordénalas y define los cargos visibles en cada área.
+                Agrega columnas y subcolumnas, renómbralas, ordénalas y define cargos por área.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -456,6 +527,62 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                         Estos cargos aparecen al agregar personal y en el organigrama en vivo.
                       </p>
                     </div>
+
+                    <div className="space-y-2 pl-0 sm:pl-24 border-t border-border/60 pt-3 dark:border-slate-800">
+                      <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                        <CornerDownRight className="h-3 w-3" />
+                        Subcolumnas (divisiones dentro de esta área)
+                      </Label>
+                      {resolveOrgSubColumns(profile, columnId).map((sub) => (
+                        <div
+                          key={sub.id}
+                          className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-background/60 p-2 dark:border-slate-700 dark:bg-slate-900/40"
+                        >
+                          <Input
+                            value={areaLabels[sub.id] ?? sub.label}
+                            onChange={(e) =>
+                              setAreaLabels((prev) => ({ ...prev, [sub.id]: e.target.value }))
+                            }
+                            placeholder="Nombre subcolumna"
+                            className="h-8 max-w-xs bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-400"
+                            onClick={() => void removeSubColumn(sub.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                      <div className="flex flex-wrap items-end gap-2">
+                        <Input
+                          value={newSubColumnByParent[columnId] ?? ''}
+                          onChange={(e) =>
+                            setNewSubColumnByParent((prev) => ({
+                              ...prev,
+                              [columnId]: e.target.value,
+                            }))
+                          }
+                          placeholder="Ej. Recepción, Triaje, Quirófano…"
+                          className="h-8 max-w-xs bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void addSubColumn(columnId);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={!(newSubColumnByParent[columnId] ?? '').trim() || saving}
+                          onClick={() => void addSubColumn(columnId)}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" /> Subcolumna
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -539,13 +666,13 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           ) : null}
         </CardHeader>
         <CardContent className="space-y-6">
-          {orgColumns.map((col) => {
-            const list = byColumn[col.id] ?? [];
+          {staffSections.map((section) => {
+            const list = byColumn[section.id] ?? [];
             return (
-              <div key={col.id} className="space-y-3">
+              <div key={section.id} className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${badgeClass(col.id)}`}>
-                    {col.label}
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${badgeClass(section.parentId)}`}>
+                    {section.parentLabel ? `${section.parentLabel} › ${section.label}` : section.label}
                   </span>
                   <span className="text-xs text-muted-foreground">{list.length} personas</span>
                 </div>

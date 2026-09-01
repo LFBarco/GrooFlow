@@ -31,44 +31,19 @@ import {
   chartSelectOptionsWithOrphan,
   normalizeAccountCode,
 } from '../../utils/chartOfAccountsHelpers';
+import {
+  STARSOFT_CHART_HEADERS,
+  parseChartOfAccountsImportRows,
+} from '../../utils/chartOfAccountsImport';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { getEnabledSedeNames } from '../../utils/sedesCatalog';
-
-const STARSOFT_HEADERS = [
-  'CUENTA',
-  'DESCRIPCION',
-  'NIVEL',
-  'TIPO ANEXO',
-  'CENTRO DE COSTO',
-  'CLASE CUENTA',
-  'DESTINO',
-  'PARTIDA PRESUPUESTO',
-  'AJUSTE DIF. CAMBIO',
-  'CUENTA MONETARIA',
-  'CONCEPTO ING/GASTO',
-  'COD.SIT.FINANCIERA ESTANDAR',
-  'COD.SIT.FINANCIERA TRIB.',
-  'CUENTA CARGO',
-  'CUENTA ABONO',
-  'PORCENTAJE',
-  'PL FUNCION GROO',
-  'PLPL FUNCION GOO',
-] as const;
 
 interface ChartOfAccountsModuleProps {
   chartOfAccounts: ChartOfAccountEntry[];
   onUpdateChart: (rows: ChartOfAccountEntry[], successMessage?: string) => Promise<boolean>;
   systemSettings: SystemSettings;
   onUpdateSystemSettings: (s: SystemSettings) => void;
-}
-
-function parseKind(raw: string | undefined): ChartOfAccountEntry['kind'] {
-  const t = (raw || '').toLowerCase().trim();
-  if (t.includes('igv') || t.includes('igc')) return 'tax_igv';
-  if (t.includes('banco') || t.includes('caja') || t.includes('cash')) return 'cash_bank';
-  if (t.includes('gasto') || t.includes('expense')) return 'expense';
-  return 'other';
 }
 
 export function ChartOfAccountsModule({
@@ -176,45 +151,28 @@ export function ChartOfAccountsModule({
   );
 
   const igvLinkOptions = useMemo(
-    () =>
-      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.igvPurchaseCreditAccountCode, {
-        useLevel: CHART_OPERATIVE_LEVEL,
-      }),
+    () => chartSelectOptionsWithOrphan(chartOfAccounts, accounting.igvPurchaseCreditAccountCode),
     [chartOfAccounts, accounting.igvPurchaseCreditAccountCode]
   );
 
   const pettyGlobalLinkOptions = useMemo(
-    () =>
-      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashCreditAccountCode, {
-        useLevel: CHART_OPERATIVE_LEVEL,
-      }),
+    () => chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashCreditAccountCode),
     [chartOfAccounts, accounting.pettyCashCreditAccountCode]
   );
 
   const bankLinkOptions = useMemo(
-    () =>
-      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.bankPaymentAccountCode, {
-        useLevel: CHART_OPERATIVE_LEVEL,
-      }),
+    () => chartSelectOptionsWithOrphan(chartOfAccounts, accounting.bankPaymentAccountCode),
     [chartOfAccounts, accounting.bankPaymentAccountCode]
   );
 
   const unknownExpenseLinkOptions = useMemo(
     () =>
-      chartSelectOptionsWithOrphan(
-        chartOfAccounts,
-        accounting.pettyCashUnknownExpenseAccountCode,
-        { useLevel: CHART_OPERATIVE_LEVEL }
-      ),
+      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashUnknownExpenseAccountCode),
     [chartOfAccounts, accounting.pettyCashUnknownExpenseAccountCode]
   );
 
   const sedeAccountOptions = (sede: string) =>
-    chartSelectOptionsWithOrphan(
-      chartOfAccounts,
-      accounting.pettyCashCreditBySede?.[sede],
-      { useLevel: CHART_OPERATIVE_LEVEL }
-    );
+    chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashCreditBySede?.[sede]);
 
   const filteredChart = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -246,9 +204,9 @@ export function ChartOfAccountsModule({
         'COD.SIT.FINANCIERA TRIB.': '',
         'CUENTA CARGO': '',
         'CUENTA ABONO': '',
-        PORCENTAJE: '',
-        'PL FUNCION GROO': '',
-        'PLPL FUNCION GOO': '',
+        PORCENTAJE: '100',
+        'PL FUNCION GROO': 'EJEMPLO-GROO',
+        'PLPL FUNCION GOO': 'EJEMPLO-PLPL',
       },
     ];
     const ws = XLSX.utils.json_to_sheet(sample);
@@ -256,34 +214,6 @@ export function ChartOfAccountsModule({
     XLSX.utils.book_append_sheet(wb, ws, 'PlanCuentas');
     XLSX.writeFile(wb, 'plantilla_plan_de_cuentas_grooflow.xlsx');
     toast.success('Plantilla descargada');
-  };
-
-  const normalizeHeaderKey = (s: string) =>
-    String(s || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-zA-Z0-9]/g, '')
-      .toLowerCase();
-
-  const getCell = (row: Record<string, unknown>, ...keys: string[]) => {
-    const directCandidates = keys.flatMap((k) => [k, k.toLowerCase(), k.toUpperCase()]);
-    for (const k of directCandidates) {
-      const v = row[k];
-      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
-    }
-    const rowKeys = Object.keys(row);
-    const normalizedRowEntries = rowKeys.map((rk) => ({
-      raw: rk,
-      norm: normalizeHeaderKey(rk),
-    }));
-    for (const k of keys) {
-      const target = normalizeHeaderKey(k);
-      const hit = normalizedRowEntries.find((e) => e.norm === target);
-      if (!hit) continue;
-      const v = row[hit.raw];
-      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
-    }
-    return undefined;
   };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -295,71 +225,13 @@ export function ChartOfAccountsModule({
         const data = new Uint8Array(reader.result as ArrayBuffer);
         const wb = XLSX.read(data, { type: 'array' });
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet) as Record<string, unknown>[];
+        const json = XLSX.utils.sheet_to_json(sheet, { defval: '' }) as Record<string, unknown>[];
         if (!json.length) {
           toast.error('El archivo está vacío');
           return;
         }
 
-        const seen = new Set<string>();
-        const next: ChartOfAccountEntry[] = [];
-        let skipped = 0;
-
-        for (let i = 0; i < json.length; i++) {
-          const row = json[i];
-          const codeRaw = getCell(row, 'CUENTA');
-          const nameRaw = getCell(row, 'DESCRIPCION');
-          const code = String(codeRaw ?? '').trim();
-          const name = String(nameRaw ?? '').trim();
-          if (!code || !name) {
-            skipped++;
-            continue;
-          }
-          const norm = normalizeAccountCode(code) || code.replace(/\s/g, '');
-          if (seen.has(norm)) {
-            skipped++;
-            continue;
-          }
-          seen.add(norm);
-
-          const nivel = getCell(row, 'NIVEL');
-          const tipo = getCell(row, 'CLASE CUENTA');
-
-          next.push({
-            id: `coa-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`,
-            code: norm,
-            name,
-            level: typeof nivel === 'number' ? nivel : Number(nivel) || undefined,
-            parentCode: undefined,
-            tipoAnexo: String(getCell(row, 'TIPO ANEXO') ?? '').trim() || undefined,
-            centroCosto: String(getCell(row, 'CENTRO DE COSTO') ?? '').trim() || undefined,
-            claseCuenta: String(getCell(row, 'CLASE CUENTA') ?? '').trim() || undefined,
-            destino: String(getCell(row, 'DESTINO') ?? '').trim() || undefined,
-            partidaPresupuesto: String(getCell(row, 'PARTIDA PRESUPUESTO') ?? '').trim() || undefined,
-            ajusteDifCambio: String(getCell(row, 'AJUSTE DIF. CAMBIO') ?? '').trim() || undefined,
-            cuentaMonetaria: String(getCell(row, 'CUENTA MONETARIA') ?? '').trim() || undefined,
-            conceptoIngGasto: String(getCell(row, 'CONCEPTO ING/GASTO') ?? '').trim() || undefined,
-            codSitFinancieraEstandar:
-              String(getCell(row, 'COD.SIT.FINANCIERA ESTANDAR') ?? '').trim() || undefined,
-            codSitFinancieraTrib:
-              String(getCell(row, 'COD.SIT.FINANCIERA TRIB.') ?? '').trim() || undefined,
-            cuentaCargo: String(getCell(row, 'CUENTA CARGO') ?? '').trim() || undefined,
-            cuentaAbono: String(getCell(row, 'CUENTA ABONO') ?? '').trim() || undefined,
-            porcentaje: String(getCell(row, 'PORCENTAJE') ?? '').trim() || undefined,
-            plFuncionGroo: String(getCell(row, 'PL FUNCION GROO') ?? '').trim() || undefined,
-            plplFuncionGoo:
-              String(
-                getCell(
-                  row,
-                  'PLPL FUNCION GOO',
-                  'PLPL FUNCION GROO',
-                  'plplFuncionGoo',
-                ) ?? ''
-              ).trim() || undefined,
-            kind: parseKind(tipo != null ? String(tipo) : undefined),
-            active: true,
-          });
-        }
+        const { rows: next, skipped } = parseChartOfAccountsImportRows(json);
 
         if (next.length === 0) {
           toast.error('No se leyeron filas válidas (requiere columnas CUENTA y DESCRIPCION).');
@@ -456,7 +328,7 @@ export function ChartOfAccountsModule({
       'PL FUNCION GROO': r.plFuncionGroo ?? '',
       'PLPL FUNCION GOO': r.plplFuncionGoo ?? '',
     }));
-    const ws = XLSX.utils.json_to_sheet(rows, { header: [...STARSOFT_HEADERS] });
+    const ws = XLSX.utils.json_to_sheet(rows, { header: [...STARSOFT_CHART_HEADERS] });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'PlanCuentas');
     XLSX.writeFile(wb, `plan_cuentas_starsoft_${format(new Date(), 'yyyyMMdd')}.xlsx`);
@@ -485,9 +357,9 @@ export function ChartOfAccountsModule({
               Importar plan de cuentas
             </CardTitle>
             <CardDescription>
-              Columnas esperadas: <strong>Codigo</strong>, <strong>Nombre</strong>. Opcionales:{' '}
-              <strong>Nivel</strong>, <strong>CuentaPadre</strong>, <strong>Tipo</strong> (gasto, igv,
-              banco).
+              Columnas obligatorias: <strong>CUENTA</strong>, <strong>DESCRIPCION</strong>. El resto
+              sigue la plantilla Starsoft (incluye <strong>PORCENTAJE</strong>,{' '}
+              <strong>PL FUNCION GROO</strong> y <strong>PLPL FUNCION GOO</strong>).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -525,7 +397,7 @@ export function ChartOfAccountsModule({
               si necesitas conservar versiones.
             </p>
             <p className="text-xs text-muted-foreground">
-              Cabecera esperada: <strong>{STARSOFT_HEADERS.join(' - ')}</strong>
+              Cabecera esperada: <strong>{STARSOFT_CHART_HEADERS.join(' · ')}</strong>
             </p>
             {pendingImport && (
               <div className="rounded-md border border-cyan-500/30 bg-cyan-950/20 p-3 space-y-2">
@@ -565,12 +437,11 @@ export function ChartOfAccountsModule({
               Enlaces para asientos (caja chica)
             </CardTitle>
             <CardDescription>
-              Los enlaces solo listan cuentas con <strong>NIVEL {CHART_OPERATIVE_LEVEL}</strong> del plan
-              (CUENTA). Se usan al generar el asiento: gasto (proveedor) + IGV + haber caja.
-              {chartOfAccounts.length > 0 && level5Count === 0 ? (
+              Lista todas las cuentas activas del plan importado (cualquier NIVEL). Se usan al generar
+              el asiento: gasto (proveedor) + IGV + haber caja.
+              {chartOfAccounts.length === 0 ? (
                 <span className="block text-amber-600 mt-1">
-                  No hay filas con NIVEL {CHART_OPERATIVE_LEVEL} en el plan importado; importa de nuevo o
-                  edita la columna NIVEL.
+                  Importa primero tu plan de cuentas para elegir las cuentas desde aquí.
                 </span>
               ) : null}
             </CardDescription>
@@ -609,8 +480,7 @@ export function ChartOfAccountsModule({
                 />
               )}
               <p className="text-[11px] text-muted-foreground">
-                Solo cuentas <strong>NIVEL {CHART_OPERATIVE_LEVEL}</strong>; se guarda el nro. de{' '}
-                <strong>CUENTA</strong>.
+                Cuentas del plan cargado; se guarda el nro. de <strong>CUENTA</strong>.
               </p>
             </div>
             <div className="space-y-2">
@@ -747,8 +617,12 @@ export function ChartOfAccountsModule({
               ) : null}
             </CardTitle>
             <CardDescription>
-              En enlaces y proveedores se usan las cuentas con NIVEL {CHART_OPERATIVE_LEVEL} (según
-              importación).
+              Todas las columnas Starsoft se importan y se pueden editar (incl. PORCENTAJE y funciones PL).
+              {level5Count > 0 ? (
+                <span className="block mt-1">
+                  Referencia: {level5Count} cuenta(s) con NIVEL {CHART_OPERATIVE_LEVEL} (operativas).
+                </span>
+              ) : null}
             </CardDescription>
           </div>
           <Input
@@ -768,13 +642,16 @@ export function ChartOfAccountsModule({
                   <TableHead className="w-[70px]">Nivel</TableHead>
                   <TableHead className="w-[100px]">Centro costo</TableHead>
                   <TableHead className="w-[90px]">Tipo</TableHead>
+                  <TableHead className="w-[90px]">%</TableHead>
+                  <TableHead className="min-w-[120px]">PL GROO</TableHead>
+                  <TableHead className="min-w-[120px]">PLPL</TableHead>
                   <TableHead className="w-[80px] text-right">Editar</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredChart.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
                       No hay plan importado. Descarga la plantilla y sube tu archivo.
                     </TableCell>
                   </TableRow>
@@ -791,6 +668,13 @@ export function ChartOfAccountsModule({
                             {row.claseCuenta || row.kind}
                           </Badge>
                         )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs">{row.porcentaje ?? '—'}</TableCell>
+                      <TableCell className="text-xs truncate max-w-[140px]" title={row.plFuncionGroo}>
+                        {row.plFuncionGroo ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-xs truncate max-w-[140px]" title={row.plplFuncionGoo}>
+                        {row.plplFuncionGoo ?? '—'}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button size="icon" variant="ghost" onClick={() => setEditing({ ...row })}>

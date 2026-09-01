@@ -647,7 +647,7 @@ export function LoginPage({
                 />
                 <span style={{ color: t.statusCyan }}>System Online</span>
                 <span style={{ opacity: 0.3 }}>|</span>
-                <span>v2.4.0</span>
+                <span>v2.4.0 · 5877f15</span>
               </motion.div>
             </motion.div>
 
@@ -887,7 +887,7 @@ export function LoginPage({
                   letterSpacing: '0.1em',
                   fontFamily: "'JetBrains Mono', monospace"
                 }}>
-                  CONTROL FINANCIERO &middot;  &middot; GROOFLOW v2.4.0
+                  CONTROL FINANCIERO &middot;  &middot; GROOFLOW v2.4.0 · 5877f15
                 </p>
               </div>
             </motion.div>

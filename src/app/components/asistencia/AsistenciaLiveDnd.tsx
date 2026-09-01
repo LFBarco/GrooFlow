@@ -5,6 +5,7 @@ import type { XYCoord } from 'react-dnd';
 import type {
   AsistenciaLiveAreaBlock,
   AsistenciaLiveSedeSummary,
+  AsistenciaLiveSubAreaBlock,
   AsistenciaSettings,
   AsistenciaStaffLiveState,
 } from '../../types/asistencia';
@@ -152,6 +153,113 @@ function AreaStaffDropZone({
   );
 }
 
+function StaffAreaList({
+  sedeName,
+  areaId,
+  staffList,
+  editLayout,
+  onStaffDrop,
+  viewDate,
+  onStaffClick,
+  getPlanVsReal,
+}: {
+  sedeName: string;
+  areaId: string;
+  staffList: AsistenciaStaffLiveState[];
+  editLayout: boolean;
+  onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: string) => void;
+  viewDate?: Date;
+  onStaffClick?: (live: AsistenciaStaffLiveState) => void;
+  getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
+}) {
+  const visibleStaff = staffList.filter((s) => !s.staff.isManager);
+
+  return (
+    <div className="flex flex-col gap-1 w-full items-center pt-1">
+      {visibleStaff.length === 0 ? (
+        <AreaStaffDropZone
+          sedeName={sedeName}
+          area={areaId}
+          index={0}
+          editLayout={editLayout}
+          onDropStaff={onStaffDrop}
+        >
+          <div className="w-full rounded-xl border border-dashed border-border py-4 text-center text-xs text-muted-foreground dark:border-slate-700">
+            {editLayout ? 'Soltar aquí' : 'Sin personal'}
+          </div>
+        </AreaStaffDropZone>
+      ) : (
+        visibleStaff.map((s, idx) => (
+          <div key={s.staff.id} className="w-full flex flex-col items-center gap-1">
+            <AreaStaffDropZone
+              sedeName={sedeName}
+              area={areaId}
+              index={idx}
+              editLayout={editLayout}
+              onDropStaff={onStaffDrop}
+            />
+            <DraggableStaffCard
+              live={s}
+              sedeName={sedeName}
+              area={areaId}
+              index={idx}
+              editLayout={editLayout}
+              viewDate={viewDate}
+              onStaffClick={onStaffClick}
+              getPlanVsReal={getPlanVsReal}
+            />
+          </div>
+        ))
+      )}
+      {visibleStaff.length > 0 ? (
+        <AreaStaffDropZone
+          sedeName={sedeName}
+          area={areaId}
+          index={visibleStaff.length}
+          editLayout={editLayout}
+          onDropStaff={onStaffDrop}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function SubAreaColumn({
+  sub,
+  sedeName,
+  editLayout,
+  onStaffDrop,
+  viewDate,
+  onStaffClick,
+  getPlanVsReal,
+}: {
+  sub: AsistenciaLiveSubAreaBlock;
+  sedeName: string;
+  editLayout: boolean;
+  onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: string) => void;
+  viewDate?: Date;
+  onStaffClick?: (live: AsistenciaStaffLiveState) => void;
+  getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
+}) {
+  return (
+    <div className="w-full rounded-lg border border-border/80 bg-muted/30 p-2 dark:border-slate-700 dark:bg-slate-900/40">
+      <p className="mb-2 text-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {sub.label}
+      </p>
+      <StaffAreaList
+        sedeName={sedeName}
+        areaId={sub.area}
+        staffList={sub.staff}
+        editLayout={editLayout}
+        onStaffDrop={onStaffDrop}
+        viewDate={viewDate}
+        onStaffClick={onStaffClick}
+        getPlanVsReal={getPlanVsReal}
+      />
+    </div>
+  );
+}
+
 function DraggableAreaColumn({
   block,
   sedeName,
@@ -175,7 +283,7 @@ function DraggableAreaColumn({
   const theme = themeForColumnId(block.area);
   const Icon = theme.icon;
   const pct = block.totalCount > 0 ? Math.round((block.activeCount / block.totalCount) * 100) : 0;
-  const visibleStaff = block.staff.filter((s) => !s.staff.isManager);
+  const hasSubAreas = (block.subAreas?.length ?? 0) > 0;
 
   const [{ isDraggingArea }, dragArea] = useDrag(
     () => ({
@@ -223,52 +331,48 @@ function DraggableAreaColumn({
 
       <div className="h-4 w-px bg-border dark:bg-slate-700" />
 
-      <div className="flex flex-col gap-1 w-full items-center pt-1">
-        {visibleStaff.length === 0 ? (
-          <AreaStaffDropZone
-            sedeName={sedeName}
-            area={block.area}
-            index={0}
-            editLayout={editLayout}
-            onDropStaff={onStaffDrop}
-          >
-            <div className="w-full rounded-xl border border-dashed border-border py-6 text-center text-xs text-muted-foreground dark:border-slate-700">
-              {editLayout ? 'Soltar aquí' : 'Sin personal asignado'}
-            </div>
-          </AreaStaffDropZone>
-        ) : (
-          visibleStaff.map((s, idx) => (
-            <div key={s.staff.id} className="w-full flex flex-col items-center gap-1">
-              <AreaStaffDropZone
+      {hasSubAreas ? (
+        <div className="flex w-full flex-col gap-2 px-1">
+          {(block.subAreas ?? []).map((sub) => (
+            <SubAreaColumn
+              key={sub.area}
+              sub={sub}
+              sedeName={sedeName}
+              editLayout={editLayout}
+              onStaffDrop={onStaffDrop}
+              viewDate={viewDate}
+              onStaffClick={onStaffClick}
+              getPlanVsReal={getPlanVsReal}
+            />
+          ))}
+          {block.staff.length > 0 ? (
+            <div className="w-full">
+              <p className="mb-1 text-center text-[10px] text-muted-foreground">General</p>
+              <StaffAreaList
                 sedeName={sedeName}
-                area={block.area}
-                index={idx}
+                areaId={block.area}
+                staffList={block.staff}
                 editLayout={editLayout}
-                onDropStaff={onStaffDrop}
-              />
-              <DraggableStaffCard
-                live={s}
-                sedeName={sedeName}
-                area={block.area}
-                index={idx}
-                editLayout={editLayout}
+                onStaffDrop={onStaffDrop}
                 viewDate={viewDate}
                 onStaffClick={onStaffClick}
                 getPlanVsReal={getPlanVsReal}
               />
             </div>
-          ))
-        )}
-        {visibleStaff.length > 0 ? (
-          <AreaStaffDropZone
-            sedeName={sedeName}
-            area={block.area}
-            index={visibleStaff.length}
-            editLayout={editLayout}
-            onDropStaff={onStaffDrop}
-          />
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : (
+        <StaffAreaList
+          sedeName={sedeName}
+          areaId={block.area}
+          staffList={block.staff}
+          editLayout={editLayout}
+          onStaffDrop={onStaffDrop}
+          viewDate={viewDate}
+          onStaffClick={onStaffClick}
+          getPlanVsReal={getPlanVsReal}
+        />
+      )}
     </div>
   );
 }

@@ -23,9 +23,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/grooflow/api': {
-        target: 'http://127.0.0.1:8091',
+        target: 'https://gestionveterinariagroomers.com',
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/grooflow\/api/, '') || '/',
+        secure: true,
       },
     },
   },

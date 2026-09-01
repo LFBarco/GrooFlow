@@ -32,6 +32,40 @@ async function readJsonSafe(res: Response): Promise<Record<string, unknown>> {
   }
 }
 
+/** Extrae registros Buk del JSON del proxy (soporta respuesta plana o anidada legacy). */
+function extractBukRecordsFromProxyJson(json: Record<string, unknown>): BukAsistenciaRecord[] {
+  const raw = json.data;
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return [];
+    const first = raw[0];
+    if (first && typeof first === 'object' && first !== null) {
+      return raw as BukAsistenciaRecord[];
+    }
+    return [];
+  }
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const nested = (raw as { data?: unknown }).data;
+    if (Array.isArray(nested) && nested.length > 0) {
+      return nested as BukAsistenciaRecord[];
+    }
+  }
+  return [];
+}
+
+function extractBukTotalPages(json: Record<string, unknown>, fallback = 1): number {
+  if (typeof json.totalPages === 'number' && json.totalPages > 0) {
+    return json.totalPages;
+  }
+  const raw = json.data;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const pagination = (raw as { pagination?: { totalPages?: number } }).pagination;
+    if (typeof pagination?.totalPages === 'number' && pagination.totalPages > 0) {
+      return pagination.totalPages;
+    }
+  }
+  return fallback;
+}
+
 function proxyErrorMessage(res: Response, json: Record<string, unknown>): string {
   if (typeof json.error === 'string') return json.error;
   if (typeof json.message === 'string') return json.message;
@@ -289,7 +323,13 @@ async function fetchAllViaProxy(input: {
   });
   const json = await readJsonSafe(res);
   if (!res.ok) throw new Error(proxyErrorMessage(res, json));
-  return Array.isArray(json.data) ? (json.data as BukAsistenciaRecord[]) : [];
+  const records = extractBukRecordsFromProxyJson(json);
+  if (records.length > 0) return records;
+  const serverMessage = typeof json.message === 'string' ? json.message : '';
+  if (serverMessage && json.ok === false) {
+    throw new Error(serverMessage);
+  }
+  return records;
 }
 
 async function fetchAllViaProxyPages(input: {
@@ -312,9 +352,10 @@ async function fetchAllViaProxyPages(input: {
     });
     const json = await readJsonSafe(res);
     if (!res.ok) throw new Error(proxyErrorMessage(res, json));
+    const records = extractBukRecordsFromProxyJson(json);
     return {
-      data: Array.isArray(json.data) ? (json.data as BukAsistenciaRecord[]) : [],
-      totalPages: typeof json.totalPages === 'number' ? json.totalPages : page,
+      data: records,
+      totalPages: extractBukTotalPages(json, page),
     };
   }
 

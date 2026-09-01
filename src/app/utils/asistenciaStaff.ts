@@ -9,7 +9,7 @@ import type {
   AsistenciaStaffMember,
   BukAsistenciaRecord,
 } from '../types/asistencia';
-import { resolveOrgColumns } from './asistenciaOrgColumns';
+import { resolveOrgColumns, resolveOrgSubColumns, resolveOrgColumnLabel } from './asistenciaOrgColumns';
 import {
   isNightBukRecord,
   isSedeLeaderCargo,
@@ -268,6 +268,7 @@ export function getSedeProfile(
     areaLabels: found?.areaLabels,
     areaOrder: found?.areaOrder,
     customOrgColumns: found?.customOrgColumns,
+    subOrgColumns: found?.subOrgColumns,
     cargoByColumn: found?.cargoByColumn,
     hideEmptyAreas: found?.hideEmptyAreas,
   };
@@ -359,16 +360,35 @@ export function buildLiveSedeSummary(input: {
 
   const areas = areaOrderForProfile(profile)
     .map((columnId) => {
-      const areaStaff = liveStates.filter((s) => s.staff.area === columnId);
-      const activeCount = areaStaff.filter(
+      const columnStaff = liveStates.filter((s) => s.staff.area === columnId);
+      const subColumns = resolveOrgSubColumns(profile, columnId);
+      const subAreas = subColumns.map((sub) => {
+        const subStaff = liveStates.filter((s) => s.staff.area === sub.id);
+        const activeCount = subStaff.filter(
+          (s) => s.status === 'trabajando' || s.status === 'presente'
+        ).length;
+        return {
+          area: sub.id,
+          label: resolveOrgColumnLabel(profile, sub.id),
+          staff: subStaff,
+          activeCount,
+          totalCount: subStaff.length,
+        };
+      });
+      const allInColumn = [
+        ...columnStaff,
+        ...subAreas.flatMap((sa) => sa.staff),
+      ];
+      const activeCount = allInColumn.filter(
         (s) => s.status === 'trabajando' || s.status === 'presente'
       ).length;
       return {
         area: columnId,
         label: areaLabelForProfile(profile, columnId),
-        staff: areaStaff,
+        staff: columnStaff,
+        subAreas: subAreas.length > 0 ? subAreas : undefined,
         activeCount,
-        totalCount: areaStaff.length,
+        totalCount: allInColumn.length,
       };
     })
     .filter((block) => !(profile.hideEmptyAreas && block.totalCount === 0));

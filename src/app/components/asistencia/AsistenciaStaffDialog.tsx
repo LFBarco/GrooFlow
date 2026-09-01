@@ -33,7 +33,7 @@ import {
   formatWeeklyShiftSummary,
 } from '../../utils/asistenciaShift';
 import { defaultMatchHints } from '../../utils/asistenciaStaff';
-import { cargosForOrgColumn, type AsistenciaOrgColumn } from '../../utils/asistenciaOrgColumns';
+import { cargosForOrgColumn, resolveOrgAssignableAreas, type AsistenciaOrgColumn } from '../../utils/asistenciaOrgColumns';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -88,6 +88,10 @@ export function AsistenciaStaffDialog({
   onSave,
 }: Props) {
   const defaultArea = orgColumns[0]?.id ?? 'administracion';
+  const assignableAreas = useMemo(
+    () => resolveOrgAssignableAreas(sedeProfile),
+    [sedeProfile]
+  );
   const [form, setForm] = useState<AsistenciaStaffMember>(() => emptyForm(sedeName, defaultArea));
 
   useEffect(() => {
@@ -217,8 +221,10 @@ export function AsistenciaStaffDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {orgColumns.map((col) => (
-                    <SelectItem key={col.id} value={col.id}>{col.label}</SelectItem>
+                  {assignableAreas.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.isSub ? `↳ ${a.label}` : a.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

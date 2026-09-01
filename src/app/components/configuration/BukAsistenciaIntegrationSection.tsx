@@ -121,11 +121,12 @@ export function BukAsistenciaIntegrationSection({
         {
           apiToken,
           apiBaseUrl: apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
+          enabled: result.ok ? true : buk.enabled,
           lastValidatedAt: at,
           lastValidationOk: result.ok,
           lastValidationMessage: result.message,
         },
-        { persist: true, message: result.ok ? 'Integración Buk guardada en la nube.' : undefined }
+        { persist: true, message: result.ok ? 'Integración Buk guardada y activada en la nube.' : undefined }
       );
       if (result.ok) toast.success(result.message);
       else toast.error(result.message);
