@@ -171,7 +171,7 @@ export async function validateBukPeConnection(input: {
           : res.ok
             ? 'Conexión OK.'
             : res.status === 401
-              ? 'HTTP 401 — auth_token inválido. Pega solo el valor del token (sin "auth_token:") y pulsa Probar conexión.'
+              ? 'HTTP 401 — Buk.pe rechazó el auth_token. Genera uno nuevo en Buk.pe → Configuración → Accesos API.'
               : `Error HTTP ${res.status}`;
     return {
       ok,

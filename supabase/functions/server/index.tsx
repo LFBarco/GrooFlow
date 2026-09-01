@@ -466,10 +466,16 @@ function normalizeBukPeToken(raw: string): string {
 }
 
 function bukPeFailureMessage(status: number, targetUrl: string, text: string): string {
+  const trimmed = text.trim();
   if (status === 401) {
+    if (trimmed === '"no_authorize"' || trimmed.includes("no_authorize")) {
+      return (
+        `HTTP 401 — Buk.pe rechazó el auth_token ("no_authorize"). ` +
+        `Genera un token nuevo en Buk.pe → Configuración → Accesos API. URL: ${targetUrl}`
+      );
+    }
     return (
-      `HTTP 401 — auth_token inválido o no guardado. Pega solo el valor del token (sin "auth_token:"). ` +
-      `URL: ${targetUrl}`
+      `HTTP 401 — auth_token inválido. Verifica en Buk.pe → Accesos API que sea el token de API correcto. URL: ${targetUrl}`
     );
   }
   if (status === 403) {

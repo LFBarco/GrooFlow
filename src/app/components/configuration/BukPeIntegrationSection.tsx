@@ -192,7 +192,7 @@ export function BukPeIntegrationSection({
                   patchBukPe({ apiToken: normalizeBukPeToken(e.target.value) }, { persist: true })
                 }
                 autoComplete="off"
-                placeholder="Token de Configuración → Accesos API"
+                placeholder="Ej. FcEqyPq1FENrmxTzxZfhUNjd (desde Accesos API en Buk.pe)"
               />
               <Button type="button" variant="outline" size="icon" onClick={() => setShowToken((s) => !s)}>
                 {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
