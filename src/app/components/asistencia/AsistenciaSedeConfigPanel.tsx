@@ -22,6 +22,7 @@ import {
 } from '../../utils/asistenciaOrgColumns';
 import { Textarea } from '../ui/textarea';
 import { AsistenciaOrgConfigDialog } from './AsistenciaOrgConfigDialog';
+import { AsistenciaOrgChartEditor } from './AsistenciaOrgChartEditor';
 import { AsistenciaStaffDialog } from './AsistenciaStaffDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -625,6 +626,15 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
             </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      {canConfigure ? (
+        <AsistenciaOrgChartEditor
+          sedeName={sedeName}
+          settings={settings}
+          canConfigure={canConfigure}
+          onSave={onSave}
+        />
       ) : null}
 
       <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">

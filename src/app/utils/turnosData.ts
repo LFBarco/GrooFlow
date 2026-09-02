@@ -32,6 +32,7 @@ export function defaultTurnosSettings(): TurnosSettings {
       minDaysOffPerMonth: 4,
       maxConsecutiveWorkDays: 6,
     },
+    requireStaffShiftApproval: true,
   };
 }
 
@@ -52,6 +53,8 @@ export function mergeTurnosSettings(partial?: Partial<TurnosSettings> | null): T
       : base.publishedWeeks,
     changeLog: Array.isArray(partial.changeLog) ? partial.changeLog : base.changeLog,
     laborRules: { ...base.laborRules, ...(partial.laborRules ?? {}) },
+    requireStaffShiftApproval:
+      partial.requireStaffShiftApproval ?? base.requireStaffShiftApproval,
   };
 }
 

@@ -12,7 +12,10 @@ import type {
 import type { TurnosPlanVsReal } from '../../types/turnos';
 import { shiftLabelForStaff } from '../../utils/asistenciaShift';
 import { applyAreaLayoutReorder, applyStaffLayoutMove } from '../../utils/asistenciaLayoutUtils';
+import { buildOrgChartTree } from '../../utils/asistenciaOrgChart';
+import { getSedeProfile } from '../../utils/asistenciaStaff';
 import { ManagerPlaceholder, StaffLiveCard, themeForColumnId } from './asistenciaLiveUi';
+import { AsistenciaOrgChartTree } from './AsistenciaOrgChartTree';
 
 export const DND_STAFF = 'asistencia-live-staff';
 export const DND_AREA = 'asistencia-live-area';
@@ -379,6 +382,7 @@ function DraggableAreaColumn({
 
 type SedeBlockProps = {
   summary: AsistenciaLiveSedeSummary;
+  asistenciaSettings?: AsistenciaSettings;
   editLayout: boolean;
   onPersistLayout: LayoutPersist;
   compact?: boolean;
@@ -389,6 +393,7 @@ type SedeBlockProps = {
 
 export function AsistenciaLiveSedeBlock({
   summary,
+  asistenciaSettings,
   editLayout,
   onPersistLayout,
   compact,
@@ -396,6 +401,15 @@ export function AsistenciaLiveSedeBlock({
   onStaffClick,
   getPlanVsReal,
 }: SedeBlockProps) {
+  const profile = asistenciaSettings
+    ? getSedeProfile(asistenciaSettings, summary.sedeName)
+    : null;
+  const useTreeView =
+    profile?.orgChartMode === 'tree' &&
+    (profile.orgChartNodes?.length ?? 0) > 0;
+  const orgTree = useTreeView
+    ? buildOrgChartTree(profile!.orgChartNodes!, summary)
+    : [];
   const handleStaffDrop = useCallback(
     (item: StaffDragItem, toIndex: number, toArea: string) => {
       if (item.sedeName !== summary.sedeName) return;
@@ -437,49 +451,64 @@ export function AsistenciaLiveSedeBlock({
       ) : null}
 
       <div className="flex flex-col items-center">
-        <div className="mb-2">
-          {summary.manager ? (
-            <StaffLiveCard
-              name={summary.manager.staff.fullName}
-              cargo={summary.manager.staff.cargoLabel}
-              status={summary.manager.status}
-              time={summary.manager.entradaFormat ?? summary.manager.staff.expectedTime}
-              avatarUrl={summary.manager.staff.avatarUrl}
-              critical={summary.manager.staff.isCritical}
-              matchHint={summary.manager.matchHint}
-              statusNote={summary.manager.statusNote}
-              shiftLabel={shiftLabelForStaff(summary.manager.staff, viewDate)}
-              onClick={!editLayout && onStaffClick ? () => onStaffClick(summary.manager!) : undefined}
-              planVsReal={summary.manager && getPlanVsReal ? getPlanVsReal(summary.manager) : undefined}
-            />
-          ) : (
-            <ManagerPlaceholder />
-          )}
-        </div>
-
-        <div className="h-6 w-px bg-border dark:bg-slate-700" />
-        <div className="h-px w-full max-w-3xl bg-border dark:bg-slate-700" />
-
-        <div
-          className="grid w-full max-w-5xl gap-6 mt-4"
-          style={{
-            gridTemplateColumns: `repeat(${Math.max(1, summary.areas.length)}, minmax(0, 1fr))`,
-          }}
-        >
-          {summary.areas.map((block) => (
-            <DraggableAreaColumn
-              key={`${summary.sedeName}-${block.area}`}
-              block={block}
+        {useTreeView ? (
+          <div className="w-full mt-2">
+            <AsistenciaOrgChartTree
               sedeName={summary.sedeName}
-              editLayout={editLayout}
-              onAreaReorder={handleAreaReorder}
-              onStaffDrop={handleStaffDrop}
+              tree={orgTree}
               viewDate={viewDate}
+              editLayout={editLayout}
               onStaffClick={onStaffClick}
               getPlanVsReal={getPlanVsReal}
             />
-          ))}
-        </div>
+          </div>
+        ) : (
+          <>
+            <div className="mb-2">
+              {summary.manager ? (
+                <StaffLiveCard
+                  name={summary.manager.staff.fullName}
+                  cargo={summary.manager.staff.cargoLabel}
+                  status={summary.manager.status}
+                  time={summary.manager.entradaFormat ?? summary.manager.staff.expectedTime}
+                  avatarUrl={summary.manager.staff.avatarUrl}
+                  critical={summary.manager.staff.isCritical}
+                  matchHint={summary.manager.matchHint}
+                  statusNote={summary.manager.statusNote}
+                  shiftLabel={shiftLabelForStaff(summary.manager.staff, viewDate)}
+                  onClick={!editLayout && onStaffClick ? () => onStaffClick(summary.manager!) : undefined}
+                  planVsReal={summary.manager && getPlanVsReal ? getPlanVsReal(summary.manager) : undefined}
+                />
+              ) : (
+                <ManagerPlaceholder />
+              )}
+            </div>
+
+            <div className="h-6 w-px bg-border dark:bg-slate-700" />
+            <div className="h-px w-full max-w-3xl bg-border dark:bg-slate-700" />
+
+            <div
+              className="grid w-full max-w-5xl gap-6 mt-4"
+              style={{
+                gridTemplateColumns: `repeat(${Math.max(1, summary.areas.length)}, minmax(0, 1fr))`,
+              }}
+            >
+              {summary.areas.map((block) => (
+                <DraggableAreaColumn
+                  key={`${summary.sedeName}-${block.area}`}
+                  block={block}
+                  sedeName={summary.sedeName}
+                  editLayout={editLayout}
+                  onAreaReorder={handleAreaReorder}
+                  onStaffDrop={handleStaffDrop}
+                  viewDate={viewDate}
+                  onStaffClick={onStaffClick}
+                  getPlanVsReal={getPlanVsReal}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import type { TurnosRosterEntry, TurnosSettings } from '../../types/turnos';
+import { VET_WORK_AREAS } from '../../types/accidentes';
 import {
   applyToVacancy,
   approveApplication,
@@ -280,6 +281,27 @@ export function TurnosVacanciesView({
                 </Select>
               </div>
               <div className="space-y-1">
+                <Label className="text-xs">Área (notifica al personal del área)</Label>
+                <Select
+                  value={newVacancy.workArea || '__all__'}
+                  onValueChange={(v) =>
+                    setNewVacancy((s) => ({ ...s, workArea: v === '__all__' ? '' : v }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas las áreas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all__">Todas las áreas de la sede</SelectItem>
+                    {VET_WORK_AREAS.map((a) => (
+                      <SelectItem key={a} value={a}>
+                        {a}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
                 <Label className="text-xs">Motivo (opcional)</Label>
                 <Input
                   value={newVacancy.reason}
@@ -301,7 +323,9 @@ export function TurnosVacanciesView({
                         reason: newVacancy.reason || undefined,
                         createdBy: currentUserName,
                       }, currentUserName),
-                    'Turno vacante publicado.'
+                    newVacancy.workArea
+                      ? `Vacante publicada — se notificó al área ${newVacancy.workArea}.`
+                      : 'Turno vacante publicado — se notificó a todo el personal activo.'
                   );
                   setNewVacancy((v) => ({ ...v, date: '', reason: '' }));
                 }}

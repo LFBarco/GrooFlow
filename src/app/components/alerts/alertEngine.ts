@@ -10,8 +10,10 @@ import {
 } from "../../types";
 import type { FleetDataset } from "../../types/fleet";
 import type { AsistenciaSettings } from "../../types/asistencia";
+import type { TurnosSettings } from "../../types/turnos";
 import { buildFleetSystemAlerts } from "../../utils/fleetData";
 import { buildAsistenciaSystemAlerts } from "../../utils/asistenciaAlerts";
+import { buildTurnosSystemAlerts } from "../../utils/turnosAlerts";
 import { formatNumberEs } from '../../utils/numberFormat';
 import { 
     addDays, 
@@ -54,6 +56,8 @@ interface AlertContext {
     };
     /** Config asistencia (Buk + staff) para alertas operativas. */
     asistenciaSettings?: AsistenciaSettings | null;
+    /** Planificación de turnos — vacantes y aprobaciones pendientes. */
+    turnosSettings?: TurnosSettings | null;
 }
 
 export function generateAlerts(context: AlertContext): SystemAlert[] {
@@ -284,6 +288,10 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
     }
 
     alerts.push(...buildAsistenciaSystemAlerts(context.asistenciaSettings));
+
+    if (context.turnosSettings) {
+        alerts.push(...buildTurnosSystemAlerts(context.turnosSettings));
+    }
 
     return alerts.sort((a, b) => {
         // Ordenar primero por severidad, luego por fecha

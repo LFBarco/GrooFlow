@@ -137,6 +137,9 @@ import { hydrateTransactions } from "./utils/hydrateTransactions";
 import { labelsMatch } from "./utils/labelMatch";
 import { formatDateInputValue, parseTransactionDate } from "./utils/transactionDate";
 import { generateAlerts } from "./components/alerts/alertEngine";
+import { filterAlertsForUser } from "./utils/turnosAlerts";
+import type { TurnosSettings } from "./types/turnos";
+import { mergeTurnosSettings, TURNOS_SETTINGS_KV_KEY } from "./utils/turnosData";
 import { canConfigureAsistencia } from "./utils/asistenciaAccess";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
@@ -650,6 +653,7 @@ export default function App() {
 
   // Alerts System
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
+  const [turnosSettingsForAlerts, setTurnosSettingsForAlerts] = useState<TurnosSettings | null>(null);
   const [alertThresholds, setAlertThresholds] = useState<AlertThresholds>({
     liquidityMinDays: 3,
     invoiceDueDays: 7,
@@ -2103,6 +2107,17 @@ export default function App() {
   useEffect(() => {
     if (!isDataLoaded) return;
     let cancelled = false;
+    void repository.kv.get<TurnosSettings>(TURNOS_SETTINGS_KV_KEY).then((raw) => {
+      if (!cancelled) setTurnosSettingsForAlerts(mergeTurnosSettings(raw));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDataLoaded]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
+    let cancelled = false;
     const run = () => {
       if (cancelled) return;
       const newAlerts = generateAlerts({
@@ -2115,8 +2130,9 @@ export default function App() {
         fleetDataset,
         alertSources: goLiveAlertSources(),
         asistenciaSettings: systemSettings.asistencia,
+        turnosSettings: turnosSettingsForAlerts,
       });
-      setAlerts(applyReadState(newAlerts));
+      setAlerts(applyReadState(filterAlertsForUser(newAlerts, currentUser?.id)));
     };
     let ricId: number | undefined;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -2141,6 +2157,8 @@ export default function App() {
     isDataLoaded,
     applyReadState,
     systemSettings.asistencia,
+    turnosSettingsForAlerts,
+    currentUser?.id,
   ]);
 
   const handleMarkAlertAsRead = (id: string) => {

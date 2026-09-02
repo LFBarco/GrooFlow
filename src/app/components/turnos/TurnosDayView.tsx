@@ -24,6 +24,7 @@ import {
   removeAssignment,
   upsertAssignment,
 } from '../../utils/turnosData';
+import { upsertAssignmentByManager } from '../../utils/turnosShiftApproval';
 import { toDateKey } from '../../utils/turnosCalendar';
 import { coverageVisual, TURNO_SHIFT_STYLES, workAreaAvatarClass } from '../../utils/turnosStyles';
 import { printTurnosDay } from '../../utils/turnosExport';
@@ -39,6 +40,7 @@ type Props = {
   roster: TurnosRosterEntry[];
   workSede: string;
   canEdit: boolean;
+  assignActor?: { userId?: string; name?: string; isManager?: boolean };
   onUpdate: (updater: (prev: TurnosSettings) => TurnosSettings) => void;
 };
 
@@ -201,7 +203,7 @@ function ShiftColumn({
   );
 }
 
-export function TurnosDayView({ settings, date, roster, workSede, canEdit, onUpdate }: Props) {
+export function TurnosDayView({ settings, date, roster, workSede, canEdit, assignActor, onUpdate }: Props) {
   const dateKey = toDateKey(date);
   const resolvedSede = workSede === 'Todas' ? undefined : workSede;
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -230,15 +232,18 @@ export function TurnosDayView({ settings, date, roster, workSede, canEdit, onUpd
 
   const assignShift = (staffId: string, homeSede: string, shift: TurnoShiftCode) => {
     const cellSede = workSede === 'Todas' ? homeSede : workSede;
-    onUpdate((prev) =>
-      upsertAssignment(prev, {
-        staffId,
-        date: dateKey,
-        shift,
-        homeSede,
-        workSede: cellSede,
-      })
-    );
+    const payload = {
+      staffId,
+      date: dateKey,
+      shift,
+      homeSede,
+      workSede: cellSede,
+    };
+    if (canEdit && assignActor) {
+      onUpdate((prev) => upsertAssignmentByManager(prev, payload, assignActor));
+      return;
+    }
+    onUpdate((prev) => upsertAssignment(prev, payload));
   };
 
   const handleDragEnd = (event: DragEndEvent) => {

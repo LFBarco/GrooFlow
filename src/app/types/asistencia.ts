@@ -159,6 +159,42 @@ export interface AsistenciaSedeProfile {
   cargoByColumn?: Record<string, string[]>;
   /** Ocultar columnas sin personal asignado. */
   hideEmptyAreas?: boolean;
+  /** Modo de visualización del organigrama en vivo. */
+  orgChartMode?: 'columns' | 'tree';
+  /** Nodos del organigrama jerárquico (modo tree). */
+  orgChartNodes?: AsistenciaOrgChartNode[];
+}
+
+/** Nodo del organigrama jerárquico configurable por sede. */
+export type AsistenciaOrgChartColor =
+  | 'default'
+  | 'blue'
+  | 'lightblue'
+  | 'green'
+  | 'orange'
+  | 'red'
+  | 'violet';
+
+export interface AsistenciaOrgChartNode {
+  id: string;
+  /** null = hijo directo bajo la sede (nivel raíz). */
+  parentId: string | null;
+  label: string;
+  /** Disposición de los hijos: horizontal (ramas) o vertical (apilado). */
+  childrenLayout?: 'horizontal' | 'vertical';
+  color?: AsistenciaOrgChartColor;
+  /** Área asignable vinculada — el personal de esa área aparece en el nodo. */
+  areaId?: string;
+  sortOrder?: number;
+}
+
+/** Nodo del árbol resuelto con hijos y personal en vivo. */
+export interface AsistenciaOrgChartTreeNode {
+  node: AsistenciaOrgChartNode;
+  children: AsistenciaOrgChartTreeNode[];
+  staff: AsistenciaStaffLiveState[];
+  activeCount: number;
+  totalCount: number;
 }
 
 export interface AsistenciaStaffLiveState {

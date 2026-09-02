@@ -925,6 +925,7 @@ export function AsistenciaModule({
             viewDate={dateObj}
             summary={liveViewMode === 'single' ? filteredLiveSummary : undefined}
             consolidated={liveViewMode === 'consolidated' ? filteredConsolidatedSummary : undefined}
+            asistenciaSettings={settings}
             editLayout={editLayout}
             canEditLayout={canConfigure}
             onEditLayoutChange={setEditLayout}

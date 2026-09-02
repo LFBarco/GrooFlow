@@ -30,6 +30,7 @@ import {
   updateAssignmentDetails,
   upsertAssignment,
 } from '../../utils/turnosData';
+import { upsertAssignmentByManager } from '../../utils/turnosShiftApproval';
 import { comparePlanVsReal } from '../../utils/turnosAsistenciaBridge';
 import { dayHeaderLabel, isToday, toDateKey } from '../../utils/turnosCalendar';
 import {
@@ -62,6 +63,7 @@ type Props = {
   density?: TurnosGridDensity;
   groupByArea?: boolean;
   readOnlyPublished?: boolean;
+  assignActor?: { userId?: string; name?: string; isManager?: boolean };
   onUpdate: (updater: (prev: TurnosSettings) => TurnosSettings, message?: string) => void;
 };
 
@@ -102,6 +104,7 @@ export function TurnosWeekGrid({
   density = 'comfortable',
   groupByArea = true,
   readOnlyPublished = false,
+  assignActor,
   onUpdate,
 }: Props) {
   const [areaSort, setAreaSort] = useState<SortDir>('asc');
@@ -147,15 +150,23 @@ export function TurnosWeekGrid({
   };
 
   const handleAssign = (staff: TurnosRosterEntry, date: string, shift: TurnoShiftCode) => {
-    onUpdate((prev) =>
-      upsertAssignment(prev, {
-        staffId: staff.id,
-        date,
-        shift,
-        homeSede: staff.homeSede,
-        workSede: workSede === 'Todas' ? staff.homeSede : workSede,
-      })
-    );
+    const payload = {
+      staffId: staff.id,
+      date,
+      shift,
+      homeSede: staff.homeSede,
+      workSede: workSede === 'Todas' ? staff.homeSede : workSede,
+    };
+    if (canEdit && assignActor) {
+      onUpdate(
+        (prev) => upsertAssignmentByManager(prev, payload, assignActor),
+        staff.userId && assignActor.userId !== staff.userId
+          ? 'Turno asignado — pendiente de confirmación del colaborador.'
+          : undefined
+      );
+      return;
+    }
+    onUpdate((prev) => upsertAssignment(prev, payload));
   };
 
   const handleClear = (assignmentId: string) => {

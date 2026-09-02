@@ -62,6 +62,7 @@ import { TurnosFiltersBar } from './TurnosFiltersBar';
 import { TurnosKpiBar } from './TurnosKpiBar';
 import { TurnosStaffingConfigDialog } from './TurnosStaffingConfigDialog';
 import { TurnosVacanciesView } from './TurnosVacanciesView';
+import { TurnosShiftApprovalBanner } from './TurnosShiftApprovalBanner';
 import { TurnosValidationBanner } from './TurnosValidationBanner';
 import { TurnosPublishBar } from './TurnosPublishBar';
 import { TurnosTemplatesDialog } from './TurnosTemplatesDialog';
@@ -477,6 +478,13 @@ export function TurnosModule({
 
       <TurnosValidationBanner alerts={laborAlerts} />
 
+      <TurnosShiftApprovalBanner
+        settings={settings}
+        userId={currentUser?.id}
+        userName={currentUserName}
+        onUpdate={updateSettings}
+      />
+
       {viewMode === 'week' ? (
         <TurnosPublishBar
           settings={settings}
@@ -511,6 +519,11 @@ export function TurnosModule({
           bukRecords={bukRecords}
           density={gridDensity}
           readOnlyPublished={weekPublished}
+          assignActor={
+            canEdit
+              ? { userId: currentUser?.id, name: currentUserName, isManager: true }
+              : undefined
+          }
           onUpdate={updateSettings}
         />
       ) : null}
@@ -522,6 +535,11 @@ export function TurnosModule({
           roster={filteredRoster}
           workSede={workSede}
           canEdit={canEdit}
+          assignActor={
+            canEdit
+              ? { userId: currentUser?.id, name: currentUserName, isManager: true }
+              : undefined
+          }
           onUpdate={updateSettings}
         />
       ) : null}
