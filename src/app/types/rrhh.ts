@@ -32,7 +32,39 @@ export interface BukPeEmployeeRow {
   healthCompany?: string;
   paymentMethod?: string;
   bank?: string;
+  /** Campos enriquecidos desde Buk Asistencia (Ctrlit). */
+  rutAsistencia?: string;
+  recintoNombre?: string;
+  recintoCodigo?: string;
+  recintoLabel?: string;
+  areaAsistencia?: string;
+  especialidad?: string;
+  supervisor?: string;
+  contratoAsistencia?: string;
+  turnoAsistencia?: string;
+  codigoTurno?: string;
+  ultimaMarcacionEntrada?: string;
+  ultimaMarcacionSalida?: string;
+  ultimaAsistenciaDia?: string;
+  turnoNoche?: boolean;
+  art22?: boolean;
+  trabIdAsistencia?: number;
+  asistenciaEnriched?: boolean;
+  asistenciaSyncedAt?: string;
+  /** Metadatos de sincronización incremental. */
+  firstSyncedAt?: string;
+  lastUpdatedAt?: string;
+  contentHash?: string;
+  missingFromSource?: boolean;
   raw?: Record<string, unknown>;
+}
+
+export interface RrhhSyncStats {
+  added: number;
+  updated: number;
+  unchanged: number;
+  removedFromSource: number;
+  total: number;
 }
 
 export type RrhhUserLinkMethod = 'email' | 'personal_email' | 'document' | 'name' | 'manual';
@@ -53,6 +85,9 @@ export interface RrhhSyncLogEntry {
   employeesLoaded?: number;
   usersDisabled?: number;
   usersLinked?: number;
+  stats?: RrhhSyncStats;
+  asistenciaMatched?: number;
+  durationMs?: number;
 }
 
 export interface RrhhColumnDef {
@@ -65,9 +100,12 @@ export interface RrhhColumnDef {
 export interface RrhhSettings {
   visibleColumns: string[];
   autoDisableOnTermination: boolean;
+  /** Enriquecer colaboradores con recinto, turno y marcaciones de Buk Asistencia. */
+  includeAsistenciaEnrichment?: boolean;
   lastSyncAt?: string;
   lastSyncOk?: boolean;
   lastSyncMessage?: string;
+  lastSyncStats?: RrhhSyncStats;
   employees: BukPeEmployeeRow[];
   userLinks: RrhhUserLink[];
   syncLog: RrhhSyncLogEntry[];
@@ -80,8 +118,11 @@ export interface RrhhDashboardKpis {
   linkedUsers: number;
   unlinkedActive: number;
   pendingDisable: number;
+  withAsistencia: number;
+  withoutAsistencia: number;
   byArea: { area: string; count: number }[];
   byCargo: { cargo: string; count: number }[];
+  byRecinto: { recinto: string; count: number }[];
 }
 
 export interface RrhhRecommendation {

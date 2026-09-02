@@ -7,6 +7,7 @@ export function defaultRrhhSettings(): RrhhSettings {
   return {
     visibleColumns: defaultRrhhVisibleColumns(),
     autoDisableOnTermination: true,
+    includeAsistenciaEnrichment: true,
     employees: [],
     userLinks: [],
     syncLog: [],

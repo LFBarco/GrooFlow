@@ -97,6 +97,18 @@ export const RRHH_COLUMN_DEFS: RrhhColumnDef[] = [
   { id: 'paymentMethod', label: 'Forma pago', group: 'Planilla' },
   { id: 'bank', label: 'Banco', group: 'Planilla' },
   { id: 'bukId', label: 'ID Buk', group: 'Sistema' },
+  { id: 'rutAsistencia', label: 'RUT asistencia', group: 'Asistencia (Ctrlit)' },
+  { id: 'recintoLabel', label: 'Recinto asistencia', defaultVisible: true, group: 'Asistencia (Ctrlit)' },
+  { id: 'areaAsistencia', label: 'Área asistencia', group: 'Asistencia (Ctrlit)' },
+  { id: 'especialidad', label: 'Especialidad', group: 'Asistencia (Ctrlit)' },
+  { id: 'supervisor', label: 'Supervisor', group: 'Asistencia (Ctrlit)' },
+  { id: 'turnoAsistencia', label: 'Turno', defaultVisible: true, group: 'Asistencia (Ctrlit)' },
+  { id: 'codigoTurno', label: 'Código turno', group: 'Asistencia (Ctrlit)' },
+  { id: 'ultimaAsistenciaDia', label: 'Último día marcación', group: 'Asistencia (Ctrlit)' },
+  { id: 'ultimaMarcacionEntrada', label: 'Última entrada', defaultVisible: true, group: 'Asistencia (Ctrlit)' },
+  { id: 'ultimaMarcacionSalida', label: 'Última salida', group: 'Asistencia (Ctrlit)' },
+  { id: 'turnoNoche', label: 'Turno noche', group: 'Asistencia (Ctrlit)' },
+  { id: 'art22', label: 'Art. 22', group: 'Asistencia (Ctrlit)' },
 ];
 
 export function defaultRrhhVisibleColumns(): string[] {
@@ -216,6 +228,7 @@ export function computeRrhhDashboard(
   const linkedUserIds = new Set(links.map((l) => l.userId));
 
   const unlinkedActive = active.filter((e) => !linkedBukIds.has(e.bukId)).length;
+  const withAsistencia = active.filter((e) => e.asistenciaEnriched).length;
 
   const pendingDisable = terminated.filter((e) => {
     const userId = findUserIdForEmployee(e, links);
@@ -243,8 +256,14 @@ export function computeRrhhDashboard(
     linkedUsers: linkedUserIds.size,
     unlinkedActive,
     pendingDisable,
+    withAsistencia,
+    withoutAsistencia: Math.max(active.length - withAsistencia, 0),
     byArea: countBy(active, (e) => e.area),
     byCargo: countBy(active, (e) => e.cargo).map(({ area, count }) => ({ cargo: area, count })),
+    byRecinto: countBy(active, (e) => e.recintoLabel || e.recintoNombre).map(({ area, count }) => ({
+      recinto: area,
+      count,
+    })),
   };
 }
 
@@ -318,6 +337,29 @@ export function buildRrhhRecommendations(
       severity: 'info',
       title: 'Buena cobertura de vinculación',
       detail: 'La mayoría de activos ya tienen usuario en GrooFlow. Puedes activar bajas automáticas con confianza.',
+    });
+  }
+
+  if (kpis.active > 0 && kpis.withoutAsistencia > 0) {
+    const pct = Math.round((kpis.withAsistencia / kpis.active) * 100);
+    recs.push({
+      id: 'asistencia-coverage',
+      severity: kpis.withAsistencia === 0 ? 'warning' : 'info',
+      title: `Asistencia Buk: ${kpis.withAsistencia}/${kpis.active} activos (${pct}%)`,
+      detail:
+        kpis.withAsistencia === 0
+          ? 'Activa Buk Asistencia en Integraciones y sincroniza de nuevo para ver recinto, turno y últimas marcaciones.'
+          : `${kpis.withoutAsistencia} activo(s) sin cruce por RUT o nombre. Revisa documento en Buk.pe o el maestro de asistencia.`,
+    });
+  }
+
+  const missingFromApi = employees.filter((e) => e.missingFromSource).length;
+  if (missingFromApi > 0) {
+    recs.push({
+      id: 'stale-cache',
+      severity: 'warning',
+      title: `${missingFromApi} colaborador(es) ya no aparecen en Buk.pe`,
+      detail: 'Se conservan en caché local. Si la baja es definitiva, revísalos en la pestaña Bajas.',
     });
   }
 

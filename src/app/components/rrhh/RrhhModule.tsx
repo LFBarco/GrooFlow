@@ -10,8 +10,8 @@ import {
 import { toast } from 'sonner';
 
 import type { SystemSettings, User } from '../../types';
+import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { mergeBukPeSettings } from '../../utils/bukPeApi';
-import { fetchAllBukPeEmployees } from '../../utils/bukPeEmployeesApi';
 import {
   RRHH_COLUMN_DEFS,
   autoLinkBukEmployeesToUsers,
@@ -19,6 +19,7 @@ import {
   computeRrhhDashboard,
   usersToDisableForTerminations,
 } from '../../utils/bukPeEmployeeUtils';
+import { syncRrhhCollaborators } from '../../utils/rrhhCollaboratorsSync';
 import { useRrhhModuleState } from '../../hooks/useRrhhModuleState';
 import { RrhhBajasPanel } from './RrhhBajasPanel';
 import { RrhhDashboard } from './RrhhDashboard';
@@ -54,8 +55,10 @@ export function RrhhModule({
   onPersistUsers,
 }: RrhhModuleProps) {
   const bukPe = mergeBukPeSettings(systemSettings.bukPe);
+  const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
   const { settings, loading, saving, updateSettings, persistNow } = useRrhhModuleState(canEdit);
   const [syncing, setSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState('');
   const [search, setSearch] = useState('');
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [draftColumns, setDraftColumns] = useState<string[]>(settings.visibleColumns);
@@ -105,8 +108,14 @@ export function RrhhModule({
   const runSync = async () => {
     if (!canEdit) return;
     setSyncing(true);
+    setSyncProgress('');
     try {
-      const result = await fetchAllBukPeEmployees({ bukPe: systemSettings.bukPe });
+      const result = await syncRrhhCollaborators({
+        systemSettings,
+        existingEmployees: settings.employees,
+        includeAsistencia: settings.includeAsistenciaEnrichment !== false,
+        onProgress: setSyncProgress,
+      });
       if (!result.ok) {
         toast.error(result.message);
         updateSettings(
@@ -141,7 +150,7 @@ export function RrhhModule({
       }
 
       const at = new Date().toISOString();
-      const logMessage = `${result.message}${usersDisabled > 0 ? ` ${usersDisabled} usuario(s) deshabilitado(s).` : ''}`;
+      const logMessage = `${result.message}${usersDisabled > 0 ? ` · ${usersDisabled} usuario(s) deshabilitado(s)` : ''}`;
 
       const nextSettings = {
         ...settings,
@@ -150,6 +159,7 @@ export function RrhhModule({
         lastSyncAt: at,
         lastSyncOk: true,
         lastSyncMessage: logMessage,
+        lastSyncStats: result.stats,
         syncLog: [
           {
             at,
@@ -158,16 +168,20 @@ export function RrhhModule({
             employeesLoaded: result.employees.length,
             usersDisabled,
             usersLinked: links.length,
+            stats: result.stats,
+            asistenciaMatched: result.asistenciaMatched,
+            durationMs: result.durationMs,
           },
           ...settings.syncLog,
         ].slice(0, 30),
       };
 
       updateSettings(() => nextSettings);
-      await persistNow(nextSettings, 'Sincronización Buk.pe completada.');
+      await persistNow(nextSettings, 'Sincronización completada.');
       toast.success(logMessage);
     } finally {
       setSyncing(false);
+      setSyncProgress('');
     }
   };
 
@@ -199,15 +213,23 @@ export function RrhhModule({
             Recursos Humanos
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Maestro de colaboradores desde Buk.pe — tabla configurable, bajas y vinculación con usuarios GrooFlow.
+            Maestro de colaboradores desde Buk.pe, enriquecido con asistencia Buk (Ctrlit). Los datos quedan en caché y solo se actualizan si hay cambios.
           </p>
           <div className="flex flex-wrap gap-2 mt-2">
             <Badge variant={bukPe.enabled ? 'default' : 'secondary'}>
               Buk.pe {bukPe.enabled ? 'activo' : 'inactivo'}
             </Badge>
+            <Badge variant={asistencia.buk?.enabled ? 'default' : 'secondary'}>
+              Asistencia {asistencia.buk?.enabled ? 'activa' : 'inactiva'}
+            </Badge>
             {settings.lastSyncAt ? (
-              <Badge variant="outline">
+              <Badge variant={settings.lastSyncOk === false ? 'destructive' : 'outline'}>
                 Sync {format(new Date(settings.lastSyncAt), "d MMM HH:mm", { locale: es })}
+              </Badge>
+            ) : null}
+            {settings.lastSyncStats ? (
+              <Badge variant="outline">
+                {settings.lastSyncStats.unchanged} sin cambios
               </Badge>
             ) : null}
             {saving ? <Badge variant="outline">Guardando…</Badge> : null}
@@ -223,12 +245,12 @@ export function RrhhModule({
               {syncing ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  Sincronizando…
+                  {syncProgress || 'Sincronizando…'}
                 </>
               ) : (
                 <>
                   <RefreshCw className="h-4 w-4 mr-1" />
-                  Actualizar desde Buk.pe
+                  Sincronizar colaboradores
                 </>
               )}
             </Button>
@@ -236,20 +258,37 @@ export function RrhhModule({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-        <div>
-          <p className="text-sm font-medium">Deshabilitar usuario en bajas Buk</p>
-          <p className="text-xs text-muted-foreground">
-            Si Buk marca inactivo/desvinculado, el usuario vinculado pasa a inactivo en GrooFlow al sincronizar.
-          </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div>
+            <p className="text-sm font-medium">Deshabilitar usuario en bajas Buk</p>
+            <p className="text-xs text-muted-foreground">
+              Si Buk marca inactivo/desvinculado, el usuario vinculado pasa a inactivo en GrooFlow al sincronizar.
+            </p>
+          </div>
+          <Switch
+            checked={settings.autoDisableOnTermination}
+            disabled={!canEdit}
+            onCheckedChange={(v) =>
+              updateSettings((prev) => ({ ...prev, autoDisableOnTermination: v }), v ? 'Bajas automáticas activadas.' : 'Bajas automáticas desactivadas.')
+            }
+          />
         </div>
-        <Switch
-          checked={settings.autoDisableOnTermination}
-          disabled={!canEdit}
-          onCheckedChange={(v) =>
-            updateSettings((prev) => ({ ...prev, autoDisableOnTermination: v }), v ? 'Bajas automáticas activadas.' : 'Bajas automáticas desactivadas.')
-          }
-        />
+        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+          <div>
+            <p className="text-sm font-medium">Enriquecer con asistencia Buk</p>
+            <p className="text-xs text-muted-foreground">
+              Recinto, área, turno, supervisor y últimas marcaciones desde Ctrlit (por RUT o nombre).
+            </p>
+          </div>
+          <Switch
+            checked={settings.includeAsistenciaEnrichment !== false}
+            disabled={!canEdit}
+            onCheckedChange={(v) =>
+              updateSettings((prev) => ({ ...prev, includeAsistenciaEnrichment: v }), v ? 'Asistencia activada en sync.' : 'Solo maestro Buk.pe en sync.')
+            }
+          />
+        </div>
       </div>
 
       <Tabs defaultValue="colaboradores">
@@ -315,7 +354,9 @@ export function RrhhModule({
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Columnas visibles</DialogTitle>
-            <DialogDescription>Elige qué campos de Buk.pe mostrar en la tabla de colaboradores.</DialogDescription>
+            <DialogDescription>
+              Campos de Buk.pe y, si sincronizas con asistencia, datos de Ctrlit (recinto, turno, marcaciones).
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             {[...new Set(RRHH_COLUMN_DEFS.map((c) => c.group ?? 'General'))].map((group) => (
