@@ -271,6 +271,8 @@ export function getSedeProfile(
     subOrgColumns: found?.subOrgColumns,
     cargoByColumn: found?.cargoByColumn,
     hideEmptyAreas: found?.hideEmptyAreas,
+    orgChartMode: found?.orgChartMode,
+    orgChartNodes: found?.orgChartNodes,
   };
 }
 

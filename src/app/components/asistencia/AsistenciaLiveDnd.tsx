@@ -404,12 +404,10 @@ export function AsistenciaLiveSedeBlock({
   const profile = asistenciaSettings
     ? getSedeProfile(asistenciaSettings, summary.sedeName)
     : null;
+  const orgChartNodes = Array.isArray(profile?.orgChartNodes) ? profile!.orgChartNodes! : [];
   const useTreeView =
-    profile?.orgChartMode === 'tree' &&
-    (profile.orgChartNodes?.length ?? 0) > 0;
-  const orgTree = useTreeView
-    ? buildOrgChartTree(profile!.orgChartNodes!, summary)
-    : [];
+    profile?.orgChartMode === 'tree' && orgChartNodes.length > 0;
+  const orgTree = useTreeView ? buildOrgChartTree(orgChartNodes, summary) : [];
   const handleStaffDrop = useCallback(
     (item: StaffDragItem, toIndex: number, toArea: string) => {
       if (item.sedeName !== summary.sedeName) return;

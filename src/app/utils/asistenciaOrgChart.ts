@@ -87,15 +87,20 @@ export function buildOrgChartTree(
     }
   }
 
-  const build = (parentId: string | null): AsistenciaOrgChartTreeNode[] =>
+  const build = (parentId: string | null, visited: Set<string> = new Set()): AsistenciaOrgChartTreeNode[] =>
     sorted
       .filter((n) => n.parentId === parentId)
       .map((node) => {
+        if (visited.has(node.id)) {
+          return { node, children: [], staff: [], activeCount: 0, totalCount: 0 };
+        }
+        const nextVisited = new Set(visited);
+        nextVisited.add(node.id);
         const staff = node.areaId ? (staffByArea.get(node.areaId) ?? []) : [];
-        const children = build(node.id);
-        const childStaff = children.flatMap((c) => c.staff);
-        const allStaff = [...staff, ...childStaff];
-        const activeCount = allStaff.filter((s) => s.status === 'present' || s.status === 'late').length;
+        const children = build(node.id, nextVisited);
+        const activeCount = staff.filter(
+          (s) => s.status === 'trabajando' || s.status === 'presente' || s.status === 'tarde'
+        ).length;
         return {
           node,
           children,

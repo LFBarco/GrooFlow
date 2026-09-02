@@ -5,9 +5,7 @@ import type { AsistenciaOrgChartColor, AsistenciaOrgChartNode, AsistenciaSetting
 import { getSedeProfile } from '../../utils/asistenciaStaff';
 import {
   applyOrgChartNodes,
-  applyRemoveOrgChartNode,
   applySetOrgChartMode,
-  applyUpdateOrgChartNode,
   buildOrgChartFromColumns,
   buildOrgChartTree,
   orgChartAssignableOptions,
@@ -67,6 +65,21 @@ export function AsistenciaOrgChartEditor({ sedeName, settings, canConfigure, onS
     () => orgChartParentOptions(draftNodes),
     [draftNodes]
   );
+
+  const parentOptionIds = useMemo(
+    () => new Set(parentOptions.map((p) => p.id ?? '__root__')),
+    [parentOptions]
+  );
+
+  const resolveSelectParent = (parentId: string | null) => {
+    const key = parentId ?? '__root__';
+    return parentOptionIds.has(key) ? key : '__root__';
+  };
+
+  const resolveSelectArea = (areaId?: string) => {
+    if (!areaId) return '__none__';
+    return assignableAreas.some((a) => a.id === areaId) ? areaId : '__none__';
+  };
 
   const previewSummary = useMemo(
     () => ({
@@ -218,7 +231,7 @@ export function AsistenciaOrgChartEditor({ sedeName, settings, canConfigure, onS
                   className="h-8"
                 />
                 <Select
-                  value={node.parentId ?? '__root__'}
+                  value={resolveSelectParent(node.parentId)}
                   onValueChange={(v) => updateNode(node.id, { parentId: v === '__root__' ? null : v })}
                 >
                   <SelectTrigger className="h-8 text-xs">
@@ -263,7 +276,7 @@ export function AsistenciaOrgChartEditor({ sedeName, settings, canConfigure, onS
                 </Select>
                 <div className="flex gap-1 sm:col-span-5">
                   <Select
-                    value={node.areaId ?? '__none__'}
+                    value={resolveSelectArea(node.areaId)}
                     onValueChange={(v) => updateNode(node.id, { areaId: v === '__none__' ? undefined : v })}
                   >
                     <SelectTrigger className="h-8 flex-1 text-xs">
