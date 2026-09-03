@@ -273,6 +273,20 @@ export function ProviderManager({
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [currentProvider, setCurrentProvider] = useState<Partial<Provider>>({});
     const [isImportOpen, setIsImportOpen] = useState(false);
+    const [importPreview, setImportPreview] = useState<{
+        toCreate: Provider[];
+        toUpdate: Provider[];
+        sampleNew: string[];
+        sampleExisting: string[];
+        fileDupes: number;
+        errors: number;
+        invalidCatalog: number;
+        invalidRuc: number;
+        invalidPettyMotive: number;
+        invalidExpenseClassification: number;
+        chartCodeNotFound: number;
+    } | null>(null);
+    const [importApplying, setImportApplying] = useState(false);
     const [clientSearch, setClientSearch] = useState('');
     const [providerTablePage, setProviderTablePage] = useState(1);
     const [providerTablePageSize, setProviderTablePageSize] = useState<number>(25);
@@ -592,8 +606,10 @@ export function ProviderManager({
                     return;
                 }
 
-                const newProviders: Provider[] = [];
-                let duplicates = 0;
+                const toCreate: Provider[] = [];
+                const toUpdate: Provider[] = [];
+                const seenInFile = new Set<string>();
+                let fileDupes = 0;
                 let errors = 0;
                 let invalidCatalog = 0;
                 let invalidRuc = 0;
@@ -645,13 +661,13 @@ export function ProviderManager({
                     }
                     const { digits: ruc, docType: importDocType } = parsedDoc;
 
-                    if (
-                        providers.some((p) => p.ruc.replace(/\D/g, '') === ruc) ||
-                        newProviders.some((p) => p.ruc.replace(/\D/g, '') === ruc)
-                    ) {
-                        duplicates++;
+                    if (seenInFile.has(ruc)) {
+                        fileDupes++;
                         return;
                     }
+                    seenInFile.add(ruc);
+
+                    const existing = providers.find((p) => p.ruc.replace(/\D/g, '') === ruc);
 
                     const cCat = getImportCell(
                         row,
@@ -821,7 +837,7 @@ export function ProviderManager({
                     }
 
                     const provider: Provider = {
-                        id: `prov-imp-${Date.now()}-${rowIndex}-${Math.random().toString(36).slice(2, 9)}`,
+                        id: existing?.id ?? `prov-imp-${Date.now()}-${rowIndex}-${Math.random().toString(36).slice(2, 9)}`,
                         name: String(name).trim(),
                         ruc,
                         docIdentityType: importDocType,
@@ -836,36 +852,24 @@ export function ProviderManager({
                         contactName,
                         bankName,
                         bankAccount,
-                        totalPurchased: 0,
+                        totalPurchased: existing?.totalPurchased ?? 0,
                         accountingAccount: accountingAccountResolved,
                         defaultPurchaseAccount: defaultPurchaseAccountResolved,
                         defaultProfessionalFeeAccount: defaultProfessionalFeeAccountResolved,
                         usageContexts,
                         pettyExpenseLines: pettyLines.length > 0 ? pettyLines : undefined,
-                        registeredVia: 'full',
+                        registeredVia: existing?.registeredVia ?? 'full',
                     };
-                    newProviders.push(provider);
+                    if (existing) {
+                        toUpdate.push(provider);
+                    } else {
+                        toCreate.push(provider);
+                    }
                 });
 
-                if (newProviders.length > 0) {
-                    const merged = [...providers, ...newProviders];
-                    const saved = await Promise.resolve(onUpdateProviders(merged));
-                    if (saved === false) {
-                        toast.error(
-                            'No se pudo guardar la importación en la nube (revisa conexión o que termine la sincronización inicial). La lista local no se modificó.',
-                        );
-                    } else {
-                        toast.success(
-                            `Se importaron y guardaron ${newProviders.length} proveedor(es) en la nube.`,
-                        );
-                        if (useServerPaging) await serverList.reload();
-                        setIsImportOpen(false);
-                    }
-                }
-
-                if (duplicates > 0) {
+                if (fileDupes > 0) {
                     toast.warning(
-                        `${duplicates} registro(s) ya existían (mismo número de documento) y se omitieron`,
+                        `${fileDupes} fila(s) duplicadas en el archivo (mismo documento) se omitieron`,
                     );
                 }
                 if (errors > 0) {
@@ -898,6 +902,26 @@ export function ProviderManager({
                         `${chartCodeNotFound} fila(s): la cuenta contable principal no coincide con ninguna cuenta activa del plan importado. Se guardó código normalizado; revise en Proveedores o en Plan de cuentas.`,
                     );
                 }
+
+                if (toCreate.length === 0 && toUpdate.length === 0) {
+                    toast.error('No hay filas válidas para importar.');
+                    return;
+                }
+
+                setImportPreview({
+                    toCreate,
+                    toUpdate,
+                    sampleNew: toCreate.slice(0, 8).map((p) => p.name),
+                    sampleExisting: toUpdate.slice(0, 8).map((p) => p.name),
+                    fileDupes,
+                    errors,
+                    invalidCatalog,
+                    invalidRuc,
+                    invalidPettyMotive,
+                    invalidExpenseClassification,
+                    chartCodeNotFound,
+                });
+                setIsImportOpen(false);
             } catch (error) {
                 toast.error('Error al procesar el archivo Excel');
             }
@@ -905,6 +929,39 @@ export function ProviderManager({
             })();
         };
         reader.readAsArrayBuffer(file);
+    };
+
+    const applyImportPreview = async () => {
+        if (!importPreview) return;
+        setImportApplying(true);
+        try {
+            const byId = new Map(providers.map((p) => [p.id, p]));
+            for (const updated of importPreview.toUpdate) {
+                byId.set(updated.id, updated);
+            }
+            const merged = [...byId.values(), ...importPreview.toCreate];
+            const saved = await Promise.resolve(onUpdateProviders(merged));
+            if (saved === false) {
+                toast.error(
+                    'No se pudo guardar la importación en la nube (revisa conexión o que termine la sincronización inicial). La lista local no se modificó.',
+                );
+                return;
+            }
+            const parts: string[] = [];
+            if (importPreview.toCreate.length > 0) {
+                parts.push(`${importPreview.toCreate.length} nuevo(s)`);
+            }
+            if (importPreview.toUpdate.length > 0) {
+                parts.push(`${importPreview.toUpdate.length} actualizado(s)`);
+            }
+            toast.success(`Plantilla aplicada: ${parts.join(' · ')}.`);
+            setImportPreview(null);
+            if (useServerPaging) {
+                void serverList.reload();
+            }
+        } finally {
+            setImportApplying(false);
+        }
     };
 
     /**
@@ -1757,7 +1814,8 @@ export function ProviderManager({
                                 Mínimo obligatorio: <strong>Razón social</strong>, <strong>documento</strong> (RUC 11 / DNI 8 / CE
                                 9 dígitos, recomendado formato texto en Excel), <strong>Categoría</strong> (texto idéntico al
                                 catálogo en Finanzas → Config). <strong>Área</strong> opcional; si se informa, debe existir en
-                                el catálogo. Plantilla descargada: <code className="text-[10px]">plantilla_importacion_proveedores_grooflow_v2.xlsx</code>.
+                                el catálogo. Si el documento ya existe, se <strong>actualizarán todos los campos</strong>; si no,
+                                se creará un proveedor nuevo. Plantilla: <code className="text-[10px]">plantilla_importacion_proveedores_grooflow_v2.xlsx</code>.
                             </span>
                         </DialogDescription>
                     </DialogHeader>
@@ -1783,6 +1841,112 @@ export function ProviderManager({
                         onChange={handleFileChange} 
                         accept=".xlsx, .xls" 
                     />
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={importPreview != null}
+                onOpenChange={(open) => {
+                    if (!open && !importApplying) setImportPreview(null);
+                }}
+            >
+                <DialogContent className="sm:max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Confirmar importación de plantilla</DialogTitle>
+                        <DialogDescription>
+                            Revisa el resumen antes de aplicar los cambios. Los proveedores existentes se actualizarán
+                            con todos los campos de la plantilla; los nuevos se registrarán.
+                        </DialogDescription>
+                    </DialogHeader>
+                    {importPreview ? (
+                        <div className="space-y-4 py-2">
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-500/30 dark:bg-emerald-950/30">
+                                    <p className="text-xs text-muted-foreground">Nuevos</p>
+                                    <p className="text-2xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                                        {importPreview.toCreate.length}
+                                    </p>
+                                </div>
+                                <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-3 dark:border-amber-500/30 dark:bg-amber-950/30">
+                                    <p className="text-xs text-muted-foreground">Ya registrados (actualizar)</p>
+                                    <p className="text-2xl font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                                        {importPreview.toUpdate.length}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {importPreview.sampleNew.length > 0 ? (
+                                <div className="space-y-1">
+                                    <p className="text-xs font-medium text-muted-foreground">Ejemplos de nuevos</p>
+                                    <ul className="max-h-24 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2 text-xs space-y-0.5">
+                                        {importPreview.sampleNew.map((n) => (
+                                            <li key={`new-${n}`} className="truncate">
+                                                {n}
+                                            </li>
+                                        ))}
+                                        {importPreview.toCreate.length > importPreview.sampleNew.length ? (
+                                            <li className="text-muted-foreground">
+                                                … y {importPreview.toCreate.length - importPreview.sampleNew.length} más
+                                            </li>
+                                        ) : null}
+                                    </ul>
+                                </div>
+                            ) : null}
+
+                            {importPreview.sampleExisting.length > 0 ? (
+                                <div className="space-y-1">
+                                    <p className="text-xs font-medium text-muted-foreground">
+                                        Ejemplos ya registrados (se actualizarán)
+                                    </p>
+                                    <ul className="max-h-24 overflow-y-auto rounded-md border bg-muted/30 px-3 py-2 text-xs space-y-0.5">
+                                        {importPreview.sampleExisting.map((n) => (
+                                            <li key={`ex-${n}`} className="truncate">
+                                                {n}
+                                            </li>
+                                        ))}
+                                        {importPreview.toUpdate.length > importPreview.sampleExisting.length ? (
+                                            <li className="text-muted-foreground">
+                                                … y {importPreview.toUpdate.length - importPreview.sampleExisting.length} más
+                                            </li>
+                                        ) : null}
+                                    </ul>
+                                </div>
+                            ) : null}
+
+                            <Alert>
+                                <Info className="h-4 w-4" />
+                                <AlertTitle className="text-sm">Resumen</AlertTitle>
+                                <AlertDescription className="text-sm">
+                                    {importPreview.toCreate.length} nuevo(s) · {importPreview.toUpdate.length}{' '}
+                                    actualización(es). Confirma para guardar en el catálogo.
+                                </AlertDescription>
+                            </Alert>
+                        </div>
+                    ) : null}
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={importApplying}
+                            onClick={() => setImportPreview(null)}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            disabled={importApplying || !importPreview}
+                            onClick={() => void applyImportPreview()}
+                        >
+                            {importApplying ? (
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Guardando…
+                                </>
+                            ) : (
+                                'Confirmar y guardar'
+                            )}
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
