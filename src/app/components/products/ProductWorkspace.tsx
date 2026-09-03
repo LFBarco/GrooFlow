@@ -48,12 +48,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   DEFAULT_WAREHOUSES,
-  PRODUCT_CATEGORIES,
-  PRODUCT_LINES,
-  PRODUCT_PRESENTATIONS,
-  PRODUCT_SUBCATEGORIES,
-  PRODUCT_UNITS,
 } from './productCatalogConstants';
+import type { ProductCatalogSettings } from '../../types';
+import { defaultProductCatalog } from '../../utils/productCatalog';
 import { round2 } from './productDraftUtils';
 import { ProductSupplierOffersPanel } from './ProductSupplierOffersPanel';
 
@@ -146,6 +143,7 @@ export interface ProductWorkspaceProps {
     message?: string
   ) => void;
   canEditSupplierOffers?: boolean;
+  catalog?: ProductCatalogSettings;
 }
 
 export function ProductWorkspace(props: ProductWorkspaceProps) {
@@ -163,7 +161,9 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
     supplierProductsSettings,
     onUpdateSupplierProducts,
     canEditSupplierOffers = true,
+    catalog: catalogProp,
   } = props;
+  const catalog = catalogProp ?? defaultProductCatalog();
 
   const ex = draft.extended!;
   const barCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -454,7 +454,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                     <Label>Presentación</Label>
                     <Select value={ex.presentation ?? 'Botella'} onValueChange={(v) => patchDraft((p) => ({ ...p, extended: { ...p.extended!, presentation: v } }))}>
                       <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
-                      <SelectContent>{PRODUCT_PRESENTATIONS.map((pr) => (<SelectItem key={pr} value={pr}>{pr}</SelectItem>))}</SelectContent>
+                      <SelectContent>{catalog.presentations.map((pr) => (<SelectItem key={pr} value={pr}>{pr}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
@@ -465,7 +465,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                     <Label>Unidad de medida</Label>
                     <Select value={draft.unit} onValueChange={(v) => patchDraft((p) => ({ ...p, unit: v }))}>
                       <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
-                      <SelectContent>{PRODUCT_UNITS.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
+                      <SelectContent>{catalog.units.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
@@ -495,14 +495,14 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                     <Label>Línea <span className="text-red-400">*</span></Label>
                     <Select value={draft.line} onValueChange={(v) => patchDraft((p) => ({ ...p, line: v }))}>
                       <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
-                      <SelectContent>{PRODUCT_LINES.map((l) => (<SelectItem key={l} value={l}>{l}</SelectItem>))}</SelectContent>
+                      <SelectContent>{catalog.lines.map((l) => (<SelectItem key={l} value={l}>{l}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Categoría <span className="text-red-400">*</span></Label>
                     <Select value={draft.category} onValueChange={(v) => patchDraft((p) => ({ ...p, category: v }))}>
                       <SelectTrigger className="border-border bg-background"><SelectValue /></SelectTrigger>
-                      <SelectContent>{PRODUCT_CATEGORIES.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
+                      <SelectContent>{catalog.categories.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
@@ -511,7 +511,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
                       <SelectTrigger className="border-border bg-background"><SelectValue placeholder="Seleccione" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Seleccione</SelectItem>
-                        {PRODUCT_SUBCATEGORIES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+                        {catalog.subcategories.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                       </SelectContent>
                     </Select>
                   </div>

@@ -8,6 +8,8 @@ export function defaultRrhhSettings(): RrhhSettings {
     visibleColumns: defaultRrhhVisibleColumns(),
     autoDisableOnTermination: true,
     includeAsistenciaEnrichment: true,
+    staffSyncEnabled: true,
+    staffSyncIntervalMinutes: 60,
     employees: [],
     userLinks: [],
     syncLog: [],
@@ -24,7 +26,8 @@ export function mergeRrhhSettings(partial?: Partial<RrhhSettings> | null): RrhhS
       Array.isArray(partial.visibleColumns) && partial.visibleColumns.length > 0
         ? partial.visibleColumns
         : base.visibleColumns,
-    employees: Array.isArray(partial.employees) ? partial.employees : base.employees,
+    // Maestro vive en MySQL; nunca rehidratar el array legacy desde KV.
+    employees: [],
     userLinks: Array.isArray(partial.userLinks) ? partial.userLinks : base.userLinks,
     syncLog: Array.isArray(partial.syncLog) ? partial.syncLog.slice(0, 30) : base.syncLog,
   };

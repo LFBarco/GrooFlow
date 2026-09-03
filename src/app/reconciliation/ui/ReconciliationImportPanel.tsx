@@ -36,11 +36,11 @@ export function ReconciliationImportPanel({ dataset, onDatasetChange, disabled }
   const sessionId = getActiveSession(dataset).id;
 
   const handleDeleteBatch = (batchId: string) => {
-    confirmDeleteReconciliationBatch(dataset, batchId, onDatasetChange);
+    void confirmDeleteReconciliationBatch(dataset, batchId, onDatasetChange);
   };
 
   const handleDeleteAllForSource = (sourceType: ReconciliationSourceType) => {
-    confirmDeleteAllSourceBatches(
+    void confirmDeleteAllSourceBatches(
       dataset,
       sessionId,
       sourceType,

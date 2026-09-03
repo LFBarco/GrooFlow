@@ -1,11 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 import type { AccountingLinkSettings, ChartOfAccountEntry, SystemSettings } from '../../types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Badge } from '../ui/badge';
 import {
   Select,
@@ -38,6 +37,17 @@ import {
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { getEnabledSedeNames } from '../../utils/sedesCatalog';
+import { getGrooflowBackend } from '../../config/backend';
+import { useServerPagedList } from '../../hooks/useServerPagedList';
+import { AccountCombobox } from '../ui/account-combobox';
+import { appConfirm } from '../ui/app-dialog';
+import {
+  ClientDataTable,
+  DataTablePaginationBar,
+  DataTableToolbar,
+  useClientDataTableState,
+  type ClientDataTableColumn,
+} from '../data-table/ClientDataTable';
 
 interface ChartOfAccountsModuleProps {
   chartOfAccounts: ChartOfAccountEntry[];
@@ -59,11 +69,22 @@ export function ChartOfAccountsModule({
   };
 
   const fileRef = useRef<HTMLInputElement>(null);
-  const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ChartOfAccountEntry | null>(null);
   const [sedeConfigOpen, setSedeConfigOpen] = useState(false);
   const [importMode, setImportMode] = useState<ImportMode>('merge');
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const useServerPaging = getGrooflowBackend() === 'rest';
+  const serverList = useServerPagedList<ChartOfAccountEntry>('chartOfAccounts', {
+    initialPageSize: 25,
+    enabled: useServerPaging,
+  });
+  const clientTable = useClientDataTableState({ initialPageSize: 25 });
+  const search = useServerPaging ? serverList.search : clientTable.search;
+  const setSearch = useServerPaging ? serverList.setSearch : clientTable.setSearch;
+  const page = useServerPaging ? serverList.page : clientTable.page;
+  const setPage = useServerPaging ? serverList.setPage : clientTable.setPage;
+  const pageSize = useServerPaging ? serverList.pageSize : clientTable.pageSize;
+  const setPageSize = useServerPaging ? serverList.setPageSize : clientTable.setPageSize;
 
   const accounting: AccountingLinkSettings = systemSettings.accounting ?? {};
   const enabledSedes = useMemo(() => getEnabledSedeNames(systemSettings), [systemSettings]);
@@ -151,28 +172,41 @@ export function ChartOfAccountsModule({
   );
 
   const igvLinkOptions = useMemo(
-    () => chartSelectOptionsWithOrphan(chartOfAccounts, accounting.igvPurchaseCreditAccountCode),
+    () =>
+      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.igvPurchaseCreditAccountCode, {
+        useLevel: CHART_OPERATIVE_LEVEL,
+      }),
     [chartOfAccounts, accounting.igvPurchaseCreditAccountCode]
   );
 
   const pettyGlobalLinkOptions = useMemo(
-    () => chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashCreditAccountCode),
+    () =>
+      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashCreditAccountCode, {
+        useLevel: CHART_OPERATIVE_LEVEL,
+      }),
     [chartOfAccounts, accounting.pettyCashCreditAccountCode]
   );
 
   const bankLinkOptions = useMemo(
-    () => chartSelectOptionsWithOrphan(chartOfAccounts, accounting.bankPaymentAccountCode),
+    () =>
+      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.bankPaymentAccountCode, {
+        useLevel: CHART_OPERATIVE_LEVEL,
+      }),
     [chartOfAccounts, accounting.bankPaymentAccountCode]
   );
 
   const unknownExpenseLinkOptions = useMemo(
     () =>
-      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashUnknownExpenseAccountCode),
+      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashUnknownExpenseAccountCode, {
+        useLevel: CHART_OPERATIVE_LEVEL,
+      }),
     [chartOfAccounts, accounting.pettyCashUnknownExpenseAccountCode]
   );
 
   const sedeAccountOptions = (sede: string) =>
-    chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashCreditBySede?.[sede]);
+    chartSelectOptionsWithOrphan(chartOfAccounts, accounting.pettyCashCreditBySede?.[sede], {
+      useLevel: CHART_OPERATIVE_LEVEL,
+    });
 
   const filteredChart = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -185,6 +219,84 @@ export function ChartOfAccountsModule({
         (e.centroCosto || '').toLowerCase().includes(q)
     );
   }, [chartOfAccounts, search]);
+
+  const chartTotalPages = useServerPaging
+    ? serverList.totalPages
+    : Math.max(1, Math.ceil(filteredChart.length / pageSize));
+  useEffect(() => {
+    if (useServerPaging) return;
+    setPage((p) => Math.min(p, chartTotalPages));
+  }, [chartTotalPages, setPage, useServerPaging]);
+
+  const chartColumns = useMemo<ClientDataTableColumn<ChartOfAccountEntry>[]>(
+    () => [
+      {
+        id: 'code',
+        header: 'Cuenta',
+        className: 'w-[100px] font-mono',
+        cell: (row) => row.code,
+      },
+      {
+        id: 'name',
+        header: 'Nombre',
+        cell: (row) => row.name,
+      },
+      {
+        id: 'level',
+        header: 'Nivel',
+        className: 'w-[70px]',
+        cell: (row) => row.level ?? '—',
+      },
+      {
+        id: 'centro',
+        header: 'Centro costo',
+        className: 'w-[100px] font-mono',
+        cell: (row) => row.centroCosto ?? '—',
+      },
+      {
+        id: 'tipo',
+        header: 'Tipo',
+        className: 'w-[90px]',
+        cell: (row) =>
+          row.claseCuenta || row.kind ? (
+            <Badge variant="outline" className="text-xs">
+              {row.claseCuenta || row.kind}
+            </Badge>
+          ) : (
+            '—'
+          ),
+      },
+      {
+        id: 'pct',
+        header: '%',
+        className: 'w-[90px] font-mono',
+        cell: (row) => row.porcentaje ?? '—',
+      },
+      {
+        id: 'pl',
+        header: 'PL GROO',
+        className: 'min-w-[120px] truncate max-w-[140px]',
+        cell: (row) => <span title={row.plFuncionGroo}>{row.plFuncionGroo ?? '—'}</span>,
+      },
+      {
+        id: 'plpl',
+        header: 'PLPL',
+        className: 'min-w-[120px] truncate max-w-[140px]',
+        cell: (row) => <span title={row.plplFuncionGoo}>{row.plplFuncionGoo ?? '—'}</span>,
+      },
+      {
+        id: 'edit',
+        header: <span className="block text-right">Editar</span>,
+        className: 'w-[80px] text-right',
+        cell: (row) => (
+          <Button size="icon" variant="ghost" onClick={() => setEditing({ ...row })}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+        ),
+      },
+    ],
+    []
+  );
 
   const downloadTemplate = () => {
     const sample = [
@@ -270,7 +382,10 @@ export function ChartOfAccountsModule({
             pendingImport.rows,
             `Merge aplicado. Nuevas: ${s.created}, actualizadas: ${s.updated}, inactivadas: ${s.inactivated}.`
           );
-    if (ok) setPendingImport(null);
+    if (ok) {
+      setPendingImport(null);
+      if (useServerPaging) await serverList.reload();
+    }
   };
 
   const saveEditing = async () => {
@@ -299,12 +414,16 @@ export function ChartOfAccountsModule({
         : r
     );
     const ok = await onUpdateChart(next, 'Cuenta actualizada.');
-    if (ok) setEditing(null);
+    if (ok) {
+      setEditing(null);
+      if (useServerPaging) await serverList.reload();
+    }
   };
 
   const clearChart = async () => {
-    if (!confirm('¿Borrar todo el plan de cuentas cargado?')) return;
+    if (!await appConfirm('¿Borrar todo el plan de cuentas cargado?')) return;
     await onUpdateChart([], 'Plan de cuentas vaciado.');
+    if (useServerPaging) await serverList.reload();
   };
 
   const exportChartWithStarsoftHeaders = () => {
@@ -450,26 +569,16 @@ export function ChartOfAccountsModule({
             <div className="space-y-2">
               <Label>IGV crédito fiscal (compras)</Label>
               {chartOfAccounts.length > 0 ? (
-                <Select
-                  value={accounting.igvPurchaseCreditAccountCode || '__none__'}
-                  onValueChange={(v) =>
+                <AccountCombobox
+                  options={igvLinkOptions}
+                  value={accounting.igvPurchaseCreditAccountCode}
+                  placeholder="Seleccionar cuenta"
+                  onChange={(v) =>
                     setAccounting({
                       igvPurchaseCreditAccountCode: v === '__none__' ? undefined : v,
                     })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cuenta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Sin definir —</SelectItem>
-                    {igvLinkOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               ) : (
                 <Input
                   placeholder="Código cuenta IGV"
@@ -486,26 +595,16 @@ export function ChartOfAccountsModule({
             <div className="space-y-2">
               <Label>Salida caja chica (fallback global)</Label>
               {chartOfAccounts.length > 0 ? (
-                <Select
-                  value={accounting.pettyCashCreditAccountCode || '__none__'}
-                  onValueChange={(v) =>
+                <AccountCombobox
+                  options={pettyGlobalLinkOptions}
+                  value={accounting.pettyCashCreditAccountCode}
+                  placeholder="Seleccionar cuenta"
+                  onChange={(v) =>
                     setAccounting({
                       pettyCashCreditAccountCode: v === '__none__' ? undefined : v,
                     })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cuenta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Sin definir —</SelectItem>
-                    {pettyGlobalLinkOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               ) : (
                 <Input
                   placeholder="Código cuenta caja / fondo fijo"
@@ -529,26 +628,17 @@ export function ChartOfAccountsModule({
             <div className="space-y-2">
               <Label>Gasto caja chica sin cuenta mapeada (histórico / opcional)</Label>
               {chartOfAccounts.length > 0 ? (
-                <Select
-                  value={accounting.pettyCashUnknownExpenseAccountCode || '__none__'}
-                  onValueChange={(v) =>
+                <AccountCombobox
+                  options={unknownExpenseLinkOptions}
+                  value={accounting.pettyCashUnknownExpenseAccountCode}
+                  noneLabel="— Sin cuenta genérica —"
+                  placeholder="Ej. 659 — gastos varios"
+                  onChange={(v) =>
                     setAccounting({
                       pettyCashUnknownExpenseAccountCode: v === '__none__' ? undefined : v,
                     })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Ej. 659 — gastos varios" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Sin cuenta genérica —</SelectItem>
-                    {unknownExpenseLinkOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               ) : (
                 <Input
                   placeholder="Código cuenta gasto (nivel 5)"
@@ -568,24 +658,14 @@ export function ChartOfAccountsModule({
             <div className="space-y-2">
               <Label>Pago desde banco (opcional, futuro)</Label>
               {chartOfAccounts.length > 0 ? (
-                <Select
-                  value={accounting.bankPaymentAccountCode || '__none__'}
-                  onValueChange={(v) =>
+                <AccountCombobox
+                  options={bankLinkOptions}
+                  value={accounting.bankPaymentAccountCode}
+                  placeholder="Cuenta nivel 5"
+                  onChange={(v) =>
                     setAccounting({ bankPaymentAccountCode: v === '__none__' ? undefined : v })
                   }
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Cuenta nivel 5" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">— Sin definir —</SelectItem>
-                    {bankLinkOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                />
               ) : (
                 <Input
                   placeholder="Código cuenta bancaria"
@@ -605,11 +685,11 @@ export function ChartOfAccountsModule({
       </div>
 
       <Card>
-        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardHeader className="flex flex-col gap-3">
           <div>
             <CardTitle className="flex items-center gap-2 text-lg">
               <Table2 className="h-5 w-5" />
-              Catálogo cargado ({chartOfAccounts.length})
+              Catálogo cargado ({useServerPaging ? serverList.total : chartOfAccounts.length})
               {level5Count > 0 ? (
                 <Badge variant="secondary" className="ml-1 font-normal text-xs">
                   NIVEL {CHART_OPERATIVE_LEVEL}: {level5Count}
@@ -625,68 +705,32 @@ export function ChartOfAccountsModule({
               ) : null}
             </CardDescription>
           </div>
-          <Input
-            placeholder="Buscar código o nombre…"
-            className="max-w-xs"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+          <DataTableToolbar
+            search={search}
+            onSearchChange={setSearch}
+            searchPlaceholder="Buscar código, nombre o centro de costo…"
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            filtered={useServerPaging ? serverList.filtered : filteredChart.length}
+            total={useServerPaging ? serverList.total : chartOfAccounts.length}
+            totalLabel="cuentas"
           />
         </CardHeader>
-        <CardContent>
-          <div className="rounded-md border max-h-[360px] overflow-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[100px]">Cuenta</TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead className="w-[70px]">Nivel</TableHead>
-                  <TableHead className="w-[100px]">Centro costo</TableHead>
-                  <TableHead className="w-[90px]">Tipo</TableHead>
-                  <TableHead className="w-[90px]">%</TableHead>
-                  <TableHead className="min-w-[120px]">PL GROO</TableHead>
-                  <TableHead className="min-w-[120px]">PLPL</TableHead>
-                  <TableHead className="w-[80px] text-right">Editar</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredChart.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="text-center text-muted-foreground py-10">
-                      No hay plan importado. Descarga la plantilla y sube tu archivo.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredChart.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="font-mono text-sm">{row.code}</TableCell>
-                      <TableCell>{row.name}</TableCell>
-                      <TableCell>{row.level ?? '—'}</TableCell>
-                      <TableCell className="font-mono text-xs">{row.centroCosto ?? '—'}</TableCell>
-                      <TableCell>
-                        {(row.claseCuenta || row.kind) && (
-                          <Badge variant="outline" className="text-xs">
-                            {row.claseCuenta || row.kind}
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{row.porcentaje ?? '—'}</TableCell>
-                      <TableCell className="text-xs truncate max-w-[140px]" title={row.plFuncionGroo}>
-                        {row.plFuncionGroo ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-xs truncate max-w-[140px]" title={row.plplFuncionGoo}>
-                        {row.plplFuncionGoo ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button size="icon" variant="ghost" onClick={() => setEditing({ ...row })}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+        <CardContent className="space-y-3">
+          <ClientDataTable
+            rows={useServerPaging ? serverList.items : filteredChart}
+            columns={chartColumns}
+            getRowId={(row) => row.id}
+            page={Math.min(page, chartTotalPages)}
+            pageSize={pageSize}
+            serverPaged={useServerPaging}
+            emptyMessage="No hay plan importado. Descarga la plantilla y sube tu archivo."
+          />
+          <DataTablePaginationBar
+            page={Math.min(page, chartTotalPages)}
+            totalPages={chartTotalPages}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
 
@@ -812,9 +856,12 @@ export function ChartOfAccountsModule({
                   <Label className="col-span-4 text-xs">{sede}</Label>
                   <div className="col-span-8">
                     {chartOfAccounts.length > 0 ? (
-                      <Select
-                        value={val}
-                        onValueChange={(nextVal) => {
+                      <AccountCombobox
+                        options={opts}
+                        value={val === '__none__' ? undefined : val}
+                        noneLabel="Usar fallback global"
+                        placeholder="Cuenta por sede"
+                        onChange={(nextVal) => {
                           const nextMap = { ...(accounting.pettyCashCreditBySede || {}) };
                           if (nextVal === '__none__') {
                             delete nextMap[sede];
@@ -823,19 +870,7 @@ export function ChartOfAccountsModule({
                           }
                           setAccounting({ pettyCashCreditBySede: nextMap });
                         }}
-                      >
-                        <SelectTrigger className="h-8">
-                          <SelectValue placeholder="Cuenta por sede" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Usar fallback global</SelectItem>
-                          {opts.map((o) => (
-                            <SelectItem key={`${sede}-${o.value}`} value={o.value}>
-                              {o.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      />
                     ) : (
                       <Input
                         className="h-8 font-mono"

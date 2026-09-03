@@ -42,6 +42,7 @@ import {
 } from '../../utils/bankAccounts';
 import { MapPin, Globe, Building2 as Building2Icon } from 'lucide-react';
 import { DEFAULT_ROLES, type Role } from '../users/types';
+import { appConfirm } from '../ui/app-dialog';
 import {
   Dialog,
   DialogContent,
@@ -482,8 +483,8 @@ export function ConfigPanel({
     toast.success('Área agregada');
   };
 
-  const deleteCommercialCategory = (name: string) => {
-    if (!confirm(`¿Eliminar la categoría "${name}"? Los registros que la usen pasarán a otra categoría.`)) return;
+  const deleteCommercialCategory = async (name: string) => {
+    if (!await appConfirm(`¿Eliminar la categoría "${name}"? Los registros que la usen pasarán a otra categoría.`)) return;
     const next = providerCategoriesList.filter((c) => c !== name);
     if (next.length === 0) {
       toast.error('Debe existir al menos una categoría');
@@ -495,8 +496,8 @@ export function ConfigPanel({
     toast.success('Categoría eliminada');
   };
 
-  const deleteCommercialArea = (name: string) => {
-    if (!confirm(`¿Eliminar el área "${name}"? Los registros que la usen se reasignarán.`)) return;
+  const deleteCommercialArea = async (name: string) => {
+    if (!await appConfirm(`¿Eliminar el área "${name}"? Los registros que la usen se reasignarán.`)) return;
     const next = providerAreasList.filter((a) => a !== name);
     if (next.length === 0) {
       toast.error('Debe existir al menos un área');
@@ -565,7 +566,7 @@ export function ConfigPanel({
 
   const handleResetCustodian = async (user: User) => {
     if (!onResetCustodianPettyCash) return;
-    const ok = window.confirm(
+    const ok = await appConfirm(
       `¿Reiniciar TODA la caja chica de ${user.name}?\n\n` +
         'Se eliminarán gastos, cierres, dotaciones y pre-cierres. ' +
         'El arrastre de apertura en config se mantiene; quedará pendiente de confirmar de nuevo.'
@@ -937,9 +938,9 @@ export function ConfigPanel({
                                   variant="ghost" 
                                   size="icon" 
                                   className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                  onClick={(e) => {
+                                  onClick={async (e) => {
                                     e.stopPropagation();
-                                    if(confirm(`¿Eliminar "${cat}"?`)) handleDeleteCategory(cat);
+                                    if(await appConfirm(`¿Eliminar "${cat}"?`)) handleDeleteCategory(cat);
                                   }}
                                 >
                                   <Trash2 className="h-3 w-3" />
@@ -2008,8 +2009,8 @@ export function ConfigPanel({
                         {isStressTestEnabled() && (
                         <Button 
                           variant="destructive" 
-                          onClick={() => {
-                            if (confirm('¿Estás seguro? Esto mezclará datos de prueba con tus datos actuales.')) {
+                          onClick={async () => {
+                            if (await appConfirm('¿Estás seguro? Esto mezclará datos de prueba con tus datos actuales.')) {
                               onStressTest?.();
                             }
                           }}
@@ -2020,11 +2021,11 @@ export function ConfigPanel({
                         <Button
                           variant="outline"
                           className="border-emerald-200 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
-                          onClick={() => {
+                          onClick={async () => {
                             if (
-                              !confirm(
+                              !(await appConfirm(
                                 'Se cargarán datos de ejemplo en alertas (derivadas), tesorería, transacciones, flujo de caja, EE.RR., reportes, caja chica, honorarios, proveedores, contabilidad, flota, inventario, asistencia, productos, solicitudes, auditoría (vía movimientos) y conciliación.\n\nPuede sobrescribir datos actuales de esos módulos. ¿Continuar?'
-                              )
+                              ))
                             ) {
                               return;
                             }
@@ -2036,18 +2037,18 @@ export function ConfigPanel({
                         <Button 
                           variant="outline" 
                           className="text-red-500 border-red-200 hover:bg-red-50"
-                          onClick={() => {
+                          onClick={async () => {
                             if (
-                              !confirm(
+                              !(await appConfirm(
                                 '¡CUIDADO! Esto borrará datos operativos (transacciones, facturas, proveedores, flota, etc.). Los usuarios y la configuración se conservan. ¿Continuar?'
-                              )
+                              ))
                             ) {
                               return;
                             }
                             if (
-                              !confirm(
+                              !(await appConfirm(
                                 'ÚLTIMA CONFIRMACIÓN: esta acción no se puede deshacer fácilmente. ¿Borrar todos los datos operativos?'
-                              )
+                              ))
                             ) {
                               return;
                             }

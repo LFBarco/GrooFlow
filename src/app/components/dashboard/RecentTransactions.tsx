@@ -12,6 +12,7 @@ import { parseTransactionDate } from "../../utils/transactionDate";
 import { formatBankAccountLabel, resolveBankAccount } from "../../utils/bankAccounts";
 import type { BankAccountConfig } from "../../types";
 import { useModuleSurfaces } from "../../utils/moduleSurfaces";
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
@@ -108,16 +109,16 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
     });
   };
 
-  const handleDeleteOne = (transaction: Transaction) => {
+  const handleDeleteOne = async (transaction: Transaction) => {
     if (!onDelete) return;
-    const ok = window.confirm(`¿Eliminar la transacción "${transaction.description}"?`);
+    const ok = await appConfirm(`¿Eliminar la transacción "${transaction.description}"?`);
     if (!ok) return;
     onDelete(transaction.id);
   };
 
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (!onBulkDelete || selectionCount === 0) return;
-    const ok = window.confirm(`¿Eliminar ${selectionCount} transacción(es) seleccionada(s)?`);
+    const ok = await appConfirm(`¿Eliminar ${selectionCount} transacción(es) seleccionada(s)?`);
     if (!ok) return;
     onBulkDelete([...selectedIds]);
     setSelectedIds(new Set());

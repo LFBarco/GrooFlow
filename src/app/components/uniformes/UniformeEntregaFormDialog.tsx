@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { Textarea } from '../ui/textarea';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 type Props = {
   open: boolean;
@@ -183,9 +184,9 @@ export function UniformeEntregaFormDialog({
     onOpenChange(false);
   };
 
-  const addSignature = (file: File) => {
+  const addSignature = async (file: File) => {
     if (file.size > MAX_SIGNATURE_BYTES) {
-      window.alert('El archivo supera 500 KB.');
+      await appAlert('El archivo supera 500 KB.');
       return;
     }
     const reader = new FileReader();

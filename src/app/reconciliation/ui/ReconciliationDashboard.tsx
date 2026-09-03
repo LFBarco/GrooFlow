@@ -56,11 +56,11 @@ export function ReconciliationDashboard({ dataset, onDatasetChange }: Props) {
   const risk = RISK_LABEL[health.riskLevel];
 
   const handleDeleteBatch = (batchId: string) => {
-    confirmDeleteReconciliationBatch(dataset, batchId, onDatasetChange);
+    void confirmDeleteReconciliationBatch(dataset, batchId, onDatasetChange);
   };
 
   const handleDeleteAllForSource = (sourceType: ReconciliationSourceType) => {
-    confirmDeleteAllSourceBatches(
+    void confirmDeleteAllSourceBatches(
       dataset,
       session.id,
       sourceType,

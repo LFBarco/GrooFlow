@@ -386,6 +386,13 @@ export interface BukAsistenciaIntegrationSettings {
   autoRefreshWindowStart?: string;
   autoRefreshWindowEnd?: string;
   lastAutoRefreshAt?: string;
+  /** Sync programado de nómina/turnos → app_usuarios (panel + cron). */
+  staffSyncEnabled?: boolean;
+  /** Intervalo del sync de usuarios (minutos). Default 60. */
+  staffSyncIntervalMinutes?: number;
+  lastStaffSyncAt?: string;
+  lastStaffSyncOk?: boolean;
+  lastStaffSyncMessage?: string;
   /** Catálogo de endpoints Buk adicionales para explorar datos. */
   catalogEndpoints?: BukApiEndpointConfig[];
 }

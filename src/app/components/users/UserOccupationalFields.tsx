@@ -36,6 +36,14 @@ export function UserOccupationalFields({ form, sedesCatalog, onChange }: Props) 
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1">
+          <Label className="text-xs">N.º documento (DNI)</Label>
+          <Input
+            placeholder="Ej. 72875832"
+            value={form.documentNumber ?? ''}
+            onChange={(e) => onChange({ documentNumber: e.target.value })}
+          />
+        </div>
+        <div className="space-y-1">
           <Label className="text-xs">Puesto laboral</Label>
           <Input
             placeholder="Ej. Asistente médico, Groomer"
@@ -45,21 +53,17 @@ export function UserOccupationalFields({ form, sedesCatalog, onChange }: Props) 
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Área operativa</Label>
-          <Select
+          <Input
+            list="gf-vet-work-areas"
+            placeholder="Ej. Área médica / Peluquería"
             value={form.workArea ?? ''}
-            onValueChange={(v) => onChange({ workArea: v })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccionar área" />
-            </SelectTrigger>
-            <SelectContent>
-              {VET_WORK_AREAS.map((a) => (
-                <SelectItem key={a} value={a}>
-                  {a}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            onChange={(e) => onChange({ workArea: e.target.value })}
+          />
+          <datalist id="gf-vet-work-areas">
+            {VET_WORK_AREAS.map((a) => (
+              <option key={a} value={a} />
+            ))}
+          </datalist>
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Sede principal</Label>
@@ -78,6 +82,22 @@ export function UserOccupationalFields({ form, sedesCatalog, onChange }: Props) 
               ))}
             </SelectContent>
           </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Turno</Label>
+          <Input
+            placeholder="Ej. MEM01 / Turno día"
+            value={form.shiftLabel ?? ''}
+            onChange={(e) => onChange({ shiftLabel: e.target.value })}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Horario turno</Label>
+          <Input
+            placeholder="Ej. 08:30-19:30"
+            value={form.shiftSchedule ?? ''}
+            onChange={(e) => onChange({ shiftSchedule: e.target.value })}
+          />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Tipo de contrato</Label>

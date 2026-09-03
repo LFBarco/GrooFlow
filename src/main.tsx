@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./app/App.tsx";
+import { AppDialogProvider } from "./app/components/ui/app-dialog.tsx";
 import { AppErrorBoundary } from "./app/components/layout/AppErrorBoundary.tsx";
 import { getRouterBasename } from "./app/routes";
 import "./styles/index.css";
@@ -12,7 +13,9 @@ warnProductionConfigIssues();
 createRoot(document.getElementById("root")!).render(
   <AppErrorBoundary>
     <BrowserRouter basename={getRouterBasename()}>
-      <App />
+      <AppDialogProvider>
+        <App />
+      </AppDialogProvider>
     </BrowserRouter>
   </AppErrorBoundary>
 );

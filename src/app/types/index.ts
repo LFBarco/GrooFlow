@@ -180,16 +180,28 @@ export interface User {
   avatarUrl?: string;
   /** Preferencia de tema (grooflow_perfiles.extra_json / settings:theme). */
   theme?: 'dark' | 'light';
+  /** Número de documento (DNI) — app_usuarios.identificacion / Buk. */
+  documentNumber?: string;
   /** Puesto laboral (distinto del rol RBAC del sistema). */
   jobTitle?: string;
   /** Área operativa: médica, grooming, mantenimiento, etc. */
   workArea?: string;
+  /** Etiqueta de turno Buk (nombre o código). */
+  shiftLabel?: string;
+  /** Horario del turno (ej. 08:30-19:30). */
+  shiftSchedule?: string;
+  /** Código de turno Buk. */
+  shiftCode?: string;
   /** Fecha de ingreso — yyyy-MM-dd (antigüedad para SST). */
   hireDate?: string;
   /** Tipo de contrato laboral. */
   contractType?: 'planta' | 'temporal' | 'practicante' | 'honorarios' | 'locacion' | 'otro';
+  /** Descripción libre del contrato (Buk). */
+  contractLabel?: string;
   /** Horas semanales contratadas (referencia para KPI horas-hombre). */
   weeklyHours?: number;
+  /** Última sincronización desde Buk Asistencia. */
+  bukSyncedAt?: string;
   /** Tallas de uniforme preferidas por tipo de prenda. */
   uniformSizes?: Partial<Record<string, string>>;
 }
@@ -449,6 +461,15 @@ export interface ProviderSettings {
   areas: string[];      // Áreas de la empresa
 }
 
+/** Catálogos de productos (líneas, categorías, UM) persistidos en settings:system. */
+export interface ProductCatalogSettings {
+  lines: string[];
+  categories: string[];
+  subcategories: string[];
+  units: string[];
+  presentations: string[];
+}
+
 /** Entrada del catálogo de sedes (origen: tenants de Gestión). */
 export interface SedeCatalogEntry {
   name: string;
@@ -579,6 +600,8 @@ export interface SystemSettings {
   initialBalance?: number;
   initialBalanceDate?: string;
   providers?: ProviderSettings;
+  /** Catálogo de productos (líneas / categorías / unidades). */
+  productCatalog?: ProductCatalogSettings;
   /** Enlaces contables globales (IGV, caja, banco). */
   accounting?: AccountingLinkSettings;
   /**

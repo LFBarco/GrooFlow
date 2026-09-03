@@ -10,6 +10,7 @@ import { Badge } from '../ui/badge';
 import { Role, SYSTEM_MODULES, COLOR_OPTIONS } from './types';
 import { Shield, Plus, Trash2, Save, Check, Lock } from 'lucide-react';
 import { toast } from 'sonner';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 interface RoleConfigDialogProps {
     open: boolean;
@@ -51,7 +52,7 @@ export function RoleConfigDialog({ open, onOpenChange, roles: initialRoles, onSa
         setHasChanges(true);
     };
 
-    const handleDeleteRole = (roleId: string) => {
+    const handleDeleteRole = async (roleId: string) => {
         if (userCounts[roleId] && userCounts[roleId] > 0) {
             toast.error("No se puede eliminar un rol que tiene usuarios asignados");
             return;
@@ -63,7 +64,7 @@ export function RoleConfigDialog({ open, onOpenChange, roles: initialRoles, onSa
             return;
         }
 
-        if (confirm("¿Eliminar este rol permanentemente?")) {
+        if (await appConfirm("¿Eliminar este rol permanentemente?")) {
             const newRoles = roles.filter(r => r.id !== roleId);
             setRoles(newRoles);
             if (selectedRoleId === roleId) {

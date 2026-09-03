@@ -13,6 +13,7 @@ import {
   migrateLocationField,
   type SedesCatalogSaveResult,
 } from "./utils/sedesCatalog";
+import { normalizeSedeKey } from "./utils/gestionSedes";
 import { getBankAccounts } from "./utils/bankAccounts";
 import { Role, DEFAULT_ROLES } from "./components/users/types";
 import { initialStructure, ConfigStructure, initialSystemSettings, mergeSystemSettings, getSubcategories, mergeConfigStructure } from "./data/initialData";
@@ -101,6 +102,7 @@ import {
   AccidentesModule,
   UniformesModule,
   RrhhModule,
+  CatalogCrudPage,
   ReconciliationModule,
   Overview,
   CashFlowChart,
@@ -2117,6 +2119,25 @@ export default function App() {
 
   useEffect(() => {
     if (!isDataLoaded) return;
+    if (!['accounting', 'providers', 'pettycash'].includes(view)) return;
+    if (chartOfAccountsHydratedFromKvRef.current) return;
+    let cancelled = false;
+    void repository.kv.get<ChartOfAccountEntry[]>('data:chartOfAccounts').then((raw) => {
+      if (cancelled) return;
+      const list = Array.isArray(raw) ? raw : [];
+      chartOfAccountsKvLatestRef.current = list;
+      chartOfAccountsHydratedFromKvRef.current = true;
+      setChartOfAccounts(list);
+    }).catch(() => {
+      if (!cancelled) toast.error('No se pudo cargar el plan de cuentas.');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDataLoaded, view]);
+
+  useEffect(() => {
+    if (!isDataLoaded) return;
     let cancelled = false;
     const run = () => {
       if (cancelled) return;
@@ -3200,16 +3221,29 @@ export default function App() {
     if (seesAllSedesInCatalog) {
       return [...enabledCatalog];
     }
-    return (currentUser.sedes || []).filter((s) => enabledCatalog.includes(s));
+    const catalogByKey = new Map(enabledCatalog.map((name) => [normalizeSedeKey(name), name]));
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of currentUser.sedes || []) {
+      const key = normalizeSedeKey(raw);
+      const catalogName = catalogByKey.get(key);
+      // Preferir etiqueta del catálogo Gestión; si no está habilitada, igual mostrar la asignada.
+      const name = catalogName ?? raw.trim();
+      if (!name || seen.has(normalizeSedeKey(name))) continue;
+      seen.add(normalizeSedeKey(name));
+      out.push(name);
+    }
+    return out;
   }, [seesAllSedesInCatalog, enabledCatalog, currentUser.sedes]);
 
   const canSeeSede = useCallback(
     (sede: string): boolean => {
       const loc = (sede || "Principal").trim();
+      const locKey = normalizeSedeKey(loc);
       if (seesAllSedesInCatalog) {
-        return catalogSedes.length === 0 || catalogSedes.includes(loc);
+        return catalogSedes.length === 0 || catalogSedes.some((s) => normalizeSedeKey(s) === locKey);
       }
-      return visibleSedes.includes(loc);
+      return visibleSedes.some((s) => normalizeSedeKey(s) === locKey);
     },
     [seesAllSedesInCatalog, catalogSedes, visibleSedes]
   );
@@ -4346,6 +4380,28 @@ export default function App() {
             </div>
           )}
 
+          {view === 'rrhhAreas' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <CatalogCrudPage kind="areas" canEdit={hasPermission('Catálogo Áreas') || hasPermission('Recursos Humanos')} />
+              </Suspense>
+            </div>
+          )}
+          {view === 'rrhhPuestos' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <CatalogCrudPage kind="puestos" canEdit={hasPermission('Catálogo Puestos') || hasPermission('Recursos Humanos')} />
+              </Suspense>
+            </div>
+          )}
+          {view === 'rrhhTurnosCatalog' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <CatalogCrudPage kind="turnos" canEdit={hasPermission('Catálogo Turnos') || hasPermission('Recursos Humanos')} />
+              </Suspense>
+            </div>
+          )}
+
           {view === 'products' && (
              <div className="animate-in fade-in duration-150">
                 <ProductModule 
@@ -4354,6 +4410,8 @@ export default function App() {
                     onUpdateProducts={handleProductsUpdate}
                     visibleSedes={visibleSedes}
                     currentUserName={currentUser.name}
+                    systemSettings={systemSettings}
+                    onUpdateSystemSettings={handlePersistSystemSettings}
                 />
              </div>
           )}

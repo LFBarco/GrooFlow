@@ -187,7 +187,6 @@ const ALL_KEYS: Array<keyof InitialDataKeys> = [
   'data:treasuryPaidHistory',
   'data:treasurySubscriptions',
   'data:treasuryBankMovements',
-  'data:chartOfAccounts',
   'data:fleet',
   'data:inventory',
   'data:reconciliation',

@@ -88,6 +88,7 @@ import { FleetFuelBulkImport } from './FleetFuelBulkImport';
 import { applyFleetDatasetChange, type FleetPersistFn } from '../../utils/fleetPersist';
 import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 import { ChartEmptyState, seriesHasValues } from '../ui/ChartEmptyState';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 const PIE_COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#64748b'];
 
@@ -550,7 +551,7 @@ function FleetVehiclesSection({
   };
 
   const removeVehicle = async (v: FleetVehicle) => {
-    if (!confirm(`¿Eliminar ${v.plate} y sus referencias locales? Mantenimiento/combustible quedarán huérfanos en reportes hasta que los borre.`)) return;
+    if (!await appConfirm(`¿Eliminar ${v.plate} y sus referencias locales? Mantenimiento/combustible quedarán huérfanos en reportes hasta que los borre.`)) return;
     const next: FleetDataset = {
       ...dataset,
       vehicles: dataset.vehicles.filter((x) => x.id !== v.id),
@@ -851,7 +852,7 @@ function FleetMaintenanceSection({
   };
 
   const removeMaintenance = async (rec: FleetMaintenanceRecord) => {
-    if (!confirm('¿Eliminar este registro de mantenimiento?')) return;
+    if (!await appConfirm('¿Eliminar este registro de mantenimiento?')) return;
     const next: FleetDataset = {
       ...dataset,
       maintenance: dataset.maintenance.filter((m) => m.id !== rec.id),
@@ -1095,7 +1096,7 @@ function FleetFuelSection({
   };
 
   const removeFuelEntry = async (row: FleetFuelEntry) => {
-    if (!confirm('¿Eliminar este registro de combustible?')) return;
+    if (!await appConfirm('¿Eliminar este registro de combustible?')) return;
     const next: FleetDataset = {
       ...dataset,
       fuelEntries: dataset.fuelEntries.filter((f) => f.id !== row.id),

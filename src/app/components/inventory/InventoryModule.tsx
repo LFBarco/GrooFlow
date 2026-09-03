@@ -95,6 +95,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
+import { appConfirm } from '../ui/app-dialog';
 import {
   CategoryBadge,
   ConsignmentBadge,
@@ -334,7 +335,7 @@ export function InventoryModule({
       maintCount > 0
         ? `¿Eliminar "${target.name}" (${target.code})? También se quitarán ${maintCount} mantenimiento(s) vinculado(s). Esta acción no se puede deshacer.`
         : `¿Eliminar "${target.name}" (${target.code})? Esta acción no se puede deshacer.`;
-    if (!confirm(msg)) return;
+    if (!await appConfirm(msg)) return;
 
     const next: InventoryDataset = {
       ...dataset,

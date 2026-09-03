@@ -660,7 +660,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 'No se pudo leer el plan de cuentas desde la nube. Se detuvo el autoguardado para no borrarlo.'
               );
             }
-          } else if (allowChartRemote) {
+          } else if (allowChartRemote && Object.prototype.hasOwnProperty.call(data, 'data:chartOfAccounts')) {
             const raw = data['data:chartOfAccounts'] as ChartOfAccountEntry[] | null | undefined;
             const kvList = Array.isArray(raw) ? raw : [];
             const sessionUserId = sessionEffective?.user?.id ?? null;

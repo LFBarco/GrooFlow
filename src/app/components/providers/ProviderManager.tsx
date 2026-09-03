@@ -46,6 +46,10 @@ import {
     resolveFlowClassificationShortLabel,
 } from '../../utils/expenseFlowClassification';
 import { formatCurrencyEs } from '../../utils/numberFormat';
+import { getGrooflowBackend } from '../../config/backend';
+import { useServerPagedList } from '../../hooks/useServerPagedList';
+import { deleteServerListItems, fetchServerListPage } from '../../utils/listsApi';
+import { appConfirm } from '../ui/app-dialog';
 
 interface ProviderManagerProps {
     providers: Provider[];
@@ -264,15 +268,24 @@ export function ProviderManager({
     const [localExpenseCategories, setLocalExpenseCategories] = useState<string[]>(DEFAULT_EXPENSE_CATEGORIES_FALLBACK);
     
     // --- Estados de UI ---
-    const [searchTerm, setSearchTerm] = useState('');
-    const [providerTablePage, setProviderTablePage] = useState(1);
-    const [providerTablePageSize, setProviderTablePageSize] = useState<number>(25);
     const [isEditing, setIsEditing] = useState(false);
     const [isSavingProvider, setIsSavingProvider] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [currentProvider, setCurrentProvider] = useState<Partial<Provider>>({});
     const [isImportOpen, setIsImportOpen] = useState(false);
-    /** Alta mínima para uso en caja chica (mismo modelo Provider). */
+    const [clientSearch, setClientSearch] = useState('');
+    const [providerTablePage, setProviderTablePage] = useState(1);
+    const [providerTablePageSize, setProviderTablePageSize] = useState<number>(25);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [selectAllMatching, setSelectAllMatching] = useState(false);
+    const [bulkDeleting, setBulkDeleting] = useState(false);
+    const useServerPaging = getGrooflowBackend() === 'rest';
+    const serverList = useServerPagedList<Provider>('providers', {
+        initialPageSize: 25,
+        enabled: useServerPaging,
+    });
+    const searchTerm = useServerPaging ? serverList.search : clientSearch;
+    const setSearchTerm = useServerPaging ? serverList.setSearch : setClientSearch;
     const [isSimplePettyOpen, setIsSimplePettyOpen] = useState(false);
     const [simplePetty, setSimplePetty] = useState({
         docType: 'RUC' as 'RUC' | 'DNI' | 'CE',
@@ -385,8 +398,8 @@ export function ProviderManager({
         toast.success("Elemento agregado");
     };
 
-    const handleDeleteItem = (item: string) => {
-        if (!confirm(`¿Eliminar "${item}" de la lista?`)) return;
+    const handleDeleteItem = async (item: string) => {
+        if (!(await appConfirm(`¿Eliminar "${item}" de la lista?`, { title: 'Eliminar de catálogo', confirmLabel: 'Eliminar' }))) return;
         
         switch(configTab) {
             case 'commercial':
@@ -845,6 +858,7 @@ export function ProviderManager({
                         toast.success(
                             `Se importaron y guardaron ${newProviders.length} proveedor(es) en la nube.`,
                         );
+                        if (useServerPaging) await serverList.reload();
                         setIsImportOpen(false);
                     }
                 }
@@ -1043,6 +1057,7 @@ export function ProviderManager({
                 );
                 const saved = await Promise.resolve(onUpdateProviders(updated));
                 if (saved === false) return;
+                if (useServerPaging) await serverList.reload();
                 toast.success('Proveedor actualizado');
             } else {
                 if (providers.some((p) => providerDocDigitsEqual(p.ruc, rucNorm))) {
@@ -1106,6 +1121,7 @@ export function ProviderManager({
                 };
                 const savedCreate = await Promise.resolve(onUpdateProviders([...providers, newProvider]));
                 if (savedCreate === false) return;
+                if (useServerPaging) await serverList.reload();
                 toast.success('Proveedor registrado');
             }
             setIsEditing(false);
@@ -1117,14 +1133,17 @@ export function ProviderManager({
 
     const handleDelete = async (id: string) => {
         if (
-            confirm(
-                '¿Estás seguro? Esto no borrará las facturas históricas, pero eliminará al proveedor del directorio.',
-            )
+            !(await appConfirm(
+                'Esto no borrará las facturas históricas, pero eliminará al proveedor del directorio.',
+                { title: '¿Eliminar proveedor?', confirmLabel: 'Eliminar' },
+            ))
         ) {
-            const saved = await Promise.resolve(onUpdateProviders(providers.filter((p) => p.id !== id)));
-            if (saved === false) return;
-            toast.info('Proveedor eliminado');
+            return;
         }
+        const saved = await Promise.resolve(onUpdateProviders(providers.filter((p) => p.id !== id)));
+        if (saved === false) return;
+        if (useServerPaging) await serverList.reload();
+        toast.info('Proveedor eliminado');
     };
 
     const openSimplePettyDialog = () => {
@@ -1190,6 +1209,7 @@ export function ProviderManager({
         };
         const saved = await Promise.resolve(onUpdateProviders([...providers, newProvider]));
         if (saved === false) return;
+        if (useServerPaging) await serverList.reload();
         setIsSimplePettyOpen(false);
         toast.success('Proveedor registrado (caja chica)', {
             description:
@@ -1251,19 +1271,125 @@ export function ProviderManager({
         [providers, searchTerm],
     );
 
-    const providerTotalFiltered = filteredProviders.length;
-    const providerTotalPages = Math.max(1, Math.ceil(providerTotalFiltered / providerTablePageSize));
-    const providerTablePageSafe = Math.min(providerTablePage, providerTotalPages);
+    const providerTotalFiltered = useServerPaging ? serverList.filtered : filteredProviders.length;
+    const providerTablePageSizeSafe = useServerPaging ? serverList.pageSize : providerTablePageSize;
+    const providerTotalPages = useServerPaging
+        ? serverList.totalPages
+        : Math.max(1, Math.ceil(providerTotalFiltered / providerTablePageSizeSafe));
+    const providerTablePageSafe = useServerPaging
+        ? serverList.page
+        : Math.min(providerTablePage, providerTotalPages);
     const paginatedProviders = useMemo(() => {
-        const start = (providerTablePageSafe - 1) * providerTablePageSize;
-        return filteredProviders.slice(start, start + providerTablePageSize);
-    }, [filteredProviders, providerTablePageSafe, providerTablePageSize]);
+        if (useServerPaging) return serverList.items;
+        const start = (providerTablePageSafe - 1) * providerTablePageSizeSafe;
+        return filteredProviders.slice(start, start + providerTablePageSizeSafe);
+    }, [
+        useServerPaging,
+        serverList.items,
+        filteredProviders,
+        providerTablePageSafe,
+        providerTablePageSizeSafe,
+    ]);
+
+    const pageIds = paginatedProviders.map((p) => p.id);
+    const allPageSelected =
+        pageIds.length > 0 && (selectAllMatching || pageIds.every((id) => selectedIds.has(id)));
+    const somePageSelected = pageIds.some((id) => selectedIds.has(id));
+    const selectedCount = selectAllMatching ? providerTotalFiltered : selectedIds.size;
+
+    const togglePageSelection = (checked: boolean) => {
+        setSelectAllMatching(false);
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (checked) pageIds.forEach((id) => next.add(id));
+            else pageIds.forEach((id) => next.delete(id));
+            return next;
+        });
+    };
+
+    const toggleOne = (id: string, checked: boolean) => {
+        setSelectAllMatching(false);
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (checked) next.add(id);
+            else next.delete(id);
+            return next;
+        });
+    };
+
+    const handleSelectAllMatching = async () => {
+        if (useServerPaging) {
+            try {
+                const data = await fetchServerListPage<Provider>('providers', {
+                    search: searchTerm,
+                    idsOnly: true,
+                    pageSize: 25,
+                });
+                setSelectedIds(new Set(data.ids ?? []));
+                setSelectAllMatching(true);
+            } catch (e) {
+                toast.error(e instanceof Error ? e.message : 'No se pudo seleccionar todo');
+            }
+            return;
+        }
+        setSelectedIds(new Set(filteredProviders.map((p) => p.id)));
+        setSelectAllMatching(true);
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedCount <= 0) return;
+        if (
+            !(await appConfirm(
+                selectAllMatching
+                    ? `¿Eliminar ${selectedCount} proveedor(es) de la búsqueda?`
+                    : `¿Eliminar ${selectedCount} proveedor(es) seleccionado(s)?`,
+                { title: 'Eliminar proveedores', confirmLabel: 'Eliminar' },
+            ))
+        ) {
+            return;
+        }
+        setBulkDeleting(true);
+        try {
+            const q = searchTerm.toLowerCase();
+            const drop = new Set(
+                selectAllMatching
+                    ? providers
+                          .filter(
+                              (p) =>
+                                  p.name.toLowerCase().includes(q) ||
+                                  p.ruc.includes(searchTerm) ||
+                                  String(p.category ?? '').toLowerCase().includes(q),
+                          )
+                          .map((p) => p.id)
+                    : [...selectedIds],
+            );
+            if (useServerPaging) {
+                await deleteServerListItems('providers', {
+                    ids: [...selectedIds],
+                    allMatching: selectAllMatching,
+                    search: searchTerm,
+                });
+            }
+            const saved = await Promise.resolve(onUpdateProviders(providers.filter((p) => !drop.has(p.id))));
+            if (saved === false) return;
+            toast.info(`${drop.size} proveedor(es) eliminado(s)`);
+            if (useServerPaging) await serverList.reload();
+            setSelectedIds(new Set());
+            setSelectAllMatching(false);
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : 'No se pudo eliminar');
+        } finally {
+            setBulkDeleting(false);
+        }
+    };
 
     const providerRangeStart =
-        providerTotalFiltered === 0 ? 0 : (providerTablePageSafe - 1) * providerTablePageSize + 1;
-    const providerRangeEnd = Math.min(providerTablePageSafe * providerTablePageSize, providerTotalFiltered);
+        providerTotalFiltered === 0 ? 0 : (providerTablePageSafe - 1) * providerTablePageSizeSafe + 1;
+    const providerRangeEnd = Math.min(providerTablePageSafe * providerTablePageSizeSafe, providerTotalFiltered);
 
     useEffect(() => {
+        setSelectedIds(new Set());
+        setSelectAllMatching(false);
         setProviderTablePage(1);
     }, [searchTerm]);
 
@@ -2357,6 +2483,7 @@ export function ProviderManager({
             </Dialog>
 
             {/* Filter Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <div className="flex items-center gap-2 bg-card p-2 rounded-lg border border-border md:w-1/2 shadow-sm focus-within:ring-2 focus-within:ring-primary/20 transition-all">
                 <Search className="w-4 h-4 text-muted-foreground ml-2" />
                 <Input 
@@ -2372,12 +2499,36 @@ export function ProviderManager({
                     </button>
                 )}
             </div>
+            {selectedCount > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="destructive" size="sm" className="gap-1.5 font-semibold shadow-sm" disabled={bulkDeleting} onClick={() => void handleBulkDelete()}>
+                        {bulkDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        Eliminar ({selectedCount})
+                    </Button>
+                    {!selectAllMatching && providerTotalFiltered > pageIds.length ? (
+                        <Button type="button" variant="outline" size="sm" onClick={() => void handleSelectAllMatching()}>
+                            Seleccionar los {providerTotalFiltered} de la búsqueda
+                        </Button>
+                    ) : null}
+                    <Button type="button" variant="ghost" size="sm" onClick={() => { setSelectedIds(new Set()); setSelectAllMatching(false); }}>
+                        Limpiar
+                    </Button>
+                </div>
+            ) : null}
+            </div>
 
             {/* Providers Table */}
             <Card className="overflow-hidden border-t-4 border-t-primary/20 shadow-md" data-testid="providers-list">
                 <Table>
                     <TableHeader className="bg-muted/30">
                         <TableRow>
+                            <TableHead className="w-10">
+                                <Checkbox
+                                    checked={allPageSelected ? true : somePageSelected ? 'indeterminate' : false}
+                                    onCheckedChange={(v) => togglePageSelection(v === true)}
+                                    aria-label="Seleccionar página"
+                                />
+                            </TableHead>
                             <TableHead className="w-[300px]">Proveedor</TableHead>
                             <TableHead>Categoría</TableHead>
                             <TableHead className="w-[130px] min-w-0">Módulos</TableHead>
@@ -2389,18 +2540,34 @@ export function ProviderManager({
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filteredProviders.length === 0 ? (
+                        {providerTotalFiltered === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                                <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                                     <div className="flex flex-col items-center justify-center gap-2">
-                                        <Search className="w-8 h-8 opacity-20" />
-                                        <p>No se encontraron proveedores que coincidan con tu búsqueda.</p>
+                                        {useServerPaging && serverList.loading ? (
+                                            <>
+                                                <Loader2 className="w-8 h-8 opacity-40 animate-spin" />
+                                                <p>Cargando proveedores…</p>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Search className="w-8 h-8 opacity-20" />
+                                                <p>No se encontraron proveedores que coincidan con tu búsqueda.</p>
+                                            </>
+                                        )}
                                     </div>
                                 </TableCell>
                             </TableRow>
                         ) : (
                             paginatedProviders.map(provider => (
                                 <TableRow key={provider.id} className="group hover:bg-muted/50 transition-colors">
+                                    <TableCell>
+                                        <Checkbox
+                                            checked={selectAllMatching || selectedIds.has(provider.id)}
+                                            onCheckedChange={(v) => toggleOne(provider.id, v === true)}
+                                            aria-label={`Seleccionar ${provider.name}`}
+                                        />
+                                    </TableCell>
                                     <TableCell>
                                         <div className="flex items-center gap-3">
                                             <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
@@ -2505,7 +2672,7 @@ export function ProviderManager({
                                           : formatCurrencyEs(0)}
                                     </TableCell>
                                     <TableCell className="text-right">
-                                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="flex justify-end gap-1">
                                             <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => startEdit(provider)} title="Editar">
                                                 <Edit2 className="w-4 h-4 text-muted-foreground hover:text-primary" />
                                             </Button>
@@ -2534,10 +2701,14 @@ export function ProviderManager({
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-muted-foreground whitespace-nowrap">Por página</span>
                                 <Select
-                                    value={String(providerTablePageSize)}
+                                    value={String(providerTablePageSizeSafe)}
                                     onValueChange={(v) => {
-                                        setProviderTablePageSize(Number(v));
-                                        setProviderTablePage(1);
+                                        const n = Number(v);
+                                        if (useServerPaging) serverList.setPageSize(n);
+                                        else {
+                                            setProviderTablePageSize(n);
+                                            setProviderTablePage(1);
+                                        }
                                     }}
                                 >
                                     <SelectTrigger className="h-8 w-[88px]">
@@ -2559,7 +2730,11 @@ export function ProviderManager({
                                     size="sm"
                                     className="h-8 gap-1 px-2"
                                     disabled={providerTablePageSafe <= 1}
-                                    onClick={() => setProviderTablePage((p) => Math.max(1, p - 1))}
+                                    onClick={() =>
+                                        useServerPaging
+                                            ? serverList.setPage(Math.max(1, providerTablePageSafe - 1))
+                                            : setProviderTablePage((p) => Math.max(1, p - 1))
+                                    }
                                     aria-label="Página anterior"
                                 >
                                     <ChevronLeft className="h-4 w-4" />
@@ -2575,7 +2750,9 @@ export function ProviderManager({
                                     className="h-8 gap-1 px-2"
                                     disabled={providerTablePageSafe >= providerTotalPages}
                                     onClick={() =>
-                                        setProviderTablePage((p) => Math.min(providerTotalPages, p + 1))
+                                        useServerPaging
+                                            ? serverList.setPage(Math.min(providerTotalPages, providerTablePageSafe + 1))
+                                            : setProviderTablePage((p) => Math.min(providerTotalPages, p + 1))
                                     }
                                     aria-label="Página siguiente"
                                 >

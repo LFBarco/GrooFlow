@@ -23,7 +23,7 @@ export function normalizeSedeKey(name: string): string {
   return SEDE_ALIASES[key] ?? key;
 }
 
-/** Prefiere etiquetas de Gestión con código ("10. Benavides") sobre legacy ("Benavides"). */
+/** Prefiere etiquetas limpias de Gestión (sin prefijo "10.") sobre legacy codificado. */
 export function preferSedeLabel(existing: string, candidate: string): string {
   const a = existing.trim();
   const b = candidate.trim();
@@ -31,8 +31,9 @@ export function preferSedeLabel(existing: string, candidate: string): string {
   if (!b) return a;
   const aCoded = /^\d+\.\s*/.test(a);
   const bCoded = /^\d+\.\s*/.test(b);
-  if (bCoded && !aCoded) return b;
-  if (aCoded && !bCoded) return a;
+  // Preferir nombre de BD sin código numérico.
+  if (aCoded && !bCoded) return b;
+  if (bCoded && !aCoded) return a;
   if (b.length > a.length) return b;
   return a;
 }

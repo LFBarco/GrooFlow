@@ -51,12 +51,15 @@ import { UserHrProfilePanel } from '../hr/UserHrProfilePanel';
 import { useHrStaffRecords } from '../../hooks/useHrStaffRecords';
 import { repository } from '../../services/api';
 import { describeAuthOrNetworkError } from '../../utils/authErrors';
-import { isSupabaseBackend } from '../../config/backend';
+import { isSupabaseBackend, getGrooflowBackend } from '../../config/backend';
+import { useServerPagedList } from '../../hooks/useServerPagedList';
+import { DataTablePaginationBar } from '../data-table/ClientDataTable';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import type { SedesCatalogSaveResult } from '../../utils/sedesCatalog';
 import type { SedeCatalogEntry } from '../../types';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 interface UserManagerProps {
     users: User[];
@@ -88,9 +91,19 @@ export function UserManager({
     onRefreshUsers,
 }: UserManagerProps) {
     const { accidents: hrAccidents, uniforms: hrUniforms, loading: hrLoading } = useHrStaffRecords();
-    const [searchTerm, setSearchTerm] = useState('');
+    const [clientSearch, setClientSearch] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
     const [statusFilter, setStatusFilter] = useState('all');
+    const useServerPaging = getGrooflowBackend() === 'rest';
+    const serverList = useServerPagedList<User>('users', {
+        enabled: useServerPaging,
+        extra: {
+            role: roleFilter === 'all' ? '' : roleFilter,
+            status: statusFilter === 'all' ? '' : statusFilter,
+        },
+    });
+    const searchTerm = useServerPaging ? serverList.search : clientSearch;
+    const setSearchTerm = useServerPaging ? serverList.setSearch : setClientSearch;
     const [isRefreshing, setIsRefreshing] = useState(false);
 
     const uniqueUsers = users.filter((user, index, self) => 
@@ -314,6 +327,7 @@ export function UserManager({
         setIsRefreshing(true);
         try {
             await onRefreshUsers();
+            if (useServerPaging) await serverList.reload();
             toast.success('Lista de usuarios actualizada');
         } catch {
             toast.error('No se pudo actualizar la lista de usuarios');
@@ -323,7 +337,7 @@ export function UserManager({
     };
 
     const confirmDeleteUser = async (userId: string, userName: string) => {
-        if (confirm(`¿Está seguro de que desea eliminar al usuario "${userName}"? Se desactivará su acceso y se quitará del sistema.`)) {
+        if (await appConfirm(`¿Está seguro de que desea eliminar al usuario "${userName}"? Se desactivará su acceso y se quitará del sistema.`)) {
             try {
                 await onDeleteUser(userId);
                 toast.success("Usuario eliminado");
@@ -363,6 +377,7 @@ export function UserManager({
             (statusFilter === 'inactive' && u.status === 'inactive');
         return matchSearch && matchRole && matchStatus;
     });
+    const displayedUsers = useServerPaging ? serverList.items : filteredUsers;
 
     return (
         <div className="space-y-4 animate-in fade-in duration-150 -mt-2">
@@ -509,7 +524,7 @@ export function UserManager({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredUsers.map((user) => (
+                                {displayedUsers.map((user) => (
                                     <TableRow key={user.id} className={user.status === 'inactive' ? 'opacity-60' : ''}>
                                         <TableCell>
                                             <div className="flex items-center gap-3">
@@ -632,7 +647,7 @@ export function UserManager({
                                         </TableCell>
                                     </TableRow>
                                 ))}
-                                {filteredUsers.length === 0 && (
+                                {displayedUsers.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                                             No se encontraron usuarios con los filtros aplicados.
@@ -642,6 +657,16 @@ export function UserManager({
                             </TableBody>
                         </Table>
                     </div>
+                    {useServerPaging ? (
+                        <div className="mt-3">
+                            <DataTablePaginationBar
+                                page={serverList.page}
+                                totalPages={serverList.totalPages}
+                                onPageChange={serverList.setPage}
+                                disabled={serverList.loading}
+                            />
+                        </div>
+                    ) : null}
                 </CardContent>
             </Card>
 

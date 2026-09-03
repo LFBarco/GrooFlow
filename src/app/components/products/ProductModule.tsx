@@ -10,17 +10,19 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Trash2,
+  Settings,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
-import type { Product, Provider } from '../../types';
+import type { Product, Provider, SystemSettings } from '../../types';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card, CardContent } from '../ui/card';
 import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import {
   Select,
   SelectContent,
@@ -36,11 +38,12 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-import { PRODUCT_CATEGORIES, PRODUCT_LINES } from './productCatalogConstants';
 import { cloneProduct, createDraftProduct, normalizeProductForWorkspace } from './productDraftUtils';
 import { ProductWorkspace } from './ProductWorkspace';
 import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 import { useSupplierProductsState } from '../../hooks/useSupplierProductsState';
+import { getProductCatalog } from '../../utils/productCatalog';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 const PAGE_SIZE = 10;
 
@@ -50,6 +53,8 @@ interface ProductModuleProps {
   onUpdateProducts: (products: Product[], successMessage?: string) => Promise<boolean>;
   visibleSedes?: string[];
   currentUserName: string;
+  systemSettings?: SystemSettings;
+  onUpdateSystemSettings?: (s: SystemSettings) => void;
 }
 
 function normalizeText(value: string) {
@@ -86,6 +91,8 @@ export function ProductModule({
   onUpdateProducts,
   visibleSedes,
   currentUserName,
+  systemSettings,
+  onUpdateSystemSettings,
 }: ProductModuleProps) {
   const s = useModuleSurfaces();
   const {
@@ -96,6 +103,9 @@ export function ProductModule({
     () => Math.max(0, ...products.map((product) => product.systemCode || 0)) + 1,
     [products],
   );
+  const catalog = useMemo(() => getProductCatalog(systemSettings), [systemSettings]);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  const [catalogDraft, setCatalogDraft] = useState(catalog);
   const [searchTerm, setSearchTerm] = useState('');
   const [providerFilter, setProviderFilter] = useState('all');
   const [lineFilter, setLineFilter] = useState('all');
@@ -183,7 +193,7 @@ export function ProductModule({
   );
 
   const handleDeleteProduct = async (productId: string) => {
-    if (!window.confirm('¿Eliminar este producto del catálogo?')) return;
+    if (!await appConfirm('¿Eliminar este producto del catálogo?')) return;
     const product = products.find((item) => item.id === productId);
     const next = products.filter((item) => item.id !== productId);
     const ok = await onUpdateProducts(
@@ -302,6 +312,7 @@ export function ProductModule({
           supplierProductsSettings={supplierProductsSettings}
           onUpdateSupplierProducts={onUpdateSupplierProducts}
           canEditSupplierOffers
+          catalog={catalog}
         />
       )}
 
@@ -336,6 +347,10 @@ export function ProductModule({
               <p className="text-xs" style={{ color: s.pageSubtitle }}>Pulsa una fila para abrir la ficha (pestañas Editar, Precios, etc.).</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" className="border-border bg-background text-foreground hover:bg-muted" onClick={() => setCatalogOpen(true)}>
+                <Settings className="mr-2 h-4 w-4" />
+                Catálogo
+              </Button>
               <Button variant="outline" className="border-border bg-background text-foreground hover:bg-muted" onClick={handleExportCsv}>
                 <Download className="mr-2 h-4 w-4" />
                 Exportar
@@ -381,7 +396,7 @@ export function ProductModule({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Linea...</SelectItem>
-                {PRODUCT_LINES.map((line) => <SelectItem key={line} value={line}>{line}</SelectItem>)}
+                {catalog.lines.map((line) => <SelectItem key={line} value={line}>{line}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={categoryFilter} onValueChange={(value) => { setCategoryFilter(value); setPage(1); }}>
@@ -390,7 +405,7 @@ export function ProductModule({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Categorias...</SelectItem>
-                {PRODUCT_CATEGORIES.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}
+                {catalog.categories.map((category) => <SelectItem key={category} value={category}>{category}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={stockFilter} onValueChange={(value) => { setStockFilter(value); setPage(1); }}>
@@ -517,6 +532,57 @@ export function ProductModule({
           </div>
         </div>
       </div>
+      <Dialog
+        open={catalogOpen}
+        onOpenChange={(o) => {
+          setCatalogOpen(o);
+          if (o) setCatalogDraft(catalog);
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Catálogo de productos</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Estas listas se guardan en la configuración del sistema (MySQL). El código solo usa un valor inicial la primera vez.
+          </p>
+          {([
+            ['lines', 'Líneas'],
+            ['categories', 'Categorías'],
+            ['subcategories', 'Subcategorías'],
+            ['units', 'Unidades'],
+            ['presentations', 'Presentaciones'],
+          ] as const).map(([key, label]) => (
+            <div key={key} className="space-y-1">
+              <Label>{label}</Label>
+              <Input
+                defaultValue={catalogDraft[key].join(', ')}
+                onBlur={(e) => {
+                  const items = e.target.value.split(/[,;\n]/).map((x) => x.trim()).filter(Boolean);
+                  setCatalogDraft((prev) => ({ ...prev, [key]: items }));
+                }}
+              />
+            </div>
+          ))}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCatalogOpen(false)}>Cancelar</Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!onUpdateSystemSettings || !systemSettings) {
+                  toast.error('No se puede guardar el catálogo (falta configuración).');
+                  return;
+                }
+                onUpdateSystemSettings({ ...systemSettings, productCatalog: catalogDraft });
+                toast.success('Catálogo de productos guardado');
+                setCatalogOpen(false);
+              }}
+            >
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

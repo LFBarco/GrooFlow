@@ -39,6 +39,8 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
       autoRefreshIntervalMinutes: 30,
       autoRefreshWindowStart: '06:00',
       autoRefreshWindowEnd: '22:00',
+      staffSyncEnabled: true,
+      staffSyncIntervalMinutes: 60,
       catalogEndpoints: [
         {
           id: 'buk-asistencia-empresa',

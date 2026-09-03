@@ -1,12 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import {
-  Columns3,
-  Loader2,
-  RefreshCw,
-  Users,
-} from 'lucide-react';
+import { Columns3, Loader2, RefreshCw, Users } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { SystemSettings, User } from '../../types';
@@ -14,18 +9,16 @@ import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { mergeBukPeSettings } from '../../utils/bukPeApi';
 import {
   RRHH_COLUMN_DEFS,
-  autoLinkBukEmployeesToUsers,
   buildRrhhRecommendations,
   computeRrhhDashboard,
-  usersToDisableForTerminations,
 } from '../../utils/bukPeEmployeeUtils';
-import { syncRrhhCollaborators } from '../../utils/rrhhCollaboratorsSync';
+import { fetchRrhhDbStats, syncRrhhToDatabase, type RrhhDbStats } from '../../utils/rrhhApi';
 import { useRrhhModuleState } from '../../hooks/useRrhhModuleState';
-import { RrhhBajasPanel } from './RrhhBajasPanel';
 import { RrhhDashboard } from './RrhhDashboard';
-import { RrhhEmployeesTable } from './RrhhEmployeesTable';
+import { RrhhEmployeesDataTable } from './RrhhEmployeesDataTable';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
@@ -56,22 +49,43 @@ export function RrhhModule({
 }: RrhhModuleProps) {
   const bukPe = mergeBukPeSettings(systemSettings.bukPe);
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
-  const { settings, loading, saving, updateSettings, persistNow } = useRrhhModuleState(canEdit);
+  const { settings, loading, saving, updateSettings } = useRrhhModuleState(canEdit);
   const [syncing, setSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState('');
-  const [search, setSearch] = useState('');
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [draftColumns, setDraftColumns] = useState<string[]>(settings.visibleColumns);
+  const [dbStats, setDbStats] = useState<RrhhDbStats | null>(null);
+  const [tableRefresh, setTableRefresh] = useState(0);
 
-  const activeEmployees = useMemo(
-    () => settings.employees.filter((e) => e.isActive),
-    [settings.employees]
-  );
+  const reloadDbStats = async () => {
+    try {
+      setDbStats(await fetchRrhhDbStats());
+    } catch {
+      /* ignore */
+    }
+  };
 
-  const kpis = useMemo(
-    () => computeRrhhDashboard(settings.employees, settings.userLinks, users),
-    [settings.employees, settings.userLinks, users]
-  );
+  useEffect(() => {
+    void reloadDbStats();
+  }, [tableRefresh]);
+
+  const kpis = useMemo(() => {
+    if (dbStats) {
+      return {
+        total: dbStats.total,
+        active: dbStats.activos,
+        terminated: dbStats.bajas,
+        linkedUsers: dbStats.linkedActivos,
+        unlinkedActive: dbStats.unlinkedActivos,
+        pendingDisable: 0,
+        withAsistencia: dbStats.enriched,
+        withoutAsistencia: Math.max(0, dbStats.activos - dbStats.enriched),
+        byArea: dbStats.byArea ?? [],
+        byCargo: dbStats.byCargo ?? [],
+        byRecinto: dbStats.byRecinto ?? [],
+      };
+    }
+    return computeRrhhDashboard(settings.employees, settings.userLinks, users);
+  }, [dbStats, settings.employees, settings.userLinks, users]);
 
   const recommendations = useMemo(
     () =>
@@ -84,105 +98,66 @@ export function RrhhModule({
     [kpis, settings.employees, settings.userLinks, settings.autoDisableOnTermination]
   );
 
-  const applyDisableUsers = async (userIds: string[]) => {
-    if (!canEdit || userIds.length === 0) return;
-    const idSet = new Set(userIds);
-    const nextUsers = users.map((u) =>
-      idSet.has(u.id) ? { ...u, status: 'inactive' as const } : u
-    );
-    onUpdateUsers?.(() => nextUsers);
-    const ok = onPersistUsers ? await onPersistUsers(nextUsers) : true;
-    if (ok) toast.success(`${userIds.length} usuario(s) deshabilitado(s).`);
-    else toast.error('No se pudieron guardar los usuarios.');
-  };
-
-  const disableUser = (userId: string) => {
-    void applyDisableUsers([userId]);
-  };
-
-  const disableAllPending = () => {
-    const pending = usersToDisableForTerminations(settings.employees, settings.userLinks, users);
-    void applyDisableUsers(pending.map((u) => u.id));
-  };
-
   const runSync = async () => {
     if (!canEdit) return;
     setSyncing(true);
-    setSyncProgress('');
     try {
-      const result = await syncRrhhCollaborators({
-        systemSettings,
-        existingEmployees: settings.employees,
+      toast.info('Sincronizando Buk.pe → BD…');
+      const result = await syncRrhhToDatabase({
         includeAsistencia: settings.includeAsistenciaEnrichment !== false,
-        onProgress: setSyncProgress,
       });
+      const at = new Date().toISOString();
       if (!result.ok) {
+        updateSettings((prev) => ({
+          ...prev,
+          lastSyncAt: at,
+          lastSyncOk: false,
+          lastSyncMessage: result.message,
+          syncLog: [{ at, ok: false, message: result.message }, ...prev.syncLog].slice(0, 30),
+        }));
         toast.error(result.message);
-        updateSettings(
-          (prev) => ({
-            ...prev,
-            lastSyncAt: new Date().toISOString(),
-            lastSyncOk: false,
-            lastSyncMessage: result.message,
-            syncLog: [
-              { at: new Date().toISOString(), ok: false, message: result.message },
-              ...prev.syncLog,
-            ].slice(0, 30),
-          }),
-          undefined
-        );
         return;
       }
-
-      const links = autoLinkBukEmployeesToUsers(result.employees, users, settings.userLinks);
-      let usersDisabled = 0;
-
-      if (settings.autoDisableOnTermination) {
-        const toDisable = usersToDisableForTerminations(result.employees, links, users);
-        if (toDisable.length > 0) {
-          const nextUsers = users.map((u) =>
-            toDisable.some((d) => d.id === u.id) ? { ...u, status: 'inactive' as const } : u
-          );
-          onUpdateUsers?.(() => nextUsers);
-          if (onPersistUsers) await onPersistUsers(nextUsers);
-          usersDisabled = toDisable.length;
-        }
-      }
-
-      const at = new Date().toISOString();
-      const logMessage = `${result.message}${usersDisabled > 0 ? ` · ${usersDisabled} usuario(s) deshabilitado(s)` : ''}`;
-
-      const nextSettings = {
-        ...settings,
-        employees: result.employees,
-        userLinks: links,
+      updateSettings((prev) => ({
+        ...prev,
+        employees: [], // maestro vive en MySQL
         lastSyncAt: at,
         lastSyncOk: true,
-        lastSyncMessage: logMessage,
+        lastSyncMessage: result.message,
         lastSyncStats: result.stats,
         syncLog: [
           {
             at,
             ok: true,
-            message: logMessage,
-            employeesLoaded: result.employees.length,
-            usersDisabled,
-            usersLinked: links.length,
+            message: result.message,
+            employeesLoaded: result.stats?.total,
             stats: result.stats,
             asistenciaMatched: result.asistenciaMatched,
-            durationMs: result.durationMs,
+            durationMs: result.duration_ms,
           },
-          ...settings.syncLog,
+          ...prev.syncLog,
         ].slice(0, 30),
-      };
-
-      updateSettings(() => nextSettings);
-      await persistNow(nextSettings, 'Sincronización completada.');
-      toast.success(logMessage);
+      }));
+      setTableRefresh((n) => n + 1);
+      if (result.truncated) {
+        toast.warning(result.message);
+      } else {
+        toast.success(result.message);
+      }
     } finally {
       setSyncing(false);
-      setSyncProgress('');
     }
+  };
+
+  const disableGrooflowUser = async (userId: string) => {
+    if (!onUpdateUsers || !onPersistUsers) return;
+    let next: User[] = [];
+    onUpdateUsers((prev) => {
+      next = prev.map((u) => (u.id === userId ? { ...u, status: 'inactive' as const } : u));
+      return next;
+    });
+    const ok = await onPersistUsers(next);
+    if (ok) toast.success('Usuario deshabilitado');
   };
 
   const openColumns = () => {
@@ -213,7 +188,8 @@ export function RrhhModule({
             Recursos Humanos
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Maestro de colaboradores desde Buk.pe, enriquecido con asistencia Buk (Ctrlit). Los datos quedan en caché y solo se actualizan si hay cambios.
+            Maestro de colaboradores en MySQL (sync Buk.pe + asistencia Ctrlit). La tabla pagina y busca
+            desde el servidor; cada página consulta la BD, no la API de Buk.
           </p>
           <div className="flex flex-wrap gap-2 mt-2">
             <Badge variant={bukPe.enabled ? 'default' : 'secondary'}>
@@ -222,14 +198,12 @@ export function RrhhModule({
             <Badge variant={asistencia.buk?.enabled ? 'default' : 'secondary'}>
               Asistencia {asistencia.buk?.enabled ? 'activa' : 'inactiva'}
             </Badge>
+            {dbStats ? (
+              <Badge variant="outline">{dbStats.total} en BD</Badge>
+            ) : null}
             {settings.lastSyncAt ? (
               <Badge variant={settings.lastSyncOk === false ? 'destructive' : 'outline'}>
-                Sync {format(new Date(settings.lastSyncAt), "d MMM HH:mm", { locale: es })}
-              </Badge>
-            ) : null}
-            {settings.lastSyncStats ? (
-              <Badge variant="outline">
-                {settings.lastSyncStats.unchanged} sin cambios
+                Sync {format(new Date(settings.lastSyncAt), 'd MMM HH:mm', { locale: es })}
               </Badge>
             ) : null}
             {saving ? <Badge variant="outline">Guardando…</Badge> : null}
@@ -245,7 +219,7 @@ export function RrhhModule({
               {syncing ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  {syncProgress || 'Sincronizando…'}
+                  Sincronizando a BD…
                 </>
               ) : (
                 <>
@@ -258,19 +232,22 @@ export function RrhhModule({
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
           <div>
             <p className="text-sm font-medium">Deshabilitar usuario en bajas Buk</p>
             <p className="text-xs text-muted-foreground">
-              Si Buk marca inactivo/desvinculado, el usuario vinculado pasa a inactivo en GrooFlow al sincronizar.
+              Preferencia guardada; la baja en Gestión se aplica al sync de usuarios Buk (Ctrlit).
             </p>
           </div>
           <Switch
             checked={settings.autoDisableOnTermination}
             disabled={!canEdit}
             onCheckedChange={(v) =>
-              updateSettings((prev) => ({ ...prev, autoDisableOnTermination: v }), v ? 'Bajas automáticas activadas.' : 'Bajas automáticas desactivadas.')
+              updateSettings(
+                (prev) => ({ ...prev, autoDisableOnTermination: v }),
+                v ? 'Bajas automáticas activadas.' : 'Bajas automáticas desactivadas.'
+              )
             }
           />
         </div>
@@ -278,51 +255,93 @@ export function RrhhModule({
           <div>
             <p className="text-sm font-medium">Enriquecer con asistencia Buk</p>
             <p className="text-xs text-muted-foreground">
-              Recinto, área, turno, supervisor y últimas marcaciones desde Ctrlit (por RUT o nombre).
+              Recinto, área, turno, supervisor y últimas marcaciones desde Ctrlit (por DNI).
             </p>
           </div>
           <Switch
             checked={settings.includeAsistenciaEnrichment !== false}
             disabled={!canEdit}
             onCheckedChange={(v) =>
-              updateSettings((prev) => ({ ...prev, includeAsistenciaEnrichment: v }), v ? 'Asistencia activada en sync.' : 'Solo maestro Buk.pe en sync.')
+              updateSettings(
+                (prev) => ({ ...prev, includeAsistenciaEnrichment: v }),
+                v ? 'Asistencia activada en sync.' : 'Solo maestro Buk.pe en sync.'
+              )
             }
           />
+        </div>
+        <div className="rounded-lg border p-3 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Sync automático a BD</p>
+              <p className="text-xs text-muted-foreground">
+                Cron cada 15 min; solo corre si pasó el intervalo (default 60). Guarda la respuesta completa de Buk
+                en MySQL.
+              </p>
+            </div>
+            <Switch
+              checked={settings.staffSyncEnabled !== false}
+              disabled={!canEdit}
+              onCheckedChange={(v) =>
+                updateSettings(
+                  (prev) => ({ ...prev, staffSyncEnabled: v }),
+                  v ? 'Sync automático RRHH activado.' : 'Sync automático RRHH desactivado.'
+                )
+              }
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="rrhh-sync-interval" className="text-xs">
+              Intervalo (minutos)
+            </Label>
+            <Input
+              id="rrhh-sync-interval"
+              type="number"
+              min={15}
+              max={1440}
+              disabled={!canEdit || settings.staffSyncEnabled === false}
+              value={settings.staffSyncIntervalMinutes ?? 60}
+              onChange={(e) => {
+                const n = Math.max(15, Math.min(1440, Number(e.target.value) || 60));
+                updateSettings((prev) => ({ ...prev, staffSyncIntervalMinutes: n }));
+              }}
+              onBlur={() => {
+                const n = Math.max(15, Math.min(1440, Number(settings.staffSyncIntervalMinutes) || 60));
+                updateSettings(
+                  (prev) => ({ ...prev, staffSyncIntervalMinutes: n }),
+                  `Intervalo RRHH: ${n} min`
+                );
+              }}
+            />
+          </div>
         </div>
       </div>
 
       <Tabs defaultValue="colaboradores">
         <TabsList>
-          <TabsTrigger value="colaboradores">Colaboradores ({activeEmployees.length})</TabsTrigger>
-          <TabsTrigger value="bajas">Bajas ({kpis.terminated})</TabsTrigger>
+          <TabsTrigger value="colaboradores">Colaboradores ({dbStats?.activos ?? 0})</TabsTrigger>
+          <TabsTrigger value="bajas">Bajas ({dbStats?.bajas ?? 0})</TabsTrigger>
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="vinculacion">Vinculación ({kpis.linkedUsers})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="colaboradores" className="space-y-3 mt-4">
-          <Input
-            placeholder="Buscar por nombre, email, documento, cargo…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-md"
-          />
-          <RrhhEmployeesTable
-            employees={activeEmployees}
+          <RrhhEmployeesDataTable
             visibleColumns={settings.visibleColumns}
             links={settings.userLinks}
             users={users}
-            search={search}
+            tab="activos"
+            refreshKey={tableRefresh}
           />
         </TabsContent>
 
         <TabsContent value="bajas" className="mt-4">
-          <RrhhBajasPanel
-            employees={settings.employees}
+          <RrhhEmployeesDataTable
+            visibleColumns={settings.visibleColumns}
             links={settings.userLinks}
             users={users}
+            tab="bajas"
+            refreshKey={tableRefresh}
             canEdit={canEdit}
-            onDisableUser={disableUser}
-            onDisableAllPending={disableAllPending}
+            onDisableUser={(id) => void disableGrooflowUser(id)}
           />
         </TabsContent>
 
@@ -334,20 +353,6 @@ export function RrhhModule({
             lastSyncMessage={settings.lastSyncMessage}
           />
         </TabsContent>
-
-        <TabsContent value="vinculacion" className="mt-4 space-y-3">
-          <p className="text-sm text-muted-foreground">
-            Vinculación automática por email corporativo, email personal, documento o nombre exacto.
-            Tras cada sync se intentan nuevos enlaces sin romper los manuales existentes.
-          </p>
-          <RrhhEmployeesTable
-            employees={settings.employees.filter((e) => e.isActive)}
-            visibleColumns={['fullName', 'email', 'documentNumber', 'cargo', 'status']}
-            links={settings.userLinks}
-            users={users}
-            search={search}
-          />
-        </TabsContent>
       </Tabs>
 
       <Dialog open={columnsOpen} onOpenChange={setColumnsOpen}>
@@ -355,7 +360,7 @@ export function RrhhModule({
           <DialogHeader>
             <DialogTitle>Columnas visibles</DialogTitle>
             <DialogDescription>
-              Campos de Buk.pe y, si sincronizas con asistencia, datos de Ctrlit (recinto, turno, marcaciones).
+              Campos de Buk.pe y, si sincronizas con asistencia, datos de Ctrlit.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -369,9 +374,7 @@ export function RrhhModule({
                         checked={draftColumns.includes(col.id)}
                         onCheckedChange={(checked) => {
                           setDraftColumns((prev) =>
-                            checked
-                              ? [...prev, col.id]
-                              : prev.filter((id) => id !== col.id)
+                            checked ? [...prev, col.id] : prev.filter((id) => id !== col.id)
                           );
                         }}
                       />

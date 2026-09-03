@@ -47,10 +47,10 @@ export function RrhhDashboard({ kpis, recommendations, lastSyncAt, lastSyncMessa
             <CardTitle className="text-base">Activos por área</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {kpis.byArea.length === 0 ? (
+            {(kpis.byArea ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin datos.</p>
             ) : (
-              kpis.byArea.map((row) => (
+              (kpis.byArea ?? []).map((row) => (
                 <div key={row.area} className="flex justify-between text-sm">
                   <span className="truncate pr-2">{row.area}</span>
                   <span className="font-medium tabular-nums">{row.count}</span>
@@ -64,10 +64,10 @@ export function RrhhDashboard({ kpis, recommendations, lastSyncAt, lastSyncMessa
             <CardTitle className="text-base">Activos por cargo</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {kpis.byCargo.length === 0 ? (
+            {(kpis.byCargo ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin datos.</p>
             ) : (
-              kpis.byCargo.map((row) => (
+              (kpis.byCargo ?? []).map((row) => (
                 <div key={row.cargo} className="flex justify-between text-sm">
                   <span className="truncate pr-2">{row.cargo}</span>
                   <span className="font-medium tabular-nums">{row.count}</span>
@@ -81,10 +81,10 @@ export function RrhhDashboard({ kpis, recommendations, lastSyncAt, lastSyncMessa
             <CardTitle className="text-base">Activos por recinto (asistencia)</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {kpis.byRecinto.length === 0 ? (
+            {(kpis.byRecinto ?? []).length === 0 ? (
               <p className="text-sm text-muted-foreground">Sin datos de asistencia.</p>
             ) : (
-              kpis.byRecinto.map((row) => (
+              (kpis.byRecinto ?? []).map((row) => (
                 <div key={row.recinto} className="flex justify-between text-sm">
                   <span className="truncate pr-2">{row.recinto}</span>
                   <span className="font-medium tabular-nums">{row.count}</span>

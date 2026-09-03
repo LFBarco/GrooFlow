@@ -32,7 +32,8 @@ export function useRrhhModuleState(canEdit: boolean) {
   const persistNow = useCallback(async (next: RrhhSettings, message?: string) => {
     setSaving(true);
     try {
-      await repository.kv.set(RRHH_SETTINGS_KV_KEY, next);
+      const payload: RrhhSettings = { ...next, employees: [] };
+      await repository.kv.set(RRHH_SETTINGS_KV_KEY, payload);
       if (message) toast.success(message);
       return true;
     } catch {

@@ -29,6 +29,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 const BUILTIN_BADGE: Record<string, string> = {
   administracion:
@@ -255,7 +256,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   };
 
   const removeSubColumn = async (subColumnId: string) => {
-    if (!window.confirm('¿Eliminar esta subcolumna? El personal pasará a la columna principal.')) return;
+    if (!await appConfirm('¿Eliminar esta subcolumna? El personal pasará a la columna principal.')) return;
     await runSave(
       (prev) => applyRemoveOrgSubColumn(prev, sedeName, subColumnId),
       'Subcolumna eliminada.'
@@ -264,7 +265,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
 
   const removeColumn = async (columnId: string) => {
     if (isBuiltinOrgColumnId(columnId)) return;
-    if (!window.confirm('¿Eliminar esta columna del organigrama? El personal se moverá a Administración.')) return;
+    if (!await appConfirm('¿Eliminar esta columna del organigrama? El personal se moverá a Administración.')) return;
     await runSave(
       (prev) => applyRemoveOrgColumn(prev, sedeName, columnId),
       'Columna eliminada.'
@@ -297,7 +298,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   };
 
   const removeStaff = async (id: string) => {
-    if (!window.confirm('¿Eliminar este miembro del personal?')) return;
+    if (!await appConfirm('¿Eliminar este miembro del personal?')) return;
     await runSave(
       (prev) =>
         mergeAsistenciaSettings({

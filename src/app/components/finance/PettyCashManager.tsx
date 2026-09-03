@@ -70,6 +70,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Switch } from '../ui/switch';
 import { Checkbox } from '../ui/checkbox';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 // --- Helper to get ISO-like year-week key for petty cash ---
 const getWeekStr = (date: Date) => getPettyCashWeekKey(date);
@@ -771,7 +772,7 @@ export function PettyCashManager({
         closeEditExpense();
     };
 
-    const voidExpense = (e: PettyCashTransaction) => {
+    const voidExpense = async (e: PettyCashTransaction) => {
         if (weekAlreadyClosed) {
             toast.error('La semana está cerrada; no se puede anular.');
             return;
@@ -781,7 +782,7 @@ export function PettyCashManager({
             return;
         }
         if (
-            !window.confirm(
+            !await appConfirm(
                 `¿Anular este gasto? Quedará marcado como anulado y no sumará en totales.\n\n${(e.description || '').slice(0, 140)}`
             )
         )
@@ -792,7 +793,7 @@ export function PettyCashManager({
         toast.success('Movimiento anulado.');
     };
 
-    const revokeFundDelivery = (e: PettyCashTransaction) => {
+    const revokeFundDelivery = async (e: PettyCashTransaction) => {
         if (!isSuperAdminOnly) {
             toast.error('Solo el super administrador puede revocar dotaciones.');
             return;
@@ -803,7 +804,7 @@ export function PettyCashManager({
         }
         if (!isFundDeliveryIncome(e) || !e.custodianId || !e.weekNumber) return;
         if (
-            !window.confirm(
+            !await appConfirm(
                 '¿Revocar esta dotación semanal?\n\n' +
                     'Se eliminará la confirmación de entrega. La semana volverá a quedar pendiente de dotación por auditoría.'
             )
@@ -828,7 +829,7 @@ export function PettyCashManager({
         toast.success('Movimiento aprobado por auditoría.');
     };
 
-    const rejectPettyMovement = (row: PettyCashTransaction) => {
+    const rejectPettyMovement = async (row: PettyCashTransaction) => {
         if (!canApprovePettyCashMovements(currentUser, roles)) return;
         if (weekAlreadyClosed) {
             toast.error('La semana está cerrada.');
@@ -836,14 +837,12 @@ export function PettyCashManager({
         }
         if (row.status !== 'pending_audit') return;
         if (
-            !window.confirm(
+            !await appConfirm(
                 `¿Rechazar este movimiento?\n\n${(row.description || '').slice(0, 120)}\n\nEl responsable deberá corregir o anular y registrar de nuevo.`
             )
         )
             return;
-        const note =
-            window.prompt('Motivo del rechazo (opcional; queda registrado en el movimiento):', row.auditComment ?? '') ??
-            '';
+        const note = row.auditComment ?? '';
         onUpdateTransactions(
             transactions.map((t) =>
                 t.id === row.id
@@ -858,7 +857,7 @@ export function PettyCashManager({
         toast.message('Movimiento rechazado en auditoría.');
     };
 
-    const handlePreCloseWeek = () => {
+    const handlePreCloseWeek = async () => {
         if (!onPreClosePettyCashWeek || !selectedCustodianId) return;
         if (weekAlreadyClosed) {
             toast.error('La semana ya está cerrada definitivamente.');
@@ -876,7 +875,7 @@ export function PettyCashManager({
             `¿Registrar pre-cierre de la semana ${selectedWeek}?\n\n` +
             `Esto marca que presentó la rendición para revisión. ` +
             `Podrá seguir registrando gastos si el saldo lo permite; el cierre definitivo lo hará contabilidad tras aprobar el 100% de los movimientos.`;
-        if (!window.confirm(msg)) return;
+        if (!await appConfirm(msg)) return;
         const pre: PettyCashWeekPreClosure = {
             id: `pcp-${Date.now()}`,
             custodianId: selectedCustodianId,
@@ -1044,7 +1043,7 @@ export function PettyCashManager({
         setDeliveryReason('');
     };
 
-    const handleCloseWeek = () => {
+    const handleCloseWeek = async () => {
         if (!onClosePettyCashWeek || !selectedCustodianId) return;
         if (weekAlreadyClosed) {
             toast.error('Esta semana ya está cerrada.');
@@ -1075,7 +1074,7 @@ export function PettyCashManager({
                 ? `Arrastre a la semana siguiente: ${formatCurrencyEs(carried)}.\nLa dotación fija (${formatCurrencyEs(currentLimit)}) la confirmará auditoría al entregar el efectivo.`
                 : `Sin arrastre de efectivo.\nLa semana siguiente quedará pendiente hasta que auditoría confirme la dotación de ${formatCurrencyEs(currentLimit)}.`);
 
-        if (!window.confirm(msg)) return;
+        if (!await appConfirm(msg)) return;
 
         const closure: PettyCashWeekClosure = {
             id: `pcw-${Date.now()}`,

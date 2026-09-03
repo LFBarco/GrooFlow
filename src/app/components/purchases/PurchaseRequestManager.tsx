@@ -27,6 +27,9 @@ import { toast } from 'sonner';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { Checkbox } from '../ui/checkbox';
 import { useSupplierProductsState } from '../../hooks/useSupplierProductsState';
+import { getGrooflowBackend } from '../../config/backend';
+import { useServerPagedList } from '../../hooks/useServerPagedList';
+import { DataTablePaginationBar } from '../data-table/ClientDataTable';
 
 function newLineId(): string {
   return `prl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -77,7 +80,14 @@ export function PurchaseRequestManager({
     const supplierProductsSettings = supplierProductsSettingsProp ?? supplierProductsFromHook;
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('pending');
-    const [searchTerm, setSearchTerm] = useState('');
+    const [clientSearch, setClientSearch] = useState('');
+    const useServerPaging = getGrooflowBackend() === 'rest';
+    const serverList = useServerPagedList<PurchaseRequest>('requests', {
+        enabled: useServerPaging,
+        extra: { tab: activeTab },
+    });
+    const searchTerm = useServerPaging ? serverList.search : clientSearch;
+    const setSearchTerm = useServerPaging ? serverList.setSearch : setClientSearch;
     
     // Action Dialog State (Approve/Reject)
     const [actionDialog, setActionDialog] = useState<{
@@ -306,6 +316,7 @@ export function PurchaseRequestManager({
                 toRequestDate(b.requestDate).getTime() - toRequestDate(a.requestDate).getTime()
         );
     }, [requests, activeTab, searchTerm]);
+    const displayedRequests = useServerPaging ? serverList.items : filteredRequests;
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -891,7 +902,7 @@ export function PurchaseRequestManager({
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredRequests.length === 0 ? (
+                            {displayedRequests.length === 0 ? (
                                 <TableRow>
                                     <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
                                         <div className="flex flex-col items-center justify-center gap-2">
@@ -904,7 +915,7 @@ export function PurchaseRequestManager({
                                     </TableCell>
                                 </TableRow>
                             ) : (
-                                filteredRequests.map(req => (
+                                displayedRequests.map(req => (
                                     <TableRow key={req.id} className="group hover:bg-muted/50 transition-colors">
                                         <TableCell className="text-xs font-mono">
                                             {format(toRequestDate(req.requestDate), 'dd/MM/yy', { locale: es })}
@@ -1001,6 +1012,16 @@ export function PurchaseRequestManager({
                             )}
                         </TableBody>
                     </Table>
+                    {useServerPaging ? (
+                        <div className="p-3 border-t">
+                            <DataTablePaginationBar
+                                page={serverList.page}
+                                totalPages={serverList.totalPages}
+                                onPageChange={serverList.setPage}
+                                disabled={serverList.loading}
+                            />
+                        </div>
+                    ) : null}
                 </Card>
             </div>
 

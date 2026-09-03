@@ -29,6 +29,9 @@ export type ViewType =
   | 'accidentes'
   | 'uniformes'
   | 'rrhh'
+  | 'rrhhAreas'
+  | 'rrhhPuestos'
+  | 'rrhhTurnosCatalog'
   | 'reconciliation';
 
 /** Path por defecto (raíz) */
@@ -74,6 +77,9 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   accidentes: '/accidentes-trabajo',
   uniformes: '/entrega-uniformes',
   rrhh: '/recursos-humanos',
+  rrhhAreas: '/catalogo/areas',
+  rrhhPuestos: '/catalogo/puestos',
+  rrhhTurnosCatalog: '/catalogo/turnos',
   reconciliation: '/conciliacion',
 };
 
@@ -139,6 +145,9 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   accidentes: 'Accidentes de Trabajo',
   uniformes: 'Entrega de Uniformes',
   rrhh: 'Recursos Humanos',
+  rrhhAreas: 'Catálogo Áreas',
+  rrhhPuestos: 'Catálogo Puestos',
+  rrhhTurnosCatalog: 'Catálogo Turnos',
   reconciliation: 'Conciliación',
 };
 
@@ -171,5 +180,8 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'accidentes',
   'uniformes',
   'rrhh',
+  'rrhhAreas',
+  'rrhhPuestos',
+  'rrhhTurnosCatalog',
   'reconciliation',
 ];

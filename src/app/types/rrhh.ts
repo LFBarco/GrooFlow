@@ -102,6 +102,10 @@ export interface RrhhSettings {
   autoDisableOnTermination: boolean;
   /** Enriquecer colaboradores con recinto, turno y marcaciones de Buk Asistencia. */
   includeAsistenciaEnrichment?: boolean;
+  /** Sync programado Buk.pe → BD. */
+  staffSyncEnabled?: boolean;
+  /** Intervalo en minutos (default 60). El cron corre cada 15 min y respeta este valor. */
+  staffSyncIntervalMinutes?: number;
   lastSyncAt?: string;
   lastSyncOk?: boolean;
   lastSyncMessage?: string;

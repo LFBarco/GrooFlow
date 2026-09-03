@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { CheckCircle2, Eye, EyeOff, Loader2, Plug, XCircle } from 'lucide-react';
+import { CheckCircle2, Eye, EyeOff, Loader2, Plug, RefreshCw, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { SystemSettings } from '../../types';
 import type { BukAsistenciaIntegrationSettings } from '../../types/asistencia';
-import { DEFAULT_BUK_ASISTENCIA_BASE_URL, sanitizeBukBaseUrl, validateBukAsistenciaConnection } from '../../utils/bukAsistenciaApi';
+import {
+  DEFAULT_BUK_ASISTENCIA_BASE_URL,
+  sanitizeBukBaseUrl,
+  syncBukUsuariosToGestion,
+  validateBukAsistenciaConnection,
+} from '../../utils/bukAsistenciaApi';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { patchAsistenciaSettings } from '../../utils/asistenciaPersistence';
 import { Button } from '../ui/button';
@@ -51,6 +56,7 @@ export function BukAsistenciaIntegrationSection({
   const [showToken, setShowToken] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testingSec, setTestingSec] = useState(0);
+  const [syncing, setSyncing] = useState(false);
   const [liveTest, setLiveTest] = useState<LiveTestResult | null>(null);
   const tokenRef = useRef<HTMLInputElement>(null);
   const baseUrlRef = useRef<HTMLInputElement>(null);
@@ -142,6 +148,57 @@ export function BukAsistenciaIntegrationSection({
       toast.error(msg);
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleStaffSync = async () => {
+    if (readOnly || syncing) return;
+    setSyncing(true);
+    toast.info('Sincronizando usuarios con Buk…');
+    try {
+      const result = await syncBukUsuariosToGestion({
+        baseUrl: sanitizeBukBaseUrl(
+          (baseUrlRef.current?.value ?? buk.apiBaseUrl ?? DEFAULT_BUK_ASISTENCIA_BASE_URL).trim()
+        ),
+        apiToken: (tokenRef.current?.value ?? buk.apiToken ?? '').trim() || '********',
+      });
+      const at = new Date().toISOString();
+      if (!result.ok) {
+        const msg = result.error || 'No se pudo sincronizar con Buk.';
+        patchBuk(
+          {
+            lastStaffSyncAt: at,
+            lastStaffSyncOk: false,
+            lastStaffSyncMessage: msg,
+          },
+          { persist: true }
+        );
+        toast.error(msg);
+        return;
+      }
+      const msg =
+        result.message ||
+        `Actualizados ${result.updated ?? 0} usuario(s); coincidencias ${result.matched ?? 0}.`;
+      patchBuk(
+        {
+          lastStaffSyncAt: at,
+          lastStaffSyncOk: true,
+          lastStaffSyncMessage: msg,
+          staffSyncEnabled: buk.staffSyncEnabled !== false,
+        },
+        { persist: true, message: 'Sync Buk de usuarios guardado.' }
+      );
+      toast.success(msg);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error al sincronizar con Buk.';
+      patchBuk({
+        lastStaffSyncAt: new Date().toISOString(),
+        lastStaffSyncOk: false,
+        lastStaffSyncMessage: msg,
+      });
+      toast.error(msg);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -349,6 +406,88 @@ export function BukAsistenciaIntegrationSection({
               {format(new Date(buk.lastAutoRefreshAt), "d MMM yyyy, HH:mm", { locale: es })}
             </p>
           ) : null}
+        </div>
+
+        <div className="rounded-lg border p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Sync usuarios (nómina / turnos → Gestión)</p>
+              <p className="text-xs text-muted-foreground">
+                Actualiza área, puesto, DNI y turno en <code className="text-[11px]">app_usuarios</code> por
+                coincidencia de documento. El cron corre cada 15 min y respeta el intervalo configurable
+                (por defecto 60 min).
+              </p>
+            </div>
+            <Switch
+              checked={buk.staffSyncEnabled !== false}
+              disabled={readOnly}
+              onCheckedChange={(v) =>
+                patchBuk(
+                  { staffSyncEnabled: v },
+                  {
+                    persist: true,
+                    message: v ? 'Sync programado de usuarios activado.' : 'Sync programado desactivado.',
+                  }
+                )
+              }
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="buk-staff-sync-interval">Intervalo sync usuarios (min)</Label>
+              <Input
+                id="buk-staff-sync-interval"
+                type="number"
+                min={15}
+                max={1440}
+                defaultValue={buk.staffSyncIntervalMinutes ?? 60}
+                disabled={readOnly}
+                onBlur={(e) => {
+                  const n = Math.max(15, Math.min(1440, Number(e.target.value) || 60));
+                  patchBuk({ staffSyncIntervalMinutes: n }, { persist: true });
+                }}
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full gap-2"
+                disabled={readOnly || syncing}
+                onClick={() => void handleStaffSync()}
+              >
+                {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                {syncing ? 'Sincronizando…' : 'Sync con Buk ahora'}
+              </Button>
+            </div>
+          </div>
+          {buk.lastStaffSyncAt ? (
+            <Alert
+              variant={buk.lastStaffSyncOk === false ? 'destructive' : 'default'}
+              className={
+                buk.lastStaffSyncOk === false
+                  ? undefined
+                  : 'border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20'
+              }
+            >
+              {buk.lastStaffSyncOk === false ? (
+                <XCircle className="h-4 w-4" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              )}
+              <AlertTitle className="text-sm">
+                Último sync —{' '}
+                {format(new Date(buk.lastStaffSyncAt), "d MMM yyyy, HH:mm", { locale: es })}
+              </AlertTitle>
+              <AlertDescription className="text-sm">
+                {buk.lastStaffSyncMessage || '—'}
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Aún no hay sync de usuarios. Usa el botón o espera al cron programado.
+            </p>
+          )}
         </div>
       </CardContent>
     </Card>

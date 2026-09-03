@@ -144,7 +144,7 @@ function bukHttpErrorMessage(status: number, triedUrl: string, bodyPreview?: str
 }
 
 async function postBukProxy(
-  path: 'test' | 'fetch' | 'fetch-all',
+  path: 'test' | 'fetch' | 'fetch-all' | 'sync-usuarios',
   body: Record<string, unknown>,
   timeoutMs = FETCH_TIMEOUT_MS
 ): Promise<Response> {
@@ -448,4 +448,52 @@ export async function fetchBukAsistenciaAll(input: {
     }
     throw err;
   }
+}
+
+export type BukStaffSyncResult = {
+  ok: boolean;
+  matched?: number;
+  updated?: number;
+  unmatched_buk?: number;
+  users_scanned?: number;
+  by_source?: { nomina?: number; asistencia?: number; turnos?: number };
+  message?: string;
+  error?: string;
+  duration_ms?: number;
+  synced_at?: string;
+};
+
+/** Sincroniza nómina/asistencia/turnos Buk → app_usuarios (vía API GrooFlow). */
+export async function syncBukUsuariosToGestion(input?: {
+  baseUrl?: string;
+  apiToken?: string;
+}): Promise<BukStaffSyncResult> {
+  const backend = getGrooflowBackend();
+  if (backend === 'local') {
+    throw new Error('El sync Buk requiere el backend REST de GrooFlow.');
+  }
+  const body: Record<string, unknown> = {};
+  if (input?.baseUrl) body.baseUrl = sanitizeBukBaseUrl(input.baseUrl);
+  if (input?.apiToken) body.apiToken = normalizeBukToken(input.apiToken);
+
+  const res = await postBukProxy('sync-usuarios', body, 180_000);
+  const json = await readJsonSafe(res);
+  if (!res.ok || json.ok === false) {
+    return {
+      ok: false,
+      error: String(json.error ?? json.message ?? `HTTP ${res.status}`),
+      duration_ms: typeof json.duration_ms === 'number' ? json.duration_ms : undefined,
+    };
+  }
+  return {
+    ok: true,
+    matched: Number(json.matched ?? 0),
+    updated: Number(json.updated ?? 0),
+    unmatched_buk: Number(json.unmatched_buk ?? 0),
+    users_scanned: Number(json.users_scanned ?? 0),
+    by_source: (json.by_source as BukStaffSyncResult['by_source']) ?? undefined,
+    message: String(json.message ?? ''),
+    duration_ms: typeof json.duration_ms === 'number' ? json.duration_ms : undefined,
+    synced_at: typeof json.synced_at === 'string' ? json.synced_at : undefined,
+  };
 }

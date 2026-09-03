@@ -25,6 +25,7 @@ import { AccidenteDetailDialog } from './AccidenteDetailDialog';
 import { AccidentesDashboard } from './AccidentesDashboard';
 import { AccidentesFiltersBar, defaultAccidentesFilters } from './AccidentesFilters';
 import { AccidentesTable } from './AccidentesTable';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 export interface AccidentesModuleProps {
   users: User[];
@@ -101,8 +102,8 @@ export function AccidentesModule({
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('¿Eliminar este registro de accidente?')) return;
+  const handleDelete = async (id: string) => {
+    if (!await appConfirm('¿Eliminar este registro de accidente?')) return;
     updateSettings((prev) => removeAccidentRecord(prev, id), 'Registro eliminado.');
   };
 

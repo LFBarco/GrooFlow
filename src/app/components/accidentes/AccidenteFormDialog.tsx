@@ -48,6 +48,7 @@ import {
   SelectValue,
 } from '../ui/select';
 import { Textarea } from '../ui/textarea';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 type Props = {
   open: boolean;
@@ -156,9 +157,9 @@ export function AccidenteFormDialog({
     onOpenChange(false);
   };
 
-  const addAttachment = (file: File) => {
+  const addAttachment = async (file: File) => {
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      window.alert('El archivo supera 500 KB. Use una imagen más liviana o un PDF comprimido.');
+      await appAlert('El archivo supera 500 KB. Use una imagen más liviana o un PDF comprimido.');
       return;
     }
     const reader = new FileReader();

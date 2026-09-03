@@ -26,6 +26,7 @@ import { canApprovePettyCashMovements } from '../../utils/pettyCashAudit';
 import { userHasGlobalSedeAccess } from '../../utils/roleAccess';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { filterPettyCashCustodianUsersForViewer } from '../../utils/pettyCashCustodianVisibility';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 type StatusFilter = 'pending' | 'all' | 'approved' | 'rejected';
 
@@ -149,15 +150,15 @@ export function PettyCashAuditConsole({
         if (detail?.id === row.id) setDetail({ ...row, status: 'approved' });
     };
 
-    const reject = (row: PettyCashTransaction) => {
+    const reject = async (row: PettyCashTransaction) => {
         if (!canAct || row.status !== 'pending_audit') return;
         if (
-            !window.confirm(
+            !await appConfirm(
                 `¿Rechazar este movimiento?\n\n${(row.description || '').slice(0, 160)}\n\nEl responsable podrá corregir, anular o volver a registrar.`
             )
         )
             return;
-        const note = window.prompt('Motivo del rechazo (opcional, queda en historial):', row.auditComment ?? '') ?? '';
+        const note = row.auditComment ?? '';
         onUpdateTransactions(
             transactions.map((t) =>
                 t.id === row.id

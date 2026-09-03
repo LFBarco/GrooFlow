@@ -275,12 +275,12 @@ export function buildRrhhRecommendations(
 ): RrhhRecommendation[] {
   const recs: RrhhRecommendation[] = [];
 
-  if (employees.length === 0) {
+  if (kpis.total === 0 && employees.length === 0) {
     recs.push({
       id: 'sync-empty',
       severity: 'action',
       title: 'Sincroniza con Buk.pe',
-      detail: 'Aún no hay colaboradores cargados. Usa «Actualizar desde Buk.pe» para traer el maestro de empleados.',
+      detail: 'Aún no hay colaboradores en BD. Usa «Sincronizar colaboradores» para traer el maestro de empleados.',
     });
     return recs;
   }

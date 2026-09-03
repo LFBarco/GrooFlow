@@ -26,6 +26,7 @@ import { UniformesKitsDialog } from './UniformesKitsDialog';
 import { UniformesRenewalPanel } from './UniformesRenewalPanel';
 import { UniformesTable } from './UniformesTable';
 import { listUniformRenewals } from '../../utils/uniformesRenewal';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 export interface UniformesModuleProps {
   users: User[];
@@ -115,8 +116,8 @@ export function UniformesModule({
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('¿Eliminar este registro de entrega?')) return;
+  const handleDelete = async (id: string) => {
+    if (!await appConfirm('¿Eliminar este registro de entrega?')) return;
     updateSettings((prev) => removeUniformDelivery(prev, id), 'Registro eliminado.');
   };
 

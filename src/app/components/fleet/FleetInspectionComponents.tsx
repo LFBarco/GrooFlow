@@ -49,6 +49,7 @@ import { Label } from '../ui/label';
 import { ScrollArea } from '../ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Textarea } from '../ui/textarea';
+import { appAlert, appConfirm } from '../ui/app-dialog';
 
 const MAX_FILE_BYTES = 1_800_000;
 
@@ -350,8 +351,8 @@ export function FleetChecklistConfigurator({
     });
   };
 
-  const removeSection = (id: string) => {
-    if (!confirm('¿Eliminar esta categoría y todos sus ítems?')) return;
+  const removeSection = async (id: string) => {
+    if (!await appConfirm('¿Eliminar esta categoría y todos sus ítems?')) return;
     withSections((current) => current.filter((s) => s.id !== id).map((s, i) => ({ ...s, sortOrder: i })));
   };
 
@@ -407,8 +408,8 @@ export function FleetChecklistConfigurator({
     );
   };
 
-  const restoreDefault = () => {
-    if (!confirm('¿Restaurar plantilla estándar de movilidad canina? Se perderán los cambios actuales.')) return;
+  const restoreDefault = async () => {
+    if (!await appConfirm('¿Restaurar plantilla estándar de movilidad canina? Se perderán los cambios actuales.')) return;
     withSections(
       () => JSON.parse(JSON.stringify(DEFAULT_FLEET_CHECKLIST)) as FleetChecklistSection[],
       { persistNow: true }
@@ -769,7 +770,7 @@ export function FleetVehicleInspectionBar({
   };
 
   const removeInspection = async (rec: FleetInspectionRecord) => {
-    if (!confirm('¿Eliminar esta inspección del historial?')) return;
+    if (!await appConfirm('¿Eliminar esta inspección del historial?')) return;
     const next: FleetDataset = {
       ...dataset,
       inspections: dataset.inspections.filter((i) => i.id !== rec.id),
@@ -1010,7 +1011,7 @@ export function FleetInspectionsGlobalTable({
   const [detail, setDetail] = useState<FleetInspectionRecord | null>(null);
 
   const removeInspection = async (rec: FleetInspectionRecord) => {
-    if (!confirm('¿Eliminar esta inspección del historial global?')) return;
+    if (!await appConfirm('¿Eliminar esta inspección del historial global?')) return;
     const next: FleetDataset = {
       ...dataset,
       inspections: dataset.inspections.filter((i) => i.id !== rec.id),
