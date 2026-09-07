@@ -271,6 +271,9 @@ export function RrhhIdentityDiagnosisPanel({
             Origen: {RRHH_IDENTITY_POLICY_LABELS[RRHH_IDENTITY_POLICY.sourceOfTruth]}
           </Badge>
           <Badge variant="secondary">
+            Buk: {RRHH_IDENTITY_POLICY_LABELS[RRHH_IDENTITY_POLICY.bukRole]}
+          </Badge>
+          <Badge variant="secondary">
             Alta sin usuario: {RRHH_IDENTITY_POLICY_LABELS[RRHH_IDENTITY_POLICY.altaSinUsuario]}
           </Badge>
           <Badge variant="secondary">Cesado → desactiva acceso + organigrama</Badge>

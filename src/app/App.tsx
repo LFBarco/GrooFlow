@@ -146,6 +146,7 @@ import { mergeTurnosSettings, TURNOS_SETTINGS_KV_KEY } from "./utils/turnosData"
 import { mergeRrhhSettings, RRHH_SETTINGS_KV_KEY } from "./utils/rrhhData";
 import type { RrhhSettings } from "./types/rrhh";
 import { canConfigureAsistencia } from "./utils/asistenciaAccess";
+import { resetAsistenciaUiLocks } from "./utils/asistenciaUiCleanup";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
 import {
@@ -351,6 +352,10 @@ export default function App() {
       setRenderedView(urlView);
     });
   }, [urlView, view]);
+  useEffect(() => {
+    if (view === 'asistencia') return;
+    resetAsistenciaUiLocks();
+  }, [view]);
   const [config, setConfig] = useState<ConfigStructure>(initialStructure);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(initialSystemSettings);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());

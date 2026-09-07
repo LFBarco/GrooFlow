@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { AlertTriangle, LayoutGrid, Pencil, Sparkles, Users } from 'lucide-react';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -11,6 +12,7 @@ import type {
 import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import type { AsistenciaStaffLiveState } from '../../types/asistencia';
 import type { TurnosPlanVsReal } from '../../types/turnos';
+import { resetAsistenciaUiLocks } from '../../utils/asistenciaUiCleanup';
 import { AsistenciaLiveSedeBlock } from './AsistenciaLiveDnd';
 import { AsistenciaStatusLegend } from './AsistenciaStatusLegend';
 import { Button } from '../ui/button';
@@ -97,8 +99,20 @@ export function AsistenciaLiveView({
     ? consolidated.sedes.reduce((n, s) => n + s.areas.reduce((a, b) => a + b.totalCount, 0), 0)
     : (summary?.areas.reduce((n, a) => n + a.totalCount, 0) ?? 0);
 
-  return (
-    <DndProvider backend={HTML5Backend}>
+  // Al salir de Asistencia, HTML5Backend / locks de body pueden dejar la UI congelada.
+  useEffect(() => {
+    return () => {
+      resetAsistenciaUiLocks();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!editLayout) {
+      resetAsistenciaUiLocks();
+    }
+  }, [editLayout]);
+
+  const liveBody = (
       <Card className="overflow-hidden border-border bg-card text-card-foreground shadow-sm dark:border-slate-800 dark:bg-[#0f0d18]">
         <CardHeader className="border-b border-border pb-4 dark:border-slate-800/80">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -203,6 +217,7 @@ export function AsistenciaLiveView({
           ) : null}
         </CardContent>
       </Card>
-    </DndProvider>
   );
+
+  return <DndProvider backend={HTML5Backend}>{liveBody}</DndProvider>;
 }

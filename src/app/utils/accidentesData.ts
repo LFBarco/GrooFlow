@@ -240,7 +240,7 @@ function normalizePersonName(name: string): string {
     .replace(/\s+/g, ' ');
 }
 
-/** Resuelve la opción del select al editar un registro (Fase 6). */
+/** Resuelve la opción del select al editar un registro. Preferencia: usuario Gestión. */
 export function resolveStaffOptionKey(
   record: {
     userId?: string;
@@ -250,21 +250,21 @@ export function resolveStaffOptionKey(
   },
   options: StaffOption[]
 ): string {
-  if (record.asistenciaStaffId) {
-    const id = `asist-${record.asistenciaStaffId}`;
-    if (options.some((o) => o.id === id || o.asistenciaStaffId === record.asistenciaStaffId)) {
-      return options.find((o) => o.asistenciaStaffId === record.asistenciaStaffId)?.id ?? id;
-    }
-  }
-  if (record.bukEmployeeId) {
-    const byBuk = options.find((o) => o.bukEmployeeId === record.bukEmployeeId);
-    if (byBuk) return byBuk.id;
-  }
   if (record.userId) {
     const byUser = options.find((o) => o.userId === record.userId);
     if (byUser) return byUser.id;
     const legacy = `user-${record.userId}`;
     if (options.some((o) => o.id === legacy)) return legacy;
+  }
+  if (record.asistenciaStaffId) {
+    const byAsist = options.find((o) => o.asistenciaStaffId === record.asistenciaStaffId);
+    if (byAsist) return byAsist.id;
+    const id = `asist-${record.asistenciaStaffId}`;
+    if (options.some((o) => o.id === id)) return id;
+  }
+  if (record.bukEmployeeId) {
+    const byBuk = options.find((o) => o.bukEmployeeId === record.bukEmployeeId);
+    if (byBuk) return byBuk.id;
   }
   const doc = docKey(record.documentNumber);
   if (doc) {
@@ -275,14 +275,15 @@ export function resolveStaffOptionKey(
 }
 
 /**
- * Lista de colaboradores (Fase 6): organigrama/maestro primero + usuarios no cubiertos.
- * Identidad: bukEmployeeId → DNI → usuarioId → email → nombre.
+ * Lista de colaboradores: Gestión = maestro de persona/cargo.
+ * Organigrama Asistencia solo aporta ids de cruce (asistenciaStaffId / bukEmployeeId).
+ * Buk no define el cargo mostrado en Uniformes / Accidentes.
  */
 export function buildStaffOptions(input: {
   users: User[];
   asistencia?: AsistenciaSettings | null;
   visibleSedes?: string[];
-  /** false = solo usuarios Gestión (legado). Default true = organigrama + users. */
+  /** Si false, ignora organigrama (solo Gestión). Default true = enriquece con ids Asistencia. */
   includeAsistencia?: boolean;
 }): StaffOption[] {
   const map = new Map<string, StaffOption>();
@@ -290,8 +291,7 @@ export function buildStaffOptions(input: {
   const asistencia = mergeAsistenciaSettings(input.asistencia);
   const sedeNames = input.visibleSedes ?? [];
   const includeAsistencia = input.includeAsistencia !== false;
-  const staffList = asistencia.staff ?? [];
-  const hasOrganigrama = includeAsistencia && staffList.length > 0;
+  const staffList = includeAsistencia ? (asistencia.staff ?? []) : [];
 
   const register = (opt: StaffOption, identityKey: string) => {
     if (identityKeys.has(identityKey)) return;
@@ -306,103 +306,53 @@ export function buildStaffOptions(input: {
     email?: string;
     name: string;
   }): string => {
-    if (parts.bukEmployeeId) return `buk:${parts.bukEmployeeId}`;
+    if (parts.userId) return `user:${parts.userId}`;
     const doc = docKey(parts.documentNumber);
     if (doc) return `doc:${doc}`;
-    if (parts.userId) return `user:${parts.userId}`;
+    if (parts.bukEmployeeId) return `buk:${parts.bukEmployeeId}`;
     const email = parts.email?.trim().toLowerCase();
     if (email) return `email:${email}`;
     return `name:${normalizePersonName(parts.name)}`;
   };
 
-  const usersById = new Map(input.users.filter((u) => u.status !== 'inactive').map((u) => [u.id, u]));
-  const usersByEmail = new Map<string, User>();
-  const usersByDoc = new Map<string, User>();
-  for (const u of input.users) {
-    if (u.status === 'inactive') continue;
-    const em = u.email?.trim().toLowerCase();
-    if (em) usersByEmail.set(em, u);
-    const d = docKey(u.documentNumber);
-    if (d) usersByDoc.set(d, u);
-  }
-
-  const linkedUserForStaff = (s: (typeof staffList)[number]): User | undefined => {
+  const staffByUserId = new Map<string, (typeof staffList)[number]>();
+  const staffByEmail = new Map<string, (typeof staffList)[number]>();
+  const staffByDoc = new Map<string, (typeof staffList)[number]>();
+  for (const s of staffList) {
     const uid = String(s.usuarioId ?? '').trim();
-    if (uid && usersById.has(uid)) return usersById.get(uid);
+    if (uid) staffByUserId.set(uid, s);
     const em = (s.email ?? '').trim().toLowerCase();
-    if (em && usersByEmail.has(em)) return usersByEmail.get(em);
+    if (em) staffByEmail.set(em, s);
     const d = docKey(s.rut);
-    if (d && usersByDoc.has(d)) return usersByDoc.get(d);
-    return undefined;
-  };
-
-  const coveredUserIds = new Set<string>();
-  const coveredDocs = new Set<string>();
-  const coveredEmails = new Set<string>();
-
-  if (hasOrganigrama) {
-    for (const s of staffList) {
-      const linked = linkedUserForStaff(s);
-      if (linked) coveredUserIds.add(linked.id);
-      const doc = docKey(s.rut) || docKey(linked?.documentNumber);
-      if (doc) coveredDocs.add(doc);
-      const email = (s.email ?? linked?.email ?? '').trim().toLowerCase();
-      if (email) coveredEmails.add(email);
-
-      const rawSede = s.sedeName;
-      const homeSede =
-        sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
-      const opt: StaffOption = {
-        id: `asist-${s.id}`,
-        asistenciaStaffId: s.id,
-        bukEmployeeId: s.bukEmployeeId,
-        documentNumber: doc || undefined,
-        email: email || undefined,
-        userId: linked?.id ?? (s.usuarioId ? String(s.usuarioId) : undefined),
-        label: s.fullName,
-        name: s.fullName,
-        jobTitle: s.cargoLabel || linked?.jobTitle || linked?.role || 'Colaborador',
-        workArea: s.area ? mapAreaFromAsistencia(s.area) : linked?.workArea || 'Otro',
-        contractType: contractTypeLabel(linked?.contractType),
-        homeSede,
-        seniorityMonths: computeSeniorityMonths(linked?.hireDate),
-        hireDate: linked?.hireDate,
-        uniformSizes: linked?.uniformSizes,
-      };
-      register(
-        opt,
-        identityKeyFor({
-          bukEmployeeId: opt.bukEmployeeId,
-          documentNumber: opt.documentNumber,
-          userId: opt.userId,
-          email: opt.email,
-          name: opt.name,
-        })
-      );
-    }
+    if (d) staffByDoc.set(d, s);
   }
+
+  const coveredStaffIds = new Set<string>();
 
   for (const u of input.users) {
     if (u.status === 'inactive') continue;
     const doc = docKey(u.documentNumber);
     const email = u.email?.trim().toLowerCase();
-    if (hasOrganigrama) {
-      if (coveredUserIds.has(u.id)) continue;
-      if (doc && coveredDocs.has(doc)) continue;
-      if (email && coveredEmails.has(email)) continue;
-    }
-    const rawSede = u.location ?? u.sedes?.[0] ?? 'Principal';
+    const matched =
+      (u.id ? staffByUserId.get(u.id) : undefined) ||
+      (email ? staffByEmail.get(email) : undefined) ||
+      (doc ? staffByDoc.get(doc) : undefined);
+    if (matched) coveredStaffIds.add(matched.id);
+
+    const rawSede = u.location ?? u.sedes?.[0] ?? matched?.sedeName ?? 'Principal';
     const homeSede =
       sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
     const opt: StaffOption = {
       id: `user-${u.id}`,
       userId: u.id,
-      documentNumber: doc || undefined,
-      email: email || undefined,
+      asistenciaStaffId: matched?.id,
+      bukEmployeeId: matched?.bukEmployeeId,
+      documentNumber: doc || docKey(matched?.rut) || undefined,
+      email: email || matched?.email || undefined,
       label: u.name,
       name: u.name,
-      jobTitle: u.jobTitle ?? u.role,
-      workArea: u.workArea ?? 'Otro',
+      jobTitle: u.jobTitle?.trim() || u.role || 'Colaborador',
+      workArea: u.workArea ?? (matched?.area ? mapAreaFromAsistencia(matched.area) : 'Otro'),
       contractType: contractTypeLabel(u.contractType),
       homeSede,
       seniorityMonths: computeSeniorityMonths(u.hireDate),
@@ -412,58 +362,54 @@ export function buildStaffOptions(input: {
     register(
       opt,
       identityKeyFor({
-        documentNumber: opt.documentNumber,
         userId: opt.userId,
+        documentNumber: opt.documentNumber,
+        bukEmployeeId: opt.bukEmployeeId,
         email: opt.email,
         name: opt.name,
       })
     );
   }
 
-  // Sin organigrama: agregar staff asistencia residual (legado Accidentes).
-  if (includeAsistencia && !hasOrganigrama) {
-    for (const s of staffList) {
-      const email = (s.email ?? '').trim().toLowerCase();
-      const doc = docKey(s.rut);
-      if (email && [...map.values()].some((o) => o.email === email)) continue;
-      if (doc && [...map.values()].some((o) => docKey(o.documentNumber) === doc)) continue;
-      if ([...map.values()].some((o) => normalizePersonName(o.name) === normalizePersonName(s.fullName))) {
-        continue;
-      }
-      const rawSede = s.sedeName;
-      const homeSede =
-        sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
-      const opt: StaffOption = {
-        id: `asist-${s.id}`,
-        asistenciaStaffId: s.id,
-        bukEmployeeId: s.bukEmployeeId,
-        documentNumber: doc || undefined,
-        email: email || undefined,
-        label: s.fullName,
-        name: s.fullName,
-        jobTitle: s.cargoLabel,
-        workArea: s.area ? mapAreaFromAsistencia(s.area) : 'Otro',
-        contractType: 'No registrado',
-        homeSede,
-        seniorityMonths: 0,
-      };
-      register(
-        opt,
-        identityKeyFor({
-          bukEmployeeId: opt.bukEmployeeId,
-          documentNumber: opt.documentNumber,
-          email: opt.email,
-          name: opt.name,
-        })
-      );
-    }
+  for (const s of staffList) {
+    if (coveredStaffIds.has(s.id)) continue;
+    const doc = docKey(s.rut);
+    const email = (s.email ?? '').trim().toLowerCase();
+    const rawSede = s.sedeName;
+    const homeSede =
+      sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
+    const opt: StaffOption = {
+      id: `asist-${s.id}`,
+      asistenciaStaffId: s.id,
+      bukEmployeeId: s.bukEmployeeId,
+      documentNumber: doc || undefined,
+      email: email || undefined,
+      userId: s.usuarioId ? String(s.usuarioId) : undefined,
+      label: s.fullName,
+      name: s.fullName,
+      jobTitle: s.cargoLabel || 'Colaborador',
+      workArea: s.area ? mapAreaFromAsistencia(s.area) : 'Otro',
+      contractType: 'No registrado',
+      homeSede,
+      seniorityMonths: 0,
+    };
+    register(
+      opt,
+      identityKeyFor({
+        userId: opt.userId,
+        documentNumber: opt.documentNumber,
+        bukEmployeeId: opt.bukEmployeeId,
+        email: opt.email,
+        name: opt.name,
+      })
+    );
   }
 
   let list = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'));
 
   const displaySeen = new Set<string>();
   list = list.filter((s) => {
-    const key = `${normalizePersonName(s.name)}::${normalizeSedeKey(s.homeSede)}::${(s.jobTitle ?? '').trim().toLowerCase()}`;
+    const key = `${normalizePersonName(s.name)}::${normalizeSedeKey(s.homeSede)}`;
     if (displaySeen.has(key)) return false;
     displaySeen.add(key);
     return true;

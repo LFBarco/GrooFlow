@@ -1,23 +1,31 @@
 import type { BukPeEmployeeRow, RrhhIdentityStatus } from '../types/rrhh';
 
 /**
- * Política de identidad — Fase 0 (decisiones de negocio).
- * Buk.pe = fuente laboral; Gestión = acceso; GrooFlow = operación.
+ * Política de identidad — operativa.
+ * Gestión = maestro de persona/cargo en GrooFlow.
+ * Buk.pe = comparativa laboral (vínculo, altas/bajas).
+ * Buk Ctrlit = solo marcaciones de asistencia.
  */
 export const RRHH_IDENTITY_POLICY = {
-  sourceOfTruth: 'buk.pe' as const,
+  sourceOfTruth: 'gestion' as const,
+  /** Buk.pe solo para cruce / diagnóstico, no define cargo en UI. */
+  bukRole: 'comparativa' as const,
   /** No crear usuario automático; dejar pendiente + notificar. */
   altaSinUsuario: 'pendiente_notificacion' as const,
   /** Cesado en Buk: desactivar acceso Gestión y sacar del organigrama. */
   cesadoDesactivaAccesoYOrganigrama: true,
   /** Grilla semanal la publica el encargado de sede (no RRHH central). */
   turnosPublica: 'encargado_sede' as const,
-  camposOficialesBuk: ['dni', 'cargo', 'sede_obra', 'activo'] as const,
+  /** Campos oficiales de operación salen de Gestión. */
+  camposOficialesGestion: ['nombre', 'dni', 'cargo', 'sede', 'activo'] as const,
+  /** Buk aporta señales laborales / marcaciones. */
+  camposComparativaBuk: ['dni', 'activo', 'cesado', 'marcaciones'] as const,
   camposEditablesGrooflow: ['area_organigrama', 'critico', 'manager'] as const,
 };
 
 export const RRHH_IDENTITY_POLICY_LABELS: Record<string, string> = {
-  'buk.pe': 'Buk.pe (alta oficial de personal)',
+  gestion: 'Gestión (maestro de persona y cargo)',
+  comparativa: 'Buk.pe solo comparativa / vínculo',
   pendiente_notificacion: 'Pendiente + notificación (sin auto-crear acceso)',
   encargado_sede: 'Encargado de sede',
 };

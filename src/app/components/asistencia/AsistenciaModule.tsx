@@ -42,7 +42,8 @@ import {
 import { exportAsistenciaBukExcel, exportAsistenciaLiveExcel, exportAsistenciaMonthlyHrExcel } from '../../utils/asistenciaExport';
 import { printAsistenciaLive } from '../../utils/asistenciaPrint';
 import { planVsRealForStaffMember } from '../../utils/asistenciaPlanVsReal';
-import { syncStaffFromUsers } from '../../utils/asistenciaStaffSync';
+import { syncStaffFromUsers, enrichStaffDisplayFromUsers } from '../../utils/asistenciaStaffSync';
+import { resetAsistenciaUiLocks } from '../../utils/asistenciaUiCleanup';
 import {
   buildAsistenciaMultiSedeTrendDays,
   buildAsistenciaTrendDays,
@@ -110,7 +111,18 @@ export function AsistenciaModule({
   canConfigure = false,
   users = [],
 }: AsistenciaModuleProps) {
-  const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
+  const asistenciaRaw = useMemo(
+    () => mergeAsistenciaSettings(systemSettings.asistencia),
+    [systemSettings.asistencia]
+  );
+  /** Cargos/nombres de Gestión sobre el organigrama (sin perder área/crítico). */
+  const asistencia = useMemo(
+    () => ({
+      ...asistenciaRaw,
+      staff: enrichStaffDisplayFromUsers(asistenciaRaw.staff ?? [], users),
+    }),
+    [asistenciaRaw, users]
+  );
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const {
     records,
@@ -126,7 +138,7 @@ export function AsistenciaModule({
     localDays,
     lastTruncated,
     bukEnabled,
-  } = useAsistenciaModuleState(asistencia);
+  } = useAsistenciaModuleState(asistenciaRaw);
   const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
   const [liveViewMode, setLiveViewMode] = useState<'single' | 'consolidated'>('single');
   const [dashboardMultiSede, setDashboardMultiSede] = useState(false);
@@ -153,6 +165,13 @@ export function AsistenciaModule({
     });
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      setEditLayout(false);
+      resetAsistenciaUiLocks();
     };
   }, []);
 

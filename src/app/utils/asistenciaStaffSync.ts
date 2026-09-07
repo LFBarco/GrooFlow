@@ -102,3 +102,41 @@ export function syncStaffFromUsers(input: {
     skipped,
   };
 }
+
+/**
+ * Aplica nombre/cargo de Gestión sobre el staff de Asistencia (sin perder área/crítico/manager).
+ */
+export function enrichStaffDisplayFromUsers(
+  staff: AsistenciaStaffMember[],
+  users: User[]
+): AsistenciaStaffMember[] {
+  if (!users.length) return staff;
+  const byId = new Map(users.filter((u) => u.status !== 'inactive').map((u) => [u.id, u]));
+  const byEmail = new Map<string, User>();
+  const byDoc = new Map<string, User>();
+  for (const u of users) {
+    if (u.status === 'inactive') continue;
+    const em = u.email?.trim().toLowerCase();
+    if (em) byEmail.set(em, u);
+    const d = String(u.documentNumber ?? '').replace(/\D+/g, '');
+    if (d) byDoc.set(d, u);
+  }
+
+  return staff.map((s) => {
+    const uid = String(s.usuarioId ?? '').trim();
+    const linked =
+      (uid ? byId.get(uid) : undefined) ||
+      (s.email ? byEmail.get(s.email.trim().toLowerCase()) : undefined) ||
+      (s.rut ? byDoc.get(String(s.rut).replace(/\D+/g, '')) : undefined);
+    if (!linked) return s;
+    return {
+      ...s,
+      fullName: linked.name?.trim() || s.fullName,
+      cargoLabel: linked.jobTitle?.trim() || linked.role || s.cargoLabel,
+      email: linked.email ?? s.email,
+      avatarUrl: linked.avatarUrl ?? s.avatarUrl,
+      usuarioId: linked.id,
+      rut: s.rut || linked.documentNumber || s.rut,
+    };
+  });
+}

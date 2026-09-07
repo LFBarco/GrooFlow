@@ -42,10 +42,20 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
   } | null>(null);
   const [lastTruncated, setLastTruncated] = useState(false);
   const hydratedRangeRef = useRef<string>('');
+  const mountedRef = useRef(true);
+  const refreshGenRef = useRef(0);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      refreshGenRef.current += 1;
+    };
+  }, []);
 
   const refreshHistoryStats = useCallback(async () => {
     const stats = await fetchBukAsistenciaHistoryStats();
-    if (stats) setHistoryStats(stats);
+    if (mountedRef.current && stats) setHistoryStats(stats);
   }, []);
 
   useEffect(() => {
@@ -94,6 +104,7 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
       if (hydratedRangeRef.current === rangeKey) return;
       try {
         const remote = await fetchBukAsistenciaHistory({ fromYmd, toYmd });
+        if (!mountedRef.current) return;
         if (!remote.length) {
           hydratedRangeRef.current = rangeKey;
           if (!silent) {
@@ -121,6 +132,7 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
         hydratedRangeRef.current = rangeKey;
         void refreshHistoryStats();
       } catch {
+        if (!mountedRef.current) return;
         if (!silent) {
           toast.error('No se pudo cargar historial desde el servidor.');
         }
@@ -143,14 +155,17 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
         return { ok: false };
       }
 
-      setLoading(true);
-      setFetchProgress(null);
+      const gen = ++refreshGenRef.current;
+      if (mountedRef.current) {
+        setLoading(true);
+        setFetchProgress(null);
+      }
       const cached = loadBukAsistenciaCache({
         baseUrl: resolvedBase,
         apiToken: bukCfg.apiToken,
       });
       const priorCount = cached?.records.length ?? 0;
-      if (cached?.records.length) {
+      if (cached?.records.length && mountedRef.current) {
         setRecords(cached.records);
         setCacheFetchedAt(cached.fetchedAt);
       }
@@ -160,6 +175,7 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
           apiToken: bukCfg.apiToken,
           maxPages: 50,
           onProgress: (loaded, total) => {
+            if (!mountedRef.current || gen !== refreshGenRef.current) return;
             setFetchProgress(
               loaded === 0
                 ? 'Conectando con Buk vía servidor…'
@@ -167,6 +183,9 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
             );
           },
         });
+        if (!mountedRef.current || gen !== refreshGenRef.current) {
+          return { ok: false };
+        }
         const merged = mergeBukAsistenciaRecords(cached?.records ?? [], result.records);
         const now = Date.now();
         const save = saveBukAsistenciaCache({
@@ -182,11 +201,17 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
 
         try {
           await upsertBukAsistenciaHistory(merged, now);
-          await refreshHistoryStats();
+          if (mountedRef.current && gen === refreshGenRef.current) {
+            await refreshHistoryStats();
+          }
         } catch {
-          if (!input.silent) {
+          if (mountedRef.current && !input.silent) {
             toast.warning('Marcaciones en memoria, pero no se pudo guardar el historial en el servidor.');
           }
+        }
+
+        if (!mountedRef.current || gen !== refreshGenRef.current) {
+          return { ok: true, records: merged, truncated: result.truncated };
         }
 
         if (!save.ok && save.quotaExceeded && !input.silent) {
@@ -221,6 +246,9 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
         }
         return { ok: true, records: merged, truncated: result.truncated };
       } catch (err) {
+        if (!mountedRef.current || gen !== refreshGenRef.current) {
+          return { ok: false };
+        }
         if (cached?.records.length) {
           toast.error(
             err instanceof Error
@@ -233,8 +261,10 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
         input.onMissingStaff?.();
         return { ok: false };
       } finally {
-        setLoading(false);
-        setFetchProgress(null);
+        if (mountedRef.current && gen === refreshGenRef.current) {
+          setLoading(false);
+          setFetchProgress(null);
+        }
       }
     },
     [asistencia, refreshHistoryStats]
