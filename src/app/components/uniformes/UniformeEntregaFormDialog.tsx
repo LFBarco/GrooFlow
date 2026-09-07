@@ -18,6 +18,7 @@ import {
 } from '../../types/uniformes';
 import { VET_WORK_AREAS } from '../../types/accidentes';
 import type { StaffOption } from '../../utils/accidentesData';
+import { resolveStaffOptionKey } from '../../utils/accidentesData';
 import { buildItemsFromKit, findMatchingKit } from '../../utils/uniformesKits';
 import { Button } from '../ui/button';
 import {
@@ -99,7 +100,7 @@ export function UniformeEntregaFormDialog({
     if (!open) return;
     if (record) {
       setForm({ ...record });
-      setStaffKey(record.userId ? `user-${record.userId}` : 'manual');
+      setStaffKey(resolveStaffOptionKey(record, staffOptions));
     } else {
       setForm(emptyForm());
       setStaffKey(staffOptions[0]?.id ?? 'manual');
@@ -125,6 +126,9 @@ export function UniformeEntregaFormDialog({
       const next = {
         ...prev,
         userId: staff.userId,
+        asistenciaStaffId: staff.asistenciaStaffId,
+        bukEmployeeId: staff.bukEmployeeId,
+        documentNumber: staff.documentNumber,
         staffName: staff.name,
         jobTitle: staff.jobTitle,
         workArea: staff.workArea,

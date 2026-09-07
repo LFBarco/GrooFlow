@@ -1,7 +1,9 @@
 import type {
   AsistenciaFilters,
+  AsistenciaLiveAreaBlock,
   AsistenciaLiveConsolidatedSummary,
   AsistenciaLiveSedeSummary,
+  AsistenciaLiveSubAreaBlock,
   AsistenciaStaffLiveState,
 } from '../types/asistencia';
 import type { BukDashboardRow } from './asistenciaBukDashboard';
@@ -43,6 +45,9 @@ export function matchesLiveStaffFilter(
       live.staff.cargoLabel,
       live.staff.rut ?? '',
       live.staff.sedeName,
+      live.staff.area,
+      live.staff.matchArea ?? '',
+      live.staff.matchSpecialty ?? '',
     ]
       .join(' ')
       .toLowerCase();
@@ -53,8 +58,33 @@ export function matchesLiveStaffFilter(
   if (filters.noBukMatchOnly) {
     if (live.status !== 'ausente' || !live.matchHint) return false;
   }
-  if (filters.criticalOnly && filters.liveStatus === 'all' && live.status === 'ausente' && live.staff.isCritical) {
-    return true;
+  if (filters.areaFilter !== '__all__') {
+    const areaHay = [
+      live.staff.area,
+      live.staff.matchArea ?? '',
+      live.staff.cargoLabel,
+    ]
+      .join(' ')
+      .toLowerCase();
+    if (!areaHay.includes(filters.areaFilter.toLowerCase())) return false;
+  }
+  if (filters.specialtyFilter !== '__all__') {
+    const specHay = [
+      live.staff.matchSpecialty ?? '',
+      live.staff.cargoLabel,
+    ]
+      .join(' ')
+      .toLowerCase();
+    if (!specHay.includes(filters.specialtyFilter.toLowerCase())) return false;
+  }
+  if (filters.arrivalFilter !== 'all') {
+    const arrived = live.status === 'trabajando' || live.status === 'presente' || live.status === 'tarde';
+    if (filters.arrivalFilter === 'arrived' && !arrived) return false;
+    if (filters.arrivalFilter === 'absent' && arrived) return false;
+    if (filters.arrivalFilter === 'on_time' && live.status !== 'trabajando' && live.status !== 'presente') {
+      return false;
+    }
+    if (filters.arrivalFilter === 'late' && live.status !== 'tarde') return false;
   }
   return true;
 }
@@ -70,21 +100,59 @@ function recomputeSedeCounts(staff: AsistenciaStaffLiveState[]) {
   };
 }
 
+function flattenSubStaff(sub: AsistenciaLiveSubAreaBlock): AsistenciaStaffLiveState[] {
+  return [...sub.staff, ...(sub.children?.flatMap(flattenSubStaff) ?? [])];
+}
+
+function filterLiveSubArea(
+  sub: AsistenciaLiveSubAreaBlock,
+  filters: AsistenciaFilters
+): AsistenciaLiveSubAreaBlock {
+  const staff = sub.staff.filter((s) => matchesLiveStaffFilter(s, filters));
+  const children = (sub.children ?? []).map((c) => filterLiveSubArea(c, filters));
+  const all = [...staff, ...children.flatMap(flattenSubStaff)];
+  const activeCount = all.filter(
+    (s) => s.status === 'trabajando' || s.status === 'presente'
+  ).length;
+  return {
+    ...sub,
+    staff,
+    children: children.length > 0 ? children : undefined,
+    activeCount,
+    totalCount: all.length,
+  };
+}
+
+function filterLiveAreaBlock(
+  block: AsistenciaLiveAreaBlock,
+  filters: AsistenciaFilters
+): AsistenciaLiveAreaBlock {
+  const staff = block.staff.filter((s) => matchesLiveStaffFilter(s, filters));
+  const subAreas = (block.subAreas ?? []).map((s) => filterLiveSubArea(s, filters));
+  const all = [...staff, ...subAreas.flatMap(flattenSubStaff)];
+  const activeCount = all.filter(
+    (s) => s.status === 'trabajando' || s.status === 'presente'
+  ).length;
+  return {
+    ...block,
+    staff,
+    subAreas: subAreas.length > 0 ? subAreas : undefined,
+    activeCount,
+    totalCount: all.length,
+  };
+}
+
+/** Filtra personal; conserva siempre la estructura del organigrama (raíces e hijos). */
 export function filterLiveSedeSummary(
   summary: AsistenciaLiveSedeSummary,
   filters: AsistenciaFilters
 ): AsistenciaLiveSedeSummary {
-  const areas = summary.areas
-    .map((block) => {
-      const staff = block.staff.filter((s) => matchesLiveStaffFilter(s, filters));
-      const activeCount = staff.filter(
-        (s) => s.status === 'trabajando' || s.status === 'presente'
-      ).length;
-      return { ...block, staff, activeCount, totalCount: staff.length };
-    })
-    .filter((block) => block.staff.length > 0);
+  const areas = summary.areas.map((block) => filterLiveAreaBlock(block, filters));
 
-  const flatStaff = areas.flatMap((a) => a.staff);
+  const flatStaff = areas.flatMap((a) => [
+    ...a.staff,
+    ...(a.subAreas?.flatMap(flattenSubStaff) ?? []),
+  ]);
   const manager =
     summary.manager && matchesLiveStaffFilter(summary.manager, filters) ? summary.manager : null;
   const counts = recomputeSedeCounts(flatStaff);

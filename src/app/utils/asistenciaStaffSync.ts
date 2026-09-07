@@ -65,13 +65,14 @@ export function syncStaffFromUsers(input: {
     const patch: Partial<AsistenciaStaffMember> = {
       fullName: u.name,
       cargoLabel: u.jobTitle?.trim() || u.role || 'Colaborador',
-      area: mapUserWorkAreaToAsistenciaColumn(u.workArea, u.jobTitle),
       email: u.email,
       avatarUrl: u.avatarUrl,
     };
 
     if (existing) {
+      // No pisar overrides operativos (área / crítico / manager / turnos).
       Object.assign(existing, patch);
+      if (!existing.usuarioId && u.id) existing.usuarioId = u.id;
       updated += 1;
     } else {
       const member: AsistenciaStaffMember = {
@@ -79,12 +80,14 @@ export function syncStaffFromUsers(input: {
         sedeName: sede,
         fullName: u.name,
         cargoLabel: patch.cargoLabel!,
-        area: patch.area!,
+        area: mapUserWorkAreaToAsistenciaColumn(u.workArea, u.jobTitle),
         expectedTime: ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
         shift: 'day',
         isCritical: false,
         email: u.email,
         avatarUrl: u.avatarUrl,
+        usuarioId: u.id,
+        source: 'users',
       };
       staff.push(member);
       index.set(key, member);

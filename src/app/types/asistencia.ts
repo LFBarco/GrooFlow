@@ -116,24 +116,54 @@ export interface AsistenciaStaffMember {
   avatarUrl?: string;
   isCritical: boolean;
   isManager?: boolean;
-  /** RUT para cruce directo con Buk. */
+  /** RUT para cruce directo con Buk (DNI canónico). */
   rut?: string;
+  /** Usuario Gestión vinculado. */
+  usuarioId?: string;
+  /** buk_id del maestro RRHH (Fase 4). */
+  bukEmployeeId?: number;
+  /** Origen de la fila en organigrama. */
+  source?: 'buk_pe' | 'users' | 'manual';
   matchArea?: string;
   matchSpecialty?: string;
   sortOrder?: number;
 }
 
+/** Paleta de color del organigrama operativo. */
+export type AsistenciaOrgChartColor =
+  | 'default'
+  | 'blue'
+  | 'lightblue'
+  | 'green'
+  | 'orange'
+  | 'red'
+  | 'violet'
+  | 'fuchsia'
+  | 'pink';
+
 /** Columna personalizada del organigrama (además de las 3 built-in). */
 export interface AsistenciaCustomOrgColumn {
   id: string;
   label: string;
+  color?: AsistenciaOrgChartColor;
+  /** Cómo se disponen subcolumnas/hijos bajo esta columna. */
+  childrenLayout?: 'horizontal' | 'vertical';
 }
 
-/** Subcolumna dentro de una columna del organigrama (área o custom). */
+/** Subcolumna / hijo del organigrama (bajo columna o bajo otra subcolumna). */
 export interface AsistenciaOrgSubColumn {
   id: string;
   label: string;
+  /** Id de columna raíz o de otra subcolumna (anidación). */
   parentColumnId: string;
+  color?: AsistenciaOrgChartColor;
+  childrenLayout?: 'horizontal' | 'vertical';
+}
+
+/** Estilo visual de un nodo (útil para columnas built-in). */
+export interface AsistenciaOrgNodeStyle {
+  color?: AsistenciaOrgChartColor;
+  childrenLayout?: 'horizontal' | 'vertical';
 }
 
 /** Configuración operativa de una sede. */
@@ -149,7 +179,7 @@ export interface AsistenciaSedeProfile {
   bukRecintoCode?: string;
   /** Columnas extra del organigrama. */
   customOrgColumns?: AsistenciaCustomOrgColumn[];
-  /** Subcolumnas anidadas bajo columnas principales. */
+  /** Subcolumnas anidadas bajo columnas o bajo otras subcolumnas. */
   subOrgColumns?: AsistenciaOrgSubColumn[];
   /** Etiquetas por id de columna. */
   areaLabels?: Record<string, string>;
@@ -159,43 +189,12 @@ export interface AsistenciaSedeProfile {
   cargoByColumn?: Record<string, string[]>;
   /** Ocultar columnas sin personal asignado. */
   hideEmptyAreas?: boolean;
-  /** Modo de visualización del organigrama en vivo. */
-  orgChartMode?: 'columns' | 'tree';
-  /** Nodos del organigrama jerárquico (modo tree). */
-  orgChartNodes?: AsistenciaOrgChartNode[];
+  /** Estilos de nodos (color / layout), p. ej. columnas built-in. */
+  orgNodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
+  /** Disposición de las columnas raíz bajo la sede. */
+  rootChildrenLayout?: 'horizontal' | 'vertical';
 }
 
-/** Nodo del organigrama jerárquico configurable por sede. */
-export type AsistenciaOrgChartColor =
-  | 'default'
-  | 'blue'
-  | 'lightblue'
-  | 'green'
-  | 'orange'
-  | 'red'
-  | 'violet';
-
-export interface AsistenciaOrgChartNode {
-  id: string;
-  /** null = hijo directo bajo la sede (nivel raíz). */
-  parentId: string | null;
-  label: string;
-  /** Disposición de los hijos: horizontal (ramas) o vertical (apilado). */
-  childrenLayout?: 'horizontal' | 'vertical';
-  color?: AsistenciaOrgChartColor;
-  /** Área asignable vinculada — el personal de esa área aparece en el nodo. */
-  areaId?: string;
-  sortOrder?: number;
-}
-
-/** Nodo del árbol resuelto con hijos y personal en vivo. */
-export interface AsistenciaOrgChartTreeNode {
-  node: AsistenciaOrgChartNode;
-  children: AsistenciaOrgChartTreeNode[];
-  staff: AsistenciaStaffLiveState[];
-  activeCount: number;
-  totalCount: number;
-}
 
 export interface AsistenciaStaffLiveState {
   staff: AsistenciaStaffMember;
@@ -214,6 +213,10 @@ export interface AsistenciaLiveSubAreaBlock {
   staff: AsistenciaStaffLiveState[];
   activeCount: number;
   totalCount: number;
+  color?: AsistenciaOrgChartColor;
+  childrenLayout?: 'horizontal' | 'vertical';
+  /** Subdivisiones anidadas bajo esta subárea. */
+  children?: AsistenciaLiveSubAreaBlock[];
 }
 
 export interface AsistenciaLiveAreaBlock {
@@ -226,6 +229,8 @@ export interface AsistenciaLiveAreaBlock {
   subAreas?: AsistenciaLiveSubAreaBlock[];
   activeCount: number;
   totalCount: number;
+  color?: AsistenciaOrgChartColor;
+  childrenLayout?: 'horizontal' | 'vertical';
 }
 
 export interface AsistenciaLiveSedeSummary {
@@ -241,6 +246,8 @@ export interface AsistenciaLiveSedeSummary {
   /** Códigos de recinto Buk vistos en la fecha seleccionada (ayuda a configurar sede). */
   bukRecintosOnDate: string[];
   recordsOnDateCount: number;
+  /** Cómo se disponen las columnas raíz bajo la sede. */
+  rootChildrenLayout?: 'horizontal' | 'vertical';
 }
 
 /** Consolidado multi-sede para organigrama en vivo. */
@@ -393,6 +400,13 @@ export interface BukAsistenciaIntegrationSettings {
   lastStaffSyncAt?: string;
   lastStaffSyncOk?: boolean;
   lastStaffSyncMessage?: string;
+  /** Pipeline marcaciones → historial MySQL (Fase 3). */
+  marcacionesPipelineEnabled?: boolean;
+  marcacionesPipelineIntervalMinutes?: number;
+  lastMarcacionesPipelineAt?: string;
+  lastMarcacionesPipelineOk?: boolean;
+  lastMarcacionesPipelineMessage?: string;
+  lastMarcacionesPipelineCount?: number;
   /** Catálogo de endpoints Buk adicionales para explorar datos. */
   catalogEndpoints?: BukApiEndpointConfig[];
 }

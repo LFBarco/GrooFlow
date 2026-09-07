@@ -97,7 +97,7 @@ export function useTurnosModuleState(input: {
         }),
         rosterSyncedAt: new Date().toISOString(),
       }),
-      'Personal sincronizado con usuarios y asistencia.'
+      'Personal sincronizado desde organigrama (maestro Buk.pe).'
     );
   }, [input.users, input.asistencia, updateSettings]);
 

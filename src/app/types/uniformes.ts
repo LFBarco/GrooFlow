@@ -85,6 +85,10 @@ export interface UniformDeliveryRecord {
   id: string;
   sede: string;
   userId?: string;
+  /** Staff organigrama Asistencia (Fase 6). */
+  asistenciaStaffId?: string;
+  bukEmployeeId?: number;
+  documentNumber?: string;
   staffName: string;
   jobTitle: string;
   workArea: string;

@@ -39,7 +39,10 @@ export function AsistenciaHistoryPanel({ snapshots, onSelectDate, limit = 14 }: 
           <History className="h-4 w-4 text-teal-600" />
           Historial diario
         </CardTitle>
-        <CardDescription>Últimos registros locales de dotación por sede</CardDescription>
+        <CardDescription>
+          Snapshots de dotación por sede (hasta {limit} registros). Usa «Cargar rango» para
+          historial Buk desde MySQL.
+        </CardDescription>
       </CardHeader>
       <CardContent className="overflow-x-auto p-0 pb-2">
         <Table>

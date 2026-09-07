@@ -28,6 +28,7 @@ import {
   formatSeniorityLabel,
   newAccidentAttachmentId,
   newCorrectiveActionId,
+  resolveStaffOptionKey,
 } from '../../utils/accidentesData';
 import { Button } from '../ui/button';
 import {
@@ -107,7 +108,7 @@ export function AccidenteFormDialog({
     if (!open) return;
     if (record) {
       setForm({ ...record });
-      setStaffKey(record.userId ? `user-${record.userId}` : 'manual');
+      setStaffKey(resolveStaffOptionKey(record, staffOptions));
     } else {
       setForm(emptyForm());
       setStaffKey(staffOptions[0]?.id ?? 'manual');
@@ -126,6 +127,9 @@ export function AccidenteFormDialog({
     setForm((prev) => ({
       ...prev,
       userId: staff.userId,
+      asistenciaStaffId: staff.asistenciaStaffId,
+      bukEmployeeId: staff.bukEmployeeId,
+      documentNumber: staff.documentNumber,
       affectedName: staff.name,
       jobTitle: staff.jobTitle,
       workArea: staff.workArea,

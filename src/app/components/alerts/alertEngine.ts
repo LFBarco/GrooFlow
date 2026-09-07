@@ -14,6 +14,8 @@ import type { TurnosSettings } from "../../types/turnos";
 import { buildFleetSystemAlerts } from "../../utils/fleetData";
 import { buildAsistenciaSystemAlerts } from "../../utils/asistenciaAlerts";
 import { buildTurnosSystemAlerts } from "../../utils/turnosAlerts";
+import { buildRrhhSystemAlerts } from "../../utils/rrhhAlerts";
+import type { RrhhSettings } from "../../types/rrhh";
 import { formatNumberEs } from '../../utils/numberFormat';
 import { 
     addDays, 
@@ -58,6 +60,8 @@ interface AlertContext {
     asistenciaSettings?: AsistenciaSettings | null;
     /** Planificación de turnos — vacantes y aprobaciones pendientes. */
     turnosSettings?: TurnosSettings | null;
+    /** RRHH / identidad — sync pipelines y pendientes de acceso. */
+    rrhhSettings?: RrhhSettings | null;
 }
 
 export function generateAlerts(context: AlertContext): SystemAlert[] {
@@ -292,6 +296,8 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
     if (context.turnosSettings) {
         alerts.push(...buildTurnosSystemAlerts(context.turnosSettings));
     }
+
+    alerts.push(...buildRrhhSystemAlerts(context.rrhhSettings));
 
     return alerts.sort((a, b) => {
         // Ordenar primero por severidad, luego por fecha

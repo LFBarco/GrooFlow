@@ -22,12 +22,14 @@ export const TURNO_SHIFT_SHORT: Record<TurnoShiftCode, string> = {
   training: 'C',
 };
 
-/** Persona en el roster de turnos (sincronizada con usuarios / asistencia). */
+/** Persona en el roster de turnos (organigrama / maestro; externos manuales). */
 export interface TurnosRosterEntry {
   id: string;
-  source: 'user' | 'asistencia' | 'manual';
+  /** organigrama = staff Asistencia proyectado desde Buk.pe; user/asistencia = legado. */
+  source: 'user' | 'asistencia' | 'manual' | 'organigrama';
   userId?: string;
   asistenciaStaffId?: string;
+  bukEmployeeId?: number;
   fullName: string;
   initials: string;
   roleLabel: string;

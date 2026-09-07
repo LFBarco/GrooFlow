@@ -12,10 +12,19 @@ import {
   buildRrhhRecommendations,
   computeRrhhDashboard,
 } from '../../utils/bukPeEmployeeUtils';
-import { fetchRrhhDbStats, syncRrhhToDatabase, type RrhhDbStats } from '../../utils/rrhhApi';
+import {
+  fetchRrhhDbStats,
+  fetchRrhhPipelineHealth,
+  projectAsistenciaStaffFromRrhh,
+  runRrhhPipelines,
+  syncRrhhToDatabase,
+  type RrhhDbStats,
+  type RrhhPipelineHealth,
+} from '../../utils/rrhhApi';
 import { useRrhhModuleState } from '../../hooks/useRrhhModuleState';
 import { RrhhDashboard } from './RrhhDashboard';
 import { RrhhEmployeesDataTable } from './RrhhEmployeesDataTable';
+import { RrhhIdentityDiagnosisPanel } from './RrhhIdentityDiagnosisPanel';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -31,6 +40,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { Checkbox } from '../ui/checkbox';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 
 export interface RrhhModuleProps {
   users: User[];
@@ -55,6 +65,9 @@ export function RrhhModule({
   const [draftColumns, setDraftColumns] = useState<string[]>(settings.visibleColumns);
   const [dbStats, setDbStats] = useState<RrhhDbStats | null>(null);
   const [tableRefresh, setTableRefresh] = useState(0);
+  const [pipelineHealth, setPipelineHealth] = useState<RrhhPipelineHealth | null>(null);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [projecting, setProjecting] = useState(false);
 
   const reloadDbStats = async () => {
     try {
@@ -64,9 +77,63 @@ export function RrhhModule({
     }
   };
 
+  const reloadPipelineHealth = async () => {
+    try {
+      setPipelineHealth(await fetchRrhhPipelineHealth());
+    } catch {
+      /* ignore */
+    }
+  };
+
   useEffect(() => {
     void reloadDbStats();
+    void reloadPipelineHealth();
   }, [tableRefresh]);
+
+  // Soft tick: al abrir RRHH, dispara pipelines solo si están due (no fuerza).
+  useEffect(() => {
+    if (!canEdit || settings.staffSyncEnabled === false) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await runRrhhPipelines({});
+        if (cancelled || !result.ok) return;
+        const ranSomething = Object.values(result.steps ?? {}).some(
+          (s) => s && typeof s === 'object' && (s as { ran?: boolean }).ran === true
+        );
+        if (ranSomething) {
+          setTableRefresh((n) => n + 1);
+          if (result.health) setPipelineHealth(result.health);
+        } else {
+          await reloadPipelineHealth();
+        }
+      } catch {
+        /* silent */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Solo al montar el módulo
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const runPipelinesNow = async (force = false) => {
+    if (!canEdit) return;
+    setPipelineRunning(true);
+    try {
+      const result = await runRrhhPipelines({ force });
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+      if (result.health) setPipelineHealth(result.health);
+      setTableRefresh((n) => n + 1);
+      toast.success(result.message || 'Pipelines ejecutados');
+    } finally {
+      setPipelineRunning(false);
+    }
+  };
 
   const kpis = useMemo(() => {
     if (dbStats) {
@@ -144,8 +211,31 @@ export function RrhhModule({
       } else {
         toast.success(result.message);
       }
+      // Fase 4: proyectar organigrama tras sync maestro.
+      try {
+        const proj = await projectAsistenciaStaffFromRrhh();
+        if (proj.ok) toast.message(proj.message);
+      } catch {
+        /* ignore */
+      }
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const runProjectOrganigrama = async () => {
+    if (!canEdit) return;
+    setProjecting(true);
+    try {
+      const proj = await projectAsistenciaStaffFromRrhh();
+      if (!proj.ok) {
+        toast.error(proj.message);
+        return;
+      }
+      toast.success(proj.message);
+      setTableRefresh((n) => n + 1);
+    } finally {
+      setProjecting(false);
     }
   };
 
@@ -229,15 +319,84 @@ export function RrhhModule({
               )}
             </Button>
           ) : null}
+          {canEdit ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void runProjectOrganigrama()}
+              disabled={projecting || syncing}
+            >
+              {projecting ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Users className="h-4 w-4 mr-1" />
+              )}
+              Proyectar organigrama
+            </Button>
+          ) : null}
+          {canEdit ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => void runPipelinesNow(true)}
+              disabled={pipelineRunning || syncing}
+            >
+              {pipelineRunning ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-1" />
+              )}
+              Pipelines
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {pipelineHealth ? (
+        <Card className={pipelineHealth.ok ? 'border-dashed' : 'border-amber-300'}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Pipeline identidad (Fase 3)</CardTitle>
+            <CardDescription>{pipelineHealth.summary}</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2 text-xs">
+            <Badge variant={pipelineHealth.rrhh.syncedToday ? 'default' : 'secondary'}>
+              RRHH {pipelineHealth.rrhh.syncedToday ? 'hoy' : 'sin sync hoy'}
+            </Badge>
+            <Badge variant="outline">
+              {pipelineHealth.rrhh.pendingAccess} pendientes acceso
+            </Badge>
+            <Badge variant="outline">
+              {pipelineHealth.rrhh.unmatchedPct}% sin vínculo
+            </Badge>
+            {pipelineHealth.marcaciones.enabled ? (
+              <Badge variant={pipelineHealth.marcaciones.syncedToday ? 'default' : 'secondary'}>
+                Marcaciones {pipelineHealth.marcaciones.syncedToday ? 'hoy' : 'pendiente'}
+                {pipelineHealth.marcaciones.lastCount
+                  ? ` · ${pipelineHealth.marcaciones.lastCount}`
+                  : ''}
+              </Badge>
+            ) : (
+              <Badge variant="outline">Marcaciones off</Badge>
+            )}
+            {pipelineHealth.issues.length > 0
+              ? pipelineHealth.issues.slice(0, 4).map((issue) => (
+                  <Badge key={issue} variant="outline" className="text-amber-700 border-amber-300">
+                    {issue}
+                  </Badge>
+                ))
+              : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
           <div>
             <p className="text-sm font-medium">Deshabilitar usuario en bajas Buk</p>
             <p className="text-xs text-muted-foreground">
-              Preferencia guardada; la baja en Gestión se aplica al sync de usuarios Buk (Ctrlit).
+              Política Fase 0: cesado en Buk → desactivar acceso Gestión y sacar del organigrama.
             </p>
           </div>
           <Switch
@@ -320,6 +479,7 @@ export function RrhhModule({
         <TabsList>
           <TabsTrigger value="colaboradores">Colaboradores ({dbStats?.activos ?? 0})</TabsTrigger>
           <TabsTrigger value="bajas">Bajas ({dbStats?.bajas ?? 0})</TabsTrigger>
+          <TabsTrigger value="identidad">Identidad</TabsTrigger>
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
         </TabsList>
 
@@ -342,6 +502,17 @@ export function RrhhModule({
             refreshKey={tableRefresh}
             canEdit={canEdit}
             onDisableUser={(id) => void disableGrooflowUser(id)}
+          />
+        </TabsContent>
+
+        <TabsContent value="identidad" className="mt-4">
+          <RrhhIdentityDiagnosisPanel
+            users={users}
+            canEdit={canEdit}
+            onDisableUser={(id) => void disableGrooflowUser(id)}
+            onLinksChanged={() => setTableRefresh((n) => n + 1)}
+            onProjectOrganigrama={canEdit ? () => void runProjectOrganigrama() : undefined}
+            projecting={projecting}
           />
         </TabsContent>
 

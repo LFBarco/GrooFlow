@@ -1,236 +1,140 @@
 import type {
-  AsistenciaLiveSedeSummary,
-  AsistenciaOrgChartNode,
-  AsistenciaOrgChartTreeNode,
+  AsistenciaCustomOrgColumn,
+  AsistenciaOrgChartColor,
+  AsistenciaOrgNodeStyle,
+  AsistenciaOrgSubColumn,
   AsistenciaSedeProfile,
-  AsistenciaSettings,
-  AsistenciaStaffLiveState,
 } from '../types/asistencia';
-import { mergeAsistenciaSettings } from './asistenciaData';
-import { getSedeProfile } from './asistenciaStaff';
-import { resolveOrgAssignableAreas, resolveOrgColumns, resolveOrgSubColumns } from './asistenciaOrgColumns';
+
+export const ORG_CHART_COLOR_OPTIONS: { value: AsistenciaOrgChartColor; label: string }[] = [
+  { value: 'default', label: 'Gris' },
+  { value: 'blue', label: 'Azul' },
+  { value: 'lightblue', label: 'Celeste' },
+  { value: 'green', label: 'Verde' },
+  { value: 'orange', label: 'Naranja' },
+  { value: 'red', label: 'Rojo' },
+  { value: 'violet', label: 'Violeta' },
+  { value: 'fuchsia', label: 'Fucsia' },
+  { value: 'pink', label: 'Rosa' },
+];
 
 export const ORG_CHART_COLOR_STYLES: Record<
-  NonNullable<AsistenciaOrgChartNode['color']>,
-  { border: string; bg: string; line: string }
+  AsistenciaOrgChartColor,
+  { border: string; bg: string; bar: string; line: string; header: string }
 > = {
   default: {
-    border: 'border-slate-400',
-    bg: 'bg-white dark:bg-slate-900',
+    border: 'border-slate-300 dark:border-slate-600',
+    bg: 'bg-slate-50 dark:bg-slate-900/60',
+    bar: 'bg-slate-500',
     line: 'bg-slate-400',
+    header: 'border-slate-300 bg-slate-50 dark:border-slate-600 dark:bg-slate-900/60',
   },
   blue: {
-    border: 'border-blue-600',
-    bg: 'bg-blue-50/80 dark:bg-blue-950/30',
-    line: 'bg-blue-600',
+    border: 'border-blue-500',
+    bg: 'bg-blue-50/90 dark:bg-blue-950/30',
+    bar: 'bg-blue-600',
+    line: 'bg-blue-500',
+    header: 'border-blue-500 bg-blue-50 dark:border-blue-500/50 dark:bg-blue-950/30',
   },
   lightblue: {
     border: 'border-sky-400',
-    bg: 'bg-sky-50/80 dark:bg-sky-950/30',
+    bg: 'bg-sky-50/90 dark:bg-sky-950/30',
+    bar: 'bg-sky-500',
     line: 'bg-sky-400',
+    header: 'border-sky-400 bg-sky-50 dark:border-sky-500/40 dark:bg-sky-950/30',
   },
   green: {
     border: 'border-emerald-500',
-    bg: 'bg-emerald-50/80 dark:bg-emerald-950/30',
+    bg: 'bg-emerald-50/90 dark:bg-emerald-950/30',
+    bar: 'bg-emerald-500',
     line: 'bg-emerald-500',
+    header: 'border-emerald-500 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-950/30',
   },
   orange: {
     border: 'border-orange-500',
-    bg: 'bg-orange-50/80 dark:bg-orange-950/30',
+    bg: 'bg-orange-50/90 dark:bg-orange-950/30',
+    bar: 'bg-orange-500',
     line: 'bg-orange-500',
+    header: 'border-orange-500 bg-orange-50 dark:border-orange-500/40 dark:bg-orange-950/30',
   },
   red: {
     border: 'border-red-400',
-    bg: 'bg-red-50/80 dark:bg-red-950/30',
+    bg: 'bg-red-50/90 dark:bg-red-950/30',
+    bar: 'bg-red-500',
     line: 'bg-red-400',
+    header: 'border-red-400 bg-red-50 dark:border-red-500/40 dark:bg-red-950/30',
   },
   violet: {
     border: 'border-violet-500',
-    bg: 'bg-violet-50/80 dark:bg-violet-950/30',
+    bg: 'bg-violet-50/90 dark:bg-violet-950/30',
+    bar: 'bg-violet-500',
     line: 'bg-violet-500',
+    header: 'border-violet-500 bg-violet-50 dark:border-violet-500/40 dark:bg-violet-950/30',
+  },
+  fuchsia: {
+    border: 'border-fuchsia-400',
+    bg: 'bg-fuchsia-50/90 dark:bg-fuchsia-950/30',
+    bar: 'bg-fuchsia-500',
+    line: 'bg-fuchsia-400',
+    header: 'border-fuchsia-400 bg-fuchsia-50 dark:border-fuchsia-500/40 dark:bg-fuchsia-950/30',
+  },
+  pink: {
+    border: 'border-pink-400',
+    bg: 'bg-pink-50/90 dark:bg-pink-950/30',
+    bar: 'bg-pink-500',
+    line: 'bg-pink-400',
+    header: 'border-pink-400 bg-pink-50 dark:border-pink-500/40 dark:bg-pink-950/30',
   },
 };
 
-function newOrgChartNodeId() {
-  return `org_${Math.random().toString(36).slice(2, 9)}`;
-}
+const BUILTIN_DEFAULT_COLOR: Record<string, AsistenciaOrgChartColor> = {
+  administracion: 'fuchsia',
+  medica: 'lightblue',
+  peluqueria: 'pink',
+};
 
-function upsertSedeProfile(
-  settings: AsistenciaSettings,
-  sedeName: string,
-  patch: Partial<AsistenciaSedeProfile>
-): AsistenciaSettings {
-  const merged = mergeAsistenciaSettings(settings);
-  const profile = getSedeProfile(merged, sedeName);
-  const rest = (merged.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
-  return mergeAsistenciaSettings({
-    ...merged,
-    sedeProfiles: [...rest, { ...profile, sedeName, ...patch }],
-  });
-}
-
-export function sortOrgChartNodes(nodes: AsistenciaOrgChartNode[]): AsistenciaOrgChartNode[] {
-  return [...nodes].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-}
-
-export function buildOrgChartTree(
-  nodes: AsistenciaOrgChartNode[],
-  summary: AsistenciaLiveSedeSummary
-): AsistenciaOrgChartTreeNode[] {
-  const sorted = sortOrgChartNodes(nodes);
-  const staffByArea = new Map<string, AsistenciaStaffLiveState[]>();
-
-  for (const area of summary.areas) {
-    staffByArea.set(area.area, area.staff.filter((s) => !s.staff.isManager));
-    for (const sub of area.subAreas ?? []) {
-      staffByArea.set(sub.area, sub.staff.filter((s) => !s.staff.isManager));
-    }
-  }
-
-  const build = (parentId: string | null, visited: Set<string> = new Set()): AsistenciaOrgChartTreeNode[] =>
-    sorted
-      .filter((n) => n.parentId === parentId)
-      .map((node) => {
-        if (visited.has(node.id)) {
-          return { node, children: [], staff: [], activeCount: 0, totalCount: 0 };
-        }
-        const nextVisited = new Set(visited);
-        nextVisited.add(node.id);
-        const staff = node.areaId ? (staffByArea.get(node.areaId) ?? []) : [];
-        const children = build(node.id, nextVisited);
-        const activeCount = staff.filter(
-          (s) => s.status === 'trabajando' || s.status === 'presente' || s.status === 'tarde'
-        ).length;
-        return {
-          node,
-          children,
-          staff,
-          activeCount,
-          totalCount: staff.length || children.reduce((n, c) => n + c.totalCount, 0),
-        };
-      });
-
-  return build(null);
-}
-
-/** Genera nodos iniciales desde columnas y subcolumnas existentes. */
-export function buildOrgChartFromColumns(profile: AsistenciaSedeProfile): AsistenciaOrgChartNode[] {
-  const nodes: AsistenciaOrgChartNode[] = [];
-  const colors: AsistenciaOrgChartNode['color'][] = ['blue', 'lightblue', 'green', 'orange', 'violet'];
-  const columns = resolveOrgColumns(profile);
-  columns.forEach((col, i) => {
-    const colId = newOrgChartNodeId();
-    nodes.push({
-      id: colId,
-      parentId: null,
-      label: col.label,
-      childrenLayout: 'horizontal',
-      color: colors[i % colors.length],
-      areaId: col.id,
-      sortOrder: i,
-    });
-    const subs = resolveOrgSubColumns(profile, col.id);
-    subs.forEach((sub, j) => {
-      nodes.push({
-        id: newOrgChartNodeId(),
-        parentId: colId,
-        label: sub.label,
-        childrenLayout: 'vertical',
-        color: colors[i % colors.length],
-        areaId: sub.id,
-        sortOrder: j,
-      });
-    });
-  });
-  return nodes;
-}
-
-export function applyOrgChartNodes(
-  settings: AsistenciaSettings,
-  sedeName: string,
-  nodes: AsistenciaOrgChartNode[],
-  mode: 'columns' | 'tree' = 'tree'
-): AsistenciaSettings {
-  return upsertSedeProfile(settings, sedeName, {
-    orgChartNodes: nodes,
-    orgChartMode: mode,
-  });
-}
-
-export function applyAddOrgChartNode(
-  settings: AsistenciaSettings,
-  sedeName: string,
-  input: Omit<AsistenciaOrgChartNode, 'id' | 'sortOrder'> & { sortOrder?: number }
-): AsistenciaSettings {
-  const profile = getSedeProfile(settings, sedeName);
-  const nodes = profile.orgChartNodes ?? [];
-  const siblings = nodes.filter((n) => n.parentId === input.parentId);
-  const node: AsistenciaOrgChartNode = {
-    ...input,
-    id: newOrgChartNodeId(),
-    label: input.label.trim() || 'Nuevo nodo',
-    sortOrder: input.sortOrder ?? siblings.length,
-  };
-  return upsertSedeProfile(settings, sedeName, {
-    orgChartNodes: [...nodes, node],
-    orgChartMode: 'tree',
-  });
-}
-
-export function applyUpdateOrgChartNode(
-  settings: AsistenciaSettings,
-  sedeName: string,
-  nodeId: string,
-  patch: Partial<AsistenciaOrgChartNode>
-): AsistenciaSettings {
-  const profile = getSedeProfile(settings, sedeName);
-  const nodes = (profile.orgChartNodes ?? []).map((n) =>
-    n.id === nodeId ? { ...n, ...patch, id: n.id } : n
-  );
-  return upsertSedeProfile(settings, sedeName, { orgChartNodes: nodes });
-}
-
-export function applyRemoveOrgChartNode(
-  settings: AsistenciaSettings,
-  sedeName: string,
+export function resolveOrgNodeStyle(
+  profile: AsistenciaSedeProfile,
   nodeId: string
-): AsistenciaSettings {
-  const profile = getSedeProfile(settings, sedeName);
-  const toRemove = new Set<string>([nodeId]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const n of profile.orgChartNodes ?? []) {
-      if (n.parentId && toRemove.has(n.parentId) && !toRemove.has(n.id)) {
-        toRemove.add(n.id);
-        changed = true;
-      }
-    }
-  }
-  const nodes = (profile.orgChartNodes ?? []).filter((n) => !toRemove.has(n.id));
-  return upsertSedeProfile(settings, sedeName, { orgChartNodes: nodes });
+): Required<AsistenciaOrgNodeStyle> {
+  const fromStyles = profile.orgNodeStyles?.[nodeId];
+  const custom = (profile.customOrgColumns ?? []).find((c) => c.id === nodeId);
+  const sub = (profile.subOrgColumns ?? []).find((s) => s.id === nodeId);
+  const color =
+    fromStyles?.color ??
+    custom?.color ??
+    sub?.color ??
+    BUILTIN_DEFAULT_COLOR[nodeId] ??
+    'default';
+  const childrenLayout =
+    fromStyles?.childrenLayout ?? custom?.childrenLayout ?? sub?.childrenLayout ?? 'vertical';
+  return { color, childrenLayout };
 }
 
-export function applySetOrgChartMode(
-  settings: AsistenciaSettings,
-  sedeName: string,
-  mode: 'columns' | 'tree'
-): AsistenciaSettings {
-  return upsertSedeProfile(settings, sedeName, { orgChartMode: mode });
-}
+export function patchOrgNodeStyle(
+  profile: AsistenciaSedeProfile,
+  nodeId: string,
+  patch: AsistenciaOrgNodeStyle
+): {
+  orgNodeStyles: Record<string, AsistenciaOrgNodeStyle>;
+  customOrgColumns: AsistenciaCustomOrgColumn[];
+  subOrgColumns: AsistenciaOrgSubColumn[];
+} {
+  const current = resolveOrgNodeStyle(profile, nodeId);
+  const nextStyle: AsistenciaOrgNodeStyle = {
+    color: patch.color ?? current.color,
+    childrenLayout: patch.childrenLayout ?? current.childrenLayout,
+  };
 
-export function orgChartAssignableOptions(profile: AsistenciaSedeProfile) {
-  return resolveOrgAssignableAreas(profile);
-}
-
-export function orgChartParentOptions(
-  nodes: AsistenciaOrgChartNode[],
-  excludeId?: string
-): { id: string | null; label: string }[] {
-  const out: { id: string | null; label: string }[] = [{ id: null, label: 'Raíz (bajo sede)' }];
-  for (const n of sortOrgChartNodes(nodes)) {
-    if (n.id === excludeId) continue;
-    out.push({ id: n.id, label: n.label });
-  }
-  return out;
+  const customOrgColumns = (profile.customOrgColumns ?? []).map((c) =>
+    c.id === nodeId ? { ...c, ...nextStyle } : c
+  );
+  const subOrgColumns = (profile.subOrgColumns ?? []).map((s) =>
+    s.id === nodeId ? { ...s, ...nextStyle } : s
+  );
+  const orgNodeStyles = {
+    ...(profile.orgNodeStyles ?? {}),
+    [nodeId]: nextStyle,
+  };
+  return { orgNodeStyles, customOrgColumns, subOrgColumns };
 }

@@ -105,6 +105,7 @@ import {
   CatalogCrudPage,
   ReconciliationModule,
   Overview,
+  DayOpsBoard,
   CashFlowChart,
   UserProfileDialog,
   prefetchView,
@@ -142,6 +143,8 @@ import { generateAlerts } from "./components/alerts/alertEngine";
 import { filterAlertsForUser } from "./utils/turnosAlerts";
 import type { TurnosSettings } from "./types/turnos";
 import { mergeTurnosSettings, TURNOS_SETTINGS_KV_KEY } from "./utils/turnosData";
+import { mergeRrhhSettings, RRHH_SETTINGS_KV_KEY } from "./utils/rrhhData";
+import type { RrhhSettings } from "./types/rrhh";
 import { canConfigureAsistencia } from "./utils/asistenciaAccess";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
@@ -656,6 +659,7 @@ export default function App() {
   // Alerts System
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [turnosSettingsForAlerts, setTurnosSettingsForAlerts] = useState<TurnosSettings | null>(null);
+  const [rrhhSettingsForAlerts, setRrhhSettingsForAlerts] = useState<RrhhSettings | null>(null);
   const [alertThresholds, setAlertThresholds] = useState<AlertThresholds>({
     liquidityMinDays: 3,
     invoiceDueDays: 7,
@@ -2112,6 +2116,9 @@ export default function App() {
     void repository.kv.get<TurnosSettings>(TURNOS_SETTINGS_KV_KEY).then((raw) => {
       if (!cancelled) setTurnosSettingsForAlerts(mergeTurnosSettings(raw));
     });
+    void repository.kv.get<RrhhSettings>(RRHH_SETTINGS_KV_KEY).then((raw) => {
+      if (!cancelled) setRrhhSettingsForAlerts(mergeRrhhSettings(raw));
+    });
     return () => {
       cancelled = true;
     };
@@ -2152,6 +2159,7 @@ export default function App() {
         alertSources: goLiveAlertSources(),
         asistenciaSettings: systemSettings.asistencia,
         turnosSettings: turnosSettingsForAlerts,
+        rrhhSettings: rrhhSettingsForAlerts,
       });
       setAlerts(applyReadState(filterAlertsForUser(newAlerts, currentUser?.id)));
     };
@@ -2179,6 +2187,7 @@ export default function App() {
     applyReadState,
     systemSettings.asistencia,
     turnosSettingsForAlerts,
+    rrhhSettingsForAlerts,
     currentUser?.id,
   ]);
 
@@ -3960,6 +3969,14 @@ export default function App() {
 
           {view === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <DayOpsBoard
+                  rrhhSettings={rrhhSettingsForAlerts}
+                  turnosSettings={turnosSettingsForAlerts}
+                  onNavigate={(target) => navigate(viewToPath(target))}
+                />
+              </Suspense>
+
               <Suspense fallback={<RouteLoader />}>
                 <Overview 
                     transactions={transactions} 

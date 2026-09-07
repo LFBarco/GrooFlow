@@ -127,6 +127,9 @@ export function UniformeDetailDialog({
           <StaffHrHistoryPanel
             userId={record.userId}
             staffName={record.staffName}
+            asistenciaStaffId={record.asistenciaStaffId}
+            bukEmployeeId={record.bukEmployeeId}
+            documentNumber={record.documentNumber}
             accidents={accidentRecords}
             uniforms={allRecords}
             excludeUniformId={record.id}

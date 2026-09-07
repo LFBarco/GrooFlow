@@ -34,12 +34,17 @@ import {
 } from '../../utils/turnosCalendar';
 import {
   assignmentForCell,
+  canManageTurnosSede,
+  canPublishTurnosWeek,
   computePeriodKpis,
   copyWeekAssignments,
   defaultTurnosFilters,
   filterTurnosRoster,
   rosterForPlanning,
 } from '../../utils/turnosData';
+import { isAdminAppUser } from '../../services/repository/userProfileSync';
+import { RRHH_IDENTITY_POLICY_LABELS, RRHH_IDENTITY_POLICY } from '../../utils/rrhhIdentityPolicy';
+import { Badge } from '../ui/badge';
 import { comparePlanVsReal } from '../../utils/turnosAsistenciaBridge';
 import { computeLaborAlerts } from '../../utils/turnosValidation';
 import { isWeekPublished, weekKeyForAnchor } from '../../utils/turnosAudit';
@@ -108,6 +113,26 @@ export function TurnosModule({
   const [showPlanVsReal, setShowPlanVsReal] = useState(false);
   const [gridDensity, setGridDensity] = useState<TurnosGridDensity>('comfortable');
   const [filters, setFilters] = useState<TurnosFilters>(defaultTurnosFilters);
+
+  const isAdmin = useMemo(() => isAdminAppUser(currentUser), [currentUser]);
+  const canEditSede = useMemo(
+    () =>
+      canEdit &&
+      canManageTurnosSede(currentUser, workSede, {
+        hasTurnosPermission: canEdit,
+        isAdmin,
+      }),
+    [canEdit, currentUser, isAdmin, workSede]
+  );
+  const canPublishSede = useMemo(
+    () =>
+      canEdit &&
+      canPublishTurnosWeek(currentUser, workSede, {
+        hasTurnosPermission: canEdit,
+        isAdmin,
+      }),
+    [canEdit, currentUser, isAdmin, workSede]
+  );
 
   const currentStaffId = useMemo(() => {
     if (!currentUser || currentUser.id === 'guest') return undefined;
@@ -257,7 +282,7 @@ export function TurnosModule({
   };
 
   const copyPreviousWeek = () => {
-    if (!canEdit) return;
+    if (!canEditSede) return;
     const currentKeys = weekDays.map(toDateKey);
     const prevAnchor = shiftAnchor('week', anchor, -1);
     const prevKeys = daysInWeek(prevAnchor).map(toDateKey);
@@ -293,9 +318,21 @@ export function TurnosModule({
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Gestión de dotación</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Programa turnos día, noche, libre y capacitación por sede. Arrastra en la vista semanal,
-            cubre otras sedes y mantén el roster sincronizado con usuarios.
+            Plan operativo semanal (día / noche / libre / capacitación). Lo publica el encargado de
+            sede. El roster sale del organigrama (maestro Buk.pe); Buk Asistencia solo sirve para plan
+            vs real.
           </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Badge variant="secondary">
+              Publica: {RRHH_IDENTITY_POLICY_LABELS[RRHH_IDENTITY_POLICY.turnosPublica]}
+            </Badge>
+            <Badge variant="outline">Celda ≠ turno contractual Buk</Badge>
+            {!canEditSede && canEdit ? (
+              <Badge variant="outline" className="text-amber-700 border-amber-300">
+                Sin permiso de edición en esta sede
+              </Badge>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
@@ -369,13 +406,13 @@ export function TurnosModule({
             </Select>
           ) : null}
 
-          {viewMode === 'week' && canEdit ? (
+          {viewMode === 'week' && canEditSede ? (
             <TurnosTemplatesDialog
               settings={settings}
               roster={filteredRoster}
               dateKeys={weekDays.map(toDateKey)}
               workSede={workSede}
-              canEdit={canEdit}
+              canEdit={canEditSede}
               currentUserName={currentUserName}
               onUpdate={updateSettings}
             />
@@ -383,7 +420,7 @@ export function TurnosModule({
 
           <TurnosHistoryDialog settings={settings} />
 
-          {viewMode === 'week' && canEdit ? (
+          {viewMode === 'week' && canEditSede ? (
             <Button type="button" variant="outline" onClick={copyPreviousWeek} disabled={saving}>
               <Copy className="mr-1 h-4 w-4" />
               Copiar semana ant.
@@ -447,7 +484,7 @@ export function TurnosModule({
 
           <Button type="button" variant="outline" onClick={syncRoster} disabled={!canEdit || saving}>
             <RefreshCw className={`mr-1 h-4 w-4 ${saving ? 'animate-spin' : ''}`} />
-            Sincronizar
+            Sync organigrama
           </Button>
 
           <Button type="button" variant="secondary" onClick={() => setRosterOpen(true)}>
@@ -490,7 +527,7 @@ export function TurnosModule({
           settings={settings}
           anchor={anchor}
           workSede={workSede}
-          canEdit={canEdit}
+          canEdit={canPublishSede}
           currentUserName={currentUserName}
           onUpdate={updateSettings}
         />
@@ -513,14 +550,14 @@ export function TurnosModule({
           weekDays={weekDays}
           roster={filteredRoster}
           workSede={workSede}
-          canEdit={canEdit}
+          canEdit={canEditSede}
           showPlanVsReal={showPlanVsReal}
           asistencia={asistencia}
           bukRecords={bukRecords}
           density={gridDensity}
           readOnlyPublished={weekPublished}
           assignActor={
-            canEdit
+            canEditSede
               ? { userId: currentUser?.id, name: currentUserName, isManager: true }
               : undefined
           }
@@ -534,9 +571,9 @@ export function TurnosModule({
           date={anchor}
           roster={filteredRoster}
           workSede={workSede}
-          canEdit={canEdit}
+          canEdit={canEditSede}
           assignActor={
-            canEdit
+            canEditSede
               ? { userId: currentUser?.id, name: currentUserName, isManager: true }
               : undefined
           }
@@ -550,7 +587,7 @@ export function TurnosModule({
           roster={settings.roster.filter((r) => r.active)}
           workSede={workSede}
           sedeOptions={sedeOptions}
-          canEdit={canEdit}
+          canEdit={canEditSede}
           currentStaffId={currentStaffId}
           currentUserName={currentUserName}
           onUpdate={updateSettings}

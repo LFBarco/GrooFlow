@@ -28,6 +28,7 @@ export function RouteLoader() {
 }
 
 const loadOverview = named(() => import('./components/dashboard/Overview'), 'Overview');
+const loadDayOpsBoard = named(() => import('./components/dashboard/DayOpsBoard'), 'DayOpsBoard');
 const loadCashFlowChart = named(() => import('./components/dashboard/CashFlowChart'), 'CashFlowChart');
 const loadRecentTransactions = named(
   () => import('./components/dashboard/RecentTransactions'),
@@ -95,6 +96,7 @@ const loadReconciliationModule = named(
 const loadUserProfileDialog = named(() => import('./components/users/UserProfileDialog'), 'UserProfileDialog');
 
 export const Overview = lazy(loadOverview);
+export const DayOpsBoard = lazy(loadDayOpsBoard);
 export const CashFlowChart = lazy(loadCashFlowChart);
 export const RecentTransactions = lazy(loadRecentTransactions);
 export const TransactionForm = lazy(loadTransactionForm);
@@ -129,7 +131,7 @@ export const ReconciliationModule = lazy(loadReconciliationModule);
 export const UserProfileDialog = lazy(loadUserProfileDialog);
 
 const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
-  dashboard: [loadOverview, loadCashFlowChart],
+  dashboard: [loadDayOpsBoard, loadOverview, loadCashFlowChart],
   alerts: [loadAlertsCenter],
   analytics: [loadAnalyticsDashboard],
   treasury: [loadTreasuryModule],

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_ROLES } from '../components/users/types';
 import type { User } from '../types';
-import { canConfigureAsistencia, isJefeLikeRole } from './asistenciaAccess';
+import {
+  canConfigureAsistencia,
+  isEncargadoSedeAsistencia,
+  isRrhhAsistenciaRole,
+} from './asistenciaAccess';
 
 describe('asistenciaAccess', () => {
   const managerUser: User = {
@@ -23,34 +27,45 @@ describe('asistenciaAccess', () => {
     sedes: ['Principal'],
   };
 
+  const encargadoUser: User = {
+    id: 'u-enc',
+    name: 'Encargado',
+    initials: 'ES',
+    role: 'encargado_sede',
+    status: 'active',
+    sedes: ['Principal'],
+  };
+
   it('permite configurar a admin y gerencia (manager)', () => {
     expect(
-      canConfigureAsistencia(
-        { ...managerUser, role: 'admin' },
-        DEFAULT_ROLES
-      )
+      canConfigureAsistencia({ ...managerUser, role: 'admin' }, DEFAULT_ROLES)
     ).toBe(true);
     expect(canConfigureAsistencia(managerUser, DEFAULT_ROLES)).toBe(true);
   });
 
-  it('permite configurar a rol personalizado tipo jefe con Asistencia', () => {
-    const jefeRole = {
-      id: 'jefe_area',
-      name: 'Jefe de área',
+  it('permite configurar a rol con permiso Recursos Humanos', () => {
+    const rrhhRole = {
+      id: 'analista_rrhh',
+      name: 'Analista RRHH',
       description: '',
       color: '',
       bgColor: '',
       borderColor: '',
       isSystem: false,
-      permissions: { Asistencia: true },
+      permissions: { 'Recursos Humanos': true, Asistencia: true },
     };
-    expect(isJefeLikeRole(jefeRole)).toBe(true);
+    expect(isRrhhAsistenciaRole({ ...operatorUser, role: 'analista_rrhh' }, rrhhRole)).toBe(true);
     expect(
-      canConfigureAsistencia({ ...operatorUser, role: 'jefe_area' }, [...DEFAULT_ROLES, jefeRole])
+      canConfigureAsistencia({ ...operatorUser, role: 'analista_rrhh' }, [...DEFAULT_ROLES, rrhhRole])
     ).toBe(true);
   });
 
-  it('niega configurar a operador sin rol de jefatura', () => {
+  it('niega configurar a encargado de sede (solo operativa + dashboard)', () => {
+    expect(isEncargadoSedeAsistencia(encargadoUser)).toBe(true);
+    expect(canConfigureAsistencia(encargadoUser, DEFAULT_ROLES)).toBe(false);
+  });
+
+  it('niega configurar a operador sin RRHH/gerencia/admin', () => {
     expect(canConfigureAsistencia(operatorUser, DEFAULT_ROLES)).toBe(false);
   });
 });

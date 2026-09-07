@@ -314,7 +314,12 @@ async function fetchAllViaProxy(input: {
   baseUrl: string;
   apiToken: string;
   maxPages: number;
-}): Promise<BukAsistenciaRecord[]> {
+}): Promise<{
+  records: BukAsistenciaRecord[];
+  fetchedPages: number;
+  reportedTotalPages: number;
+  truncated: boolean;
+}> {
   const res = await postBukProxy('fetch-all', {
     baseUrl: sanitizeBukBaseUrl(input.baseUrl),
     apiToken: input.apiToken,
@@ -324,12 +329,24 @@ async function fetchAllViaProxy(input: {
   const json = await readJsonSafe(res);
   if (!res.ok) throw new Error(proxyErrorMessage(res, json));
   const records = extractBukRecordsFromProxyJson(json);
-  if (records.length > 0) return records;
+  const reportedTotalPages =
+    typeof json.reportedTotalPages === 'number' && json.reportedTotalPages > 0
+      ? json.reportedTotalPages
+      : extractBukTotalPages(json, 1);
+  const fetchedPages =
+    typeof json.totalPages === 'number' && json.totalPages > 0
+      ? json.totalPages
+      : Math.min(input.maxPages, Math.ceil(records.length / BUK_PAGE_SIZE) || 1);
+  const truncated =
+    json.truncated === true || reportedTotalPages > input.maxPages;
+  if (records.length > 0) {
+    return { records, fetchedPages, reportedTotalPages, truncated };
+  }
   const serverMessage = typeof json.message === 'string' ? json.message : '';
   if (serverMessage && json.ok === false) {
     throw new Error(serverMessage);
   }
-  return records;
+  return { records, fetchedPages, reportedTotalPages, truncated };
 }
 
 async function fetchAllViaProxyPages(input: {
@@ -337,7 +354,12 @@ async function fetchAllViaProxyPages(input: {
   apiToken: string;
   maxPages: number;
   onProgress?: (loaded: number, totalPages: number) => void;
-}): Promise<BukAsistenciaRecord[]> {
+}): Promise<{
+  records: BukAsistenciaRecord[];
+  fetchedPages: number;
+  reportedTotalPages: number;
+  truncated: boolean;
+}> {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
 
   async function fetchPage(page: number): Promise<{
@@ -361,6 +383,7 @@ async function fetchAllViaProxyPages(input: {
 
   const first = await fetchPage(1);
   const all: BukAsistenciaRecord[] = [...first.data];
+  const reportedTotalPages = first.totalPages;
   const totalPages = Math.min(first.totalPages, input.maxPages);
   input.onProgress?.(1, totalPages);
 
@@ -370,7 +393,12 @@ async function fetchAllViaProxyPages(input: {
     input.onProgress?.(page, totalPages);
   }
 
-  return all;
+  return {
+    records: all,
+    fetchedPages: totalPages,
+    reportedTotalPages,
+    truncated: reportedTotalPages > input.maxPages,
+  };
 }
 
 async function fetchAllDirect(input: {
@@ -378,10 +406,16 @@ async function fetchAllDirect(input: {
   apiToken: string;
   maxPages: number;
   onProgress?: (loaded: number, totalPages: number) => void;
-}): Promise<BukAsistenciaRecord[]> {
+}): Promise<{
+  records: BukAsistenciaRecord[];
+  fetchedPages: number;
+  reportedTotalPages: number;
+  truncated: boolean;
+}> {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
   const first = await fetchPageDirect(baseUrl, input.apiToken, 1);
   const all: BukAsistenciaRecord[] = [...first.data];
+  const reportedTotalPages = first.totalPages;
   const totalPages = Math.min(first.totalPages, input.maxPages);
   input.onProgress?.(1, totalPages);
 
@@ -391,19 +425,31 @@ async function fetchAllDirect(input: {
     input.onProgress?.(page, totalPages);
   }
 
-  return all;
+  return {
+    records: all,
+    fetchedPages: totalPages,
+    reportedTotalPages,
+    truncated: reportedTotalPages > input.maxPages,
+  };
 }
 
-/** Descarga todas las páginas de asistencia-empresa (una petición al proxy cuando está disponible). */
-export async function fetchBukAsistenciaAll(input: {
+export type BukFetchAllResult = {
+  records: BukAsistenciaRecord[];
+  fetchedPages: number;
+  reportedTotalPages: number;
+  truncated: boolean;
+};
+
+/** Descarga páginas de asistencia-empresa con metadatos de truncado. */
+export async function fetchBukAsistenciaAllDetailed(input: {
   baseUrl: string;
   apiToken: string;
   maxPages?: number;
   onProgress?: (loaded: number, totalPages: number) => void;
-}): Promise<BukAsistenciaRecord[]> {
+}): Promise<BukFetchAllResult> {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
   const apiToken = normalizeBukToken(input.apiToken);
-  const maxPages = input.maxPages ?? 15;
+  const maxPages = input.maxPages ?? 50;
   const backend = getGrooflowBackend();
 
   if (!apiToken) {
@@ -417,14 +463,11 @@ export async function fetchBukAsistenciaAll(input: {
   input.onProgress?.(0, 1);
 
   try {
-    const all = await fetchAllViaProxy({ baseUrl, apiToken, maxPages });
-    if (all.length > 0) {
-      const totalPages =
-        Math.min(maxPages, Math.ceil(all.length / BUK_PAGE_SIZE) || 1);
-      input.onProgress?.(totalPages, totalPages);
-      return all;
+    const via = await fetchAllViaProxy({ baseUrl, apiToken, maxPages });
+    if (via.records.length > 0) {
+      input.onProgress?.(via.fetchedPages, via.fetchedPages);
+      return via;
     }
-    // fetch-all vacío pero HTTP 200: proxy PHP incompleto → paginar con /fetch.
     return fetchAllViaProxyPages({
       baseUrl,
       apiToken,
@@ -448,6 +491,17 @@ export async function fetchBukAsistenciaAll(input: {
     }
     throw err;
   }
+}
+
+/** Descarga todas las páginas de asistencia-empresa (una petición al proxy cuando está disponible). */
+export async function fetchBukAsistenciaAll(input: {
+  baseUrl: string;
+  apiToken: string;
+  maxPages?: number;
+  onProgress?: (loaded: number, totalPages: number) => void;
+}): Promise<BukAsistenciaRecord[]> {
+  const result = await fetchBukAsistenciaAllDetailed(input);
+  return result.records;
 }
 
 export type BukStaffSyncResult = {

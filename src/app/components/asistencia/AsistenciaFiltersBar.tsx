@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronDown, Filter, Search, X } from 'lucide-react';
 
 import type { AsistenciaFilters, AsistenciaShiftFilter } from '../../types/asistencia';
@@ -22,20 +22,31 @@ import {
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible';
 import { cn } from '../ui/utils';
 
+type ViewMode = 'live' | 'dashboard' | 'config';
+
 type Props = {
   filters: AsistenciaFilters;
   onChange: (filters: AsistenciaFilters) => void;
   areaOptions?: string[];
   specialtyOptions?: string[];
+  /** Vista activa: adapta presets y controles. */
+  viewMode?: ViewMode;
   showLiveFilters?: boolean;
   showBukFilters?: boolean;
 };
 
-const PRESETS: { label: string; patch: Partial<AsistenciaFilters> }[] = [
+const LIVE_PRESETS: { label: string; patch: Partial<AsistenciaFilters> }[] = [
   { label: 'Ausentes', patch: { liveStatus: 'ausente', arrivalFilter: 'absent' } },
   { label: 'Tardanzas', patch: { liveStatus: 'tarde', arrivalFilter: 'late' } },
   { label: 'Críticos aus.', patch: { criticalOnly: true, liveStatus: 'ausente', arrivalFilter: 'absent' } },
   { label: 'Sin cruce Buk', patch: { noBukMatchOnly: true, liveStatus: 'ausente' } },
+];
+
+const DASHBOARD_PRESETS: { label: string; patch: Partial<AsistenciaFilters> }[] = [
+  { label: 'Sin entrada', patch: { arrivalFilter: 'absent', liveStatus: 'all' } },
+  { label: 'Tardanzas', patch: { arrivalFilter: 'late', liveStatus: 'all' } },
+  { label: 'A tiempo', patch: { arrivalFilter: 'on_time', liveStatus: 'all' } },
+  { label: 'Llegaron', patch: { arrivalFilter: 'arrived', liveStatus: 'all' } },
 ];
 
 export function AsistenciaFiltersBar({
@@ -43,6 +54,7 @@ export function AsistenciaFiltersBar({
   onChange,
   areaOptions = [],
   specialtyOptions = [],
+  viewMode = 'live',
   showLiveFilters = true,
   showBukFilters = true,
 }: Props) {
@@ -50,17 +62,27 @@ export function AsistenciaFiltersBar({
   const activeCount = countAsistenciaActiveFilters(filters);
   const [open, setOpen] = useState(false);
 
+  const presets = useMemo(
+    () => (viewMode === 'dashboard' ? DASHBOARD_PRESETS : LIVE_PRESETS),
+    [viewMode]
+  );
+
+  if (viewMode === 'config') return null;
+
   return (
     <Collapsible
       open={open}
       onOpenChange={setOpen}
       className="rounded-xl border border-border bg-card dark:border-slate-700"
     >
-      <div className="flex flex-wrap items-center gap-2 p-3">
+      <div className="flex flex-wrap items-center gap-2 p-2.5 sm:p-3">
         <CollapsibleTrigger asChild>
           <Button type="button" variant="ghost" size="sm" className="h-8 gap-1.5 px-2">
             <Filter className="h-4 w-4 text-muted-foreground" />
             <span className="text-sm font-medium">Filtros</span>
+            <span className="hidden text-[10px] text-muted-foreground sm:inline">
+              {viewMode === 'live' ? '· organigrama' : '· dashboard'}
+            </span>
             {activeCount > 0 ? (
               <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                 {activeCount}
@@ -72,7 +94,7 @@ export function AsistenciaFiltersBar({
           </Button>
         </CollapsibleTrigger>
 
-        <div className="relative min-w-[160px] flex-1 sm:max-w-xs">
+        <div className="relative min-w-[140px] flex-1 basis-full sm:basis-auto sm:max-w-xs">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             className="h-9 pl-8 text-sm"
@@ -82,8 +104,8 @@ export function AsistenciaFiltersBar({
           />
         </div>
 
-        <div className="flex flex-wrap gap-1">
-          {PRESETS.map((p) => (
+        <div className="flex max-w-full flex-wrap gap-1">
+          {presets.map((p) => (
             <Button
               key={p.label}
               type="button"
@@ -219,20 +241,24 @@ export function AsistenciaFiltersBar({
             </div>
           ) : null}
 
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <Checkbox
-              checked={filters.criticalOnly}
-              onCheckedChange={(v) => set({ criticalOnly: Boolean(v) })}
-            />
-            Solo personal crítico
-          </label>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <Checkbox
-              checked={filters.noBukMatchOnly}
-              onCheckedChange={(v) => set({ noBukMatchOnly: Boolean(v) })}
-            />
-            Solo sin cruce Buk (con diagnóstico)
-          </label>
+          {showLiveFilters ? (
+            <>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <Checkbox
+                  checked={filters.criticalOnly}
+                  onCheckedChange={(v) => set({ criticalOnly: Boolean(v) })}
+                />
+                Solo personal crítico
+              </label>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                <Checkbox
+                  checked={filters.noBukMatchOnly}
+                  onCheckedChange={(v) => set({ noBukMatchOnly: Boolean(v) })}
+                />
+                Solo sin cruce Buk (con diagnóstico)
+              </label>
+            </>
+          ) : null}
         </div>
       </CollapsibleContent>
     </Collapsible>

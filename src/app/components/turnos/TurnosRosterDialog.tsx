@@ -105,7 +105,8 @@ export function TurnosRosterDialog({
         <DialogHeader>
           <DialogTitle>Personal del roster</DialogTitle>
           <DialogDescription>
-            Sincronizado con usuarios del sistema y personal de asistencia. Puedes agregar externos manualmente.
+            Roster desde el organigrama (maestro Buk.pe). Solo agrega aquí personal externo/manual.
+            Las celdas de la grilla (D/N/L/C) no son el turno contractual de Buk.
           </DialogDescription>
         </DialogHeader>
 
@@ -197,7 +198,9 @@ export function TurnosRosterDialog({
                   {' · '}
                   {entry.homeSede}
                   {entry.isExternal ? ' · EXT' : ''}
-                  {entry.source !== 'manual' ? ` · ${entry.source}` : ''}
+                  {entry.source !== 'manual'
+                    ? ` · ${entry.source === 'organigrama' ? 'organigrama' : entry.source}`
+                    : ''}
                 </p>
               </div>
               {canEdit && entry.source === 'manual' ? (

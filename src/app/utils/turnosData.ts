@@ -1,5 +1,3 @@
-import type { AsistenciaSettings, AsistenciaStaffMember } from '../types/asistencia';
-import type { User } from '../types';
 import type {
   TurnoAssignment,
   TurnoCoverageKind,
@@ -11,8 +9,15 @@ import type {
   TurnosSettings,
   TurnosStaffingGap,
 } from '../types/turnos';
-import { mergeAsistenciaSettings } from './asistenciaData';
 import { toDateKey } from './turnosCalendar';
+import { buildRosterFromSources } from './turnosRosterFromOrganigrama';
+
+export { buildRosterFromSources };
+export {
+  canManageTurnosSede,
+  canPublishTurnosWeek,
+  isEncargadoSedeRole,
+} from './turnosRosterFromOrganigrama';
 
 export const TURNOS_SETTINGS_KV_KEY = 'settings:turnos';
 
@@ -63,86 +68,6 @@ function initialsFromName(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0] ?? ''}${parts[1]![0] ?? ''}`.toUpperCase();
-}
-
-function mapWorkAreaFromAsistencia(area: string): string {
-  const lower = area.toLowerCase();
-  if (lower.includes('med') || lower.includes('vet')) return 'Área Médica';
-  if (lower.includes('groom') || lower.includes('pelu')) return 'Grooming / Peluquería';
-  if (lower.includes('admin') || lower.includes('counter') || lower.includes('recep')) {
-    return 'Recepción / Counter';
-  }
-  if (lower.includes('mant')) return 'Mantenimiento';
-  if (lower.includes('limp')) return 'Limpieza';
-  if (lower.includes('chofer') || lower.includes('flota')) return 'Flota / Choferes';
-  if (lower.includes('farm')) return 'Farmacia';
-  if (lower.includes('lab')) return 'Laboratorio';
-  if (lower.includes('bode') || lower.includes('almac')) return 'Bodega / Almacén';
-  return area.trim() || 'Otro';
-}
-
-function rosterKey(entry: Pick<TurnosRosterEntry, 'source' | 'userId' | 'asistenciaStaffId' | 'fullName'>): string {
-  if (entry.userId) return `user:${entry.userId}`;
-  if (entry.asistenciaStaffId) return `asist:${entry.asistenciaStaffId}`;
-  return `manual:${entry.fullName.trim().toLowerCase()}`;
-}
-
-/** Fusiona usuarios activos y personal de asistencia en el roster de turnos. */
-export function buildRosterFromSources(input: {
-  users: User[];
-  asistencia?: AsistenciaSettings | null;
-  existing?: TurnosRosterEntry[];
-}): TurnosRosterEntry[] {
-  const map = new Map<string, TurnosRosterEntry>();
-  for (const e of input.existing ?? []) {
-    map.set(rosterKey(e), e);
-  }
-
-  for (const u of input.users) {
-    if (u.status === 'inactive') continue;
-    const homeSede = u.sedes?.[0] ?? u.location ?? 'Principal';
-    const entry: TurnosRosterEntry = {
-      id: `user-${u.id}`,
-      source: 'user',
-      userId: u.id,
-      fullName: u.name,
-      initials: u.initials || initialsFromName(u.name),
-      roleLabel: u.jobTitle || u.role,
-      workArea: u.workArea || undefined,
-      homeSede,
-      email: u.email,
-      active: true,
-    };
-    map.set(rosterKey(entry), { ...map.get(rosterKey(entry)), ...entry });
-  }
-
-  const asistencia = mergeAsistenciaSettings(input.asistencia);
-  for (const s of asistencia.staff ?? []) {
-    const entry: TurnosRosterEntry = {
-      id: `asist-${s.id}`,
-      source: 'asistencia',
-      asistenciaStaffId: s.id,
-      fullName: s.fullName,
-      initials: initialsFromName(s.fullName),
-      roleLabel: s.cargoLabel,
-      workArea: s.area ? mapWorkAreaFromAsistencia(s.area) : undefined,
-      homeSede: s.sedeName,
-      active: true,
-      sortOrder: s.sortOrder,
-    };
-    const key = rosterKey(entry);
-    const prev = map.get(key);
-    map.set(key, prev ? { ...prev, ...entry, id: prev.id, workArea: entry.workArea || prev.workArea } : entry);
-  }
-
-  return [...map.values()]
-    .filter((r) => r.active)
-    .sort(
-      (a, b) =>
-        (a.sortOrder ?? 0) - (b.sortOrder ?? 0) ||
-        a.homeSede.localeCompare(b.homeSede, 'es') ||
-        a.fullName.localeCompare(b.fullName, 'es')
-    );
 }
 
 export function newAssignmentId(): string {

@@ -6,6 +6,9 @@ import { UNIFORM_REASON_LABELS } from '../../types/uniformes';
 type Props = {
   userId?: string;
   staffName: string;
+  asistenciaStaffId?: string;
+  bukEmployeeId?: number;
+  documentNumber?: string;
   accidents?: WorkplaceAccidentRecord[];
   uniforms?: UniformDeliveryRecord[];
   excludeAccidentId?: string;
@@ -13,32 +16,70 @@ type Props = {
   maxItems?: number;
 };
 
+function docKey(raw?: string | null): string {
+  return String(raw ?? '').replace(/\D+/g, '');
+}
+
 function matchStaff(
-  userId: string | undefined,
-  staffName: string,
-  record: { userId?: string; affectedName?: string; staffName?: string }
+  identity: {
+    userId?: string;
+    staffName: string;
+    asistenciaStaffId?: string;
+    bukEmployeeId?: number;
+    documentNumber?: string;
+  },
+  record: {
+    userId?: string;
+    affectedName?: string;
+    staffName?: string;
+    asistenciaStaffId?: string;
+    bukEmployeeId?: number;
+    documentNumber?: string;
+  }
 ): boolean {
-  if (userId && record.userId && record.userId === userId) return true;
+  if (
+    identity.asistenciaStaffId &&
+    record.asistenciaStaffId &&
+    identity.asistenciaStaffId === record.asistenciaStaffId
+  ) {
+    return true;
+  }
+  if (
+    identity.bukEmployeeId &&
+    record.bukEmployeeId &&
+    identity.bukEmployeeId === record.bukEmployeeId
+  ) {
+    return true;
+  }
+  const docA = docKey(identity.documentNumber);
+  const docB = docKey(record.documentNumber);
+  if (docA && docB && docA === docB) return true;
+  if (identity.userId && record.userId && identity.userId === record.userId) return true;
   const name = record.affectedName ?? record.staffName ?? '';
-  return name.trim().toLowerCase() === staffName.trim().toLowerCase();
+  return name.trim().toLowerCase() === identity.staffName.trim().toLowerCase();
 }
 
 export function StaffHrHistoryPanel({
   userId,
   staffName,
+  asistenciaStaffId,
+  bukEmployeeId,
+  documentNumber,
   accidents = [],
   uniforms = [],
   excludeAccidentId,
   excludeUniformId,
   maxItems = 5,
 }: Props) {
+  const identity = { userId, staffName, asistenciaStaffId, bukEmployeeId, documentNumber };
+
   const accidentHistory = accidents
-    .filter((r) => r.id !== excludeAccidentId && matchStaff(userId, staffName, r))
+    .filter((r) => r.id !== excludeAccidentId && matchStaff(identity, r))
     .sort((a, b) => b.eventDate.localeCompare(a.eventDate))
     .slice(0, maxItems);
 
   const uniformHistory = uniforms
-    .filter((r) => r.id !== excludeUniformId && matchStaff(userId, staffName, r))
+    .filter((r) => r.id !== excludeUniformId && matchStaff(identity, r))
     .sort((a, b) => b.deliveryDate.localeCompare(a.deliveryDate))
     .slice(0, maxItems);
 
@@ -83,7 +124,7 @@ export function StaffHrHistoryPanel({
                 <span>
                   {r.deliveryDate} · {UNIFORM_REASON_LABELS[r.reason]}
                 </span>
-                <span className="text-muted-foreground">{r.items.length} prenda(s)</span>
+                <span className="text-muted-foreground">{r.items.length} ítem(s)</span>
               </li>
             ))}
           </ul>

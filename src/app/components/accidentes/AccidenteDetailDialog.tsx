@@ -189,6 +189,9 @@ export function AccidenteDetailDialog({
         <StaffHrHistoryPanel
           userId={record.userId}
           staffName={record.affectedName}
+          asistenciaStaffId={record.asistenciaStaffId}
+          bukEmployeeId={record.bukEmployeeId}
+          documentNumber={record.documentNumber}
           accidents={allRecords}
           uniforms={uniformRecords}
           excludeAccidentId={record.id}

@@ -105,6 +105,285 @@ export async function fetchRrhhDbStats(): Promise<RrhhDbStats> {
   };
 }
 
+export type RrhhIdentityDiagnosis = {
+  policy: {
+    sourceOfTruth: string;
+    altaSinUsuario: string;
+    cesadoDesactivaAccesoYOrganigrama: boolean;
+    turnosPublica: string;
+    camposOficialesBuk: string[];
+    camposEditablesGrooflow: string[];
+  };
+  generatedAt: string;
+  counts: {
+    bukActivos: number;
+    bukTotal: number;
+    matched: number;
+    pendingAccess: number;
+    usersWithoutDni: number;
+    terminatedStillActive: number;
+    staffInOrganigrama: number;
+    staffWithRut: number;
+    staffMatchedBuk: number;
+    staffWithoutRut: number;
+  };
+  samples: {
+    matched: Array<Record<string, unknown>>;
+    pendingAccess: Array<Record<string, unknown>>;
+    usersWithoutDni: Array<Record<string, unknown>>;
+    terminatedStillActive: Array<Record<string, unknown>>;
+    staffWithoutRut: Array<Record<string, unknown>>;
+  };
+};
+
+export type RrhhApplyTerminationsResult = {
+  dryRun: boolean;
+  candidates: number;
+  usersDisabled: number;
+  staffRemoved: number;
+  errors: string[];
+  samples: {
+    usersDisabled: Array<Record<string, unknown>>;
+    staffRemoved: Array<Record<string, unknown>>;
+  };
+  appliedAt: string;
+};
+
+export async function applyRrhhTerminations(input?: {
+  dryRun?: boolean;
+  bukIds?: number[];
+}): Promise<RrhhApplyTerminationsResult> {
+  const res = await grooflowFetch('/rrhh/apply-terminations', {
+    method: 'POST',
+    body: JSON.stringify({
+      dryRun: Boolean(input?.dryRun),
+      bukIds: input?.bukIds ?? undefined,
+    }),
+  });
+  const json = await readJson(res);
+  if (!res.ok || json.ok === false) {
+    throw new Error(String(json.error ?? `HTTP ${res.status}`));
+  }
+  return {
+    dryRun: Boolean(json.dryRun),
+    candidates: Number(json.candidates ?? 0),
+    usersDisabled: Number(json.usersDisabled ?? 0),
+    staffRemoved: Number(json.staffRemoved ?? 0),
+    errors: Array.isArray(json.errors) ? (json.errors as string[]) : [],
+    samples: (json.samples as RrhhApplyTerminationsResult['samples']) ?? {
+      usersDisabled: [],
+      staffRemoved: [],
+    },
+    appliedAt: String(json.appliedAt ?? new Date().toISOString()),
+  };
+}
+
+export async function linkRrhhUser(input: {
+  bukId: number;
+  userId: string;
+  matchMethod?: string;
+}): Promise<{ bukId: number; userId: string; pendingAccess: number; identityStatus?: string }> {
+  const res = await grooflowFetch('/rrhh/link-user', {
+    method: 'POST',
+    body: JSON.stringify({
+      bukId: input.bukId,
+      userId: input.userId,
+      matchMethod: input.matchMethod ?? 'manual',
+    }),
+  });
+  const json = await readJson(res);
+  if (!res.ok || json.ok === false) {
+    throw new Error(String(json.error ?? `HTTP ${res.status}`));
+  }
+  return {
+    bukId: Number(json.bukId ?? input.bukId),
+    userId: String(json.userId ?? input.userId),
+    pendingAccess: Number(json.pendingAccess ?? 0),
+    identityStatus: json.identityStatus != null ? String(json.identityStatus) : undefined,
+  };
+}
+
+export async function fetchRrhhIdentityDiagnosis(limit = 40): Promise<RrhhIdentityDiagnosis> {
+  const res = await grooflowFetch(`/rrhh/identity-diagnosis?limit=${limit}`);
+  const json = await readJson(res);
+  if (!res.ok || json.ok === false) {
+    throw new Error(String(json.error ?? `HTTP ${res.status}`));
+  }
+  const counts = (json.counts as RrhhIdentityDiagnosis['counts']) ?? {
+    bukActivos: 0,
+    bukTotal: 0,
+    matched: 0,
+    pendingAccess: 0,
+    usersWithoutDni: 0,
+    terminatedStillActive: 0,
+    staffInOrganigrama: 0,
+    staffWithRut: 0,
+    staffMatchedBuk: 0,
+    staffWithoutRut: 0,
+  };
+  const samples = (json.samples as RrhhIdentityDiagnosis['samples']) ?? {
+    matched: [],
+    pendingAccess: [],
+    usersWithoutDni: [],
+    terminatedStillActive: [],
+    staffWithoutRut: [],
+  };
+  return {
+    policy: (json.policy as RrhhIdentityDiagnosis['policy']) ?? {
+      sourceOfTruth: 'buk.pe',
+      altaSinUsuario: 'pendiente_notificacion',
+      cesadoDesactivaAccesoYOrganigrama: true,
+      turnosPublica: 'encargado_sede',
+      camposOficialesBuk: [],
+      camposEditablesGrooflow: [],
+    },
+    generatedAt: String(json.generatedAt ?? new Date().toISOString()),
+    counts,
+    samples,
+  };
+}
+
+export type RrhhPipelineHealth = {
+  ok: boolean;
+  summary: string;
+  issues: string[];
+  rrhh: {
+    lastSyncAt: string | null;
+    lastSyncOk: boolean | null;
+    lastSyncMessage: string | null;
+    syncedToday: boolean;
+    staffSyncEnabled: boolean;
+    intervalMinutes: number;
+    pendingAccess: number;
+    activos: number;
+    linked: number;
+    unmatchedPct: number;
+    lastPipelineAt: string | null;
+  };
+  marcaciones: {
+    enabled: boolean;
+    lastAt: string | null;
+    lastOk: boolean | null;
+    lastMessage: string | null;
+    lastCount: number;
+    intervalMinutes: number;
+    syncedToday: boolean;
+  };
+  generatedAt: string;
+};
+
+export async function fetchRrhhPipelineHealth(): Promise<RrhhPipelineHealth> {
+  const res = await grooflowFetch('/rrhh/pipeline-health');
+  const json = await readJson(res);
+  if (!res.ok) {
+    throw new Error(String(json.error ?? `HTTP ${res.status}`));
+  }
+  if (json.error && json.summary == null && json.rrhh == null) {
+    throw new Error(String(json.error));
+  }
+  const rrhh = (json.rrhh as RrhhPipelineHealth['rrhh']) ?? {
+    lastSyncAt: null,
+    lastSyncOk: null,
+    lastSyncMessage: null,
+    syncedToday: false,
+    staffSyncEnabled: true,
+    intervalMinutes: 60,
+    pendingAccess: 0,
+    activos: 0,
+    linked: 0,
+    unmatchedPct: 0,
+    lastPipelineAt: null,
+  };
+  const marcaciones = (json.marcaciones as RrhhPipelineHealth['marcaciones']) ?? {
+    enabled: false,
+    lastAt: null,
+    lastOk: null,
+    lastMessage: null,
+    lastCount: 0,
+    intervalMinutes: 30,
+    syncedToday: false,
+  };
+  return {
+    ok: Boolean(json.pipelineOk ?? json.ok),
+    summary: String(json.summary ?? ''),
+    issues: Array.isArray(json.issues) ? (json.issues as string[]) : [],
+    rrhh,
+    marcaciones,
+    generatedAt: String(json.generatedAt ?? new Date().toISOString()),
+  };
+}
+
+/** Dispara pipelines si están due (admin). No fuerza sync. */
+export async function runRrhhPipelines(input?: {
+  force?: boolean;
+  skipMarcaciones?: boolean;
+  skipRrhh?: boolean;
+}): Promise<{
+  ok: boolean;
+  message: string;
+  health?: RrhhPipelineHealth;
+  steps?: Record<string, unknown>;
+}> {
+  const res = await grooflowFetch('/jobs/pipelines', {
+    method: 'POST',
+    body: JSON.stringify({
+      force: Boolean(input?.force),
+      skipMarcaciones: Boolean(input?.skipMarcaciones),
+      skipRrhh: Boolean(input?.skipRrhh),
+    }),
+  });
+  const json = await readJson(res);
+  if (!res.ok) {
+    return { ok: false, message: String(json.error ?? json.message ?? `HTTP ${res.status}`) };
+  }
+  if (json.error && !json.steps && !json.health) {
+    return { ok: false, message: String(json.error) };
+  }
+  return {
+    ok: true,
+    message: String((json.health as { summary?: string } | undefined)?.summary ?? 'Pipelines OK'),
+    health: json.health as RrhhPipelineHealth | undefined,
+    steps: json.steps as Record<string, unknown> | undefined,
+  };
+}
+
+export async function projectAsistenciaStaffFromRrhh(input?: {
+  pruneInactive?: boolean;
+  onlySedes?: string[];
+}): Promise<{
+  ok: boolean;
+  message: string;
+  added?: number;
+  updated?: number;
+  unchanged?: number;
+  pruned?: number;
+  staffTotal?: number;
+}> {
+  const res = await grooflowFetch('/rrhh/project-asistencia-staff', {
+    method: 'POST',
+    body: JSON.stringify({
+      pruneInactive: input?.pruneInactive !== false,
+      onlySedes: input?.onlySedes,
+    }),
+  });
+  const json = await readJson(res);
+  if (!res.ok || json.ok === false) {
+    return { ok: false, message: String(json.error ?? json.message ?? `HTTP ${res.status}`) };
+  }
+  const added = Number(json.added ?? 0);
+  const updated = Number(json.updated ?? 0);
+  const pruned = Number(json.pruned ?? 0);
+  return {
+    ok: true,
+    message: `Organigrama: +${added} · ~${updated} · podados ${pruned} · total ${Number(json.staffTotal ?? 0)}`,
+    added,
+    updated,
+    unchanged: Number(json.unchanged ?? 0),
+    pruned,
+    staffTotal: Number(json.staffTotal ?? 0),
+  };
+}
+
 export async function syncRrhhToDatabase(input?: {
   includeAsistencia?: boolean;
 }): Promise<{

@@ -45,7 +45,7 @@ export function TurnosPublishBar({
         </span>
       ) : (
         <span className="text-xs text-muted-foreground">
-          La semana aún no está visible como definitiva para el personal.
+          Publica el encargado de sede. Hasta entonces es borrador operativo.
         </span>
       )}
       {canEdit ? (
@@ -79,7 +79,11 @@ export function TurnosPublishBar({
             Publicar semana
           </Button>
         )
-      ) : null}
+      ) : (
+        <span className="text-xs text-amber-700 dark:text-amber-300">
+          Solo el encargado de esta sede (o admin) puede publicar.
+        </span>
+      )}
     </div>
   );
 }

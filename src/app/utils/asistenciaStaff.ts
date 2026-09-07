@@ -2,6 +2,7 @@ import type {
   AsistenciaLiveConsolidatedSummary,
   AsistenciaLiveSedeSummary,
   AsistenciaLiveStatus,
+  AsistenciaLiveSubAreaBlock,
   AsistenciaSettings,
   AsistenciaSedeProfile,
   AsistenciaShiftFilter,
@@ -10,6 +11,7 @@ import type {
   BukAsistenciaRecord,
 } from '../types/asistencia';
 import { resolveOrgColumns, resolveOrgSubColumns, resolveOrgColumnLabel } from './asistenciaOrgColumns';
+import { resolveOrgNodeStyle } from './asistenciaOrgChart';
 import {
   isNightBukRecord,
   isSedeLeaderCargo,
@@ -271,8 +273,8 @@ export function getSedeProfile(
     subOrgColumns: found?.subOrgColumns,
     cargoByColumn: found?.cargoByColumn,
     hideEmptyAreas: found?.hideEmptyAreas,
-    orgChartMode: found?.orgChartMode,
-    orgChartNodes: found?.orgChartNodes,
+    orgNodeStyles: found?.orgNodeStyles,
+    rootChildrenLayout: found?.rootChildrenLayout,
   };
 }
 
@@ -363,27 +365,47 @@ export function buildLiveSedeSummary(input: {
   const areas = areaOrderForProfile(profile)
     .map((columnId) => {
       const columnStaff = liveStates.filter((s) => s.staff.area === columnId);
-      const subColumns = resolveOrgSubColumns(profile, columnId);
-      const subAreas = subColumns.map((sub) => {
-        const subStaff = liveStates.filter((s) => s.staff.area === sub.id);
-        const activeCount = subStaff.filter(
-          (s) => s.status === 'trabajando' || s.status === 'presente'
-        ).length;
-        return {
-          area: sub.id,
-          label: resolveOrgColumnLabel(profile, sub.id),
-          staff: subStaff,
-          activeCount,
-          totalCount: subStaff.length,
-        };
-      });
+      const buildSubTree = (parentId: string): AsistenciaLiveSubAreaBlock[] => {
+        return resolveOrgSubColumns(profile, parentId).map((sub) => {
+          const subStaff = liveStates.filter((s) => s.staff.area === sub.id);
+          const children = buildSubTree(sub.id);
+          const nestedStaff = children.flatMap((c) => [
+            ...c.staff,
+            ...(c.children?.flatMap(function flatten(n: AsistenciaLiveSubAreaBlock): AsistenciaStaffLiveState[] {
+              return [...n.staff, ...(n.children?.flatMap(flatten) ?? [])];
+            }) ?? []),
+          ]);
+          const all = [...subStaff, ...nestedStaff];
+          const style = resolveOrgNodeStyle(profile, sub.id);
+          const activeCount = all.filter(
+            (s) => s.status === 'trabajando' || s.status === 'presente'
+          ).length;
+          return {
+            area: sub.id,
+            label: resolveOrgColumnLabel(profile, sub.id),
+            staff: subStaff,
+            children: children.length > 0 ? children : undefined,
+            activeCount,
+            totalCount: all.length,
+            color: style.color,
+            childrenLayout: style.childrenLayout,
+          };
+        });
+      };
+      const subAreas = buildSubTree(columnId);
       const allInColumn = [
         ...columnStaff,
-        ...subAreas.flatMap((sa) => sa.staff),
+        ...subAreas.flatMap(function flatten(sa: AsistenciaLiveSubAreaBlock): AsistenciaStaffLiveState[] {
+          return [
+            ...sa.staff,
+            ...(sa.children?.flatMap(flatten) ?? []),
+          ];
+        }),
       ];
       const activeCount = allInColumn.filter(
         (s) => s.status === 'trabajando' || s.status === 'presente'
       ).length;
+      const style = resolveOrgNodeStyle(profile, columnId);
       return {
         area: columnId,
         label: areaLabelForProfile(profile, columnId),
@@ -391,9 +413,27 @@ export function buildLiveSedeSummary(input: {
         subAreas: subAreas.length > 0 ? subAreas : undefined,
         activeCount,
         totalCount: allInColumn.length,
+        color: style.color,
+        childrenLayout: style.childrenLayout,
       };
     })
-    .filter((block) => !(profile.hideEmptyAreas && block.totalCount === 0));
+    // Raíces del organigrama siempre visibles. hideEmptyAreas solo poda subáreas vacías.
+    .map((block) => {
+      if (!profile.hideEmptyAreas) return block;
+      const pruneSubs = (
+        subs: AsistenciaLiveSubAreaBlock[] | undefined
+      ): AsistenciaLiveSubAreaBlock[] | undefined => {
+        if (!subs?.length) return undefined;
+        const next = subs
+          .map((s) => ({
+            ...s,
+            children: pruneSubs(s.children),
+          }))
+          .filter((s) => s.totalCount > 0 || (s.children?.length ?? 0) > 0);
+        return next.length > 0 ? next : undefined;
+      };
+      return { ...block, subAreas: pruneSubs(block.subAreas) };
+    });
 
   const workingCount = liveStates.filter((s) => s.status === 'trabajando').length;
   const absentCount = liveStates.filter((s) => s.status === 'ausente').length;
@@ -417,6 +457,7 @@ export function buildLiveSedeSummary(input: {
     criticalMissing,
     bukRecintosOnDate,
     recordsOnDateCount: onDate.length,
+    rootChildrenLayout: profile.rootChildrenLayout ?? 'horizontal',
   };
 }
 

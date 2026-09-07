@@ -197,6 +197,12 @@ export interface StaffOption {
   id: string;
   label: string;
   userId?: string;
+  /** Id en organigrama Asistencia (maestro proyectado). */
+  asistenciaStaffId?: string;
+  bukEmployeeId?: number;
+  /** DNI/RUT canónico (solo dígitos preferible). */
+  documentNumber?: string;
+  email?: string;
   name: string;
   jobTitle: string;
   workArea: string;
@@ -221,12 +227,62 @@ export function contractTypeLabel(type?: string): string {
   return CONTRACT_LABELS[type] ?? type;
 }
 
-/** Lista de colaboradores para autocomplete (usuarios de Gestión; asistencia solo si no hay match). */
+function docKey(raw?: string | null): string {
+  return String(raw ?? '').replace(/\D+/g, '');
+}
+
+function normalizePersonName(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ');
+}
+
+/** Resuelve la opción del select al editar un registro (Fase 6). */
+export function resolveStaffOptionKey(
+  record: {
+    userId?: string;
+    asistenciaStaffId?: string;
+    bukEmployeeId?: number;
+    documentNumber?: string;
+  },
+  options: StaffOption[]
+): string {
+  if (record.asistenciaStaffId) {
+    const id = `asist-${record.asistenciaStaffId}`;
+    if (options.some((o) => o.id === id || o.asistenciaStaffId === record.asistenciaStaffId)) {
+      return options.find((o) => o.asistenciaStaffId === record.asistenciaStaffId)?.id ?? id;
+    }
+  }
+  if (record.bukEmployeeId) {
+    const byBuk = options.find((o) => o.bukEmployeeId === record.bukEmployeeId);
+    if (byBuk) return byBuk.id;
+  }
+  if (record.userId) {
+    const byUser = options.find((o) => o.userId === record.userId);
+    if (byUser) return byUser.id;
+    const legacy = `user-${record.userId}`;
+    if (options.some((o) => o.id === legacy)) return legacy;
+  }
+  const doc = docKey(record.documentNumber);
+  if (doc) {
+    const byDoc = options.find((o) => docKey(o.documentNumber) === doc);
+    if (byDoc) return byDoc.id;
+  }
+  return 'manual';
+}
+
+/**
+ * Lista de colaboradores (Fase 6): organigrama/maestro primero + usuarios no cubiertos.
+ * Identidad: bukEmployeeId → DNI → usuarioId → email → nombre.
+ */
 export function buildStaffOptions(input: {
   users: User[];
   asistencia?: AsistenciaSettings | null;
   visibleSedes?: string[];
-  /** false = solo usuarios de Gestión (p. ej. entrega de uniformes). */
+  /** false = solo usuarios Gestión (legado). Default true = organigrama + users. */
   includeAsistencia?: boolean;
 }): StaffOption[] {
   const map = new Map<string, StaffOption>();
@@ -234,14 +290,8 @@ export function buildStaffOptions(input: {
   const asistencia = mergeAsistenciaSettings(input.asistencia);
   const sedeNames = input.visibleSedes ?? [];
   const includeAsistencia = input.includeAsistencia !== false;
-
-  const normalizePersonName = (name: string): string =>
-    name
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/\p{Diacritic}/gu, '')
-      .replace(/\s+/g, ' ');
+  const staffList = asistencia.staff ?? [];
+  const hasOrganigrama = includeAsistencia && staffList.length > 0;
 
   const register = (opt: StaffOption, identityKey: string) => {
     if (identityKeys.has(identityKey)) return;
@@ -249,23 +299,106 @@ export function buildStaffOptions(input: {
     map.set(opt.id, opt);
   };
 
-  const staffIdentityKey = (email: string | undefined, name: string): string => {
-    const normalizedEmail = email?.trim().toLowerCase();
-    if (normalizedEmail) return `email:${normalizedEmail}`;
-    return `name:${normalizePersonName(name)}`;
+  const identityKeyFor = (parts: {
+    bukEmployeeId?: number;
+    documentNumber?: string;
+    userId?: string;
+    email?: string;
+    name: string;
+  }): string => {
+    if (parts.bukEmployeeId) return `buk:${parts.bukEmployeeId}`;
+    const doc = docKey(parts.documentNumber);
+    if (doc) return `doc:${doc}`;
+    if (parts.userId) return `user:${parts.userId}`;
+    const email = parts.email?.trim().toLowerCase();
+    if (email) return `email:${email}`;
+    return `name:${normalizePersonName(parts.name)}`;
   };
 
-  const userEmails = new Set<string>();
-  const userNames = new Set<string>();
+  const usersById = new Map(input.users.filter((u) => u.status !== 'inactive').map((u) => [u.id, u]));
+  const usersByEmail = new Map<string, User>();
+  const usersByDoc = new Map<string, User>();
+  for (const u of input.users) {
+    if (u.status === 'inactive') continue;
+    const em = u.email?.trim().toLowerCase();
+    if (em) usersByEmail.set(em, u);
+    const d = docKey(u.documentNumber);
+    if (d) usersByDoc.set(d, u);
+  }
+
+  const linkedUserForStaff = (s: (typeof staffList)[number]): User | undefined => {
+    const uid = String(s.usuarioId ?? '').trim();
+    if (uid && usersById.has(uid)) return usersById.get(uid);
+    const em = (s.email ?? '').trim().toLowerCase();
+    if (em && usersByEmail.has(em)) return usersByEmail.get(em);
+    const d = docKey(s.rut);
+    if (d && usersByDoc.has(d)) return usersByDoc.get(d);
+    return undefined;
+  };
+
+  const coveredUserIds = new Set<string>();
+  const coveredDocs = new Set<string>();
+  const coveredEmails = new Set<string>();
+
+  if (hasOrganigrama) {
+    for (const s of staffList) {
+      const linked = linkedUserForStaff(s);
+      if (linked) coveredUserIds.add(linked.id);
+      const doc = docKey(s.rut) || docKey(linked?.documentNumber);
+      if (doc) coveredDocs.add(doc);
+      const email = (s.email ?? linked?.email ?? '').trim().toLowerCase();
+      if (email) coveredEmails.add(email);
+
+      const rawSede = s.sedeName;
+      const homeSede =
+        sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
+      const opt: StaffOption = {
+        id: `asist-${s.id}`,
+        asistenciaStaffId: s.id,
+        bukEmployeeId: s.bukEmployeeId,
+        documentNumber: doc || undefined,
+        email: email || undefined,
+        userId: linked?.id ?? (s.usuarioId ? String(s.usuarioId) : undefined),
+        label: s.fullName,
+        name: s.fullName,
+        jobTitle: s.cargoLabel || linked?.jobTitle || linked?.role || 'Colaborador',
+        workArea: s.area ? mapAreaFromAsistencia(s.area) : linked?.workArea || 'Otro',
+        contractType: contractTypeLabel(linked?.contractType),
+        homeSede,
+        seniorityMonths: computeSeniorityMonths(linked?.hireDate),
+        hireDate: linked?.hireDate,
+        uniformSizes: linked?.uniformSizes,
+      };
+      register(
+        opt,
+        identityKeyFor({
+          bukEmployeeId: opt.bukEmployeeId,
+          documentNumber: opt.documentNumber,
+          userId: opt.userId,
+          email: opt.email,
+          name: opt.name,
+        })
+      );
+    }
+  }
 
   for (const u of input.users) {
     if (u.status === 'inactive') continue;
+    const doc = docKey(u.documentNumber);
+    const email = u.email?.trim().toLowerCase();
+    if (hasOrganigrama) {
+      if (coveredUserIds.has(u.id)) continue;
+      if (doc && coveredDocs.has(doc)) continue;
+      if (email && coveredEmails.has(email)) continue;
+    }
     const rawSede = u.location ?? u.sedes?.[0] ?? 'Principal';
     const homeSede =
       sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
     const opt: StaffOption = {
       id: `user-${u.id}`,
       userId: u.id,
+      documentNumber: doc || undefined,
+      email: email || undefined,
       label: u.name,
       name: u.name,
       jobTitle: u.jobTitle ?? u.role,
@@ -276,30 +409,36 @@ export function buildStaffOptions(input: {
       hireDate: u.hireDate,
       uniformSizes: u.uniformSizes,
     };
-    if (u.email?.trim()) userEmails.add(u.email.trim().toLowerCase());
-    userNames.add(normalizePersonName(u.name));
-    register(opt, staffIdentityKey(u.email, u.name));
+    register(
+      opt,
+      identityKeyFor({
+        documentNumber: opt.documentNumber,
+        userId: opt.userId,
+        email: opt.email,
+        name: opt.name,
+      })
+    );
   }
 
-  if (includeAsistencia) {
-    const asistSeen = new Set<string>();
-    for (const s of asistencia.staff ?? []) {
+  // Sin organigrama: agregar staff asistencia residual (legado Accidentes).
+  if (includeAsistencia && !hasOrganigrama) {
+    for (const s of staffList) {
       const email = (s.email ?? '').trim().toLowerCase();
-      const nameKey = normalizePersonName(s.fullName);
-      if (email && userEmails.has(email)) continue;
-      if (userNames.has(nameKey)) continue;
-
-      const identityKey = staffIdentityKey(s.email, s.fullName);
-      if (asistSeen.has(identityKey)) continue;
-      asistSeen.add(identityKey);
-
-      const id = `asist-${s.id}`;
-      if (map.has(id)) continue;
+      const doc = docKey(s.rut);
+      if (email && [...map.values()].some((o) => o.email === email)) continue;
+      if (doc && [...map.values()].some((o) => docKey(o.documentNumber) === doc)) continue;
+      if ([...map.values()].some((o) => normalizePersonName(o.name) === normalizePersonName(s.fullName))) {
+        continue;
+      }
       const rawSede = s.sedeName;
       const homeSede =
         sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
       const opt: StaffOption = {
-        id,
+        id: `asist-${s.id}`,
+        asistenciaStaffId: s.id,
+        bukEmployeeId: s.bukEmployeeId,
+        documentNumber: doc || undefined,
+        email: email || undefined,
         label: s.fullName,
         name: s.fullName,
         jobTitle: s.cargoLabel,
@@ -308,7 +447,15 @@ export function buildStaffOptions(input: {
         homeSede,
         seniorityMonths: 0,
       };
-      register(opt, identityKey);
+      register(
+        opt,
+        identityKeyFor({
+          bukEmployeeId: opt.bukEmployeeId,
+          documentNumber: opt.documentNumber,
+          email: opt.email,
+          name: opt.name,
+        })
+      );
     }
   }
 

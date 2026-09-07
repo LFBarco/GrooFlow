@@ -27,7 +27,6 @@ type Props = {
   viewDate?: Date;
   summary?: AsistenciaLiveSedeSummary;
   consolidated?: AsistenciaLiveConsolidatedSummary;
-  asistenciaSettings?: AsistenciaSettings;
   editLayout: boolean;
   canEditLayout: boolean;
   onEditLayoutChange: (value: boolean) => void;
@@ -72,7 +71,6 @@ export function AsistenciaLiveView({
   viewDate,
   summary,
   consolidated,
-  asistenciaSettings,
   editLayout,
   canEditLayout,
   onEditLayoutChange,
@@ -185,7 +183,6 @@ export function AsistenciaLiveView({
               <AsistenciaLiveSedeBlock
                 key={sedeSummary.sedeName}
                 summary={sedeSummary}
-                asistenciaSettings={asistenciaSettings}
                 editLayout={editLayout}
                 onPersistLayout={onPersistLayout}
                 compact
@@ -197,7 +194,6 @@ export function AsistenciaLiveView({
           ) : summary ? (
             <AsistenciaLiveSedeBlock
               summary={summary}
-              asistenciaSettings={asistenciaSettings}
               editLayout={editLayout}
               onPersistLayout={onPersistLayout}
               viewDate={viewDate}

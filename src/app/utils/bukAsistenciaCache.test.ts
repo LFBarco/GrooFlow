@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import type { BukAsistenciaRecord } from '../types/asistencia';
 import {
-  BUK_ASISTENCIA_CACHE_TTL_MS,
   bukRecordMergeKey,
   mergeBukAsistenciaRecords,
+  pruneBukRecordsToHotWindow,
 } from './bukAsistenciaCache';
 
 describe('bukAsistenciaCache', () => {
@@ -46,7 +46,26 @@ describe('bukAsistenciaCache', () => {
     expect(bukRecordMergeKey({ id: 99, trab_id: 1, rut_trabajador: '1', nombre: 'X' })).toBe('id:99');
   });
 
-  it('ttl de cache es 48 horas', () => {
-    expect(BUK_ASISTENCIA_CACHE_TTL_MS).toBe(48 * 60 * 60 * 1000);
+  it('no expira por TTL: poda solo working set caliente', () => {
+    const now = new Date('2026-09-05T12:00:00').getTime();
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '1',
+        nombre: 'Old',
+        dia_entrada: '01/01/2025',
+      },
+      {
+        id: 2,
+        trab_id: 2,
+        rut_trabajador: '2',
+        nombre: 'New',
+        dia_entrada: '01/09/2026',
+      },
+    ];
+    const pruned = pruneBukRecordsToHotWindow(records, 90, now);
+    expect(pruned.some((r) => r.id === 2)).toBe(true);
+    expect(pruned.every((r) => r.id !== 1)).toBe(true);
   });
 });

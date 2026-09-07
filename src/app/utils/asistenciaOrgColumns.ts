@@ -87,25 +87,40 @@ export function resolveParentColumnId(
   profile: AsistenciaSedeProfile,
   areaId: string
 ): string {
-  const sub = (profile.subOrgColumns ?? []).find((s) => s.id === areaId);
-  return sub?.parentColumnId ?? areaId;
+  let current = areaId;
+  const seen = new Set<string>();
+  while (true) {
+    if (seen.has(current)) return current;
+    seen.add(current);
+    const sub = (profile.subOrgColumns ?? []).find((s) => s.id === current);
+    if (!sub) return current;
+    if (resolveOrgColumns(profile).some((c) => c.id === sub.parentColumnId)) {
+      return sub.parentColumnId;
+    }
+    current = sub.parentColumnId;
+  }
 }
 
-/** Áreas asignables al personal: columnas + subcolumnas. */
+/** Áreas asignables al personal: columnas + subcolumnas (incluye anidadas). */
 export function resolveOrgAssignableAreas(
   profile: AsistenciaSedeProfile
 ): AsistenciaOrgAssignableArea[] {
   const out: AsistenciaOrgAssignableArea[] = [];
   for (const col of resolveOrgColumns(profile)) {
     out.push({ id: col.id, label: col.label, isSub: false });
-    for (const sub of resolveOrgSubColumns(profile, col.id)) {
-      out.push({
-        id: sub.id,
-        label: resolveOrgSubColumnLabel(profile, sub.id),
-        parentColumnId: col.id,
-        isSub: true,
-      });
-    }
+    const walk = (parentId: string, depth: number) => {
+      for (const sub of resolveOrgSubColumns(profile, parentId)) {
+        const label = resolveOrgSubColumnLabel(profile, sub.id);
+        out.push({
+          id: sub.id,
+          label: `${'— '.repeat(depth)}${label}`,
+          parentColumnId: parentId,
+          isSub: true,
+        });
+        walk(sub.id, depth + 1);
+      }
+    };
+    walk(col.id, 1);
   }
   return out;
 }
@@ -197,8 +212,9 @@ export function applyAddOrgSubColumn(
 ): AsistenciaSettings {
   const merged = mergeAsistenciaSettings(settings);
   const profile = getSedeProfile(merged, sedeName);
-  const parentExists = resolveOrgColumns(profile).some((c) => c.id === parentColumnId);
-  if (!parentExists) return merged;
+  const parentIsRoot = resolveOrgColumns(profile).some((c) => c.id === parentColumnId);
+  const parentIsSub = (profile.subOrgColumns ?? []).some((s) => s.id === parentColumnId);
+  if (!parentIsRoot && !parentIsSub) return merged;
   const id = newSubColumnId();
   const subOrgColumns = [
     ...(profile.subOrgColumns ?? []),
@@ -221,22 +237,31 @@ export function applyRemoveOrgColumn(
   delete areaLabels[columnId];
   const cargoByColumn = { ...profile.cargoByColumn };
   delete cargoByColumn[columnId];
-  const subOrgColumns = (profile.subOrgColumns ?? []).filter(
-    (s) => s.parentColumnId !== columnId
-  );
-  for (const sub of profile.subOrgColumns ?? []) {
-    if (sub.parentColumnId === columnId) {
-      delete areaLabels[sub.id];
-      delete cargoByColumn[sub.id];
+  const orgNodeStyles = { ...(profile.orgNodeStyles ?? {}) };
+  delete orgNodeStyles[columnId];
+
+  const toRemoveSubs = new Set<string>();
+  const collectSubs = (parentId: string) => {
+    for (const s of profile.subOrgColumns ?? []) {
+      if (s.parentColumnId === parentId) {
+        toRemoveSubs.add(s.id);
+        collectSubs(s.id);
+      }
     }
+  };
+  collectSubs(columnId);
+
+  const subOrgColumns = (profile.subOrgColumns ?? []).filter((s) => !toRemoveSubs.has(s.id));
+  for (const id of toRemoveSubs) {
+    delete areaLabels[id];
+    delete cargoByColumn[id];
+    delete orgNodeStyles[id];
   }
   const staff = (merged.staff ?? []).map((s) => {
     if (s.sedeName !== sedeName) return s;
-    if (s.area === columnId) return { ...s, area: 'administracion' };
-    const sub = (profile.subOrgColumns ?? []).find(
-      (x) => x.id === s.area && x.parentColumnId === columnId
-    );
-    if (sub) return { ...s, area: 'administracion' };
+    if (s.area === columnId || toRemoveSubs.has(s.area)) {
+      return { ...s, area: 'administracion' };
+    }
     return s;
   });
   return mergeAsistenciaSettings({
@@ -252,6 +277,7 @@ export function applyRemoveOrgColumn(
         areaLabels,
         cargoByColumn,
         subOrgColumns,
+        orgNodeStyles,
       },
     ],
   });
@@ -266,13 +292,27 @@ export function applyRemoveOrgSubColumn(
   const profile = getSedeProfile(merged, sedeName);
   const sub = (profile.subOrgColumns ?? []).find((s) => s.id === subColumnId);
   if (!sub) return merged;
-  const subOrgColumns = (profile.subOrgColumns ?? []).filter((s) => s.id !== subColumnId);
+
+  const toRemove = new Set<string>();
+  const collect = (id: string) => {
+    toRemove.add(id);
+    for (const child of profile.subOrgColumns ?? []) {
+      if (child.parentColumnId === id) collect(child.id);
+    }
+  };
+  collect(subColumnId);
+
+  const subOrgColumns = (profile.subOrgColumns ?? []).filter((s) => !toRemove.has(s.id));
   const areaLabels = { ...profile.areaLabels };
-  delete areaLabels[subColumnId];
   const cargoByColumn = { ...profile.cargoByColumn };
-  delete cargoByColumn[subColumnId];
+  const orgNodeStyles = { ...(profile.orgNodeStyles ?? {}) };
+  for (const id of toRemove) {
+    delete areaLabels[id];
+    delete cargoByColumn[id];
+    delete orgNodeStyles[id];
+  }
   const staff = (merged.staff ?? []).map((s) =>
-    s.sedeName === sedeName && s.area === subColumnId
+    s.sedeName === sedeName && toRemove.has(s.area)
       ? { ...s, area: sub.parentColumnId }
       : s
   );
@@ -281,7 +321,7 @@ export function applyRemoveOrgSubColumn(
     staff,
     sedeProfiles: [
       ...(merged.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName),
-      { ...profile, sedeName, subOrgColumns, areaLabels, cargoByColumn },
+      { ...profile, sedeName, subOrgColumns, areaLabels, cargoByColumn, orgNodeStyles },
     ],
   });
 }
@@ -293,14 +333,19 @@ export function applyOrgColumnLabels(
   areaOrder: string[],
   hideEmptyAreas: boolean,
   cargoByColumn?: Record<string, string[]>,
-  subOrgColumns?: AsistenciaOrgSubColumn[]
+  subOrgColumns?: AsistenciaOrgSubColumn[],
+  extras?: {
+    orgNodeStyles?: AsistenciaSedeProfile['orgNodeStyles'];
+    customOrgColumns?: AsistenciaSedeProfile['customOrgColumns'];
+    rootChildrenLayout?: AsistenciaSedeProfile['rootChildrenLayout'];
+  }
 ): AsistenciaSettings {
   const merged = mergeAsistenciaSettings(settings);
   const profile = getSedeProfile(merged, sedeName);
   const cleanedLabels = Object.fromEntries(
     Object.entries(labels).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v)
   );
-  const nextCustom = (profile.customOrgColumns ?? []).map((c) => ({
+  const nextCustom = (extras?.customOrgColumns ?? profile.customOrgColumns ?? []).map((c) => ({
     ...c,
     label: cleanedLabels[c.id]?.trim() || c.label,
   }));
@@ -316,5 +361,7 @@ export function applyOrgColumnLabels(
       cargoByColumn && Object.keys(cargoByColumn).length ? cargoByColumn : profile.cargoByColumn,
     customOrgColumns: nextCustom,
     subOrgColumns: nextSub,
+    orgNodeStyles: extras?.orgNodeStyles ?? profile.orgNodeStyles,
+    rootChildrenLayout: extras?.rootChildrenLayout ?? profile.rootChildrenLayout,
   });
 }

@@ -1,4 +1,12 @@
 /** Fila normalizada de empleado Buk.pe para tablas RRHH. */
+export type RrhhIdentityStatus =
+  | 'linked'
+  | 'pending_access'
+  | 'terminated_still_active'
+  | 'terminated'
+  | 'unmatched_doc'
+  | 'unmatched';
+
 export interface BukPeEmployeeRow {
   bukId: number;
   personId?: number;
@@ -56,6 +64,14 @@ export interface BukPeEmployeeRow {
   lastUpdatedAt?: string;
   contentHash?: string;
   missingFromSource?: boolean;
+  /** Usuario Gestión vinculado (columna BD). */
+  linkedUsuarioId?: string | null;
+  /** DNI normalizado (solo dígitos) para cruce. */
+  documentKey?: string;
+  /**
+   * linked | pending_access | terminated_still_active | terminated | unmatched_doc | unmatched
+   */
+  identityStatus?: RrhhIdentityStatus;
   raw?: Record<string, unknown>;
 }
 
@@ -110,6 +126,13 @@ export interface RrhhSettings {
   lastSyncOk?: boolean;
   lastSyncMessage?: string;
   lastSyncStats?: RrhhSyncStats;
+  /** Cola pendientes de acceso (Fase 2/3). */
+  pendingAccessCount?: number;
+  pendingAccessAt?: string;
+  /** Última corrida del orquestador /jobs/pipelines. */
+  lastPipelineAt?: string;
+  lastPipelineOk?: boolean;
+  lastPipelineSummary?: string;
   employees: BukPeEmployeeRow[];
   userLinks: RrhhUserLink[];
   syncLog: RrhhSyncLogEntry[];

@@ -40,12 +40,17 @@ export function buildAsistenciaOperationalAlerts(
   const ageH = cacheAgeHours(ctx.cacheFetchedAt);
 
   if (ctx.bukEnabled && ageH != null && ageH > 24) {
-    out.push({
-      id: 'asistencia-stale-cache',
-      severity: 'warning',
-      title: 'Caché Buk desactualizada',
-      message: `Los datos de marcación tienen ${Math.round(ageH)} h de antigüedad. Actualiza Buk en Asistencia.`,
-    });
+    const now = new Date();
+    const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    // Solo alerta de frescura si el contexto es del día operativo actual.
+    if (ctx.dateYmd === todayYmd) {
+      out.push({
+        id: 'asistencia-stale-cache',
+        severity: 'warning',
+        title: 'Marcaciones de hoy desactualizadas',
+        message: `Sin sync reciente (${Math.round(ageH)} h). Actualiza Buk en Asistencia para el día de hoy.`,
+      });
+    }
   }
 
   if (ctx.criticalMissing.length > 0) {

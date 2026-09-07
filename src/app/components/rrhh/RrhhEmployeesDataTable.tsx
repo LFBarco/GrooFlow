@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FileSpreadsheet, Loader2 } from 'lucide-react';
 import type { BukPeEmployeeRow, RrhhUserLink } from '../../types/rrhh';
 import { RRHH_COLUMN_DEFS, findUserIdForEmployee, getEmployeeCellValue } from '../../utils/bukPeEmployeeUtils';
+import {
+  RRHH_IDENTITY_STATUS_LABELS,
+  resolveIdentityStatus,
+} from '../../utils/rrhhIdentityPolicy';
 import type { User } from '../../types';
 import { downloadRrhhExcel, fetchRrhhEmployeesPage } from '../../utils/rrhhApi';
 import { Badge } from '../ui/badge';
@@ -10,6 +14,23 @@ import { Card, CardContent } from '../ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { DataTablePaginationBar, DataTableToolbar } from '../data-table/ClientDataTable';
 import { toast } from 'sonner';
+
+function identityBadgeClass(status: string): string {
+  switch (status) {
+    case 'linked':
+      return 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300';
+    case 'pending_access':
+      return 'border-amber-500/40 text-amber-700 dark:text-amber-300';
+    case 'terminated_still_active':
+      return 'border-rose-500/40 text-rose-700 dark:text-rose-300';
+    case 'terminated':
+      return 'border-slate-400/40 text-slate-600 dark:text-slate-300';
+    case 'unmatched_doc':
+      return 'border-orange-500/40 text-orange-700 dark:text-orange-300';
+    default:
+      return 'border-muted-foreground/30 text-muted-foreground';
+  }
+}
 
 type Props = {
   visibleColumns: string[];
@@ -149,6 +170,7 @@ export function RrhhEmployeesDataTable({
                       {c.label}
                     </TableHead>
                   ))}
+                  <TableHead className="text-xs">Identidad</TableHead>
                   <TableHead className="text-xs">Usuario GrooFlow</TableHead>
                   {tab === 'bajas' ? <TableHead className="text-xs text-right">Acciones</TableHead> : null}
                 </TableRow>
@@ -157,6 +179,7 @@ export function RrhhEmployeesDataTable({
                 {items.map((emp) => {
                   const userId = findUserIdForEmployee(emp, links) ?? emp.linkedUsuarioId ?? undefined;
                   const user = userId ? users.find((u) => u.id === String(userId)) : undefined;
+                  const idStatus = resolveIdentityStatus(emp, userId);
                   return (
                     <TableRow key={emp.bukId}>
                       {cols.map((c) => (
@@ -177,6 +200,11 @@ export function RrhhEmployeesDataTable({
                           )}
                         </TableCell>
                       ))}
+                      <TableCell className="text-xs">
+                        <Badge variant="outline" className={identityBadgeClass(idStatus)}>
+                          {RRHH_IDENTITY_STATUS_LABELS[idStatus]}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="text-xs">
                         {user ? user.name : <span className="text-muted-foreground">Sin vincular</span>}
                       </TableCell>

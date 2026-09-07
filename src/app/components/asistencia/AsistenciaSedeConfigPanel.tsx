@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Building2, CornerDownRight, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
-import type { AsistenciaOrgSubColumn, AsistenciaSettings, AsistenciaStaffMember } from '../../types/asistencia';
+import type {
+  AsistenciaOrgChartColor,
+  AsistenciaOrgNodeStyle,
+  AsistenciaOrgSubColumn,
+  AsistenciaSettings,
+  AsistenciaStaffMember,
+} from '../../types/asistencia';
 import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
 import { formatWeeklyShiftSummary } from '../../utils/asistenciaShift';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
@@ -20,14 +26,21 @@ import {
   resolveOrgColumns,
   resolveOrgSubColumns,
 } from '../../utils/asistenciaOrgColumns';
+import { ORG_CHART_COLOR_OPTIONS, resolveOrgNodeStyle } from '../../utils/asistenciaOrgChart';
 import { Textarea } from '../ui/textarea';
 import { AsistenciaOrgConfigDialog } from './AsistenciaOrgConfigDialog';
-import { AsistenciaOrgChartEditor } from './AsistenciaOrgChartEditor';
 import { AsistenciaStaffDialog } from './AsistenciaStaffDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { appAlert, appConfirm } from '../ui/app-dialog';
 
@@ -91,6 +104,19 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   });
   const [newColumnLabel, setNewColumnLabel] = useState('');
   const [newSubColumnByParent, setNewSubColumnByParent] = useState<Record<string, string>>({});
+  const [rootChildrenLayout, setRootChildrenLayout] = useState<'horizontal' | 'vertical'>(
+    () => profile.rootChildrenLayout ?? 'horizontal'
+  );
+  const [nodeStyles, setNodeStyles] = useState<Record<string, AsistenciaOrgNodeStyle>>(() => {
+    const styles: Record<string, AsistenciaOrgNodeStyle> = { ...(profile.orgNodeStyles ?? {}) };
+    for (const col of resolveOrgColumns(profile)) {
+      styles[col.id] = resolveOrgNodeStyle(profile, col.id);
+    }
+    for (const sub of profile.subOrgColumns ?? []) {
+      styles[sub.id] = resolveOrgNodeStyle(profile, sub.id);
+    }
+    return styles;
+  });
 
   const syncOrgFormFromProfile = (p = profile) => {
     const cols = resolveOrgColumns(p);
@@ -102,15 +128,24 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     }
     setAreaLabels(labels);
     setHideEmptyAreas(p.hideEmptyAreas ?? false);
+    setRootChildrenLayout(p.rootChildrenLayout ?? 'horizontal');
+    const styles: Record<string, AsistenciaOrgNodeStyle> = { ...(p.orgNodeStyles ?? {}) };
+    for (const col of cols) styles[col.id] = resolveOrgNodeStyle(p, col.id);
+    for (const sub of p.subOrgColumns ?? []) styles[sub.id] = resolveOrgNodeStyle(p, sub.id);
+    setNodeStyles(styles);
     setCargoByColumnText(
       Object.fromEntries(
         cols.flatMap((c) => {
           const entries: [string, string][] = [
             [c.id, cargoListToText(cargosForOrgColumn(p, c.id))],
           ];
-          for (const sub of resolveOrgSubColumns(p, c.id)) {
-            entries.push([sub.id, cargoListToText(cargosForOrgColumn(p, sub.id))]);
-          }
+          const walk = (parentId: string) => {
+            for (const sub of resolveOrgSubColumns(p, parentId)) {
+              entries.push([sub.id, cargoListToText(cargosForOrgColumn(p, sub.id))]);
+              walk(sub.id);
+            }
+          };
+          walk(c.id);
           return entries;
         })
       )
@@ -127,6 +162,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     profile.areaLabels,
     profile.cargoByColumn,
     profile.hideEmptyAreas,
+    profile.orgNodeStyles,
+    profile.rootChildrenLayout,
   ]);
 
   const runSave = async (
@@ -146,7 +183,13 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     const map: Record<string, AsistenciaStaffMember[]> = {};
     for (const col of orgColumns) {
       map[col.id] = [];
-      for (const sub of resolveOrgSubColumns(profile, col.id)) map[sub.id] = [];
+      const walk = (parentId: string) => {
+        for (const sub of resolveOrgSubColumns(profile, parentId)) {
+          map[sub.id] = [];
+          walk(sub.id);
+        }
+      };
+      walk(col.id);
     }
     for (const s of staff) {
       if (!map[s.area]) map[s.area] = [];
@@ -159,14 +202,19 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     const sections: { id: string; label: string; parentId: string; parentLabel?: string }[] = [];
     for (const col of orgColumns) {
       sections.push({ id: col.id, label: areaLabels[col.id] ?? col.label, parentId: col.id });
-      for (const sub of resolveOrgSubColumns(profile, col.id)) {
-        sections.push({
-          id: sub.id,
-          label: areaLabels[sub.id]?.trim() || sub.label,
-          parentId: col.id,
-          parentLabel: areaLabels[col.id] ?? col.label,
-        });
-      }
+      const walk = (parentId: string, parentLabel: string) => {
+        for (const sub of resolveOrgSubColumns(profile, parentId)) {
+          const label = areaLabels[sub.id]?.trim() || sub.label;
+          sections.push({
+            id: sub.id,
+            label,
+            parentId: col.id,
+            parentLabel,
+          });
+          walk(sub.id, label);
+        }
+      };
+      walk(col.id, areaLabels[col.id] ?? col.label);
     }
     return sections;
   }, [orgColumns, profile.subOrgColumns, areaLabels]);
@@ -199,6 +247,13 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     if (ok) setEditSede(false);
   };
 
+  const patchNodeStyle = (nodeId: string, patch: AsistenciaOrgNodeStyle) => {
+    setNodeStyles((prev) => ({
+      ...prev,
+      [nodeId]: { ...prev[nodeId], ...patch },
+    }));
+  };
+
   const saveOrgLayout = async () => {
     const allAreaIds = [
       ...areaOrder,
@@ -216,7 +271,18 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     const subOrgColumns: AsistenciaOrgSubColumn[] = (profile.subOrgColumns ?? []).map((sub) => ({
       ...sub,
       label: areaLabels[sub.id]?.trim() || sub.label,
+      color: nodeStyles[sub.id]?.color ?? sub.color,
+      childrenLayout: nodeStyles[sub.id]?.childrenLayout ?? sub.childrenLayout,
     }));
+    const customOrgColumns = (profile.customOrgColumns ?? []).map((c) => ({
+      ...c,
+      color: nodeStyles[c.id]?.color ?? c.color,
+      childrenLayout: nodeStyles[c.id]?.childrenLayout ?? c.childrenLayout,
+    }));
+    const orgNodeStyles: Record<string, AsistenciaOrgNodeStyle> = {};
+    for (const id of allAreaIds) {
+      if (nodeStyles[id]) orgNodeStyles[id] = nodeStyles[id]!;
+    }
     const ok = await runSave(
       (prev) =>
         applyOrgColumnLabels(
@@ -226,7 +292,12 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           areaOrder,
           hideEmptyAreas,
           cargoByColumn,
-          subOrgColumns
+          subOrgColumns,
+          {
+            orgNodeStyles,
+            customOrgColumns,
+            rootChildrenLayout,
+          }
         ),
       'Estructura del organigrama guardada.'
     );
@@ -432,7 +503,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 Estructura del organigrama
               </CardTitle>
               <CardDescription className="text-slate-400">
-                Agrega columnas y subcolumnas, renómbralas, ordénalas y define cargos por área.
+                Define raíz, hijos anidados, disposición (horizontal/vertical) y color. Todo se refleja en
+                Operativa en vivo.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -452,64 +524,213 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-muted/30 p-3 dark:border-slate-800 dark:bg-slate-900/40">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Disposición de columnas raíz</Label>
+                <Select
+                  value={rootChildrenLayout}
+                  onValueChange={(v) => setRootChildrenLayout(v as 'horizontal' | 'vertical')}
+                >
+                  <SelectTrigger className="h-8 w-[200px] bg-background border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="horizontal">Horizontal (lado a lado)</SelectItem>
+                    <SelectItem value="vertical">Vertical (apiladas)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-[11px] text-muted-foreground max-w-sm pb-1">
+                Cómo se muestran las áreas principales bajo el encargado en Operativa en vivo.
+              </p>
+            </div>
+
             <div className="space-y-2">
               {areaOrder.map((columnId, index) => {
                 const builtin = isBuiltinOrgColumnId(columnId);
                 const defaultLabel = builtin
                   ? ASISTENCIA_STAFF_AREA_LABELS[columnId]
                   : orgColumns.find((c) => c.id === columnId)?.label ?? columnId;
+                const style = nodeStyles[columnId] ?? resolveOrgNodeStyle(profile, columnId);
+
+                const renderSubTree = (parentId: string, depth: number): ReactNode => {
+                  return resolveOrgSubColumns(profile, parentId).map((sub) => {
+                    const subStyle = nodeStyles[sub.id] ?? resolveOrgNodeStyle(profile, sub.id);
+                    return (
+                      <div
+                        key={sub.id}
+                        className="space-y-2 rounded-lg border border-border/70 bg-background/60 p-2 dark:border-slate-700 dark:bg-slate-900/40"
+                        style={{ marginLeft: Math.min(depth, 3) * 12 }}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <CornerDownRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <Input
+                            value={areaLabels[sub.id] ?? sub.label}
+                            onChange={(e) =>
+                              setAreaLabels((prev) => ({ ...prev, [sub.id]: e.target.value }))
+                            }
+                            placeholder="Nombre hijo"
+                            className="h-8 max-w-[180px] bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                          />
+                          <Select
+                            value={subStyle.color ?? 'default'}
+                            onValueChange={(v) =>
+                              patchNodeStyle(sub.id, { color: v as AsistenciaOrgChartColor })
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-[120px] bg-background border-border">
+                              <SelectValue placeholder="Color" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ORG_CHART_COLOR_OPTIONS.map((c) => (
+                                <SelectItem key={c.value} value={c.value}>
+                                  {c.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={subStyle.childrenLayout ?? 'vertical'}
+                            onValueChange={(v) =>
+                              patchNodeStyle(sub.id, {
+                                childrenLayout: v as 'horizontal' | 'vertical',
+                              })
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-[140px] bg-background border-border">
+                              <SelectValue placeholder="Hijos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="horizontal">Hijos horizontal</SelectItem>
+                              <SelectItem value="vertical">Hijos vertical</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-400"
+                            onClick={() => void removeSubColumn(sub.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        {renderSubTree(sub.id, depth + 1)}
+                        <div className="flex flex-wrap items-end gap-2 pl-5">
+                          <Input
+                            value={newSubColumnByParent[sub.id] ?? ''}
+                            onChange={(e) =>
+                              setNewSubColumnByParent((prev) => ({
+                                ...prev,
+                                [sub.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Nuevo hijo bajo este nodo…"
+                            className="h-8 max-w-xs bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') void addSubColumn(sub.id);
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={!(newSubColumnByParent[sub.id] ?? '').trim() || saving}
+                            onClick={() => void addSubColumn(sub.id)}
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1" /> Hijo
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  });
+                };
+
                 return (
                   <div
                     key={columnId}
                     className="rounded-xl border border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-900/50 p-3 space-y-3"
                   >
                     <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-muted-foreground w-24 shrink-0">
-                      Columna {index + 1}
-                    </span>
-                    <Input
-                      value={areaLabels[columnId] ?? defaultLabel}
-                      onChange={(e) =>
-                        setAreaLabels((prev) => ({ ...prev, [columnId]: e.target.value }))
-                      }
-                      className="max-w-xs h-8 bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                    />
-                    <span className="text-[10px] text-slate-500">
-                      ({builtin ? 'built-in' : 'personalizada'})
-                    </span>
-                    <div className="ml-auto flex gap-1">
-                      {!builtin ? (
+                      <span className="text-xs text-muted-foreground w-24 shrink-0">
+                        Raíz {index + 1}
+                      </span>
+                      <Input
+                        value={areaLabels[columnId] ?? defaultLabel}
+                        onChange={(e) =>
+                          setAreaLabels((prev) => ({ ...prev, [columnId]: e.target.value }))
+                        }
+                        className="max-w-xs h-8 bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
+                      />
+                      <Select
+                        value={style.color ?? 'default'}
+                        onValueChange={(v) =>
+                          patchNodeStyle(columnId, { color: v as AsistenciaOrgChartColor })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[120px] bg-background border-border">
+                          <SelectValue placeholder="Color" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ORG_CHART_COLOR_OPTIONS.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={style.childrenLayout ?? 'vertical'}
+                        onValueChange={(v) =>
+                          patchNodeStyle(columnId, {
+                            childrenLayout: v as 'horizontal' | 'vertical',
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[150px] bg-background border-border">
+                          <SelectValue placeholder="Hijos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="horizontal">Hijos horizontal</SelectItem>
+                          <SelectItem value="vertical">Hijos vertical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <span className="text-[10px] text-slate-500">
+                        ({builtin ? 'built-in' : 'personalizada'})
+                      </span>
+                      <div className="ml-auto flex gap-1">
+                        {!builtin ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-400"
+                            onClick={() => void removeColumn(columnId)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-slate-400 hover:text-red-400"
-                          onClick={() => void removeColumn(columnId)}
+                          className="h-8 w-8 text-slate-400"
+                          disabled={index === 0}
+                          onClick={() => moveArea(index, -1)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <ArrowUp className="h-3.5 w-3.5" />
                         </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-slate-400"
-                        disabled={index === 0}
-                        onClick={() => moveArea(index, -1)}
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-slate-400"
-                        disabled={index === areaOrder.length - 1}
-                        onClick={() => moveArea(index, 1)}
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-slate-400"
+                          disabled={index === areaOrder.length - 1}
+                          onClick={() => moveArea(index, 1)}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                     <div className="space-y-1.5 pl-0 sm:pl-24">
                       <Label className="text-xs text-muted-foreground">Cargos visibles en esta área</Label>
@@ -525,40 +746,14 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                         rows={3}
                         className="text-sm bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white resize-y min-h-[72px]"
                       />
-                      <p className="text-[10px] text-slate-500">
-                        Estos cargos aparecen al agregar personal y en el organigrama en vivo.
-                      </p>
                     </div>
 
                     <div className="space-y-2 pl-0 sm:pl-24 border-t border-border/60 pt-3 dark:border-slate-800">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <CornerDownRight className="h-3 w-3" />
-                        Subcolumnas (divisiones dentro de esta área)
+                        Hijos / subáreas (se ven en Operativa en vivo)
                       </Label>
-                      {resolveOrgSubColumns(profile, columnId).map((sub) => (
-                        <div
-                          key={sub.id}
-                          className="flex flex-wrap items-center gap-2 rounded-lg border border-border/70 bg-background/60 p-2 dark:border-slate-700 dark:bg-slate-900/40"
-                        >
-                          <Input
-                            value={areaLabels[sub.id] ?? sub.label}
-                            onChange={(e) =>
-                              setAreaLabels((prev) => ({ ...prev, [sub.id]: e.target.value }))
-                            }
-                            placeholder="Nombre subcolumna"
-                            className="h-8 max-w-xs bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-slate-400 hover:text-red-400"
-                            onClick={() => void removeSubColumn(sub.id)}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ))}
+                      {renderSubTree(columnId, 0)}
                       <div className="flex flex-wrap items-end gap-2">
                         <Input
                           value={newSubColumnByParent[columnId] ?? ''}
@@ -581,7 +776,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                           disabled={!(newSubColumnByParent[columnId] ?? '').trim() || saving}
                           onClick={() => void addSubColumn(columnId)}
                         >
-                          <Plus className="h-3.5 w-3.5 mr-1" /> Subcolumna
+                          <Plus className="h-3.5 w-3.5 mr-1" /> Hijo
                         </Button>
                       </div>
                     </div>
@@ -592,7 +787,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
 
             <div className="flex flex-wrap items-end gap-2 rounded-xl border border-dashed border-border bg-muted/30 dark:border-slate-700 dark:bg-slate-900/30 p-3">
               <div className="flex-1 min-w-[200px] space-y-1">
-                <Label className="text-xs text-muted-foreground">Nueva columna</Label>
+                <Label className="text-xs text-muted-foreground">Nueva columna raíz</Label>
                 <Input
                   value={newColumnLabel}
                   onChange={(e) => setNewColumnLabel(e.target.value)}
@@ -611,7 +806,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 disabled={!newColumnLabel.trim() || saving}
                 onClick={() => void addColumn()}
               >
-                <Plus className="h-4 w-4 mr-1" /> Agregar columna
+                <Plus className="h-4 w-4 mr-1" /> Agregar raíz
               </Button>
             </div>
 
@@ -622,20 +817,11 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 onCheckedChange={setHideEmptyAreas}
               />
               <Label htmlFor="hide-empty-areas" className="text-sm text-muted-foreground">
-                Ocultar áreas sin personal en el organigrama en vivo
+                Ocultar subáreas vacías (las columnas raíz siempre se muestran)
               </Label>
             </div>
           </CardContent>
         </Card>
-      ) : null}
-
-      {canConfigure ? (
-        <AsistenciaOrgChartEditor
-          sedeName={sedeName}
-          settings={settings}
-          canConfigure={canConfigure}
-          onSave={onSave}
-        />
       ) : null}
 
       <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">

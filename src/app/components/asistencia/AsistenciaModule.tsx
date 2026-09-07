@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { addDays, format } from 'date-fns';
+import { addDays, format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   AlertTriangle,
@@ -25,16 +25,12 @@ import type { SystemSettings, User } from '../../types';
 import type { AsistenciaFilters, AsistenciaSettings, AsistenciaStaffLiveState } from '../../types/asistencia';
 import type { AsistenciaAreaGroup } from '../../types/asistencia';
 import { ASISTENCIA_WORK_SHIFT_LABELS } from '../../types/asistencia';
-import { useAsistenciaModuleState } from '../../hooks/useAsistenciaModuleState';
+import { useAsistenciaModuleState, historyWindowAround } from '../../hooks/useAsistenciaModuleState';
 import { buildAsistenciaDaySummary, mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { buildFilterSedeOptions, buildFormSedeOptions } from '../../utils/gestionSedes';
 import {
   cacheAgeLabel,
 } from '../../utils/bukAsistenciaCache';
-import {
-  buildExampleBukRecords,
-  mergeExampleStaffIntoSettings,
-} from '../../utils/asistenciaExampleSeed';
 import { buildLiveConsolidatedSummary, buildLiveSedeSummary, staffForSede } from '../../utils/asistenciaStaff';
 import { buildBukDashboardSummary, buildBukMultiSedeDashboard, type BukDashboardRow } from '../../utils/asistenciaBukDashboard';
 import {
@@ -47,7 +43,13 @@ import { exportAsistenciaBukExcel, exportAsistenciaLiveExcel, exportAsistenciaMo
 import { printAsistenciaLive } from '../../utils/asistenciaPrint';
 import { planVsRealForStaffMember } from '../../utils/asistenciaPlanVsReal';
 import { syncStaffFromUsers } from '../../utils/asistenciaStaffSync';
-import { buildAsistenciaMultiSedeWeekTrend, buildAsistenciaWeekTrend } from '../../utils/asistenciaTrend';
+import {
+  buildAsistenciaMultiSedeTrendDays,
+  buildAsistenciaTrendDays,
+  trendDaysEndingAt,
+  trendRangeLabel,
+} from '../../utils/asistenciaTrend';
+import { flattenLiveSedeStaff, flattenLiveSedesStaff } from '../../utils/asistenciaLiveFlatten';
 import { buildAsistenciaOperationalAlerts } from '../../utils/asistenciaAlerts';
 import { autoRefreshIntervalMs, shouldRunAutoRefresh } from '../../utils/asistenciaAutoRefresh';
 import { saveAsistenciaOperationalContext } from '../../utils/asistenciaOperationalContext';
@@ -56,7 +58,7 @@ import {
   hydrateAsistenciaSnapshotsFromCloud,
   listAsistenciaSnapshots,
 } from '../../utils/asistenciaSnapshots';
-import { daysInWeek, weekRangeLabel } from '../../utils/turnosCalendar';
+import { weekRangeLabel } from '../../utils/turnosCalendar';
 import { AsistenciaBukDashboard } from './AsistenciaBukDashboard';
 import { AsistenciaBukMultiSedePanel } from './AsistenciaBukMultiSedePanel';
 import { AsistenciaCriticalBanner } from './AsistenciaCriticalBanner';
@@ -112,7 +114,6 @@ export function AsistenciaModule({
   const [selectedDate, setSelectedDate] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const {
     records,
-    setRecords,
     cacheFetchedAt,
     loading,
     fetchProgress,
@@ -120,6 +121,10 @@ export function AsistenciaModule({
     turnosSettings,
     turnosLoading,
     refreshBuk,
+    hydrateHistoryRange,
+    historyStats,
+    localDays,
+    lastTruncated,
     bukEnabled,
   } = useAsistenciaModuleState(asistencia);
   const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
@@ -128,6 +133,11 @@ export function AsistenciaModule({
   const [showPlanVsReal, setShowPlanVsReal] = useState(false);
   const [filters, setFilters] = useState(defaultAsistenciaFilters);
   const [editLayout, setEditLayout] = useState(false);
+  const [trendDaysCount, setTrendDaysCount] = useState<7 | 14 | 30>(7);
+  const [historyFrom, setHistoryFrom] = useState(() =>
+    format(subDays(new Date(), 30), 'yyyy-MM-dd')
+  );
+  const [historyTo, setHistoryTo] = useState(() => format(new Date(), 'yyyy-MM-dd'));
   const [detailLive, setDetailLive] = useState<AsistenciaStaffLiveState | null>(null);
   const [detailBukRow, setDetailBukRow] = useState<BukDashboardRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -145,6 +155,12 @@ export function AsistenciaModule({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!canConfigure && mainTab === 'config') {
+      setMainTab('live');
+    }
+  }, [canConfigure, mainTab]);
 
   const shiftFilter = filters.shift;
 
@@ -168,7 +184,16 @@ export function AsistenciaModule({
   const activeSede = sedeOptions.includes(selectedSede) ? selectedSede : sedeOptions[0];
 
   const dateObj = useMemo(() => new Date(`${selectedDate}T12:00:00`), [selectedDate]);
-  const weekDays = useMemo(() => daysInWeek(dateObj), [dateObj]);
+  const trendDays = useMemo(
+    () => trendDaysEndingAt(dateObj, trendDaysCount),
+    [dateObj, trendDaysCount]
+  );
+
+  useEffect(() => {
+    if (!moduleReady || !bukEnabled) return;
+    const { from, to } = historyWindowAround(selectedDate, Math.max(30, trendDaysCount), 0);
+    void hydrateHistoryRange(from, to, true);
+  }, [selectedDate, trendDaysCount, moduleReady, bukEnabled, hydrateHistoryRange]);
   const weekLabel = useMemo(() => weekRangeLabel(dateObj), [dateObj]);
 
   const dashboardUsesMulti =
@@ -260,23 +285,23 @@ export function AsistenciaModule({
   const weekTrend = useMemo(
     () =>
       dashboardUsesMulti || liveViewMode === 'consolidated'
-        ? buildAsistenciaMultiSedeWeekTrend({
+        ? buildAsistenciaMultiSedeTrendDays({
             records,
             settings: asistencia,
             sedeNames: sedeOptions,
-            weekDays,
+            days: trendDays,
           })
-        : buildAsistenciaWeekTrend({
+        : buildAsistenciaTrendDays({
             records,
             settings: asistencia,
             sedeName: activeSede,
-            weekDays,
+            days: trendDays,
           }),
     [
       records,
       asistencia,
       sedeOptions,
-      weekDays,
+      trendDays,
       activeSede,
       dashboardUsesMulti,
       liveViewMode,
@@ -367,17 +392,10 @@ export function AsistenciaModule({
   );
 
   const allLiveStaff = useMemo(() => {
-    const fromSede = (s: typeof liveSummary) =>
-      s
-        ? [
-            ...s.areas.flatMap((a) => a.staff),
-            ...(s.manager ? [s.manager] : []),
-          ]
-        : [];
     if (liveViewMode === 'consolidated') {
-      return consolidatedSummary.sedes.flatMap((s) => fromSede(s));
+      return flattenLiveSedesStaff(consolidatedSummary.sedes);
     }
-    return fromSede(liveSummary);
+    return liveSummary ? flattenLiveSedeStaff(liveSummary) : [];
   }, [consolidatedSummary, liveSummary, liveViewMode]);
 
   const openStaffDetail = useCallback((live: AsistenciaStaffLiveState) => {
@@ -412,10 +430,10 @@ export function AsistenciaModule({
   const handleExportLive = useCallback(() => {
     const staff =
       liveViewMode === 'consolidated'
-        ? filteredConsolidatedSummary.sedes.flatMap((s) =>
-            s.areas.flatMap((a) => a.staff)
-          )
-        : (filteredLiveSummary?.areas.flatMap((a) => a.staff) ?? []);
+        ? flattenLiveSedesStaff(filteredConsolidatedSummary.sedes)
+        : filteredLiveSummary
+          ? flattenLiveSedeStaff(filteredLiveSummary)
+          : [];
     if (staff.length === 0) {
       toast.error('No hay personal visible para exportar.');
       return;
@@ -431,6 +449,11 @@ export function AsistenciaModule({
     activeSede,
     selectedDate,
   ]);
+
+  const loadHistoryRange = useCallback(async () => {
+    await hydrateHistoryRange(historyFrom, historyTo, false);
+    toast.success(`Historial ${historyFrom} → ${historyTo} cargado desde servidor.`);
+  }, [hydrateHistoryRange, historyFrom, historyTo]);
 
   const setShiftFilter = useCallback((shift: AsistenciaFilters['shift']) => {
     setFilters((prev) => ({ ...prev, shift }));
@@ -576,44 +599,6 @@ export function AsistenciaModule({
     }
   }, [users, mainTab, activeSede, sedeOptions, asistencia, saveAsistencia]);
 
-  const loadExampleData = useCallback(async () => {
-    const targets =
-      liveViewMode === 'consolidated' || mainTab !== 'live' ? sedeOptions : [activeSede];
-    const ok = await saveAsistencia((prev) => {
-      let next = mergeAsistenciaSettings(prev);
-      for (const sede of targets) {
-        next = mergeExampleStaffIntoSettings(next, sede, { replaceSede: true });
-      }
-      return next;
-    }, 'Personal de ejemplo guardado.');
-    if (!ok) return;
-
-    const nextSettings = targets.reduce(
-      (acc, sede) => mergeExampleStaffIntoSettings(acc, sede, { replaceSede: true }),
-      mergeAsistenciaSettings(asistencia)
-    );
-    const exampleRecords = targets.flatMap((sede) =>
-      buildExampleBukRecords({
-        sedeName: sede,
-        dateYmd: selectedDate,
-        staff: staffForSede(nextSettings, sede),
-      })
-    );
-    setRecords(exampleRecords, Date.now());
-    toast.success(
-      `Ejemplo listo: ${exampleRecords.length} marcaciones simuladas para ${format(dateObj, "d 'de' MMMM", { locale: es })}.`
-    );
-  }, [
-    activeSede,
-    asistencia,
-    dateObj,
-    liveViewMode,
-    mainTab,
-    saveAsistencia,
-    selectedDate,
-    sedeOptions,
-  ]);
-
   const handleExportMonthly = useCallback(() => {
     const monthSnapshots = snapshots.filter((s) => s.dateYmd.startsWith(monthPrefix));
     if (monthSnapshots.length === 0 && records.length === 0) {
@@ -670,27 +655,29 @@ export function AsistenciaModule({
   }
 
   return (
-    <div className="space-y-6" data-testid="asistencia-module">
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-6 text-card-foreground shadow-sm">
-        <div className="space-y-1">
+    <div className="mx-auto w-full max-w-[1600px] space-y-4 sm:space-y-6" data-testid="asistencia-module">
+      <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm sm:p-6 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
+        <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-300">
-            <Users className="h-5 w-5" />
+            <Users className="h-5 w-5 shrink-0" />
             <span className="text-sm font-medium">Asistencia del día</span>
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Panel de dotación operativa</h2>
-          <p className="text-sm text-muted-foreground max-w-2xl">
+          <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+            Panel de dotación operativa
+          </h2>
+          <p className="max-w-2xl text-sm text-muted-foreground">
             Gestiona el personal por sede y visualiza el organigrama en vivo cruzado con Buk Asistencia.
           </p>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">Sede</label>
+        <div className="flex w-full min-w-0 flex-wrap items-end gap-2 lg:max-w-[min(100%,52rem)] lg:justify-end">
+          <div className="min-w-[140px] flex-1 sm:flex-none">
+            <label className="mb-1 block text-xs text-muted-foreground">Sede</label>
             <Select
               value={activeSede}
               onValueChange={setSelectedSede}
               disabled={liveViewMode === 'consolidated' && mainTab === 'live'}
             >
-              <SelectTrigger className="w-[180px] bg-background border-border text-foreground">
+              <SelectTrigger className="w-full border-border bg-background text-foreground sm:w-[180px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -700,19 +687,19 @@ export function AsistenciaModule({
               </SelectContent>
             </Select>
           </div>
-          <div>
-            <label className="text-xs text-muted-foreground block mb-1">Semana · {weekLabel}</label>
+          <div className="min-w-[180px] flex-1 sm:flex-none">
+            <label className="mb-1 block text-xs text-muted-foreground">Semana · {weekLabel}</label>
             <div className="flex items-center gap-1">
-              <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(-1)}>
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => shiftWeek(-1)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Input
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="w-[160px] bg-background border-border text-foreground dark:bg-slate-900/60 dark:border-slate-700 dark:text-white"
+                className="min-w-0 flex-1 border-border bg-background text-foreground dark:border-slate-700 dark:bg-slate-900/60 dark:text-white sm:w-[160px]"
               />
-              <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => shiftWeek(1)}>
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" onClick={() => shiftWeek(1)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -736,17 +723,6 @@ export function AsistenciaModule({
             <Button type="button" variant="outline" size="sm" onClick={() => void handleSyncUsers()}>
               <UserPlus className="h-4 w-4 mr-1" />
               Sync usuarios
-            </Button>
-          ) : null}
-          {canConfigure ? (
-            <Button
-              type="button"
-              variant="outline"
-              className="border-border"
-              data-testid="asistencia-load-examples"
-              onClick={() => void loadExampleData()}
-            >
-              Datos de ejemplo
             </Button>
           ) : null}
           <Button
@@ -806,8 +782,21 @@ export function AsistenciaModule({
           ) : null}
         </div>
         {cacheFetchedAt && records.length > 0 ? (
-          <p className="w-full text-xs text-muted-foreground">
-            Caché local: {records.length} registros · actualizado {cacheAgeLabel(cacheFetchedAt)} · válido 48 h
+          <p className="w-full text-xs text-muted-foreground lg:basis-full">
+            Caché local: {records.length} registros · {localDays} día(s) · actualizado{' '}
+            {cacheAgeLabel(cacheFetchedAt)}
+            {historyStats ? (
+              <>
+                {' '}
+                · Historial servidor: {historyStats.records} marcaciones · {historyStats.days} día(s)
+                {historyStats.min_ymd && historyStats.max_ymd
+                  ? ` (${historyStats.min_ymd} → ${historyStats.max_ymd})`
+                  : ''}
+              </>
+            ) : null}
+            {lastTruncated ? (
+              <span className="text-amber-600"> · última descarga Buk truncada</span>
+            ) : null}
             {asistencia.buk?.autoRefreshEnabled ? (
               <> · auto-refresh cada {asistencia.buk.autoRefreshIntervalMinutes ?? 30} min</>
             ) : null}
@@ -836,6 +825,7 @@ export function AsistenciaModule({
         onChange={setFilters}
         areaOptions={bukAreaOptions}
         specialtyOptions={bukSpecialtyOptions}
+        viewMode={mainTab}
         showLiveFilters={mainTab === 'live'}
         showBukFilters={mainTab === 'dashboard' || mainTab === 'live'}
       />
@@ -847,8 +837,9 @@ export function AsistenciaModule({
         />
       ) : null}
 
-      {records.length > 0 ? (
+      {records.length > 0 && mainTab !== 'config' ? (
         <AsistenciaWeekTrendPanel
+          key={`trend-${mainTab}`}
           days={weekTrend}
           selectedDateKey={selectedDate}
           onSelectDate={setSelectedDate}
@@ -857,11 +848,15 @@ export function AsistenciaModule({
               ? `${sedeOptions.length} sedes`
               : activeSede
           }
+          rangeLabel={trendRangeLabel(trendDays)}
+          daysCount={trendDaysCount}
+          onDaysCountChange={setTrendDaysCount}
+          defaultOpen={mainTab === 'dashboard'}
         />
       ) : null}
 
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'live' | 'dashboard' | 'config')}>
-        <TabsList className="bg-muted/60 border border-border dark:bg-slate-900/80 dark:border-slate-800">
+        <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/60 border border-border p-1 dark:bg-slate-900/80 dark:border-slate-800 sm:w-auto">
           <TabsTrigger value="live" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
             <Users className="h-4 w-4 mr-1" /> Operativa en vivo
           </TabsTrigger>
@@ -875,7 +870,7 @@ export function AsistenciaModule({
           ) : null}
         </TabsList>
 
-        <TabsContent value="live" className="mt-4 space-y-4">
+        <TabsContent value="live" className="mt-4 min-w-0 space-y-4 overflow-x-auto">
           {records.length > 0 ? (
             <>
               <AsistenciaCoveragePanel
@@ -925,7 +920,6 @@ export function AsistenciaModule({
             viewDate={dateObj}
             summary={liveViewMode === 'single' ? filteredLiveSummary : undefined}
             consolidated={liveViewMode === 'consolidated' ? filteredConsolidatedSummary : undefined}
-            asistenciaSettings={asistencia}
             editLayout={editLayout}
             canEditLayout={canConfigure}
             onEditLayoutChange={setEditLayout}
@@ -948,8 +942,8 @@ export function AsistenciaModule({
                 </p>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   {(liveViewMode === 'consolidated'
-                    ? consolidatedSummary.sedes.flatMap((s) => s.areas.flatMap((a) => a.staff))
-                    : liveSummary.areas.flatMap((a) => a.staff)
+                    ? flattenLiveSedesStaff(consolidatedSummary.sedes)
+                    : flattenLiveSedeStaff(liveSummary)
                   )
                     .filter((s) => s.status === 'ausente' && s.matchHint)
                     .map((s) => (
@@ -989,7 +983,6 @@ export function AsistenciaModule({
               />
             </>
           ) : null}
-          <AsistenciaHistoryPanel snapshots={snapshots} onSelectDate={setSelectedDate} />
           {sedeOptions.length > 1 ? (
             <div className="flex justify-end">
               <Button
@@ -1024,6 +1017,33 @@ export function AsistenciaModule({
               onExport={handleExportBuk}
             />
           )}
+          <div className="space-y-3 border-t border-border pt-4 dark:border-slate-800">
+            <div className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-muted/30 p-3 dark:border-slate-800">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Historial desde</label>
+                <Input
+                  type="date"
+                  value={historyFrom}
+                  onChange={(e) => setHistoryFrom(e.target.value)}
+                  className="h-8 w-[150px]"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Hasta</label>
+                <Input
+                  type="date"
+                  value={historyTo}
+                  onChange={(e) => setHistoryTo(e.target.value)}
+                  className="h-8 w-[150px]"
+                />
+              </div>
+              <Button type="button" size="sm" variant="outline" onClick={() => void loadHistoryRange()}>
+                <CalendarRange className="h-3.5 w-3.5 mr-1" />
+                Cargar rango (servidor)
+              </Button>
+            </div>
+            <AsistenciaHistoryPanel snapshots={snapshots} onSelectDate={setSelectedDate} limit={60} />
+          </div>
         </TabsContent>
 
         {canConfigure ? (

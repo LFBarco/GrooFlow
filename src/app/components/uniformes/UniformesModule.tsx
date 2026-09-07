@@ -77,7 +77,6 @@ export function UniformesModule({
         users,
         asistencia,
         visibleSedes: formSedeOptions,
-        includeAsistencia: false,
       }),
     [users, asistencia, formSedeOptions]
   );

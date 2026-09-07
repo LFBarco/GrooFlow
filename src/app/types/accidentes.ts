@@ -153,6 +153,10 @@ export interface WorkplaceAccidentRecord {
   sede: string;
   /** Vinculación con usuario del sistema (opcional). */
   userId?: string;
+  /** Staff organigrama Asistencia (Fase 6). */
+  asistenciaStaffId?: string;
+  bukEmployeeId?: number;
+  documentNumber?: string;
   /** Snapshot del afectado al momento del registro. */
   affectedName: string;
   jobTitle: string;
