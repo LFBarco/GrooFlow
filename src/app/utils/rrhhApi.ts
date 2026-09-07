@@ -230,7 +230,7 @@ export async function fetchRrhhIdentityDiagnosis(limit = 40): Promise<RrhhIdenti
   };
   return {
     policy: (json.policy as RrhhIdentityDiagnosis['policy']) ?? {
-      sourceOfTruth: 'buk.pe',
+      sourceOfTruth: 'gestion',
       altaSinUsuario: 'pendiente_notificacion',
       cesadoDesactivaAccesoYOrganigrama: true,
       turnosPublica: 'encargado_sede',

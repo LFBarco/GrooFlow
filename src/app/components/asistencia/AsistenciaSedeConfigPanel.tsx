@@ -67,9 +67,9 @@ type Props = {
 };
 
 export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = [], canConfigure, onSave }: Props) {
-  const profile = getSedeProfile(settings, sedeName);
+  const profile = useMemo(() => getSedeProfile(settings, sedeName), [settings, sedeName]);
   const orgColumns = useMemo(() => resolveOrgColumns(profile), [profile]);
-  const staff = staffForSede(settings, sedeName);
+  const staff = useMemo(() => staffForSede(settings, sedeName), [settings, sedeName]);
   const [editSede, setEditSede] = useState(false);
   const [scheduleStart, setScheduleStart] = useState(profile.scheduleStart ?? '08:00');
   const [scheduleEnd, setScheduleEnd] = useState(profile.scheduleEnd ?? '18:00');
@@ -163,44 +163,76 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
       ...cols.map((c) => c.id),
       ...(profile.subOrgColumns ?? []).map((s) => s.id),
     ]);
-    setAreaOrder(cols.map((c) => c.id));
+    const nextOrder = cols.map((c) => c.id);
+    setAreaOrder((prev) =>
+      prev.length === nextOrder.length && prev.every((id, i) => id === nextOrder[i]) ? prev : nextOrder
+    );
     setAreaLabels((prev) => {
+      let changed = false;
       const next = { ...prev };
       for (const col of cols) {
-        if (!next[col.id]) next[col.id] = col.label;
+        if (!next[col.id]) {
+          next[col.id] = col.label;
+          changed = true;
+        }
       }
       for (const sub of profile.subOrgColumns ?? []) {
-        if (!next[sub.id]) next[sub.id] = profile.areaLabels?.[sub.id]?.trim() || sub.label;
+        if (!next[sub.id]) {
+          next[sub.id] = profile.areaLabels?.[sub.id]?.trim() || sub.label;
+          changed = true;
+        }
       }
       for (const id of Object.keys(next)) {
-        if (!validIds.has(id)) delete next[id];
+        if (!validIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
       }
-      return next;
+      return changed ? next : prev;
     });
     setNodeStyles((prev) => {
+      let changed = false;
       const next = { ...prev };
       for (const col of cols) {
-        if (!next[col.id]) next[col.id] = resolveOrgNodeStyle(profile, col.id);
+        if (!next[col.id]) {
+          next[col.id] = resolveOrgNodeStyle(profile, col.id);
+          changed = true;
+        }
       }
       for (const sub of profile.subOrgColumns ?? []) {
-        if (!next[sub.id]) next[sub.id] = resolveOrgNodeStyle(profile, sub.id);
+        if (!next[sub.id]) {
+          next[sub.id] = resolveOrgNodeStyle(profile, sub.id);
+          changed = true;
+        }
       }
       for (const id of Object.keys(next)) {
-        if (!validIds.has(id)) delete next[id];
+        if (!validIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
       }
-      return next;
+      return changed ? next : prev;
     });
     setCargoByColumnText((prev) => {
+      let changed = false;
       const next = { ...prev };
       for (const id of validIds) {
-        if (next[id] == null) next[id] = cargoListToText(cargosForOrgColumn(profile, id));
+        if (next[id] == null) {
+          next[id] = cargoListToText(cargosForOrgColumn(profile, id));
+          changed = true;
+        }
       }
       for (const id of Object.keys(next)) {
-        if (!validIds.has(id)) delete next[id];
+        if (!validIds.has(id)) {
+          delete next[id];
+          changed = true;
+        }
       }
-      return next;
+      return changed ? next : prev;
     });
-  }, [profile.customOrgColumns, profile.subOrgColumns, profile.areaOrder, profile.areaLabels, profile]);
+    // No incluir `profile` entero: getSedeProfile crea objeto nuevo cada vez y congela la UI.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps estables por campos
+  }, [profile.customOrgColumns, profile.subOrgColumns, profile.areaOrder, profile.areaLabels, profile.orgNodeStyles]);
 
   const runSave = async (
     updater: (prev: AsistenciaSettings) => AsistenciaSettings,

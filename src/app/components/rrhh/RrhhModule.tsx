@@ -72,16 +72,16 @@ export function RrhhModule({
   const reloadDbStats = async () => {
     try {
       setDbStats(await fetchRrhhDbStats());
-    } catch {
-      /* ignore */
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudieron cargar estadísticas RRHH');
     }
   };
 
   const reloadPipelineHealth = async () => {
     try {
       setPipelineHealth(await fetchRrhhPipelineHealth());
-    } catch {
-      /* ignore */
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo cargar salud de pipelines');
     }
   };
 
@@ -97,7 +97,12 @@ export function RrhhModule({
     void (async () => {
       try {
         const result = await runRrhhPipelines({});
-        if (cancelled || !result.ok) return;
+        if (cancelled || !result.ok) {
+          if (!cancelled && result.message) {
+            console.warn('[RRHH pipelines soft]', result.message);
+          }
+          return;
+        }
         const ranSomething = Object.values(result.steps ?? {}).some(
           (s) => s && typeof s === 'object' && (s as { ran?: boolean }).ran === true
         );

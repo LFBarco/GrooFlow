@@ -108,7 +108,7 @@ function buildCategoryStyleMap(catalog: string[]): Record<string, { label: strin
 
 interface PettyCashManagerProps {
     transactions: PettyCashTransaction[];
-    onUpdateTransactions: (txs: PettyCashTransaction[]) => void;
+    onUpdateTransactions: (txs: PettyCashTransaction[]) => void | Promise<boolean>;
     settings: PettyCashSettings;
     users: User[];
     currentUser: User;
@@ -184,6 +184,16 @@ export function PettyCashManager({
     selectedWeek: selectedWeekProp,
     onSelectedWeekChange,
 }: PettyCashManagerProps) {
+    const commitTransactions = async (next: PettyCashTransaction[], successMsg?: string) => {
+        const ok = await Promise.resolve(onUpdateTransactions(next));
+        if (ok === false) {
+            toast.error('No se pudo guardar el cambio de Caja chica en la nube.');
+            return false;
+        }
+        if (successMsg) toast.success(successMsg);
+        return true;
+    };
+
     const [selectedWeekInternal, setSelectedWeekInternal] = useState<string>(getWeekStr(new Date()));
     const selectedWeek = selectedWeekProp ?? selectedWeekInternal;
     const setSelectedWeek = (week: string) => {
@@ -613,7 +623,7 @@ export function PettyCashManager({
         setEditingId(null);
     };
 
-    const saveEditExpense = () => {
+    const saveEditExpense = async () => {
         if (!editingId) return;
         if (categoryCatalog.length === 0) {
             toast.error('Falta catálogo de categorías.');
@@ -733,42 +743,46 @@ export function PettyCashManager({
                     : sedeOptions[0]!
                 : editLocation;
 
-        onUpdateTransactions(
-            transactions.map((t) => {
-                if (t.id !== editingId) return t;
-                let docD: Date;
-                try {
-                    docD = editDocumentDate
-                        ? new Date(editDocumentDate + 'T12:00:00')
-                        : new Date(t.date);
-                } catch {
-                    docD = new Date(t.date);
-                }
-                if (Number.isNaN(docD.getTime())) docD = new Date(t.date);
-                return {
-                    ...t,
-                    amount: totalVal,
-                    amountBI: amountBIVal,
-                    igv: usesIgv ? igvVal : 0,
-                    igvRate: usesIgv ? (rateE as 0.1 | 0.18) : undefined,
-                    amountExempt: usesIgv ? exVal : undefined,
-                    documentDate: docD,
-                    description: editDescription.trim(),
-                    category: categoryCatalog.includes(editCategory) ? editCategory : categoryCatalog[0]!,
-                    receiptType: editClassification as PettyCashTransaction['receiptType'],
-                    docType: editDocType as PettyCashTransaction['docType'],
-                    docNumber: editNormDoc,
-                    docSeries: editDocSeries.trim(),
-                    voucherNumber: editVoucherNumber.trim(),
-                    receiptNumber: editVoucherNumber.trim(),
-                    providerName: editProviderName.trim(),
-                    area: editArea,
-                    isExtraExpense: editIsExtra,
-                    location: sedeVal,
-                };
-            })
-        );
-        toast.success('Movimiento actualizado.');
+        if (
+            !(await commitTransactions(
+                transactions.map((t) => {
+                    if (t.id !== editingId) return t;
+                    let docD: Date;
+                    try {
+                        docD = editDocumentDate
+                            ? new Date(editDocumentDate + 'T12:00:00')
+                            : new Date(t.date);
+                    } catch {
+                        docD = new Date(t.date);
+                    }
+                    if (Number.isNaN(docD.getTime())) docD = new Date(t.date);
+                    return {
+                        ...t,
+                        amount: totalVal,
+                        amountBI: amountBIVal,
+                        igv: usesIgv ? igvVal : 0,
+                        igvRate: usesIgv ? (rateE as 0.1 | 0.18) : undefined,
+                        amountExempt: usesIgv ? exVal : undefined,
+                        documentDate: docD,
+                        description: editDescription.trim(),
+                        category: categoryCatalog.includes(editCategory) ? editCategory : categoryCatalog[0]!,
+                        receiptType: editClassification as PettyCashTransaction['receiptType'],
+                        docType: editDocType as PettyCashTransaction['docType'],
+                        docNumber: editNormDoc,
+                        docSeries: editDocSeries.trim(),
+                        voucherNumber: editVoucherNumber.trim(),
+                        receiptNumber: editVoucherNumber.trim(),
+                        providerName: editProviderName.trim(),
+                        area: editArea,
+                        isExtraExpense: editIsExtra,
+                        location: sedeVal,
+                    };
+                }),
+                'Movimiento actualizado.'
+            ))
+        ) {
+            return;
+        }
         closeEditExpense();
     };
 
@@ -787,10 +801,10 @@ export function PettyCashManager({
             )
         )
             return;
-        onUpdateTransactions(
-            transactions.map((t) => (t.id === e.id ? { ...t, status: 'voided' as const } : t))
+        void commitTransactions(
+            transactions.map((t) => (t.id === e.id ? { ...t, status: 'voided' as const } : t)),
+            'Movimiento anulado.'
         );
-        toast.success('Movimiento anulado.');
     };
 
     const revokeFundDelivery = async (e: PettyCashTransaction) => {
@@ -811,7 +825,8 @@ export function PettyCashManager({
         ) {
             return;
         }
-        onUpdateTransactions(transactions.filter((t) => t.id !== e.id));
+        const okRevoke = await commitTransactions(transactions.filter((t) => t.id !== e.id));
+        if (!okRevoke) return;
         onRevokeFundDelivery?.(e.custodianId, String(e.weekNumber));
         toast.success('Dotación semanal revocada.');
     };
@@ -823,10 +838,10 @@ export function PettyCashManager({
             return;
         }
         if (row.status !== 'pending_audit') return;
-        onUpdateTransactions(
-            transactions.map((t) => (t.id === row.id ? { ...t, status: 'approved' as const } : t))
+        void commitTransactions(
+            transactions.map((t) => (t.id === row.id ? { ...t, status: 'approved' as const } : t)),
+            'Movimiento aprobado por auditoría.'
         );
-        toast.success('Movimiento aprobado por auditoría.');
     };
 
     const rejectPettyMovement = async (row: PettyCashTransaction) => {
@@ -843,18 +858,22 @@ export function PettyCashManager({
         )
             return;
         const note = row.auditComment ?? '';
-        onUpdateTransactions(
-            transactions.map((t) =>
-                t.id === row.id
-                    ? {
-                          ...t,
-                          status: 'rejected' as const,
-                          auditComment: note.trim() || t.auditComment,
-                      }
-                    : t
-            )
-        );
-        toast.message('Movimiento rechazado en auditoría.');
+        if (
+            !(await commitTransactions(
+                transactions.map((t) =>
+                    t.id === row.id
+                        ? {
+                              ...t,
+                              status: 'rejected' as const,
+                              auditComment: note.trim() || t.auditComment,
+                          }
+                        : t
+                ),
+                'Movimiento rechazado en auditoría.'
+            ))
+        ) {
+            return;
+        }
     };
 
     const handlePreCloseWeek = async () => {
@@ -889,7 +908,7 @@ export function PettyCashManager({
         });
     };
 
-    const handleSaveAdminTopup = () => {
+    const handleSaveAdminTopup = async () => {
         if (!canAdminFundTopUp(currentUser)) {
             toast.error('Sin permiso para asignar refuerzo de fondo.');
             return;
@@ -923,7 +942,8 @@ export function PettyCashManager({
             receiptType: 'Recibo Simple',
             location: sedeVal,
         };
-        onUpdateTransactions([row, ...transactions]);
+        const okTop = await commitTransactions([row, ...transactions]);
+        if (!okTop) return;
         toast.success('Refuerzo de fondo registrado', {
             description: `${formatCurrencyEs(amt)} sumado al saldo de la semana ${selectedWeek}.`,
         });
@@ -961,7 +981,7 @@ export function PettyCashManager({
         setDeliveryOpen(true);
     };
 
-    const handleSaveFundDelivery = () => {
+    const handleSaveFundDelivery = async () => {
         if (!onConfirmFundDelivery || !selectedCustodianId) return;
         if (!canConfirmPettyCashFundDelivery(currentUser, roles)) {
             toast.error('Sin permiso para confirmar entrega de dotación.');
@@ -1029,7 +1049,8 @@ export function PettyCashManager({
         if (delivery.isPeriodOpening) {
             onConsumeOpeningCarry?.(selectedCustodianId);
         }
-        onUpdateTransactions([incomeRow, ...transactions]);
+        const okDel = await commitTransactions([incomeRow, ...transactions]);
+        if (!okDel) return;
         const carryPart =
             delivery.openingCarryAmount && delivery.openingCarryAmount > 0
                 ? ` · Arrastre ${formatCurrencyEs(delivery.openingCarryAmount)}`

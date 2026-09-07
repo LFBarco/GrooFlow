@@ -64,6 +64,8 @@ export function usePettyCashTransactionsPersistence(
   useEffect(() => {
     if (!isDataLoaded || !hydratedRef.current) return;
     if (skipExplicitAutosaveRef.current) return;
+    // Nunca autoguardar []: evita borrar la nube si la hidratación quedó vacía por error.
+    if (transactions.length === 0) return;
     void enqueueKvSerializedSave(
       chainRef,
       kvApplyGenerationRef,
@@ -118,7 +120,10 @@ export function usePettyCashTransactionsPersistence(
           const sqlOk = await ensureSqlSave(
             true,
             'data:pettyCash',
-            () => savePettyCashToSql(client, next, uid),
+            () =>
+              savePettyCashToSql(client, next, uid, {
+                allowPruneWhenEmpty: next.length === 0,
+              }),
             lastSaveErrorAtRef
           );
           if (!sqlOk) return false;
