@@ -1,4 +1,6 @@
 import type {
+  AsistenciaOrgChartColor,
+  AsistenciaOrgNodeStyle,
   AsistenciaOrgSubColumn,
   AsistenciaSedeProfile,
   AsistenciaSettings,
@@ -10,6 +12,7 @@ import {
   ASISTENCIA_STAFF_AREAS,
 } from '../types/asistencia';
 import { mergeAsistenciaSettings } from './asistenciaData';
+import { resolveOrgNodeStyle } from './asistenciaOrgChart';
 import { getSedeProfile } from './asistenciaStaff';
 
 export type AsistenciaOrgColumn = {
@@ -208,7 +211,12 @@ export function applyAddOrgSubColumn(
   settings: AsistenciaSettings,
   sedeName: string,
   parentColumnId: string,
-  label: string
+  label: string,
+  extras?: {
+    childrenLayout?: 'horizontal' | 'vertical';
+    color?: AsistenciaOrgChartColor;
+    orgNodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
+  }
 ): AsistenciaSettings {
   const merged = mergeAsistenciaSettings(settings);
   const profile = getSedeProfile(merged, sedeName);
@@ -216,11 +224,32 @@ export function applyAddOrgSubColumn(
   const parentIsSub = (profile.subOrgColumns ?? []).some((s) => s.id === parentColumnId);
   if (!parentIsRoot && !parentIsSub) return merged;
   const id = newSubColumnId();
+  const parentStyle = resolveOrgNodeStyle(profile, parentColumnId);
   const subOrgColumns = [
     ...(profile.subOrgColumns ?? []),
-    { id, label: label.trim() || 'Nueva subcolumna', parentColumnId },
+    {
+      id,
+      label: label.trim() || 'Nueva subcolumna',
+      parentColumnId,
+      childrenLayout: extras?.childrenLayout ?? 'horizontal',
+      color: extras?.color,
+    },
   ];
-  return upsertSedeProfile(merged, sedeName, { subOrgColumns });
+  const orgNodeStyles = {
+    ...(profile.orgNodeStyles ?? {}),
+    ...(extras?.orgNodeStyles ?? {}),
+    // Asegura que el padre conserve su disposición al agregar hijos.
+    [parentColumnId]: {
+      ...(profile.orgNodeStyles?.[parentColumnId] ?? {}),
+      color: parentStyle.color,
+      childrenLayout: parentStyle.childrenLayout,
+    },
+    [id]: {
+      childrenLayout: extras?.childrenLayout ?? 'horizontal',
+      color: extras?.color,
+    },
+  };
+  return upsertSedeProfile(merged, sedeName, { subOrgColumns, orgNodeStyles });
 }
 
 export function applyRemoveOrgColumn(

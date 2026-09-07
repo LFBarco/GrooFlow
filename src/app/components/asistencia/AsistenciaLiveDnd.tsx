@@ -243,11 +243,11 @@ function SubAreaColumn({
   getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
 }) {
   const color = ORG_CHART_COLOR_STYLES[sub.color ?? 'default'];
-  const layout = sub.childrenLayout ?? 'vertical';
+  const layout = sub.childrenLayout ?? 'horizontal';
   const hasChildren = (sub.children?.length ?? 0) > 0;
 
   return (
-    <div className={`w-full rounded-lg border-2 p-2 ${color.border} ${color.bg}`}>
+    <div className={`w-full min-w-0 rounded-lg border-2 p-2 ${color.border} ${color.bg}`}>
       <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wide text-foreground">
         {sub.label}
         {sub.totalCount > 0 ? (
@@ -270,12 +270,19 @@ function SubAreaColumn({
           <div
             className={
               layout === 'horizontal'
-                ? 'flex flex-wrap justify-center gap-3'
-                : 'flex flex-col items-stretch gap-2'
+                ? 'flex w-full flex-row flex-wrap items-start justify-center gap-3'
+                : 'flex w-full flex-col items-stretch gap-2'
             }
           >
             {(sub.children ?? []).map((child) => (
-              <div key={child.area} className={layout === 'horizontal' ? 'min-w-[140px] flex-1' : 'w-full'}>
+              <div
+                key={child.area}
+                className={
+                  layout === 'horizontal'
+                    ? 'min-w-[148px] max-w-[240px] flex-1 basis-[148px]'
+                    : 'w-full'
+                }
+              >
                 <SubAreaColumn
                   sub={child}
                   sedeName={sedeName}
@@ -319,7 +326,7 @@ function DraggableAreaColumn({
   const Icon = baseTheme.icon;
   const pct = block.totalCount > 0 ? Math.round((block.activeCount / block.totalCount) * 100) : 0;
   const hasSubAreas = (block.subAreas?.length ?? 0) > 0;
-  const childrenLayout = block.childrenLayout ?? 'vertical';
+  const childrenLayout = block.childrenLayout ?? 'horizontal';
 
   const [{ isDraggingArea }, dragArea] = useDrag(
     () => ({
@@ -371,14 +378,18 @@ function DraggableAreaColumn({
         <div
           className={
             childrenLayout === 'horizontal'
-              ? 'flex w-full flex-wrap justify-center gap-3 px-1'
+              ? 'flex w-full flex-row flex-wrap items-start justify-center gap-3 px-1'
               : 'flex w-full flex-col gap-2 px-1'
           }
         >
           {(block.subAreas ?? []).map((sub) => (
             <div
               key={sub.area}
-              className={childrenLayout === 'horizontal' ? 'min-w-[150px] max-w-[220px] flex-1' : 'w-full'}
+              className={
+                childrenLayout === 'horizontal'
+                  ? 'min-w-[150px] max-w-[240px] flex-1 basis-[150px]'
+                  : 'w-full'
+              }
             >
               <SubAreaColumn
                 sub={sub}

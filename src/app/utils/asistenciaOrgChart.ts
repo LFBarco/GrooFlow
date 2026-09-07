@@ -107,7 +107,7 @@ export function resolveOrgNodeStyle(
     BUILTIN_DEFAULT_COLOR[nodeId] ??
     'default';
   const childrenLayout =
-    fromStyles?.childrenLayout ?? custom?.childrenLayout ?? sub?.childrenLayout ?? 'vertical';
+    fromStyles?.childrenLayout ?? custom?.childrenLayout ?? sub?.childrenLayout ?? 'horizontal';
   return { color, childrenLayout };
 }
 

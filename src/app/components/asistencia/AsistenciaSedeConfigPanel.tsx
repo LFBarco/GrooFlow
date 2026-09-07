@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Building2, CornerDownRight, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import type {
@@ -12,7 +12,6 @@ import { ASISTENCIA_STAFF_AREA_LABELS, ASISTENCIA_WORK_SHIFT_LABELS } from '../.
 import { formatWeeklyShiftSummary } from '../../utils/asistenciaShift';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
-import { mergeExampleStaffIntoSettings } from '../../utils/asistenciaExampleSeed';
 import {
   applyAddOrgColumn,
   applyAddOrgSubColumn,
@@ -154,17 +153,54 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
 
   useEffect(() => {
     syncOrgFormFromProfile(profile);
-  }, [
-    sedeName,
-    profile.areaOrder,
-    profile.customOrgColumns,
-    profile.subOrgColumns,
-    profile.areaLabels,
-    profile.cargoByColumn,
-    profile.hideEmptyAreas,
-    profile.orgNodeStyles,
-    profile.rootChildrenLayout,
-  ]);
+    // Solo al cambiar de sede: no pisar borradores locales al agregar hijos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync acotado a sede
+  }, [sedeName]);
+
+  useEffect(() => {
+    const cols = resolveOrgColumns(profile);
+    const validIds = new Set<string>([
+      ...cols.map((c) => c.id),
+      ...(profile.subOrgColumns ?? []).map((s) => s.id),
+    ]);
+    setAreaOrder(cols.map((c) => c.id));
+    setAreaLabels((prev) => {
+      const next = { ...prev };
+      for (const col of cols) {
+        if (!next[col.id]) next[col.id] = col.label;
+      }
+      for (const sub of profile.subOrgColumns ?? []) {
+        if (!next[sub.id]) next[sub.id] = profile.areaLabels?.[sub.id]?.trim() || sub.label;
+      }
+      for (const id of Object.keys(next)) {
+        if (!validIds.has(id)) delete next[id];
+      }
+      return next;
+    });
+    setNodeStyles((prev) => {
+      const next = { ...prev };
+      for (const col of cols) {
+        if (!next[col.id]) next[col.id] = resolveOrgNodeStyle(profile, col.id);
+      }
+      for (const sub of profile.subOrgColumns ?? []) {
+        if (!next[sub.id]) next[sub.id] = resolveOrgNodeStyle(profile, sub.id);
+      }
+      for (const id of Object.keys(next)) {
+        if (!validIds.has(id)) delete next[id];
+      }
+      return next;
+    });
+    setCargoByColumnText((prev) => {
+      const next = { ...prev };
+      for (const id of validIds) {
+        if (next[id] == null) next[id] = cargoListToText(cargosForOrgColumn(profile, id));
+      }
+      for (const id of Object.keys(next)) {
+        if (!validIds.has(id)) delete next[id];
+      }
+      return next;
+    });
+  }, [profile.customOrgColumns, profile.subOrgColumns, profile.areaOrder, profile.areaLabels, profile]);
 
   const runSave = async (
     updater: (prev: AsistenciaSettings) => AsistenciaSettings,
@@ -247,68 +283,104 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     if (ok) setEditSede(false);
   };
 
+  const buildOrgLayoutUpdater = useCallback(
+    (overrides?: {
+      nodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
+      rootChildrenLayout?: 'horizontal' | 'vertical';
+      cargoByColumnText?: Record<string, string>;
+      areaLabels?: Record<string, string>;
+      areaOrder?: string[];
+      hideEmptyAreas?: boolean;
+    }) => {
+      const styles = overrides?.nodeStyles ?? nodeStyles;
+      const rootLayout = overrides?.rootChildrenLayout ?? rootChildrenLayout;
+      const cargoText = overrides?.cargoByColumnText ?? cargoByColumnText;
+      const labels = overrides?.areaLabels ?? areaLabels;
+      const order = overrides?.areaOrder ?? areaOrder;
+      const hideEmpty = overrides?.hideEmptyAreas ?? hideEmptyAreas;
+      const allAreaIds = [
+        ...order,
+        ...(profile.subOrgColumns ?? []).map((s) => s.id),
+      ];
+      const cargoByColumn = Object.fromEntries(
+        allAreaIds.map((columnId) => {
+          const text =
+            cargoText[columnId] ?? cargoListToText(cargosForOrgColumn(profile, columnId));
+          const cargos = parseCargoListText(text);
+          const fallback = cargosForOrgColumn({ ...profile, cargoByColumn: undefined }, columnId);
+          return [columnId, cargos.length > 0 ? cargos : fallback] as const;
+        })
+      );
+      const subOrgColumns: AsistenciaOrgSubColumn[] = (profile.subOrgColumns ?? []).map((sub) => ({
+        ...sub,
+        label: labels[sub.id]?.trim() || sub.label,
+        color: styles[sub.id]?.color ?? sub.color,
+        childrenLayout: styles[sub.id]?.childrenLayout ?? sub.childrenLayout ?? 'horizontal',
+      }));
+      const customOrgColumns = (profile.customOrgColumns ?? []).map((c) => ({
+        ...c,
+        color: styles[c.id]?.color ?? c.color,
+        childrenLayout: styles[c.id]?.childrenLayout ?? c.childrenLayout ?? 'horizontal',
+      }));
+      const orgNodeStyles: Record<string, AsistenciaOrgNodeStyle> = {};
+      for (const id of allAreaIds) {
+        if (styles[id]) orgNodeStyles[id] = styles[id]!;
+      }
+      return (prev: AsistenciaSettings) =>
+        applyOrgColumnLabels(prev, sedeName, labels, order, hideEmpty, cargoByColumn, subOrgColumns, {
+          orgNodeStyles,
+          customOrgColumns,
+          rootChildrenLayout: rootLayout,
+        });
+    },
+    [
+      areaLabels,
+      areaOrder,
+      cargoByColumnText,
+      hideEmptyAreas,
+      nodeStyles,
+      profile,
+      rootChildrenLayout,
+      sedeName,
+    ]
+  );
+
+  const persistOrgLayout = useCallback(
+    async (
+      overrides?: Parameters<typeof buildOrgLayoutUpdater>[0],
+      successMessage?: string
+    ) => {
+      if (saving) return false;
+      setSaving(true);
+      try {
+        return await onSave(buildOrgLayoutUpdater(overrides), successMessage);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [buildOrgLayoutUpdater, onSave, saving]
+  );
+
   const patchNodeStyle = (nodeId: string, patch: AsistenciaOrgNodeStyle) => {
-    setNodeStyles((prev) => ({
-      ...prev,
-      [nodeId]: { ...prev[nodeId], ...patch },
-    }));
+    const next = {
+      ...nodeStyles,
+      [nodeId]: { ...nodeStyles[nodeId], ...patch },
+    };
+    setNodeStyles(next);
+    void persistOrgLayout({ nodeStyles: next }, 'Disposición del organigrama actualizada.');
   };
 
   const saveOrgLayout = async () => {
-    const allAreaIds = [
-      ...areaOrder,
-      ...(profile.subOrgColumns ?? []).map((s) => s.id),
-    ];
-    const cargoByColumn = Object.fromEntries(
-      allAreaIds.map((columnId) => {
-        const text =
-          cargoByColumnText[columnId] ?? cargoListToText(cargosForOrgColumn(profile, columnId));
-        const cargos = parseCargoListText(text);
-        const fallback = cargosForOrgColumn({ ...profile, cargoByColumn: undefined }, columnId);
-        return [columnId, cargos.length > 0 ? cargos : fallback] as const;
-      })
-    );
-    const subOrgColumns: AsistenciaOrgSubColumn[] = (profile.subOrgColumns ?? []).map((sub) => ({
-      ...sub,
-      label: areaLabels[sub.id]?.trim() || sub.label,
-      color: nodeStyles[sub.id]?.color ?? sub.color,
-      childrenLayout: nodeStyles[sub.id]?.childrenLayout ?? sub.childrenLayout,
-    }));
-    const customOrgColumns = (profile.customOrgColumns ?? []).map((c) => ({
-      ...c,
-      color: nodeStyles[c.id]?.color ?? c.color,
-      childrenLayout: nodeStyles[c.id]?.childrenLayout ?? c.childrenLayout,
-    }));
-    const orgNodeStyles: Record<string, AsistenciaOrgNodeStyle> = {};
-    for (const id of allAreaIds) {
-      if (nodeStyles[id]) orgNodeStyles[id] = nodeStyles[id]!;
-    }
-    const ok = await runSave(
-      (prev) =>
-        applyOrgColumnLabels(
-          prev,
-          sedeName,
-          areaLabels,
-          areaOrder,
-          hideEmptyAreas,
-          cargoByColumn,
-          subOrgColumns,
-          {
-            orgNodeStyles,
-            customOrgColumns,
-            rootChildrenLayout,
-          }
-        ),
-      'Estructura del organigrama guardada.'
-    );
-    return ok;
+    return persistOrgLayout(undefined, 'Estructura del organigrama guardada.');
   };
 
   const addColumn = async () => {
     const label = newColumnLabel.trim();
     if (!label) return;
+    const flushed = await persistOrgLayout(undefined);
+    if (!flushed && saving) return;
     const ok = await runSave(
-      (prev) => applyAddOrgColumn(prev, sedeName, label),
+      (prev) => applyAddOrgColumn(buildOrgLayoutUpdater()(prev), sedeName, label),
       'Columna agregada al organigrama.'
     );
     if (ok) setNewColumnLabel('');
@@ -317,8 +389,21 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   const addSubColumn = async (parentColumnId: string) => {
     const label = (newSubColumnByParent[parentColumnId] ?? '').trim();
     if (!label) return;
+    const parentStyle = nodeStyles[parentColumnId] ?? resolveOrgNodeStyle(profile, parentColumnId);
     const ok = await runSave(
-      (prev) => applyAddOrgSubColumn(prev, sedeName, parentColumnId, label),
+      (prev) => {
+        const withLayout = buildOrgLayoutUpdater()(prev);
+        return applyAddOrgSubColumn(withLayout, sedeName, parentColumnId, label, {
+          childrenLayout: 'horizontal',
+          color: parentStyle.color,
+          orgNodeStyles: {
+            [parentColumnId]: {
+              color: parentStyle.color,
+              childrenLayout: parentStyle.childrenLayout ?? 'horizontal',
+            },
+          },
+        });
+      },
       'Subcolumna agregada.'
     );
     if (ok) {
@@ -377,13 +462,6 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           staff: (prev.staff ?? []).filter((s) => s.id !== id),
         }),
       'Personal eliminado.'
-    );
-  };
-
-  const loadExampleStaff = async () => {
-    await runSave(
-      (prev) => mergeExampleStaffIntoSettings(prev, sedeName, { replaceSede: true }),
-      'Personal de ejemplo cargado.'
     );
   };
 
@@ -529,7 +607,14 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 <Label className="text-xs text-muted-foreground">Disposición de columnas raíz</Label>
                 <Select
                   value={rootChildrenLayout}
-                  onValueChange={(v) => setRootChildrenLayout(v as 'horizontal' | 'vertical')}
+                  onValueChange={(v) => {
+                    const next = v as 'horizontal' | 'vertical';
+                    setRootChildrenLayout(next);
+                    void persistOrgLayout(
+                      { rootChildrenLayout: next },
+                      'Disposición raíz actualizada.'
+                    );
+                  }}
                 >
                   <SelectTrigger className="h-8 w-[200px] bg-background border-border">
                     <SelectValue />
@@ -541,7 +626,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 </Select>
               </div>
               <p className="text-[11px] text-muted-foreground max-w-sm pb-1">
-                Cómo se muestran las áreas principales bajo el encargado en Operativa en vivo.
+                Cómo se muestran las áreas principales bajo el encargado. Los cambios se guardan al
+                instante y se ven en Operativa en vivo.
               </p>
             </div>
 
@@ -590,14 +676,14 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                             </SelectContent>
                           </Select>
                           <Select
-                            value={subStyle.childrenLayout ?? 'vertical'}
+                            value={subStyle.childrenLayout ?? 'horizontal'}
                             onValueChange={(v) =>
                               patchNodeStyle(sub.id, {
                                 childrenLayout: v as 'horizontal' | 'vertical',
                               })
                             }
                           >
-                            <SelectTrigger className="h-8 w-[140px] bg-background border-border">
+                            <SelectTrigger className="h-8 w-[160px] bg-background border-border">
                               <SelectValue placeholder="Hijos" />
                             </SelectTrigger>
                             <SelectContent>
@@ -614,6 +700,26 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
+                        </div>
+                        <div className="space-y-1.5 pl-5">
+                          <Label className="text-xs text-muted-foreground">
+                            Cargos en «{areaLabels[sub.id] ?? sub.label}»
+                          </Label>
+                          <Textarea
+                            value={
+                              cargoByColumnText[sub.id] ??
+                              cargoListToText(cargosForOrgColumn(profile, sub.id))
+                            }
+                            onChange={(e) =>
+                              setCargoByColumnText((prev) => ({ ...prev, [sub.id]: e.target.value }))
+                            }
+                            onBlur={() =>
+                              void persistOrgLayout(undefined, 'Cargos del organigrama guardados.')
+                            }
+                            placeholder={'Un cargo por línea\nEj. Asistente\nSupervisor'}
+                            rows={2}
+                            className="text-sm bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white resize-y min-h-[56px]"
+                          />
                         </div>
                         {renderSubTree(sub.id, depth + 1)}
                         <div className="flex flex-wrap items-end gap-2 pl-5">
@@ -680,14 +786,14 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                         </SelectContent>
                       </Select>
                       <Select
-                        value={style.childrenLayout ?? 'vertical'}
+                        value={style.childrenLayout ?? 'horizontal'}
                         onValueChange={(v) =>
                           patchNodeStyle(columnId, {
                             childrenLayout: v as 'horizontal' | 'vertical',
                           })
                         }
                       >
-                        <SelectTrigger className="h-8 w-[150px] bg-background border-border">
+                        <SelectTrigger className="h-8 w-[160px] bg-background border-border">
                           <SelectValue placeholder="Hijos" />
                         </SelectTrigger>
                         <SelectContent>
@@ -695,8 +801,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                           <SelectItem value="vertical">Hijos vertical</SelectItem>
                         </SelectContent>
                       </Select>
-                      <span className="text-[10px] text-slate-500">
-                        ({builtin ? 'built-in' : 'personalizada'})
+                      <span className="text-[10px] text-muted-foreground max-w-[140px]">
+                        Afecta subáreas bajo este nodo (agrega hijos para verlo)
                       </span>
                       <div className="ml-auto flex gap-1">
                         {!builtin ? (
@@ -741,6 +847,9 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                         }
                         onChange={(e) =>
                           setCargoByColumnText((prev) => ({ ...prev, [columnId]: e.target.value }))
+                        }
+                        onBlur={() =>
+                          void persistOrgLayout(undefined, 'Cargos del organigrama guardados.')
                         }
                         placeholder={'Un cargo por línea\nEj. Médico veterinario\nAsistente veterinario'}
                         rows={3}
@@ -837,18 +946,6 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           </div>
           {canConfigure ? (
             <div className="flex flex-wrap gap-2 justify-end">
-              {staff.length === 0 ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-border"
-                  data-testid="asistencia-load-example-staff"
-                  disabled={saving}
-                  onClick={() => void loadExampleStaff()}
-                >
-                  Cargar ejemplo
-                </Button>
-              ) : null}
               <Button
                 className="bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white border-0"
                 data-testid="asistencia-add-staff"

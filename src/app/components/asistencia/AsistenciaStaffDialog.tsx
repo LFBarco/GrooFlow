@@ -66,11 +66,15 @@ function newStaffId() {
   return `staff_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-const emptyForm = (sedeName: string, defaultArea: string): AsistenciaStaffMember => ({
+const emptyForm = (
+  sedeName: string,
+  defaultArea: string,
+  defaultCargo: string
+): AsistenciaStaffMember => ({
   id: newStaffId(),
   sedeName,
   fullName: '',
-  cargoLabel: 'Recepcionista',
+  cargoLabel: defaultCargo,
   area: defaultArea,
   expectedTime: ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
   shift: 'day',
@@ -92,18 +96,32 @@ export function AsistenciaStaffDialog({
     () => resolveOrgAssignableAreas(sedeProfile),
     [sedeProfile]
   );
-  const [form, setForm] = useState<AsistenciaStaffMember>(() => emptyForm(sedeName, defaultArea));
+  const defaultCargo = useMemo(() => {
+    const list = cargosForOrgColumn(sedeProfile, defaultArea);
+    return list[0] ?? 'Personal';
+  }, [sedeProfile, defaultArea]);
+  const [form, setForm] = useState<AsistenciaStaffMember>(() =>
+    emptyForm(sedeName, defaultArea, defaultCargo)
+  );
 
   useEffect(() => {
-    if (open) {
-      setForm(initial ? { ...initial } : emptyForm(sedeName, defaultArea));
+    if (!open) return;
+    if (initial) {
+      setForm({ ...initial });
+      return;
     }
-  }, [open, initial, sedeName, defaultArea]);
+    const cargos = cargosForOrgColumn(sedeProfile, defaultArea);
+    setForm(emptyForm(sedeName, defaultArea, cargos[0] ?? 'Personal'));
+  }, [open, initial, sedeName, defaultArea, sedeProfile]);
 
-  const cargoOptions = useMemo(
-    () => cargosForOrgColumn(sedeProfile, form.area),
-    [sedeProfile, form.area]
-  );
+  const cargoOptions = useMemo(() => {
+    const base = cargosForOrgColumn(sedeProfile, form.area);
+    const list = base.length > 0 ? [...base] : ['Personal', 'Encargado'];
+    if (form.cargoLabel.trim() && !list.includes(form.cargoLabel.trim())) {
+      list.unshift(form.cargoLabel.trim());
+    }
+    return list;
+  }, [sedeProfile, form.area, form.cargoLabel]);
 
   const isWeekly = form.shiftMode === 'weekly';
   const weeklySummary = useMemo(
@@ -235,7 +253,7 @@ export function AsistenciaStaffDialog({
               </Label>
               <Select value={form.cargoLabel} onValueChange={(v) => patch({ cargoLabel: v })}>
                 <SelectTrigger className="bg-background text-foreground border-border">
-                  <SelectValue />
+                  <SelectValue placeholder="Selecciona cargo" />
                 </SelectTrigger>
                 <SelectContent>
                   {cargoOptions.map((c) => (
@@ -243,6 +261,12 @@ export function AsistenciaStaffDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <Input
+                value={form.cargoLabel}
+                onChange={(e) => patch({ cargoLabel: e.target.value })}
+                placeholder="O escribe un cargo personalizado"
+                className="bg-background text-foreground border-border text-sm"
+              />
             </div>
           </div>
 
