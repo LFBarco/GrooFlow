@@ -229,7 +229,7 @@ export function UniformeEntregaFormDialog({
                   <SelectContent>
                     {staffOptions.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.name} · {s.jobTitle} · {s.homeSede}
+                        {s.name} · {s.jobTitle} · {s.sedesLabel || s.homeSede}
                       </SelectItem>
                     ))}
                     <SelectItem value="manual">Otro / manual</SelectItem>

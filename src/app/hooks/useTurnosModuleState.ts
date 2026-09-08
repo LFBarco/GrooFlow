@@ -14,6 +14,7 @@ import {
 export function useTurnosModuleState(input: {
   users: User[];
   asistencia?: AsistenciaSettings | null;
+  sedeCatalog?: string[];
   canEdit: boolean;
 }) {
   const [settings, setSettings] = useState<TurnosSettings>(() => mergeTurnosSettings());
@@ -21,8 +22,29 @@ export function useTurnosModuleState(input: {
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestRef = useRef(settings);
+  const turnosRawRef = useRef<TurnosSettings | null>(null);
+  const builtOnceRef = useRef(false);
   latestRef.current = settings;
 
+  const usersLen = input.users.length;
+  const staffLen = input.asistencia?.staff?.length ?? 0;
+  const sedeCatalogKey = (input.sedeCatalog ?? []).join('\0');
+
+  const rebuildRoster = useCallback(
+    (base: TurnosSettings): TurnosSettings => ({
+      ...base,
+      roster: buildRosterFromSources({
+        users: input.users,
+        asistencia: input.asistencia,
+        existing: base.roster,
+        sedeCatalog: input.sedeCatalog,
+      }),
+      rosterSyncedAt: new Date().toISOString(),
+    }),
+    [input.users, input.asistencia, input.sedeCatalog]
+  );
+
+  // Carga KV. Solo construye roster si ya hay organigrama/usuarios (evita flash código→nombre).
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -30,16 +52,13 @@ export function useTurnosModuleState(input: {
         const raw = await repository.kv.get<TurnosSettings>(TURNOS_SETTINGS_KV_KEY);
         if (cancelled) return;
         const merged = mergeTurnosSettings(raw);
-        const roster = buildRosterFromSources({
-          users: input.users,
-          asistencia: input.asistencia,
-          existing: merged.roster,
-        });
-        setSettings({
-          ...merged,
-          roster,
-          rosterSyncedAt: new Date().toISOString(),
-        });
+        turnosRawRef.current = merged;
+        if (staffLen > 0 || usersLen > 0) {
+          setSettings(rebuildRoster(merged));
+          builtOnceRef.current = true;
+        } else {
+          setSettings({ ...merged, roster: [] });
+        }
       } catch {
         if (!cancelled) toast.error('No se pudo cargar la planificación de turnos.');
       } finally {
@@ -49,9 +68,17 @@ export function useTurnosModuleState(input: {
     return () => {
       cancelled = true;
     };
-    // Carga inicial única; syncRoster actualiza el roster bajo demanda.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Si al montar aún no había fuentes, construir una sola vez cuando lleguen.
+  useEffect(() => {
+    if (loading || builtOnceRef.current) return;
+    if (staffLen === 0 && usersLen === 0) return;
+    const base = turnosRawRef.current ?? latestRef.current;
+    setSettings(rebuildRoster(base));
+    builtOnceRef.current = true;
+  }, [loading, staffLen, usersLen, sedeCatalogKey, rebuildRoster]);
 
   const persistNow = useCallback(async (next: TurnosSettings, message?: string) => {
     setSaving(true);
@@ -88,18 +115,10 @@ export function useTurnosModuleState(input: {
 
   const syncRoster = useCallback(() => {
     updateSettings(
-      (prev) => ({
-        ...prev,
-        roster: buildRosterFromSources({
-          users: input.users,
-          asistencia: input.asistencia,
-          existing: prev.roster,
-        }),
-        rosterSyncedAt: new Date().toISOString(),
-      }),
+      (prev) => rebuildRoster(prev),
       'Personal sincronizado desde organigrama (maestro Buk.pe).'
     );
-  }, [input.users, input.asistencia, updateSettings]);
+  }, [rebuildRoster, updateSettings]);
 
   return {
     settings,

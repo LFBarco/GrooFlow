@@ -18,6 +18,12 @@ export {
   canPublishTurnosWeek,
   isEncargadoSedeRole,
 } from './turnosRosterFromOrganigrama';
+export {
+  canonicalizeWorkArea,
+  normalizeWorkAreaKey,
+  uniqueWorkAreas,
+  workAreasMatch,
+} from './turnosWorkAreas';
 
 export const TURNOS_SETTINGS_KV_KEY = 'settings:turnos';
 

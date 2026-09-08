@@ -132,11 +132,15 @@ export function enrichStaffDisplayFromUsers(
     return {
       ...s,
       fullName: linked.name?.trim() || s.fullName,
-      cargoLabel: linked.jobTitle?.trim() || linked.role || s.cargoLabel,
+      cargoLabel: linked.jobTitle?.trim() || s.cargoLabel,
       email: linked.email ?? s.email,
       avatarUrl: linked.avatarUrl ?? s.avatarUrl,
       usuarioId: linked.id,
       rut: s.rut || linked.documentNumber || s.rut,
+      sedeName:
+        linked.sedes?.[0]?.trim() ||
+        linked.location?.trim() ||
+        s.sedeName,
     };
   });
 }

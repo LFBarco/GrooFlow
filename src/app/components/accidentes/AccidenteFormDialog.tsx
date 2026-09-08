@@ -109,10 +109,28 @@ export function AccidenteFormDialog({
     if (record) {
       setForm({ ...record });
       setStaffKey(resolveStaffOptionKey(record, staffOptions));
-    } else {
-      setForm(emptyForm());
-      setStaffKey(staffOptions[0]?.id ?? 'manual');
+      return;
     }
+    const first = staffOptions[0];
+    if (!first) {
+      setForm(emptyForm());
+      setStaffKey('manual');
+      return;
+    }
+    setStaffKey(first.id);
+    setForm({
+      ...emptyForm(),
+      userId: first.userId,
+      asistenciaStaffId: first.asistenciaStaffId,
+      bukEmployeeId: first.bukEmployeeId,
+      documentNumber: first.documentNumber,
+      affectedName: first.name,
+      jobTitle: first.jobTitle,
+      workArea: first.workArea,
+      contractType: first.contractType,
+      seniorityMonths: computeSeniorityMonths(first.hireDate),
+      sede: first.homeSede || '',
+    });
   }, [open, record, staffOptions]);
 
   const selectedStaff = useMemo(
@@ -245,7 +263,7 @@ export function AccidenteFormDialog({
                   <SelectContent>
                     {staffOptions.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.name} · {s.jobTitle} · {s.homeSede}
+                        {s.name} · {s.jobTitle} · {s.sedesLabel || s.homeSede}
                       </SelectItem>
                     ))}
                     <SelectItem value="manual">Otro / manual</SelectItem>

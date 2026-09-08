@@ -207,7 +207,12 @@ export interface StaffOption {
   jobTitle: string;
   workArea: string;
   contractType: string;
+  /** Sede principal (para el campo Sede del formulario). */
   homeSede: string;
+  /** Etiqueta de sedes de Gestión (puede listar varias). */
+  sedesLabel: string;
+  /** Claves normalizadas de todas las sedes (filtro visible). */
+  sedeKeys?: string[];
   seniorityMonths: number;
   hireDate?: string;
   uniformSizes?: Partial<Record<string, string>>;
@@ -229,6 +234,49 @@ export function contractTypeLabel(type?: string): string {
 
 function docKey(raw?: string | null): string {
   return String(raw ?? '').replace(/\D+/g, '');
+}
+
+/** Cargo oficial = puesto de Gestión. No usar rol GrooFlow (groomer) ni cargo Buk. */
+function resolveGestionJobTitle(u: {
+  jobTitle?: string;
+  workArea?: string;
+  roleLabel?: string;
+  nivelNombre?: string;
+}): string {
+  const puesto = u.jobTitle?.trim();
+  if (puesto) return puesto;
+  const area = u.workArea?.trim();
+  if (area) return area;
+  return 'Sin cargo';
+}
+
+/** Lista sedes de app_usuarios; compacta si hay muchas (como en /config/usuarios). */
+function formatSedesLabel(sedes: string[]): string {
+  const unique = [...new Set(sedes.map((s) => s.trim()).filter(Boolean))];
+  if (unique.length === 0) return 'Sin sede';
+  if (unique.length <= 3) return unique.join(', ');
+  return `${unique.slice(0, 3).join(', ')} +${unique.length - 3}`;
+}
+
+function resolveUserSedes(
+  u: { sedes?: string[]; location?: string | null },
+  matchedSede: string | undefined,
+  catalog: string[]
+): { primary: string; label: string; keys: string[] } {
+  const raw =
+    u.sedes && u.sedes.length > 0
+      ? u.sedes
+      : [u.location, matchedSede].filter((s): s is string => !!String(s ?? '').trim());
+  const names = raw
+    .map((s) => (catalog.length > 0 ? resolveCanonicalSedeName(String(s), catalog) : String(s).trim()))
+    .filter(Boolean);
+  const unique = [...new Set(names)];
+  const primary = unique[0] || matchedSede || 'Principal';
+  return {
+    primary: catalog.length > 0 ? resolveCanonicalSedeName(primary, catalog) : primary,
+    label: formatSedesLabel(unique.length ? unique : [primary]),
+    keys: unique.map((s) => normalizeSedeKey(s)),
+  };
 }
 
 function normalizePersonName(name: string): string {
@@ -339,9 +387,7 @@ export function buildStaffOptions(input: {
       (doc ? staffByDoc.get(doc) : undefined);
     if (matched) coveredStaffIds.add(matched.id);
 
-    const rawSede = u.location ?? u.sedes?.[0] ?? matched?.sedeName ?? 'Principal';
-    const homeSede =
-      sedeNames.length > 0 ? resolveCanonicalSedeName(rawSede, sedeNames) : rawSede;
+    const sedesInfo = resolveUserSedes(u, matched?.sedeName, sedeNames);
     const opt: StaffOption = {
       id: `user-${u.id}`,
       userId: u.id,
@@ -351,10 +397,12 @@ export function buildStaffOptions(input: {
       email: email || matched?.email || undefined,
       label: u.name,
       name: u.name,
-      jobTitle: u.jobTitle?.trim() || u.role || 'Colaborador',
+      jobTitle: resolveGestionJobTitle(u),
       workArea: u.workArea ?? (matched?.area ? mapAreaFromAsistencia(matched.area) : 'Otro'),
       contractType: contractTypeLabel(u.contractType),
-      homeSede,
+      homeSede: sedesInfo.primary,
+      sedesLabel: sedesInfo.label,
+      sedeKeys: sedesInfo.keys,
       seniorityMonths: computeSeniorityMonths(u.hireDate),
       hireDate: u.hireDate,
       uniformSizes: u.uniformSizes,
@@ -387,10 +435,12 @@ export function buildStaffOptions(input: {
       userId: s.usuarioId ? String(s.usuarioId) : undefined,
       label: s.fullName,
       name: s.fullName,
-      jobTitle: s.cargoLabel || 'Colaborador',
+      jobTitle: s.cargoLabel?.trim() || 'Sin cargo',
       workArea: s.area ? mapAreaFromAsistencia(s.area) : 'Otro',
       contractType: 'No registrado',
       homeSede,
+      sedesLabel: homeSede || 'Sin sede',
+      sedeKeys: homeSede ? [normalizeSedeKey(homeSede)] : [],
       seniorityMonths: 0,
     };
     register(
@@ -416,9 +466,13 @@ export function buildStaffOptions(input: {
   });
 
   if (input.visibleSedes?.length) {
+    const visibleKeys = new Set(input.visibleSedes.map((v) => normalizeSedeKey(v)));
     list = list.filter((s) => {
-      const key = normalizeSedeKey(s.homeSede);
-      return input.visibleSedes!.some((v) => normalizeSedeKey(v) === key);
+      const keys =
+        s.sedeKeys && s.sedeKeys.length > 0
+          ? s.sedeKeys
+          : [normalizeSedeKey(s.homeSede)];
+      return keys.some((k) => visibleKeys.has(k));
     });
   }
   return list;

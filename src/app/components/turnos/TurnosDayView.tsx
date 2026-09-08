@@ -82,7 +82,6 @@ function StaffCard({
         <p className="truncate text-sm font-medium">{staff.fullName}</p>
         <p className="truncate text-[11px] text-muted-foreground">
           {staff.roleLabel}
-          {staff.workArea ? ` · ${staff.workArea}` : ''}
           {' · '}
           {staff.homeSede}
         </p>

@@ -42,6 +42,7 @@ import {
   workAreaAvatarClass,
 } from '../../utils/turnosStyles';
 import { bulkFillAreaWeek } from '../../utils/turnosTemplates';
+import { canonicalizeWorkArea, uniqueWorkAreas } from '../../utils/turnosWorkAreas';
 import { cn } from '../ui/utils';
 import { Button } from '../ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
@@ -70,8 +71,8 @@ type Props = {
 function sortRosterByArea(roster: TurnosRosterEntry[], dir: SortDir): TurnosRosterEntry[] {
   if (!dir) {
     return [...roster].sort((a, b) => {
-      const areaA = (a.workArea || 'Sin área').toLocaleLowerCase('es');
-      const areaB = (b.workArea || 'Sin área').toLocaleLowerCase('es');
+      const areaA = canonicalizeWorkArea(a.workArea);
+      const areaB = canonicalizeWorkArea(b.workArea);
       return (
         areaA.localeCompare(areaB, 'es') || a.fullName.localeCompare(b.fullName, 'es')
       );
@@ -79,8 +80,8 @@ function sortRosterByArea(roster: TurnosRosterEntry[], dir: SortDir): TurnosRost
   }
   const factor = dir === 'asc' ? 1 : -1;
   return [...roster].sort((a, b) => {
-    const areaA = (a.workArea || 'Sin área').toLocaleLowerCase('es');
-    const areaB = (b.workArea || 'Sin área').toLocaleLowerCase('es');
+    const areaA = canonicalizeWorkArea(a.workArea);
+    const areaB = canonicalizeWorkArea(b.workArea);
     const cmp = areaA.localeCompare(areaB, 'es') || a.fullName.localeCompare(b.fullName, 'es');
     return cmp * factor;
   });
@@ -127,7 +128,7 @@ export function TurnosWeekGrid({
   const paddingBottom = Math.max(0, (sortedRoster.length - endIndex) * rowHeight);
 
   const areaOptions = useMemo(
-    () => [...new Set(roster.map((r) => r.workArea || 'Sin área'))].sort((a, b) => a.localeCompare(b, 'es')),
+    () => uniqueWorkAreas(roster.map((r) => r.workArea || 'Sin área')),
     [roster]
   );
 
@@ -365,11 +366,11 @@ export function TurnosWeekGrid({
                   </tr>
                 ) : null}
                 {virtualRoster.map((staff) => {
-                const areaKey = staff.workArea || 'Sin área';
+                const areaKey = canonicalizeWorkArea(staff.workArea);
                 const globalIndex = sortedRoster.indexOf(staff);
                 const prevStaff = globalIndex > 0 ? sortedRoster[globalIndex - 1] : null;
                 const showAreaDivider =
-                  groupByArea && (!prevStaff || (prevStaff.workArea || 'Sin área') !== areaKey);
+                  groupByArea && (!prevStaff || canonicalizeWorkArea(prevStaff.workArea) !== areaKey);
                 if (showAreaDivider) lastArea = areaKey;
                 return (
                   <Fragment key={staff.id}>
@@ -399,7 +400,6 @@ export function TurnosWeekGrid({
                             <p className="truncate font-medium text-foreground">{staff.fullName}</p>
                             <p className="truncate text-[11px] text-muted-foreground">
                               {staff.roleLabel}
-                              {staff.workArea ? ` · ${staff.workArea}` : ''}
                               {' · '}
                               {staff.homeSede}
                             </p>

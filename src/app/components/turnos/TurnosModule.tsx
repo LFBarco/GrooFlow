@@ -18,6 +18,7 @@ import { es } from 'date-fns/locale';
 import type { SystemSettings, User } from '../../types';
 import type { TurnosFilters, TurnosGridDensity, TurnosViewMode } from '../../types/turnos';
 import { VET_WORK_AREAS } from '../../types/accidentes';
+import { uniqueWorkAreas } from '../../utils/turnosWorkAreas';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import { sanitizeBukBaseUrl } from '../../utils/bukAsistenciaApi';
 import { loadBukAsistenciaCache } from '../../utils/bukAsistenciaCache';
@@ -101,6 +102,7 @@ export function TurnosModule({
   const { settings, loading, saving, updateSettings, syncRoster } = useTurnosModuleState({
     users,
     asistencia,
+    sedeCatalog: visibleSedes,
     canEdit,
   });
 
@@ -254,9 +256,7 @@ export function TurnosModule({
 
   const workAreaOptions = useMemo(() => {
     const fromRoster = baseRoster.map((r) => r.workArea || 'Sin área');
-    return [...new Set([...VET_WORK_AREAS, ...fromRoster])].sort((a, b) =>
-      a.localeCompare(b, 'es')
-    );
+    return uniqueWorkAreas([...VET_WORK_AREAS, ...fromRoster]);
   }, [baseRoster]);
 
   const roleOptions = useMemo(() => {

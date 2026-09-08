@@ -194,7 +194,6 @@ export function TurnosRosterDialog({
                 <p className="truncate text-sm font-medium">{entry.fullName}</p>
                 <p className="truncate text-[11px] text-muted-foreground">
                   {entry.roleLabel}
-                  {entry.workArea ? ` · ${entry.workArea}` : ''}
                   {' · '}
                   {entry.homeSede}
                   {entry.isExternal ? ' · EXT' : ''}

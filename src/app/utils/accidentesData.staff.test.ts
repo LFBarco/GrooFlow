@@ -120,6 +120,46 @@ describe('buildStaffOptions', () => {
     expect(options[0]?.userId).toBe('7');
     expect(options[0]?.jobTitle).toBe('Médico veterinario');
   });
+  it('sin puesto usa área de Gestión (no rol groomer ni cargo Buk)', () => {
+    const users = [
+      baseUser({
+        id: '19',
+        name: 'Alanies Del Alcazar',
+        email: 'alaniesa.groomers@gmail.com',
+        workArea: 'Counters',
+        sedes: [
+          'Benavides',
+          'Jorge Chavez',
+          'San Borja',
+          'La Molina',
+          'Magdalena',
+          'Pet Movil',
+          'Memorial',
+        ],
+      }),
+    ];
+    const options = buildStaffOptions({
+      users,
+      asistencia: {
+        staff: [
+          {
+            id: 'staff_ou54xkg',
+            sedeName: 'Benavides',
+            fullName: 'Alanies Del Alcazar',
+            cargoLabel: 'groomer',
+            area: 'administracion',
+            expectedTime: '08:00',
+            email: 'alaniesa.groomers@gmail.com',
+            isCritical: false,
+          },
+        ],
+      },
+    });
+    expect(options).toHaveLength(1);
+    expect(options[0]?.jobTitle).toBe('Counters');
+    expect(options[0]?.homeSede).toBe('Benavides');
+    expect(options[0]?.sedesLabel).toBe('Benavides, Jorge Chavez, San Borja +4');
+  });
 });
 
 describe('resolveStaffOptionKey', () => {
@@ -135,6 +175,7 @@ describe('resolveStaffOptionKey', () => {
         workArea: 'Administración',
         contractType: 'Planta',
         homeSede: 'Benavides',
+        sedesLabel: 'Benavides',
         seniorityMonths: 0,
       },
     ];

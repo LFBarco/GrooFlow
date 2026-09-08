@@ -1,3 +1,6 @@
+RewriteEngine On
+RewriteBase /grooflow/
+
 <IfModule mod_headers.c>
   <FilesMatch "index\.html$">
     Header set Cache-Control "no-cache, no-store, must-revalidate"
@@ -5,3 +8,19 @@
     Header set Expires "0"
   </FilesMatch>
 </IfModule>
+
+AddType application/javascript .js .mjs
+AddType text/css .css
+
+RewriteCond %{HTTP:Authorization} .
+RewriteRule ^api/ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+RewriteRule ^api(?:/.*)?$ api/index.php [QSA,L]
+
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule \.(js|mjs|css|map|jpe?g|png|gif|webp|svg|ico)$ - [R=404,L,NC]
+
+RewriteRule ^ index.html [L]

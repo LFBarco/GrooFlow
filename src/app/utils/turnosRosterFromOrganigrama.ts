@@ -2,7 +2,9 @@ import type { User } from '../types';
 import type { AsistenciaSettings, AsistenciaStaffMember } from '../types/asistencia';
 import type { TurnosRosterEntry } from '../types/turnos';
 import { mergeAsistenciaSettings } from './asistenciaData';
+import { resolveCanonicalSedeName } from './gestionSedes';
 import { RRHH_IDENTITY_POLICY } from './rrhhIdentityPolicy';
+import { canonicalizeWorkArea } from './turnosWorkAreas';
 
 function initialsFromName(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -23,7 +25,61 @@ function docKey(raw?: string | null): string {
   return String(raw ?? '').replace(/\D+/g, '');
 }
 
-function rosterKey(entry: Pick<TurnosRosterEntry, 'source' | 'userId' | 'asistenciaStaffId' | 'fullName' | 'bukEmployeeId'>): string {
+/** Códigos Buk (01, 03, 3046…) no deben mostrarse como sede. */
+export function looksLikeSedeCode(raw: string): boolean {
+  return /^\d{1,6}$/.test(raw.trim());
+}
+
+function resolveRoleLabel(linked: User | undefined, staff: AsistenciaStaffMember): string {
+  const puesto = linked?.jobTitle?.trim();
+  if (puesto) return puesto;
+  const cargo = staff.cargoLabel?.trim();
+  if (cargo && !/^(groomer|super_admin|auditoria|manager|admin)$/i.test(cargo)) {
+    return cargo;
+  }
+  const area = linked?.workArea?.trim();
+  if (area) return area;
+  if (cargo) return cargo;
+  return 'Sin cargo';
+}
+
+function resolveHomeSede(
+  staff: AsistenciaStaffMember,
+  linked: User | undefined,
+  asistencia: AsistenciaSettings,
+  sedeCatalog: string[]
+): string {
+  const fromUser =
+    linked?.sedes?.find((s) => s.trim() && !looksLikeSedeCode(s))?.trim() ||
+    (linked?.location && !looksLikeSedeCode(linked.location) ? linked.location.trim() : '');
+  if (fromUser) {
+    return sedeCatalog.length ? resolveCanonicalSedeName(fromUser, sedeCatalog) : fromUser;
+  }
+
+  const raw = (staff.sedeName ?? '').trim();
+  if (!raw) return 'Sin sede';
+
+  if (!looksLikeSedeCode(raw)) {
+    return sedeCatalog.length ? resolveCanonicalSedeName(raw, sedeCatalog) : raw;
+  }
+
+  const mappings = asistencia.sedeMappings ?? [];
+  const profiles = asistencia.sedeProfiles ?? [];
+  for (const m of [...mappings, ...profiles]) {
+    const code = String((m as { bukRecintoCode?: string }).bukRecintoCode ?? '').trim();
+    const name = String((m as { sedeName?: string }).sedeName ?? '').trim();
+    if (code && name && code === raw) {
+      return sedeCatalog.length ? resolveCanonicalSedeName(name, sedeCatalog) : name;
+    }
+  }
+
+  // No mostrar códigos numéricos crudos (01, 03, 04…).
+  return 'Sin sede';
+}
+
+function rosterKey(
+  entry: Pick<TurnosRosterEntry, 'source' | 'userId' | 'asistenciaStaffId' | 'fullName' | 'bukEmployeeId'>
+): string {
   if (entry.asistenciaStaffId) return `asist:${entry.asistenciaStaffId}`;
   if (entry.bukEmployeeId) return `buk:${entry.bukEmployeeId}`;
   if (entry.userId) return `user:${entry.userId}`;
@@ -58,34 +114,47 @@ export function buildRosterFromSources(input: {
   users: User[];
   asistencia?: AsistenciaSettings | null;
   existing?: TurnosRosterEntry[];
+  /** Catálogo de sedes de Gestión para resolver nombres. */
+  sedeCatalog?: string[];
 }): TurnosRosterEntry[] {
   const map = new Map<string, TurnosRosterEntry>();
   const asistencia = mergeAsistenciaSettings(input.asistencia);
   const staffList = asistencia.staff ?? [];
   const hasOrganigrama = staffList.length > 0;
+  const sedeCatalog = input.sedeCatalog ?? [];
 
   // Conservar solo manuales/externos del roster previo.
   for (const e of input.existing ?? []) {
     if (e.source === 'manual' || e.isExternal) {
-      map.set(rosterKey(e), { ...e, source: 'manual', active: e.active !== false });
+      const homeSede = looksLikeSedeCode(e.homeSede)
+        ? 'Sin sede'
+        : sedeCatalog.length
+          ? resolveCanonicalSedeName(e.homeSede, sedeCatalog)
+          : e.homeSede;
+      map.set(rosterKey(e), { ...e, source: 'manual', homeSede, active: e.active !== false });
     }
   }
 
   if (hasOrganigrama) {
     for (const s of staffList) {
       const linked = findLinkedUser(s, input.users);
+      const homeSede = resolveHomeSede(s, linked, asistencia, sedeCatalog);
+      const roleLabel = resolveRoleLabel(linked, s);
+      const fullName = linked?.name?.trim() || s.fullName;
       const entry: TurnosRosterEntry = {
         id: `asist-${s.id}`,
         source: 'organigrama',
         asistenciaStaffId: s.id,
         bukEmployeeId: s.bukEmployeeId,
         userId: linked?.id ?? (s.usuarioId ? String(s.usuarioId) : undefined),
-        fullName: s.fullName,
-        initials: initialsFromName(s.fullName),
-        roleLabel: s.cargoLabel || 'Colaborador',
-        workArea: s.area ? mapWorkAreaFromAsistencia(s.area) : undefined,
-        homeSede: s.sedeName,
-        email: s.email ?? linked?.email,
+        fullName,
+        initials: initialsFromName(fullName),
+        roleLabel,
+        workArea: canonicalizeWorkArea(
+          linked?.workArea || (s.area ? mapWorkAreaFromAsistencia(s.area) : undefined)
+        ),
+        homeSede,
+        email: linked?.email ?? s.email,
         active: true,
         sortOrder: s.sortOrder,
       };
@@ -95,15 +164,20 @@ export function buildRosterFromSources(input: {
     // Fallback legado mientras no haya proyección Fase 4.
     for (const u of input.users) {
       if (u.status === 'inactive') continue;
-      const homeSede = u.sedes?.[0] ?? u.location ?? 'Principal';
+      const raw = u.sedes?.[0] ?? u.location ?? 'Sin sede';
+      const homeSede = looksLikeSedeCode(raw)
+        ? 'Sin sede'
+        : sedeCatalog.length
+          ? resolveCanonicalSedeName(raw, sedeCatalog)
+          : raw;
       const entry: TurnosRosterEntry = {
         id: `user-${u.id}`,
         source: 'user',
         userId: u.id,
         fullName: u.name,
         initials: u.initials || initialsFromName(u.name),
-        roleLabel: u.jobTitle || u.role,
-        workArea: u.workArea || undefined,
+        roleLabel: u.jobTitle?.trim() || u.workArea?.trim() || 'Sin cargo',
+        workArea: canonicalizeWorkArea(u.workArea),
         homeSede,
         email: u.email,
         active: true,
@@ -111,15 +185,16 @@ export function buildRosterFromSources(input: {
       map.set(rosterKey(entry), entry);
     }
     for (const s of staffList) {
+      const homeSede = resolveHomeSede(s, undefined, asistencia, sedeCatalog);
       const entry: TurnosRosterEntry = {
         id: `asist-${s.id}`,
         source: 'asistencia',
         asistenciaStaffId: s.id,
         fullName: s.fullName,
         initials: initialsFromName(s.fullName),
-        roleLabel: s.cargoLabel,
-        workArea: s.area ? mapWorkAreaFromAsistencia(s.area) : undefined,
-        homeSede: s.sedeName,
+        roleLabel: resolveRoleLabel(undefined, s),
+        workArea: canonicalizeWorkArea(s.area ? mapWorkAreaFromAsistencia(s.area) : undefined),
+        homeSede,
         email: s.email,
         active: true,
         sortOrder: s.sortOrder,
@@ -127,10 +202,6 @@ export function buildRosterFromSources(input: {
       map.set(rosterKey(entry), entry);
     }
   }
-
-  // Conservar ids antiguos con asignaciones: si existía user-* y ahora hay organigrama
-  // con el mismo userId, las asignaciones siguen apuntando a user-*; el bridge de plan vs real
-  // también usa asistenciaStaffId. Opcional: remap no lo hacemos aquí para no romper historial.
 
   return [...map.values()]
     .filter((r) => r.active)
