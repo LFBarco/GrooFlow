@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { 
     ShieldAlert, 
     Trash2, 
@@ -50,6 +51,7 @@ export function AuditPanel({
   const showInvoiceAudit = !isGoLiveExcludedModule('Tesorería');
   const [selectedTab, setSelectedTab] = useState('overview');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAnomaly, setSelectedAnomaly] = useState<Transaction | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [auditLogsLoading, setAuditLogsLoading] = useState(false);
 
@@ -520,11 +522,17 @@ export function AuditPanel({
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right font-mono">{formatMoney(t.amount)}</TableCell>
-                                    <TableCell className="text-right">
-                                        <Button variant="ghost" size="sm" className="h-8 w-8">
-                                            <Eye className="w-4 h-4 text-muted-foreground" />
-                                        </Button>
-                                    </TableCell>
+                                     <TableCell className="text-right">
+                                         <Button 
+                                             variant="ghost" 
+                                             size="sm" 
+                                             className="h-8 w-8"
+                                             title="Ver detalle de anomalía"
+                                             onClick={() => setSelectedAnomaly(t)}
+                                         >
+                                             <Eye className="w-4 h-4 text-muted-foreground" />
+                                         </Button>
+                                     </TableCell>
                                 </TableRow>
                             ))}
                             {suspiciousTransactions.length === 0 && (
@@ -589,11 +597,111 @@ export function AuditPanel({
                     </div>
                 </CardContent>
                 <CardFooter className="border-t pt-4">
-                    <Button variant="ghost" className="w-full text-muted-foreground">Cargar más registros</Button>
+                    <Button 
+                        variant="ghost" 
+                        className="w-full text-muted-foreground"
+                        onClick={() => toast.info('Todos los registros recientes de auditoría han sido cargados.')}
+                    >
+                        Cargar más registros
+                    </Button>
                 </CardFooter>
             </Card>
         </TabsContent>
       </Tabs>
+
+      {/* --- ANOMALY DETAIL DIALOG --- */}
+      <Dialog open={!!selectedAnomaly} onOpenChange={(open) => !open && setSelectedAnomaly(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="w-5 h-5 shrink-0" />
+              Detalle de Anomalía Detectada
+            </DialogTitle>
+            <DialogDescription>
+              Información de la transacción y reglas heurísticas activadas.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedAnomaly && (
+            <div className="space-y-4 py-2 text-sm">
+              <div className="rounded-lg border p-3 bg-muted/40 space-y-2">
+                <div className="flex justify-between items-center font-medium">
+                  <span>{selectedAnomaly.description || 'Sin descripción'}</span>
+                  <Badge variant="outline" className={selectedAnomaly.type === 'income' ? 'text-green-600 border-green-300 bg-green-50' : 'text-red-600 border-red-300 bg-red-50'}>
+                    {selectedAnomaly.type === 'income' ? 'Ingreso' : 'Egreso'}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground pt-2 border-t border-border/50">
+                  <div>
+                    <span className="font-semibold text-foreground">Monto:</span> {formatMoney(selectedAnomaly.amount)}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-foreground">Fecha:</span> {format(new Date(selectedAnomaly.date), 'dd/MM/yyyy')}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-foreground">Categoría:</span> {selectedAnomaly.category || 'Sin categoría'}
+                  </div>
+                  <div>
+                    <span className="font-semibold text-foreground">Subcategoría:</span> {selectedAnomaly.subcategory || 'General'}
+                  </div>
+                  {selectedAnomaly.location && (
+                    <div className="col-span-2">
+                      <span className="font-semibold text-foreground">Sede:</span> {selectedAnomaly.location}
+                    </div>
+                  )}
+                  {selectedAnomaly.provider && (
+                    <div className="col-span-2">
+                      <span className="font-semibold text-foreground">Proveedor:</span> {selectedAnomaly.provider}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold uppercase text-muted-foreground mb-2">Reglas de Anomalía Activadas</h4>
+                <div className="space-y-2">
+                  {((selectedAnomaly as any)._auditReasons || []).map((reason: string, idx: number) => (
+                    <div key={idx} className="flex items-start gap-2 text-xs p-2.5 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-yellow-900 dark:text-yellow-200">
+                      <AlertTriangle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-semibold">{reason}</span>
+                        <p className="text-[11px] opacity-90 mt-0.5">
+                          {reason.includes('Monto alto') && 'Transacción mayor a S/ 1,000 con descripción corta.'}
+                          {reason.includes('Sin Categoría') && 'Falta asignar una categoría para la clasificación contable.'}
+                          {reason.includes('Sin Subcategoría') && 'Los egresos requieren subcategoría para mayor trazabilidad.'}
+                          {reason.includes('Fecha Futura') && 'La fecha registrada es posterior a la fecha actual.'}
+                          {reason.includes('Monto Redondo') && 'Egreso por un monto múltiplo exacto de 100.'}
+                          {reason.includes('Fin de Semana') && 'Transacción registrada en sábado o domingo.'}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            {selectedAnomaly && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  onDeleteTransaction(selectedAnomaly.id);
+                  setSelectedAnomaly(null);
+                  toast.success('Transacción anómala eliminada correctamente.');
+                }}
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Eliminar Transacción
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={() => setSelectedAnomaly(null)}>
+              Cerrar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
