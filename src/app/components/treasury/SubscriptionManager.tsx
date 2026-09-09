@@ -18,12 +18,15 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { RucSearchField } from '../common/RucSearchField';
 
+import type { Provider } from '../../types';
+
 export type { Subscription } from './types';
 
 interface SubscriptionManagerProps {
   onGenerateInvoice: (invoice: Invoice) => void;
   subscriptions?: Subscription[];
   onUpdateSubscriptions?: (subscriptions: Subscription[]) => void;
+  providers?: Provider[];
 }
 
 const EMPTY_FORM = {
@@ -40,6 +43,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
   onGenerateInvoice,
   subscriptions: externalSubscriptions,
   onUpdateSubscriptions,
+  providers,
 }) => {
   const [subscriptions, setSubscriptionsState] = useState<Subscription[]>(externalSubscriptions ?? []);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -238,6 +242,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
               label="RUC del Proveedor"
               placeholder="Ingrese RUC (11 dígitos)"
               rucValue={form.providerRuc}
+              providers={providers}
               onRucChange={(val) => setForm((prev) => ({ ...prev, providerRuc: val }))}
               onRazonSocialFound={(info) => {
                 setForm((prev) => ({ ...prev, providerName: info.razonSocial }));

@@ -19,6 +19,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { formatCurrencyEs } from '../../utils/numberFormat';
+import type { Provider } from '../../types';
 
 interface TreasuryModuleProps {
   pendingFeeReceipts?: Array<{
@@ -43,6 +44,7 @@ interface TreasuryModuleProps {
   onUpdateBankMovements?: (movements: BankMovement[]) => void;
   subscriptions?: Subscription[];
   onUpdateSubscriptions?: (subscriptions: Subscription[]) => void;
+  providers?: Provider[];
   sedeCount?: number;
   userInitials?: string;
 }
@@ -60,8 +62,9 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
   onUpdateBankMovements,
   subscriptions: externalSubscriptions,
   onUpdateSubscriptions,
-  sedeCount = 0,
-  userInitials,
+  providers,
+  sedeCount = 1,
+  userInitials = 'US',
 }) => {
   const [activeTab, setActiveTab] = useState<'ingest' | 'workbench' | 'conciliation' | 'subscriptions' | 'history'>('workbench');
   
@@ -295,6 +298,7 @@ export const TreasuryModule: React.FC<TreasuryModuleProps> = ({
                 onGenerateInvoice={handleSubscriptionGenerate}
                 subscriptions={externalSubscriptions ?? []}
                 onUpdateSubscriptions={onUpdateSubscriptions}
+                providers={providers}
               />
             )}
             

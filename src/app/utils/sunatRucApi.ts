@@ -6,6 +6,7 @@ export interface SunatRucInfo {
   direccion?: string;
   estado?: string;
   condicion?: string;
+  source?: 'bd' | 'sunat';
 }
 
 export function normalizeRucDigits(input: string): string {
@@ -14,6 +15,59 @@ export function normalizeRucDigits(input: string): string {
 
 export function isValidRucDigits(input: string): boolean {
   return /^\d{11}$/.test(input.trim());
+}
+
+export function getAvailableProvidersList(
+  providersProp?: Array<{ ruc?: string; name?: string; razonSocial?: string; direccion?: string }>
+): Array<{ ruc?: string; name?: string; razonSocial?: string; direccion?: string }> {
+  if (providersProp && providersProp.length > 0) {
+    return providersProp;
+  }
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('data:providers');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    }
+  } catch {
+    // Ignore
+  }
+  return [];
+}
+
+export async function lookupRucInDbOrSunat(
+  rucInput: string,
+  providersProp?: Array<{ ruc?: string; name?: string; razonSocial?: string; direccion?: string }>
+): Promise<SunatRucInfo | null> {
+  const digits = normalizeRucDigits(rucInput);
+  if (!isValidRucDigits(digits)) {
+    return null;
+  }
+
+  // 1. Buscar primero en el catálogo de proveedores (BD interna)
+  const catalog = getAvailableProvidersList(providersProp);
+  const match = catalog.find((p) => normalizeRucDigits(p.ruc || '') === digits);
+  if (match && (match.name || match.razonSocial)) {
+    return {
+      ruc: digits,
+      razonSocial: String(match.name || match.razonSocial).trim(),
+      direccion: match.direccion ? String(match.direccion).trim() : undefined,
+      source: 'bd',
+    };
+  }
+
+  // 2. Si no existe en la BD de proveedores, consultar a SUNAT
+  const sunatInfo = await fetchSunatRucData(digits);
+  if (sunatInfo) {
+    return {
+      ...sunatInfo,
+      source: 'sunat',
+    };
+  }
+
+  return null;
 }
 
 export async function fetchSunatRucData(rucInput: string): Promise<SunatRucInfo | null> {
@@ -38,6 +92,7 @@ export async function fetchSunatRucData(rucInput: string): Promise<SunatRucInfo 
           direccion: json.direccion ? String(json.direccion).trim() : undefined,
           estado: json.estado ? String(json.estado).trim() : undefined,
           condicion: json.condicion ? String(json.condicion).trim() : undefined,
+          source: 'sunat',
         };
       }
     }
@@ -61,6 +116,7 @@ export async function fetchSunatRucData(rucInput: string): Promise<SunatRucInfo 
           direccion: data.direccion ? String(data.direccion).trim() : undefined,
           estado: data.estado ? String(data.estado).trim() : undefined,
           condicion: data.condicion ? String(data.condicion).trim() : undefined,
+          source: 'sunat',
         };
       }
     }
@@ -84,6 +140,7 @@ export async function fetchSunatRucData(rucInput: string): Promise<SunatRucInfo 
           direccion: data.direccion ? String(data.direccion).trim() : undefined,
           estado: data.estado ? String(data.estado).trim() : undefined,
           condicion: data.condicion ? String(data.condicion).trim() : undefined,
+          source: 'sunat',
         };
       }
     }

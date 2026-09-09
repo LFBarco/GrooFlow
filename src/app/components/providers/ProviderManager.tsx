@@ -47,7 +47,7 @@ import {
 } from '../../utils/expenseFlowClassification';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { getGrooflowBackend } from '../../config/backend';
-import { fetchSunatRucData } from '../../utils/sunatRucApi';
+import { fetchSunatRucData, lookupRucInDbOrSunat } from '../../utils/sunatRucApi';
 import { useServerPagedList } from '../../hooks/useServerPagedList';
 import { deleteServerListItems, fetchServerListPage } from '../../utils/listsApi';
 import { appConfirm } from '../ui/app-dialog';
@@ -2011,13 +2011,19 @@ export function ProviderManager({
                                         const val = normalizeDocIdentityDigits(e.target.value, dt);
                                         setCurrentProvider((prev) => ({ ...prev, ruc: val }));
                                         if (dt === 'RUC' && val.length === 11) {
-                                            void fetchSunatRucData(val).then((info) => {
+                                            void lookupRucInDbOrSunat(val, providers).then((info) => {
                                                 if (info && info.razonSocial) {
                                                     setCurrentProvider((prev) => ({
                                                         ...prev,
                                                         name: prev.name.trim() ? prev.name : info.razonSocial,
                                                     }));
-                                                    toast.success(`SUNAT: ${info.razonSocial}`);
+                                                    if (info.source === 'bd') {
+                                                        toast.success(`Proveedor registrado en BD: ${info.razonSocial}`, {
+                                                            description: 'Encontrado en catálogo de proveedores',
+                                                        });
+                                                    } else {
+                                                        toast.success(`SUNAT: ${info.razonSocial}`);
+                                                    }
                                                 }
                                             });
                                         }
