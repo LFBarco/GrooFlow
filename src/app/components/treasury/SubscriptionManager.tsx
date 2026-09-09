@@ -16,6 +16,7 @@ import {
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { RucSearchField } from '../common/RucSearchField';
 
 export type { Subscription } from './types';
 
@@ -27,6 +28,7 @@ interface SubscriptionManagerProps {
 
 const EMPTY_FORM = {
   name: '',
+  providerRuc: '',
   providerName: '',
   amount: '',
   dayOfMonth: '1',
@@ -61,7 +63,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
       documentNumber: `REC-${new Date().getMonth() + 1}-${sub.dayOfMonth}`,
       documentType: 'Servicio',
       providerName: sub.providerName,
-      providerRuc: '',
+      providerRuc: sub.providerRuc || '',
       amount: sub.amount,
       currency: 'PEN',
       issueDate: new Date(),
@@ -96,6 +98,7 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
       id: `sub-${Date.now()}`,
       name: form.name.trim(),
       providerName: form.providerName.trim(),
+      providerRuc: form.providerRuc.trim(),
       amount,
       frequency: form.frequency,
       dayOfMonth,
@@ -230,9 +233,19 @@ export const SubscriptionManager: React.FC<SubscriptionManagerProps> = ({
               <Label htmlFor="sub-name">Nombre</Label>
               <Input id="sub-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Alquiler sede central" />
             </div>
+            <RucSearchField
+              id="sub-provider-ruc"
+              label="RUC del Proveedor"
+              placeholder="Ingrese RUC (11 dígitos)"
+              rucValue={form.providerRuc}
+              onRucChange={(val) => setForm((prev) => ({ ...prev, providerRuc: val }))}
+              onRazonSocialFound={(info) => {
+                setForm((prev) => ({ ...prev, providerName: info.razonSocial }));
+              }}
+            />
             <div className="space-y-1.5">
-              <Label htmlFor="sub-provider">Proveedor</Label>
-              <Input id="sub-provider" value={form.providerName} onChange={(e) => setForm({ ...form, providerName: e.target.value })} placeholder="Razón social" />
+              <Label htmlFor="sub-provider">Proveedor / Razón social</Label>
+              <Input id="sub-provider" value={form.providerName} onChange={(e) => setForm({ ...form, providerName: e.target.value })} placeholder="Razón social del proveedor" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">

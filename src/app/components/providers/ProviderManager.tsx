@@ -47,6 +47,7 @@ import {
 } from '../../utils/expenseFlowClassification';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { getGrooflowBackend } from '../../config/backend';
+import { fetchSunatRucData } from '../../utils/sunatRucApi';
 import { useServerPagedList } from '../../hooks/useServerPagedList';
 import { deleteServerListItems, fetchServerListPage } from '../../utils/listsApi';
 import { appConfirm } from '../ui/app-dialog';
@@ -2008,7 +2009,18 @@ export function ProviderManager({
                                         const dt = (currentProvider.docIdentityType ||
                                             'RUC') as ProviderDocIdentityType;
                                         const val = normalizeDocIdentityDigits(e.target.value, dt);
-                                        setCurrentProvider({ ...currentProvider, ruc: val });
+                                        setCurrentProvider((prev) => ({ ...prev, ruc: val }));
+                                        if (dt === 'RUC' && val.length === 11) {
+                                            void fetchSunatRucData(val).then((info) => {
+                                                if (info && info.razonSocial) {
+                                                    setCurrentProvider((prev) => ({
+                                                        ...prev,
+                                                        name: prev.name.trim() ? prev.name : info.razonSocial,
+                                                    }));
+                                                    toast.success(`SUNAT: ${info.razonSocial}`);
+                                                }
+                                            });
+                                        }
                                     }}
                                     placeholder={
                                         (currentProvider.docIdentityType || 'RUC') === 'DNI'

@@ -59,6 +59,7 @@ import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
 import { PettyCashPrintableFormsDialog } from './PettyCashPrintableFormsDialog';
 import { PettyCashJournalPreview } from './PettyCashJournalPreview';
 import { effectivePettyCashFundLimit, userHasPettyCashFund } from '../../utils/pettyCashFund';
+import { fetchSunatRucData } from '../../utils/sunatRucApi';
 
 function pettyConfigKey(value: string | undefined) {
     return (value || '')
@@ -271,6 +272,20 @@ export function PettyCashModule({
             });
         }
     }, [matchedProvider]);
+
+    useEffect(() => {
+        if (matchedProvider || docType !== 'RUC' || normalizedDoc.length !== 11) return;
+        let active = true;
+        void fetchSunatRucData(normalizedDoc).then((info) => {
+            if (active && info && info.razonSocial) {
+                setProviderName(info.razonSocial);
+                toast.success(`SUNAT: ${info.razonSocial}`, {
+                    description: info.direccion ? `Dirección: ${info.direccion}` : undefined,
+                });
+            }
+        });
+        return () => { active = false; };
+    }, [matchedProvider, docType, normalizedDoc]);
 
     useEffect(() => {
         if (expenseCategoryOptions.length === 0) return;

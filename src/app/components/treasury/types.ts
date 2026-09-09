@@ -33,6 +33,7 @@ export interface Subscription {
   id: string;
   name: string;
   providerName: string;
+  providerRuc?: string;
   amount: number;
   frequency: 'monthly' | 'weekly' | 'quarterly';
   dayOfMonth: number;
