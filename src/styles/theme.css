@@ -1109,12 +1109,19 @@ html.light .text-primary-foreground {
     border-color: rgba(34, 211, 238, 0.5);
   }
 
-  html.light input,
+  html.light input:not([type="checkbox"]):not([type="radio"]),
   html.light textarea,
+  html.light select,
   html.light [data-slot="select-trigger"] {
-    background: rgba(255, 255, 255, 0.65) !important;
-    backdrop-filter: blur(8px);
-    border-color: rgba(255, 255, 255, 0.8) !important;
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 1.5px solid #94a3b8 !important;
+  }
+
+  html.dark input:not([type="checkbox"]):not([type="radio"]),
+  html.dark textarea,
+  html.dark select,
+  html.dark [data-slot="select-trigger"] {
+    border: 1.5px solid #475569 !important;
   }
 
   html.light input::placeholder,
