@@ -235,11 +235,42 @@ class RestKVRepository implements IKVRepository {
   }
 
   async set(key: string, value: unknown): Promise<void> {
-    const data = await restFetch<{ revision: string }>(`/kv/${encodeURIComponent(key)}`, {
-      method: 'PUT',
-      body: JSON.stringify({ value, revision: resourceRevisions.get(key) }),
-    });
-    resourceRevisions.set(key, data.revision);
+    const maxAttempts = 3;
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const data = await restFetch<{ revision: string }>(`/kv/${encodeURIComponent(key)}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            value,
+            // Si no hay revisión local, el servidor responde 409; abajo se refresca y reintenta.
+            revision: resourceRevisions.get(key) ?? null,
+          }),
+        });
+        resourceRevisions.set(key, data.revision);
+        return;
+      } catch (error) {
+        lastError = error;
+        const status = (error as { status?: number } | null)?.status;
+        const msg = error instanceof Error ? error.message : String(error);
+        const isConflict =
+          status === 409 || /cambiaron|conflict|recarga antes de guardar/i.test(msg);
+        if (!isConflict || attempt === maxAttempts) {
+          throw error;
+        }
+        // Revisión obsoleta (hydrate paralelo, Sync Buk, otra pestaña): refrescar y reintentar.
+        try {
+          const fresh = await restFetch<{ revision?: string }>(`/kv/${encodeURIComponent(key)}`);
+          if (typeof fresh.revision === 'string' && fresh.revision !== '') {
+            resourceRevisions.set(key, fresh.revision);
+          }
+        } catch {
+          /* el siguiente PUT volverá a fallar con el error original si no hay GET */
+        }
+        await new Promise((r) => setTimeout(r, 120 * attempt));
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   async delete(key: string): Promise<void> {

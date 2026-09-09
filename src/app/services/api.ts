@@ -373,6 +373,7 @@ export const api = {
       key === 'data:inventory' ||
       key === 'data:chartOfAccounts' ||
       key === 'data:products' ||
+      key === 'data:users' ||
       key === 'data:roles' ||
       key === 'settings:alertThresholds' ||
       key === 'data:invoices' ||
@@ -385,7 +386,7 @@ export const api = {
       key === 'data:reconciliation' ||
       key === 'settings:alertReadState' ||
       key === 'data:fleet'
-        ? (backend === 'supabase' ? 6 : 3)
+        ? (backend === 'supabase' ? 6 : 4)
         : backend === 'supabase' ? 3 : 2;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -417,6 +418,9 @@ export const api = {
         const msg = error instanceof Error ? error.message : String(error);
         const isDbPressure =
           /base de datos|503|max_connections|circuit|Service Unavailable/i.test(msg);
+        const isConflict =
+          /cambiaron|conflict|recarga antes de guardar|HTTP 409/i.test(msg) ||
+          (error as { status?: number } | null)?.status === 409;
         if (isSupabaseBackend() && !(await isSupabaseKvFatalAuthErrorLazy(error))) {
           try {
             const client = await getSupabaseClientLazy();
@@ -434,7 +438,7 @@ export const api = {
           }
         }
         await new Promise((resolve) =>
-          setTimeout(resolve, (isDbPressure ? 1200 : 250) * attempt)
+          setTimeout(resolve, (isDbPressure ? 1200 : isConflict ? 400 : 250) * attempt)
         );
       }
     }

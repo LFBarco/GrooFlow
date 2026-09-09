@@ -39,7 +39,7 @@ export interface CloudSyncTracker {
   onEnd: (ok: boolean, kvKey?: string) => void;
 }
 
-const CLOUD_SYNC_STALE_MS = 18_000;
+const CLOUD_SYNC_STALE_MS = 45_000;
 
 export function createCloudSyncTracker(
   pendingRef: MutableRefObject<number>,

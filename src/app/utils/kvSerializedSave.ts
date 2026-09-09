@@ -7,7 +7,7 @@ export type KvSaveResult = 'saved' | 'skipped' | 'failed';
 export const KV_CHAIN_IDLE: Promise<KvSaveResult> = Promise.resolve('saved');
 
 /** Evita cadenas KV bloqueadas por red lenta (libera el indicador de nube). */
-export const KV_SAVE_OPERATION_TIMEOUT_MS = 12_000;
+export const KV_SAVE_OPERATION_TIMEOUT_MS = 30_000;
 
 let kvSavesInFlight = 0;
 
