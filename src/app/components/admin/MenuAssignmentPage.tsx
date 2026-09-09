@@ -86,6 +86,7 @@ export function MenuAssignmentPage() {
   const [niveles, setNiveles] = useState<Awaited<ReturnType<typeof fetchNiveles>>>([]);
   const [loadingNiveles, setLoadingNiveles] = useState(true);
   const [loadingUsuarios, setLoadingUsuarios] = useState(true);
+  const [loadInitError, setLoadInitError] = useState('');
   const [unassignedUsers, setUnassignedUsers] = useState<UnassignedUser[]>([]);
   const [loadingUnassigned, setLoadingUnassigned] = useState(true);
   const [assigningDashboard, setAssigningDashboard] = useState(false);
@@ -153,12 +154,15 @@ export function MenuAssignmentPage() {
     try {
       const items = await fetchUsuariosList();
       setUsuarios(items);
+      setLoadInitError('');
       if (preselectId > 0) {
         setAssignmentMode('user');
         setSelectedUserId(preselectId);
       }
-    } catch {
-      toast.error('No se pudieron cargar los usuarios');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudieron cargar los usuarios';
+      toast.error(msg);
+      setLoadInitError(msg);
     } finally {
       setLoadingUsuarios(false);
     }
@@ -169,11 +173,14 @@ export function MenuAssignmentPage() {
     try {
       const items = await fetchNiveles();
       setNiveles(items);
+      setLoadInitError('');
       if (preselectNivel > 0) {
         setSelectedNivelId(preselectNivel);
       }
-    } catch {
-      toast.error('No se pudieron cargar los perfiles');
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'No se pudieron cargar los perfiles';
+      toast.error(msg);
+      setLoadInitError(msg);
     } finally {
       setLoadingNiveles(false);
     }
@@ -712,6 +719,29 @@ export function MenuAssignmentPage() {
     ro?.observe(thead);
     return () => ro?.disconnect();
   }, [matrixOpen, matrixRows, matrixNiveles]);
+
+  const isInitialLoading = loadingUsuarios || loadingNiveles;
+
+  if (!isInitialLoading && loadInitError) {
+    return (
+      <div className="g-page g-page--compact g-page-config g-page-config-asignacion">
+        <header className="g-page-header">
+          <div>
+            <h1 className="g-page-title">Asignación de menú</h1>
+          </div>
+        </header>
+        <div className="flex flex-col items-center gap-4 py-16 text-center">
+          <p className="text-sm text-destructive max-w-sm">{loadInitError}</p>
+          <button
+            className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-accent"
+            onClick={() => { setLoadInitError(''); void loadUsuarios(); void loadNiveles(); void loadUnassigned(); }}
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="g-page g-page--compact g-page-config g-page-config-asignacion">

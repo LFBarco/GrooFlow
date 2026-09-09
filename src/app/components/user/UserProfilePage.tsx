@@ -19,6 +19,8 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { restFetch } from '../../services/repository/rest';
+import { getGrooflowBackend } from '../../config/backend';
 
 import type { User } from '../../types';
 import { useApp } from '../../context/AppContext';
@@ -56,8 +58,26 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
   const isDark = theme === 'dark';
 
   // Load saved profile extras from localStorage
+  const remote = getGrooflowBackend() === 'rest';
+  const [saving, setSaving] = useState(false);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionError, setSessionError] = useState('');
+  const [showHistory, setShowHistory] = useState(false);
+  const loadSessions = async () => {
+    if (!remote) { setSessionError('Sesiones disponibles con el backend REST'); return; }
+    try { const data = await restFetch<{items: any[]}>('/auth/sessions'); setSessions(data.items); setSessionError(''); }
+    catch (e) { setSessionError(e instanceof Error ? e.message : 'No se pudieron cargar las sesiones'); }
+  };
+  useEffect(() => { void loadSessions(); }, [user.id]);
+  const revokeOthers = async () => {
+    setSaving(true);
+    try { await restFetch('/auth/sessions/revoke-others', {method: 'POST'}); await loadSessions(); toast.success('Otras sesiones cerradas'); }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'No se pudieron cerrar las sesiones'); }
+    finally { setSaving(false); }
+  };
   const storageKey = `grooflow_user_profile_extras_${user.id || 'current'}`;
   const savedExtras = useMemo(() => {
+    if (remote) return (user as User & {personalProfile?: Record<string, any>}).personalProfile ?? {};
     try {
       const raw = localStorage.getItem(storageKey);
       return raw ? JSON.parse(raw) : {};
@@ -97,7 +117,7 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
     setEmail(user.email || '');
   }, [user.email]);
 
-  const handleSavePersonalData = (e?: React.FormEvent) => {
+  const handleSavePersonalData = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim() || user.name;
     const extras = {
@@ -112,32 +132,28 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
       customCoverUrl,
       customPhotoUrl,
     };
+    setSaving(true);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(extras));
-    } catch {
-      /* ignore */
-    }
-
-    if (onUpdateUser) {
-      onUpdateUser({
-        name: fullName,
-        phone,
-        documentNumber,
-        avatarUrl: customPhotoUrl || user.avatarUrl,
-      });
-    }
-
-    toast.success('Datos personales guardados correctamente');
+      if (remote) {
+        const result = await restFetch<{profile: User}>('/auth/profile', {method: 'PUT', body: JSON.stringify({...extras, email})});
+        onUpdateUser?.(result.profile);
+      } else {
+        localStorage.setItem(storageKey, JSON.stringify(extras));
+        onUpdateUser?.({name: fullName, phone, documentNumber, avatarUrl: customPhotoUrl || undefined});
+      }
+      toast.success(remote ? 'Perfil guardado' : 'Perfil guardado en este dispositivo');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'No se pudo guardar el perfil'); }
+    finally { setSaving(false); }
   };
 
-  const handleSavePassword = (e: React.FormEvent) => {
+  const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentPassword) {
       toast.error('Ingrese su contraseña actual');
       return;
     }
-    if (!newPassword || newPassword.length < 6) {
-      toast.error('La nueva contraseña debe tener al menos 6 caracteres');
+    if (!newPassword || newPassword.length < 8) {
+      toast.error('La nueva contraseña debe tener al menos 8 caracteres, una letra y un número');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -145,7 +161,14 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
       return;
     }
 
-    toast.success('Contraseña actualizada correctamente');
+    if (!remote) { toast.error('El cambio de contraseña requiere conexión REST'); return; }
+    setSaving(true);
+    try {
+      await restFetch('/auth/own-password', {method: 'POST', body: JSON.stringify({currentPassword, newPassword, confirmPassword})});
+      await loadSessions();
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'No se pudo cambiar la contraseña'); return; }
+    finally { setSaving(false); }
+    toast.success('Contraseña actualizada; otras sesiones cerradas');
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
@@ -178,20 +201,14 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
     reader.onload = () => {
       const result = reader.result as string;
       setCustomPhotoUrl(result);
-      if (onUpdateUser) {
-        onUpdateUser({ avatarUrl: result });
-      }
-      toast.success('Foto de perfil actualizada');
+      toast.info('Foto seleccionada. Guarda el perfil para aplicar el cambio.');
     };
     reader.readAsDataURL(file);
   };
 
   const handleRemovePhoto = () => {
     setCustomPhotoUrl(null);
-    if (onUpdateUser) {
-      onUpdateUser({ avatarUrl: undefined });
-    }
-    toast.info('Foto de perfil restablecida');
+    toast.info('Guarda el perfil para restablecer la foto');
   };
 
   const activeCoverStyle = customCoverUrl
@@ -483,7 +500,7 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button type="submit" className="gap-2 bg-cyan-600 hover:bg-cyan-500 text-white">
+              <Button disabled={saving} type="submit" className="gap-2 bg-cyan-600 hover:bg-cyan-500 text-white">
                 <Save className="w-4 h-4" />
                 Guardar datos personales
               </Button>
@@ -565,13 +582,15 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button type="submit" variant="outline" className="gap-2 border-cyan-500/40 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10">
+              <Button disabled={saving} type="submit" variant="outline" className="gap-2 border-cyan-500/40 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10">
                 <Lock className="w-4 h-4" />
                 Cambiar contraseña
               </Button>
             </div>
           </form>
 
+          {sessionError && <p role="alert">{sessionError} <Button onClick={() => void loadSessions()}>Reintentar</Button></p>}
+          {showHistory && <div className="space-y-2" aria-label="Historial de sesiones">{sessions.map(s => <div key={s.id}>{s.device_label || s.browser_name || 'Dispositivo'} · {s.created_at} · {s.ended_at ? 'Cerrada' : 'Activa'}</div>)}</div>}
           {/* 3. Sesiones y dispositivos Card */}
           <div className="rounded-2xl border border-border bg-card p-6 space-y-5 shadow-sm">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-border">
@@ -580,7 +599,7 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
                 <h3 className="font-bold text-foreground text-lg">Sesiones y dispositivos</h3>
               </div>
               <span className="text-xs text-muted-foreground font-medium">
-                21 activa(s) · 151 registrada(s)
+                {sessions.filter(s => !s.ended_at).length} activa(s) · {sessions.length} en el historial reciente
               </span>
             </div>
 
@@ -592,14 +611,14 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-foreground">
-                      Computadora · Chrome - Linux
+                      {sessions.find(s => Number(s.current) === 1)?.device_label || 'Dispositivo actual'}
                     </span>
                     <Badge variant="outline" className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 text-[10px]">
                       SESIÓN ACTUAL
                     </Badge>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Última actividad: Ahora mismo · IP actual
+                    Última actividad: {sessions.find(s => Number(s.current) === 1)?.last_seen_at || 'No disponible'}
                   </p>
                 </div>
               </div>
@@ -609,7 +628,7 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => toast.info('Mostrando el historial de inicios de sesión.')}
+                  onClick={() => { setShowHistory(v => !v); void loadSessions(); }}
                   className="text-xs"
                 >
                   Ver historial
@@ -618,7 +637,8 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => toast.success('Todas las demás sesiones activas han sido cerradas.')}
+                  disabled={saving || !remote}
+                  onClick={() => void revokeOthers()}
                   className="text-xs text-rose-500 hover:text-rose-600 border-rose-300 dark:border-rose-900/50"
                 >
                   Cerrar otras

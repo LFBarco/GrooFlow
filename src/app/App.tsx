@@ -2559,6 +2559,7 @@ export default function App() {
         transactionId: newTransaction.id,
       });
     }
+    return ok;
   };
 
   const handleImportTransactions = async (newTransactions: Transaction[]) => {
@@ -3084,7 +3085,7 @@ export default function App() {
     currentUser.role === 'admin' ||
     !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
 
-  const canViewAuditLogs = isAdminAppUser(currentUser);
+  const canViewAuditLogs = isAdminAppUser(currentUser) || (APP_BACKEND === 'rest' ? menuPermissions?.['Auditoría'] === true : roleRecordHasModuleAccess(userRole, 'Auditoría'));
 
   const reloadMenuPayload = useCallback(() => {
     if (!isAuthenticated || APP_BACKEND !== 'rest') return;
@@ -4434,9 +4435,7 @@ export default function App() {
                 <UserProfilePage
                   onUpdateUser={(patch) => {
                     setCurrentUser((prev) => ({ ...prev, ...patch }));
-                    persistUsersToCloud(
-                      users.map((u) => (u.id === currentUser.id ? { ...u, ...patch } : u))
-                    );
+                    setUsers(prev => prev.map((u) => (u.id === currentUser.id ? { ...u, ...patch } : u)));
                   }}
                   onLogout={handleLogout}
                 />

@@ -55,6 +55,7 @@ export function CatalogCrudPage({ kind, canEdit = false }: Props) {
   const meta = TITLES[kind];
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<CatalogItem | null>(null);
@@ -94,6 +95,7 @@ export function CatalogCrudPage({ kind, canEdit = false }: Props) {
       setItems(list);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo cargar el catálogo');
+      setLoadError(e instanceof Error ? e.message : 'No se pudo cargar el catálogo');
     } finally {
       setLoading(false);
     }
@@ -221,7 +223,12 @@ export function CatalogCrudPage({ kind, canEdit = false }: Props) {
           ) : null}
         </CardHeader>
         <CardContent className="space-y-3">
-          {loading ? (
+          {!loading && loadError ? (
+            <div className="flex flex-col items-center gap-4 py-12 text-center">
+              <p className="text-sm text-destructive">{loadError}</p>
+              <Button variant="outline" onClick={() => { setLoadError(''); void load(); }}>Reintentar</Button>
+            </div>
+          ) : loading ? (
             <div className="py-10 text-center text-muted-foreground flex items-center justify-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
             </div>

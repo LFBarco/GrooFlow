@@ -52,6 +52,14 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
       .reduce((sum, inv) => sum + inv.amount, 0);
   }, [pendingInvoices, selectedIds]);
 
+  /** Breakdown by currency for the selected invoices */
+  const selectedByCurrency = useMemo(() => {
+    const sel = pendingInvoices.filter(inv => selectedIds.has(inv.id));
+    const pen = sel.filter(inv => inv.currency === 'PEN' || !inv.currency).reduce((s, inv) => s + inv.amount, 0);
+    const usd = sel.filter(inv => inv.currency === 'USD').reduce((s, inv) => s + inv.amount, 0);
+    return { PEN: pen, USD: usd, hasMix: pen > 0 && usd > 0 };
+  }, [pendingInvoices, selectedIds]);
+
   const projectedBalance = bankBalance - totalSelected;
 
   const toggleSelection = (id: string) => {
@@ -146,6 +154,19 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
                     {formatCurrencyEs(totalSelected)}
                 </span>
               </div>
+              {selectedByCurrency.hasMix && (
+                <span className="mt-1 text-[10px] text-amber-500 font-semibold">
+                  ⚠ Mezcla PEN / USD · sin tipo de cambio
+                </span>
+              )}
+              {!selectedByCurrency.hasMix && selectedByCurrency.USD > 0 && (
+                <span className="mt-1 text-[10px] text-muted-foreground">USD</span>
+              )}
+              {selectedByCurrency.hasMix && (
+                <span className="text-[10px] text-muted-foreground">
+                  PEN {formatCurrencyEs(selectedByCurrency.PEN)} · USD {formatCurrencyEs(selectedByCurrency.USD)}
+                </span>
+              )}
             </div>
 
             {/* Saldo Proyectado */}
@@ -179,6 +200,7 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
              <button
               disabled={selectedIds.size === 0}
               onClick={() => handleExportBatch('bcp')}
+              title="Exportación genérica — adaptar al contrato Telecrédito BCP"
               className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-medium rounded-md shadow-sm h-9 flex items-center justify-center gap-2 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>Exportar Telecrédito BCP</span>
@@ -188,6 +210,7 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
                 <button
                   disabled={selectedIds.size === 0}
                   onClick={() => handleExportBatch('bbva')}
+                  title="Exportación genérica — adaptar al contrato BBVA NetCash"
                   className="flex-1 bg-background border border-input text-foreground font-medium rounded-md hover:bg-accent hover:text-accent-foreground h-9 text-xs transition-colors disabled:opacity-50"
                 >
                   BBVA NetCash
@@ -200,6 +223,7 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
                   Pago Manual
                 </button>
             </div>
+            <p className="text-xs text-muted-foreground">Formato genérico · Adaptar al contrato bancario antes de enviar</p>
           </div>
         </div>
 

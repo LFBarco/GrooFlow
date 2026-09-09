@@ -124,7 +124,7 @@ export function MonthlySummary({ transactions, currentDate }: MonthlySummaryProp
                     <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold"
                       style={{ background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)', color: '#8b7cf8' }}
                     >
-                        <Lock className="w-3 h-3" /> Mes Cerrado
+                        <Lock className="w-3 h-3" /> Mes anterior
                     </span>
                 ) : isCurrentMonth ? (
                     <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold animate-pulse"

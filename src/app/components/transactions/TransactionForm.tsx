@@ -17,7 +17,7 @@ import { formatDateInputValue, parseTransactionDate } from "../../utils/transact
 import { formatBankAccountLabel, getPrimaryBankAccount } from "../../utils/bankAccounts";
 
 interface TransactionFormProps {
-  onSubmit: (data: any) => void;
+  onSubmit: (data: any) => void | boolean | Promise<void | boolean>;
   config?: ConfigStructure;
   providers?: Provider[];
   bankAccounts?: BankAccountConfig[];
@@ -35,7 +35,7 @@ export function TransactionForm({
   initialData,
   onCancel,
 }: TransactionFormProps) {
-  const { register, handleSubmit, reset, setValue, watch } = useForm();
+  const { register, handleSubmit, reset, setValue, watch, formState: { isSubmitting } } = useForm();
   const [selectedType, setSelectedType] = useState<TransactionType>("expense");
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availableSubcategories, setAvailableSubcategories] = useState<{ id: string; name: string }[]>([]);
@@ -152,14 +152,24 @@ export function TransactionForm({
     setAvailableConcepts(sub ? sub.concepts.map((c) => c.name) : []);
   }, [selectedCategory, selectedSubcategory, config]);
 
-  const onFormSubmit = (data: any) => {
+  const [submitError, setSubmitError] = useState('');
+  const onFormSubmit = async (data: any) => {
+    setSubmitError('');
     const payload = { ...data, type: selectedType, id: initialData?.id };
     if (config && selectedCategory && config[selectedCategory]) {
       const subs = getSubcategories(config[selectedCategory], selectedCategory);
       if (subs.length === 1 && !payload.subcategory) payload.subcategory = subs[0].name;
       if (!payload.concept) payload.concept = payload.subcategory;
     }
-    onSubmit(payload);
+    try {
+      if (await onSubmit(payload) === false) {
+        setSubmitError("No se guardó. Conservamos los datos para reintentar.");
+        return;
+      }
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "No se pudo guardar");
+      return;
+    }
     if (!initialData) {
       reset();
       setSelectedType("expense");
@@ -175,6 +185,8 @@ export function TransactionForm({
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4" data-testid="transaction-form">
+      {submitError && <p role="alert" className="text-red-600">{submitError}</p>}
+      <fieldset disabled={isSubmitting} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label>Tipo</Label>
@@ -421,6 +433,7 @@ export function TransactionForm({
           {initialData ? "Actualizar Transacción" : "Registrar Transacción"}
         </Button>
       </div>
+      </fieldset>
     </form>
   );
 }

@@ -45,7 +45,7 @@ const MAX_CONCURRENT_REQUESTS = 4;
 let activeRequests = 0;
 const pendingRequests: Array<() => void> = [];
 
-async function restFetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function restFetch<T>(path: string, init?: RequestInit): Promise<T> {
   await new Promise<void>((resolve) => {
     if (activeRequests < MAX_CONCURRENT_REQUESTS) {
       activeRequests++;
@@ -95,7 +95,10 @@ async function restFetchNow<T>(path: string, init?: RequestInit): Promise<T> {
       typeof json.error === 'string' && json.error.length < 180
         ? json.error
         : `HTTP ${res.status}`;
-    throw new Error(err);
+    const error = new Error(err) as Error & { status: number; errors?: Record<string, string> };
+    error.status = res.status;
+    error.errors = json.errors as Record<string, string> | undefined;
+    throw error;
   }
   return json as T;
 }
@@ -197,9 +200,12 @@ class RestAuthRepository implements IAuthRepository {
   }
 }
 
+export const resourceRevisions = new Map<string, string>();
+
 class RestKVRepository implements IKVRepository {
   async getMany(keys: string[]): Promise<Record<string, unknown>> {
-    const data = await restFetch<{ values?: Record<string, unknown> }>('/bootstrap');
+    const data = await restFetch<{ values?: Record<string, unknown>; revisions?: Record<string, string> }>('/bootstrap');
+    for (const [key, revision] of Object.entries(data.revisions ?? {})) resourceRevisions.set(key, revision);
     const values = data.values && typeof data.values === 'object' ? data.values : {};
     const out: Record<string, unknown> = {};
     for (const key of keys) {
@@ -212,7 +218,8 @@ class RestKVRepository implements IKVRepository {
 
   async getWithStatus<T = unknown>(key: string): Promise<{ ok: boolean; value: T | null }> {
     try {
-      const data = await restFetch<{ value?: T | null }>(`/kv/${encodeURIComponent(key)}`);
+      const data = await restFetch<{ value?: T | null; revision?: string }>(`/kv/${encodeURIComponent(key)}`);
+      if (data.revision) resourceRevisions.set(key, data.revision);
       return { ok: true, value: (data.value ?? null) as T | null };
     } catch {
       return { ok: false, value: null };
@@ -225,14 +232,15 @@ class RestKVRepository implements IKVRepository {
   }
 
   async set(key: string, value: unknown): Promise<void> {
-    await restFetch(`/kv/${encodeURIComponent(key)}`, {
+    const data = await restFetch<{ revision: string }>(`/kv/${encodeURIComponent(key)}`, {
       method: 'PUT',
-      body: JSON.stringify({ value }),
+      body: JSON.stringify({ value, revision: resourceRevisions.get(key) }),
     });
+    resourceRevisions.set(key, data.revision);
   }
 
   async delete(key: string): Promise<void> {
-    await restFetch(`/kv/${encodeURIComponent(key)}`, { method: 'DELETE' });
+    await restFetch(`/kv/${encodeURIComponent(key)}`, { method: 'DELETE', body: JSON.stringify({ revision: resourceRevisions.get(key) }) });
   }
 }
 
@@ -240,7 +248,8 @@ class RestCollectionRepository<T extends { id: string }> implements ICollectionR
   constructor(private readonly name: string) {}
 
   async getAll(): Promise<T[]> {
-    const data = await restFetch<{ items?: T[] }>(`/collections/${this.name}`);
+    const data = await restFetch<{ items?: T[]; revision?: string }>(`/collections/${this.name}`);
+    if (data.revision) resourceRevisions.set(`data:${this.name}`, data.revision);
     return Array.isArray(data.items) ? data.items : [];
   }
 
@@ -256,6 +265,7 @@ class RestCollectionRepository<T extends { id: string }> implements ICollectionR
   async create(record: T): Promise<T> {
     const data = await restFetch<{ item?: T }>(`/collections/${this.name}`, {
       method: 'POST',
+      headers: { 'If-Match': resourceRevisions.get(`data:${this.name}`) ?? '' },
       body: JSON.stringify(record),
     });
     return data.item ?? record;
@@ -264,6 +274,7 @@ class RestCollectionRepository<T extends { id: string }> implements ICollectionR
   async update(id: string, partial: Partial<T>): Promise<T> {
     const data = await restFetch<{ item?: T }>(`/collections/${this.name}/${encodeURIComponent(id)}`, {
       method: 'PUT',
+      headers: { 'If-Match': resourceRevisions.get(`data:${this.name}`) ?? '' },
       body: JSON.stringify(partial),
     });
     if (!data.item) throw new Error(`No se pudo actualizar ${id}`);
@@ -277,6 +288,7 @@ class RestCollectionRepository<T extends { id: string }> implements ICollectionR
   async upsertMany(records: T[]): Promise<void> {
     await restFetch(`/collections/${this.name}/upsert`, {
       method: 'POST',
+      headers: { 'If-Match': resourceRevisions.get(`data:${this.name}`) ?? '' },
       body: JSON.stringify({ records }),
     });
   }

@@ -81,6 +81,12 @@ export function PurchaseRequestManager({
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [activeTab, setActiveTab] = useState('pending');
     const [clientSearch, setClientSearch] = useState('');
+    const [advFiltersOpen, setAdvFiltersOpen] = useState(false);
+    const [filterSede, setFilterSede] = useState('');
+    const [filterProviderId, setFilterProviderId] = useState('');
+    const [filterPriority, setFilterPriority] = useState('');
+    const [filterDateFrom, setFilterDateFrom] = useState('');
+    const [filterDateTo, setFilterDateTo] = useState('');
     const useServerPaging = getGrooflowBackend() === 'rest';
     const serverList = useServerPagedList<PurchaseRequest>('requests', {
         enabled: useServerPaging,
@@ -310,12 +316,27 @@ export function PurchaseRequestManager({
                 );
             }
 
+            // Advanced filters
+            if (filterSede && req.location !== filterSede) return false;
+            if (filterProviderId && req.providerId !== filterProviderId) return false;
+            if (filterPriority && req.priority !== filterPriority) return false;
+            if (filterDateFrom) {
+                const reqDate = toRequestDate(req.requestDate);
+                const from = new Date(filterDateFrom);
+                if (!isNaN(from.getTime()) && reqDate < from) return false;
+            }
+            if (filterDateTo) {
+                const reqDate = toRequestDate(req.requestDate);
+                const to = new Date(filterDateTo);
+                if (!isNaN(to.getTime()) && reqDate > to) return false;
+            }
+
             return true;
         }).sort(
             (a, b) =>
                 toRequestDate(b.requestDate).getTime() - toRequestDate(a.requestDate).getTime()
         );
-    }, [requests, activeTab, searchTerm]);
+    }, [requests, activeTab, searchTerm, filterSede, filterProviderId, filterPriority, filterDateFrom, filterDateTo]);
     const displayedRequests = useServerPaging ? serverList.items : filteredRequests;
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -881,11 +902,64 @@ export function PurchaseRequestManager({
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
-                        <Button variant="outline" size="icon" title="Filtros avanzados">
+                        <Button 
+                            variant={advFiltersOpen || filterSede || filterProviderId || filterPriority || filterDateFrom || filterDateTo ? 'default' : 'outline'} 
+                            size="icon" 
+                            title="Filtros avanzados"
+                            onClick={() => setAdvFiltersOpen(v => !v)}
+                        >
                             <Filter className="w-4 h-4" />
                         </Button>
                     </div>
                 </div>
+
+                {advFiltersOpen && (
+                    <div className="flex flex-wrap gap-3 p-4 rounded-xl border border-border bg-muted/30">
+                        <div className="flex flex-col gap-1 min-w-[160px]">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase">Sede</label>
+                            <Select value={filterSede || 'all'} onValueChange={v => setFilterSede(v === 'all' ? '' : v)}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas</SelectItem>
+                                    {(visibleSedes ?? []).map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-[180px]">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase">Proveedor</label>
+                            <Select value={filterProviderId || 'all'} onValueChange={v => setFilterProviderId(v === 'all' ? '' : v)}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Todos" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todos</SelectItem>
+                                    {providers.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-[140px]">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase">Prioridad</label>
+                            <Select value={filterPriority || 'all'} onValueChange={v => setFilterPriority(v === 'all' ? '' : v)}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Todas" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas</SelectItem>
+                                    <SelectItem value="high">Alta</SelectItem>
+                                    <SelectItem value="medium">Media</SelectItem>
+                                    <SelectItem value="low">Baja</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-[140px]">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase">Desde</label>
+                            <input type="date" className="h-8 text-sm rounded-md border border-input bg-background px-2" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} />
+                        </div>
+                        <div className="flex flex-col gap-1 min-w-[140px]">
+                            <label className="text-xs font-semibold text-muted-foreground uppercase">Hasta</label>
+                            <input type="date" className="h-8 text-sm rounded-md border border-input bg-background px-2" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} />
+                        </div>
+                        <div className="flex items-end">
+                            <Button variant="ghost" size="sm" className="text-xs" onClick={() => { setFilterSede(''); setFilterProviderId(''); setFilterPriority(''); setFilterDateFrom(''); setFilterDateTo(''); }}>Limpiar filtros</Button>
+                        </div>
+                    </div>
+                )}
 
                 <Card>
                     <Table>

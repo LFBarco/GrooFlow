@@ -8,7 +8,7 @@ import { parseTransactionDate } from './transactionDate';
 export function hydrateTransactions(raw: unknown): Transaction[] {
   if (!Array.isArray(raw)) return [];
 
-  return raw.map((item): Transaction => {
+  return raw.filter((item) => item && typeof item === 'object').map((item): Transaction => {
     const t = item as Record<string, unknown>;
 
     return {
@@ -21,6 +21,10 @@ export function hydrateTransactions(raw: unknown): Transaction[] {
       description: String(t.description ?? ''),
       date: parseTransactionDate(t.date),
       providerId: t.providerId != null ? String(t.providerId) : undefined,
+      account: t.account != null ? String(t.account) : undefined,
+      currency: t.currency === 'USD' ? 'USD' : t.currency === 'PEN' ? 'PEN' : undefined,
+      operation: t.operation != null ? String(t.operation) : undefined,
+      reference: t.reference != null ? String(t.reference) : undefined,
       location: t.location != null ? String(t.location) : undefined,
     };
   });

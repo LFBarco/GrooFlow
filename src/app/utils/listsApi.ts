@@ -1,3 +1,5 @@
+import { resourceRevisions } from '../services/repository/rest';
+const resourceKey = (name: string) => name === 'inventory-equipment' ? 'data:inventory' : name === 'chart-of-accounts' ? 'data:chartOfAccounts' : `data:${name}`;
 import { getGrooflowApiBase, getGrooflowToken } from '../services/repository/apiBase';
 
 export type ServerListPage<T> = {
@@ -59,6 +61,7 @@ export async function fetchServerListPage<T>(
   if (!res.ok || json.ok === false) {
     throw new Error(String(json.error ?? `HTTP ${res.status}`));
   }
+  if (typeof json.revision === 'string') resourceRevisions.set(resourceKey(name), json.revision);
   return {
     items: (json.items as T[]) ?? [],
     ids: Array.isArray(json.ids) ? (json.ids as string[]) : undefined,
@@ -76,7 +79,7 @@ export async function deleteServerListItems(
 ): Promise<number> {
   const res = await grooflowFetch(`/lists/${encodeURIComponent(name)}/delete`, {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({...input, revision: resourceRevisions.get(resourceKey(name))}),
   });
   const json = await readJson(res);
   if (!res.ok || json.ok === false) {

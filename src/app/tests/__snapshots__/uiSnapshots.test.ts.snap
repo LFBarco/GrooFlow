@@ -1,0 +1,10 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`5. UI Component Structural Snapshot Tests > should match KPI Card component schema structure 1`] = `
+{
+  "amountFormatted": "S/ 45,230.00",
+  "badgeColor": "#22d3ee",
+  "title": "Total Ingresos",
+  "trend": "+12.5%",
+}
+`;

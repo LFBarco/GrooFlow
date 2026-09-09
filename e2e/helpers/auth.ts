@@ -21,7 +21,7 @@ export async function loginAsE2eUser(page: Page) {
     throw new Error('Faltan credenciales E2E');
   }
   await page.goto('/');
-  await page.getByPlaceholder('usuario@empresa.com').fill(email);
+  await page.getByPlaceholder('usuario o correo').fill(email);
   await page.getByPlaceholder('••••••••').fill(password);
   await page.getByRole('button', { name: /Iniciar Sesion/i }).click();
   await page.waitForURL(
@@ -31,7 +31,7 @@ export async function loginAsE2eUser(page: Page) {
 }
 
 export async function expectLoginScreen(page: Page) {
-  await expect(page.getByPlaceholder('usuario@empresa.com')).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByPlaceholder('usuario o correo')).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('button', { name: /Iniciar Sesion/i })).toBeVisible();
 }
 
