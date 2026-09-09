@@ -39,7 +39,31 @@ function toAuthUser(payload: {
   };
 }
 
+// Hydration triggers autosaves for many domains at once. Keep that burst from
+// exhausting the shared Hostinger MySQL connection pool.
+const MAX_CONCURRENT_REQUESTS = 4;
+let activeRequests = 0;
+const pendingRequests: Array<() => void> = [];
+
 async function restFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  await new Promise<void>((resolve) => {
+    if (activeRequests < MAX_CONCURRENT_REQUESTS) {
+      activeRequests++;
+      resolve();
+    } else {
+      pendingRequests.push(resolve);
+    }
+  });
+  try {
+    return await restFetchNow<T>(path, init);
+  } finally {
+    const next = pendingRequests.shift();
+    if (next) next();
+    else activeRequests--;
+  }
+}
+
+async function restFetchNow<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getGrooflowToken();
   const headers = new Headers(init?.headers);
   headers.set('Accept', 'application/json');
