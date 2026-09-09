@@ -9,9 +9,21 @@ function named<M extends Record<string, unknown>, K extends keyof M>(
   exportName: K
 ): () => Promise<LazyModule<M[K] & ComponentType<unknown>>> {
   return () =>
-    loader().then((mod) => ({
-      default: mod[exportName] as M[K] & ComponentType<unknown>,
-    }));
+    loader()
+      .catch((err) => {
+        const key = 'grooflow_chunk_retry';
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, '1');
+          window.location.reload();
+        }
+        throw err;
+      })
+      .then((mod) => {
+        sessionStorage.removeItem('grooflow_chunk_retry');
+        return {
+          default: mod[exportName] as M[K] & ComponentType<unknown>,
+        };
+      });
 }
 
 /** Indicador compacto: no tapa el header ni el sidebar. */

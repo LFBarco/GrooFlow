@@ -24,6 +24,7 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
   }
 
   private handleReload = (): void => {
+    sessionStorage.removeItem('grooflow_chunk_retry');
     window.location.reload();
   };
 
