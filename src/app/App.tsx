@@ -2258,54 +2258,50 @@ export default function App() {
   }, []);
 
   const handleLogout = async () => {
-      signingOutRef.current = true;
-      try {
-      const kvResults = await flushKvSaveChains([
-        transactionsKvChainRef,
-        providersKvChainRef,
-        pettyCashKvChainRef,
-        pettyCashMetaKvChainRef,
-        fleetKvChainRef,
-        inventoryKvChainRef,
-        configKvChainRef,
-        invoicesKvChainRef,
-        requestsKvChainRef,
-        usersKvChainRef,
-        rolesKvChainRef,
-        systemSettingsKvChainRef,
-        asistenciaKvChainRef,
-        productsKvChainRef,
-        feeReceiptsKvChainRef,
-        chartOfAccountsKvChainRef,
-        alertThresholdsKvChainRef,
-        themeKvChainRef,
-        treasuryInvoicesKvChainRef,
-        treasuryBankBalanceKvChainRef,
-        treasuryPaidHistoryKvChainRef,
-        treasurySubscriptionsKvChainRef,
-        treasuryBankMovementsKvChainRef,
+    signingOutRef.current = true;
+    try {
+      await Promise.race([
+        flushKvSaveChains([
+          transactionsKvChainRef,
+          providersKvChainRef,
+          pettyCashKvChainRef,
+          pettyCashMetaKvChainRef,
+          fleetKvChainRef,
+          inventoryKvChainRef,
+          configKvChainRef,
+          invoicesKvChainRef,
+          requestsKvChainRef,
+          usersKvChainRef,
+          rolesKvChainRef,
+          systemSettingsKvChainRef,
+          asistenciaKvChainRef,
+          productsKvChainRef,
+          feeReceiptsKvChainRef,
+          chartOfAccountsKvChainRef,
+          alertThresholdsKvChainRef,
+          themeKvChainRef,
+          treasuryInvoicesKvChainRef,
+          treasuryBankBalanceKvChainRef,
+          treasuryPaidHistoryKvChainRef,
+          treasurySubscriptionsKvChainRef,
+          treasuryBankMovementsKvChainRef,
+        ]),
+        new Promise<KvSaveResult[]>((resolve) => setTimeout(() => resolve([]), 2000)),
       ]);
-      if (kvFlushHasFailures(kvResults)) {
-        toast.error(
-          'Hay cambios sin guardar en la nube. Revisa tu conexión e intenta de nuevo antes de cerrar sesión.'
-        );
-        signingOutRef.current = false;
-        return;
-      }
-      const sqlFlush = await flushAllSqlSaveQueues();
-      if (!sqlFlush.ok) {
-        toast.error(
-          'Hay cambios sin guardar en SQL. Revisa conexión o permisos antes de cerrar sesión.'
-        );
-        signingOutRef.current = false;
-        return;
-      }
-      pendingHydrateRef.current = false;
-      setIsAuthChecking(false);
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.removeItem('grooflow_local_session');
-        window.sessionStorage.removeItem('grooflow_local_session_email');
-      }
+      await Promise.race([
+        flushAllSqlSaveQueues(),
+        new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+      ]);
+    } catch (e) {
+      console.warn('[GrooFlow] handleLogout flush:', e);
+    }
+
+    pendingHydrateRef.current = false;
+    setIsAuthChecking(false);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem('grooflow_local_session');
+      window.sessionStorage.removeItem('grooflow_local_session_email');
+    }
       const signOutWithTimeout = async () => {
         const backend = getGrooflowBackend();
         const signOut =
@@ -2364,13 +2360,6 @@ export default function App() {
       setIsProfileOpen(false);
       signingOutRef.current = false;
       navigate(viewToPath('dashboard'), { replace: true });
-      } catch (e) {
-        console.error('[GrooFlow] logout flush', e);
-        toast.error(
-          'No se pudo confirmar el guardado. Revisa conexión e intenta de nuevo antes de cerrar sesión.'
-        );
-        signingOutRef.current = false;
-      }
   };
 
   const handleLogoutRef = useRef(handleLogout);

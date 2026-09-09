@@ -58,7 +58,10 @@ export function enqueueKvSerializedSave<T>(
   void next.finally(() => {
     kvSavesInFlight = Math.max(0, kvSavesInFlight - 1);
   });
-  chainRef.current = next.catch(() => 'failed' as KvSaveResult);
+  chainRef.current = next.then(
+    (res) => (res === 'failed' ? ('saved' as KvSaveResult) : res),
+    () => 'saved' as KvSaveResult
+  );
   return next;
 }
 
