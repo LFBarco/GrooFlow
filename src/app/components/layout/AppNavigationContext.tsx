@@ -1,4 +1,5 @@
 import { createContext, useContext, type LucideIcon } from 'react';
+import { Pin } from 'lucide-react';
 import type { ViewType } from '../../routes';
 import { useApp } from '../../context/AppContext';
 import { prefetchView } from '../../lazyRouteModules';
@@ -30,6 +31,8 @@ export type AppNavButtonProps = {
   label: string;
   iconColorClass?: string;
   requiredModule?: string;
+  isFavorite?: boolean;
+  onToggleFavorite?: (e: React.MouseEvent) => void;
 };
 
 export function AppNavButton({
@@ -39,6 +42,8 @@ export function AppNavButton({
   label,
   iconColorClass,
   requiredModule,
+  isFavorite,
+  onToggleFavorite,
 }: AppNavButtonProps) {
   const { activeView, isSidebarCollapsed, hasPermission, onSelectView } = useAppNavigation();
   const { theme } = useApp();
@@ -122,7 +127,33 @@ export function AppNavButton({
             >
               {label}
             </span>
-            {isActive && (
+            {onToggleFavorite && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onToggleFavorite(e);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onToggleFavorite(e as unknown as React.MouseEvent);
+                  }
+                }}
+                title={isFavorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                className={`p-1 rounded transition-all shrink-0 ml-1.5 cursor-pointer ${
+                  isFavorite
+                    ? 'text-cyan-400 opacity-100 hover:text-cyan-300'
+                    : 'text-slate-400 opacity-0 group-hover/btn:opacity-100 hover:text-cyan-400'
+                }`}
+              >
+                <Pin className={`w-3.5 h-3.5 ${isFavorite ? 'fill-cyan-400 text-cyan-400' : ''}`} />
+              </span>
+            )}
+            {isActive && !onToggleFavorite && (
               <div
                 className="w-1.5 h-1.5 rounded-full bg-cyan-400 mr-1 shrink-0"
                 style={{ boxShadow: '0 0 8px rgba(34,211,238,0.9)' }}
