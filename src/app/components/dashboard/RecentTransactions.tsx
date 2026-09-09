@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { Transaction } from "../../types";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -6,13 +7,14 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Pencil, Trash2, FileSpreadsheet } from "lucide-react";
 import { formatNumberEs } from "../../utils/numberFormat";
 import { parseTransactionDate } from "../../utils/transactionDate";
 import { formatBankAccountLabel, resolveBankAccount } from "../../utils/bankAccounts";
 import type { BankAccountConfig } from "../../types";
 import { useModuleSurfaces } from "../../utils/moduleSurfaces";
 import { appAlert, appConfirm } from '../ui/app-dialog';
+import { toast } from "sonner";
 
 interface RecentTransactionsProps {
   transactions: Transaction[];
@@ -124,6 +126,44 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
     setSelectedIds(new Set());
   };
 
+  const exportTransactionsExcel = () => {
+    if (transactions.length === 0) {
+      toast.error('No hay transacciones para exportar.');
+      return;
+    }
+    const headers = [
+      'Cuenta / Banco',
+      'Moneda',
+      'Fecha',
+      'Tipo',
+      'Sede / Ubicación',
+      'Categoría',
+      'Subcategoría',
+      'Concepto / Descripción',
+      'Monto',
+      'N° Operación',
+      'Referencia / Comprobante',
+    ];
+    const rows = transactions.map((t) => [
+      accountLabel(t),
+      t.currency || 'PEN',
+      format(parseTransactionDate(t.date), 'dd/MM/yyyy'),
+      t.type === 'income' ? 'Ingreso' : 'Egreso',
+      t.location || '',
+      t.category || '',
+      t.subcategory || '',
+      t.concept || t.description || '',
+      t.amount,
+      t.operation || '',
+      t.reference || '',
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Transacciones');
+    XLSX.writeFile(wb, `transacciones_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`Transacciones exportadas (${transactions.length} registros)`);
+  };
+
   const toggleSort = (key: SortKey) => {
     setCurrentPage(1);
     if (sortKey === key) {
@@ -159,16 +199,27 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
         <div className="text-xs" style={{ color: s.pageSubtitle }}>
           {selectionCount > 0 ? `${selectionCount} seleccionada(s)` : 'Selecciona filas para eliminar en bloque'}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleBulkDelete}
-          disabled={!onBulkDelete || selectionCount === 0}
-          className={s.isDark ? "border-red-500/30 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-100" : "border-red-400/40 bg-transparent text-red-600 hover:bg-red-50 hover:text-red-700"}
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Eliminar seleccionadas
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportTransactionsExcel}
+            className="border-white/15"
+          >
+            <FileSpreadsheet className="mr-2 h-4 w-4" />
+            Exportar Excel
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBulkDelete}
+            disabled={!onBulkDelete || selectionCount === 0}
+            className={s.isDark ? "border-red-500/30 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-100" : "border-red-400/40 bg-transparent text-red-600 hover:bg-red-50 hover:text-red-700"}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar seleccionadas
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-xl overflow-auto" style={{ border: s.isDark ? '1px solid rgba(139,92,246,0.15)' : s.card.border, background: s.isDark ? undefined : s.card.background }}>

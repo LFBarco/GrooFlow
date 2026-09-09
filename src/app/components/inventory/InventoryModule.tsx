@@ -2,6 +2,7 @@
  * Gestión de inventario — equipos médicos y operativos, dashboard y mantenimientos.
  */
 import React, { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
   Package,
   CheckCircle2,
@@ -17,6 +18,7 @@ import {
   Settings2,
   QrCode,
   Trash2,
+  FileSpreadsheet,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -249,6 +251,53 @@ export function InventoryModule({
     };
     setIsNewEquipment(true);
     setEquipmentDialog(applyGeneratedCode(draft));
+  };
+
+  const exportEquipmentExcel = () => {
+    if (filteredEquipment.length === 0) {
+      toast.error('No hay equipos para exportar.');
+      return;
+    }
+    const headers = [
+      'Código',
+      'Nombre equipo',
+      'Categoría',
+      'Estado',
+      'Sede',
+      'Piso',
+      'Ambiente',
+      'Marca',
+      'Modelo',
+      'N° Serie',
+      'Valor Compra',
+      'Valor Actual',
+      'Consignación',
+      'Proveedor',
+    ];
+    const rows = filteredEquipment.map((eq) => {
+      const cat = getCategoryById(dataset, eq.category);
+      return [
+        eq.code,
+        eq.name,
+        cat?.label ?? eq.category,
+        eq.status === 'active' ? 'Activo' : eq.status === 'maintenance' ? 'Mantenimiento' : eq.status === 'critical' ? 'Crítico' : 'Inactivo',
+        eq.sede,
+        eq.floor ?? '',
+        eq.room ?? '',
+        eq.brand ?? '',
+        eq.model ?? '',
+        eq.serialNumber ?? '',
+        eq.purchaseValue ?? 0,
+        eq.currentValue ?? 0,
+        eq.isConsignment ? 'Sí' : 'No',
+        eq.supplierName ?? '',
+      ];
+    });
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Equipos');
+    XLSX.writeFile(wb, `inventario_equipos_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`Inventario exportado (${filteredEquipment.length} equipos)`);
   };
 
   const regenerateEquipmentCode = () => {
@@ -621,6 +670,9 @@ export function InventoryModule({
               <p className="text-sm text-muted-foreground">{filteredEquipment.length} de {dataset.equipment.length} equipos</p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={exportEquipmentExcel}>
+                <FileSpreadsheet className="h-4 w-4 mr-1" /> Exportar Excel
+              </Button>
               <Button variant="outline" onClick={() => setCategoryConfigOpen(true)}>
                 <Settings2 className="h-4 w-4 mr-1" />
                 Categorías

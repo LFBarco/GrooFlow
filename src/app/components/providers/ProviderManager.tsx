@@ -20,7 +20,7 @@ import {
     Plus, Search, Edit2, Trash2, Building2, Phone, Mail, Clock, Save, 
     X, CreditCard, User, Upload, FileDown, CheckCircle2, XCircle, 
     Landmark, Settings, List, Wallet, Users, Info, ShoppingCart, FileText,
-    ChevronLeft, ChevronRight, Loader2,
+    ChevronLeft, ChevronRight, Loader2, FileSpreadsheet,
 } from 'lucide-react';
 import { Checkbox } from '../ui/checkbox';
 import { getProviderDocumentLabel, mergeProviderUsageContexts } from '../../utils/providerAccounting';
@@ -578,6 +578,50 @@ export function ProviderManager({
         XLSX.utils.book_append_sheet(workbook, instructions, 'Instrucciones');
         XLSX.writeFile(workbook, `plantilla_importacion_proveedores_grooflow_v2.xlsx`);
         toast.success('Plantilla descargada (Proveedores + Instrucciones, v2)');
+    };
+
+    const exportProvidersExcel = () => {
+        if (providers.length === 0) {
+            toast.error('No hay proveedores para exportar.');
+            return;
+        }
+        const headers = [
+            'RUC / DNI',
+            'Razón Social / Nombre',
+            'Nombre Comercial',
+            'Tipo Proveedor',
+            'Categoría',
+            'Email',
+            'Teléfono',
+            'Dirección',
+            'Estado SUNAT',
+            'Condición SUNAT',
+            'Cuenta Bancaria',
+            'Banco',
+            'CCI',
+            'Observaciones',
+        ];
+        const rows = providers.map((p) => [
+            p.ruc,
+            p.name,
+            p.commercialName || '',
+            p.type || '',
+            p.category || '',
+            p.email || '',
+            p.phone || '',
+            p.address || '',
+            p.sunatStatus || '',
+            p.sunatCondition || '',
+            p.bankAccount || '',
+            p.bankName || '',
+            p.cci || '',
+            p.notes || '',
+        ]);
+        const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
+        XLSX.writeFile(wb, `proveedores_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        toast.success(`Catálogo de proveedores exportado (${providers.length} registros)`);
     };
 
     const handleImportClick = () => {
@@ -1502,6 +1546,9 @@ export function ProviderManager({
                             <Settings className="w-4 h-4 mr-2" /> Configuración
                         </Button>
                     )}
+                    <Button variant="outline" onClick={exportProvidersExcel}>
+                        <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar Excel
+                    </Button>
                     <Button variant="outline" onClick={() => setIsImportOpen(true)}>
                         <Upload className="w-4 h-4 mr-2" /> Importar Excel
                     </Button>

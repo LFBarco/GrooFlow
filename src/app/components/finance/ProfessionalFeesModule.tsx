@@ -632,6 +632,46 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
     }
   };
 
+  const exportReceiptsExcel = () => {
+    if (receipts.length === 0) {
+      toast.error('No hay recibos por honorarios para exportar.');
+      return;
+    }
+    const headers = [
+      'N° Recibo',
+      'Fecha Emisión',
+      'RUC Profesional',
+      'Profesional',
+      'Especialidad',
+      'Sede',
+      'Moneda',
+      'Monto Bruto',
+      'Retención (8%)',
+      'Monto Neto',
+      'Estado Pago',
+      'Observaciones',
+    ];
+    const rows = receipts.map((r) => [
+      r.receiptNumber,
+      r.issueDate,
+      r.professionalRuc,
+      r.professionalName,
+      r.specialty || '',
+      r.branchId || '',
+      r.currency,
+      r.grossAmount,
+      r.retentionAmount,
+      r.netAmount,
+      r.paymentStatus === 'paid' ? 'Pagado' : r.paymentStatus === 'pending' ? 'Pendiente' : 'Anulado',
+      r.observations || '',
+    ]);
+    const ws = utils.aoa_to_sheet([headers, ...rows]);
+    const wb = utils.book_new();
+    utils.book_append_sheet(wb, ws, 'RecibosRxH');
+    writeFile(wb, `recibos_rxh_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`Recibos exportados (${receipts.length} registros)`);
+  };
+
   // Helper to calculate pending amount for a professional
   const getPendingAmount = (profId: string) => {
     return receipts
@@ -655,6 +695,10 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
         </div>
         
         <div className="flex gap-2">
+           <Button variant="outline" className="border-border" onClick={exportReceiptsExcel}>
+             <FileSpreadsheet className="w-4 h-4 mr-2" />
+             Exportar Excel
+           </Button>
            <Dialog open={isUploadRxHOpen} onOpenChange={setIsUploadRxHOpen}>
              <DialogTrigger asChild>
                <Button className="bg-violet-600 hover:bg-violet-700 text-white shadow-lg shadow-violet-500/20">

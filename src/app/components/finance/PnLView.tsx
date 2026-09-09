@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { Transaction } from "../../types";
 import { generatePnLReport } from "../../utils/pnlHelpers";
 import { format, startOfMonth, endOfMonth, startOfYear, isWithinInterval } from "date-fns";
@@ -22,12 +23,15 @@ import {
     Activity,
     ChevronLeft,
     ChevronRight,
+    FileSpreadsheet,
 } from "lucide-react";
 
 import { formatNumberEs, formatPercentEs } from "../../utils/numberFormat";
 import { labelsMatch } from "../../utils/labelMatch";
 import { parseTransactionDate } from "../../utils/transactionDate";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Button } from "../ui/button";
+import { toast } from "sonner";
 import { useModuleSurfaces } from "../../utils/moduleSurfaces";
 
 const formatMoney = (value: number | string, decimals = 2) => formatNumberEs(value, decimals);
@@ -89,6 +93,33 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
     }, [transactions, currentDate, viewMode, categoryFilter, conceptFilter]);
 
     const report = useMemo(() => generatePnLReport(filteredTransactions), [filteredTransactions]);
+
+    const exportPnLExcel = () => {
+        const rows: (string | number)[][] = [
+            ['Estado de Resultados (P&L)', format(currentDate, 'MMMM yyyy', { locale: es })],
+            [],
+            ['Sección / Concepto', 'Monto', '% sobre Ingresos'],
+            ['INGRESOS TOTALES', report.revenue.total, 1],
+            ...report.revenue.items.map((i) => ['  ' + i.name, i.amount, report.revenue.total ? i.amount / report.revenue.total : 0]),
+            [],
+            ['COSTOS DIRECTOS (COGS)', report.cogs.total, report.revenue.total ? report.cogs.total / report.revenue.total : 0],
+            ...report.cogs.items.map((i) => ['  ' + i.name, i.amount, report.revenue.total ? i.amount / report.revenue.total : 0]),
+            [],
+            ['UTILIDAD BRUTA', report.grossProfit, report.revenue.total ? report.grossProfit / report.revenue.total : 0],
+            [],
+            ['GASTOS OPERATIVOS', report.expenses.total, report.revenue.total ? report.expenses.total / report.revenue.total : 0],
+            ...report.expenses.items.map((i) => ['  ' + i.name, i.amount, report.revenue.total ? i.amount / report.revenue.total : 0]),
+            [],
+            ['UTILIDAD NETA', report.netIncome, report.revenue.total ? report.netIncome / report.revenue.total : 0],
+        ];
+
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'P&L');
+        const filePeriod = format(currentDate, 'yyyy-MM');
+        XLSX.writeFile(wb, `pnl_reporte_${filePeriod}.xlsx`);
+        toast.success('Reporte P&L exportado a Excel');
+    };
 
     const waterfallData = [
         { name: 'Ingresos', value: report.revenue.total, fill: s.chart.income },
@@ -195,6 +226,17 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                           </button>
                         ))}
                     </div>
+
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 gap-1 text-xs border-violet-400/30 text-violet-300 hover:bg-violet-500/10"
+                        onClick={exportPnLExcel}
+                    >
+                        <FileSpreadsheet className="h-4 w-4" />
+                        Exportar Excel
+                    </Button>
                 </div>
             </div>
 
