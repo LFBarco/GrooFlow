@@ -52,7 +52,7 @@ export function BukIntegrationSection(props: Props) {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl">
+    <div className="space-y-8 w-full">
       <div>
         <h3 className="text-lg font-semibold">Integraciones Buk</h3>
         <p className="text-sm text-muted-foreground mt-1">

@@ -207,7 +207,7 @@ export function CatalogCrudPage({ kind, canEdit = false }: Props) {
   }, [kind, canEdit]);
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="space-y-4 w-full">
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>

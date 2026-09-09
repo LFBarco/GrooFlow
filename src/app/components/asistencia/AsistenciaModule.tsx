@@ -674,7 +674,7 @@ export function AsistenciaModule({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-4 sm:space-y-6" data-testid="asistencia-module">
+    <div className="w-full space-y-4 sm:space-y-6" data-testid="asistencia-module">
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 text-card-foreground shadow-sm sm:p-6 lg:flex-row lg:flex-wrap lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-300">
