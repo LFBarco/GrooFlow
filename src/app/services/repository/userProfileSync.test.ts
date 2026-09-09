@@ -39,7 +39,7 @@ describe('mergeUserWithSqlProfile', () => {
   it('mantiene super admin activo aunque el perfil SQL diga inactive', () => {
     const superUser: User = {
       ...baseUser,
-      email: 'luisfrancisco.barco@gmail.com',
+      email: 'admin@grooflow.com',
       role: 'super_admin',
       allSedes: true,
     };

@@ -15,7 +15,7 @@ describe('userAvatar', () => {
     ).toBe('data:image/jpeg;base64,abc');
   });
 
-  it('fallback dicebear por email', () => {
+  it('retorna vacio sin avatarUrl para mostrar iniciales', () => {
     const src = getUserAvatarSrc({
       id: '1',
       name: 'A',
@@ -23,7 +23,6 @@ describe('userAvatar', () => {
       role: 'manager',
       email: 'user@test.com',
     });
-    expect(src).toContain('dicebear.com');
-    expect(src).toContain('user%40test.com');
+    expect(src).toBe('');
   });
 });

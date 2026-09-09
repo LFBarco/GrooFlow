@@ -24,12 +24,13 @@ const baseEquipment: InventoryEquipment = {
 
 describe('applyEquipmentMaintenanceSync', () => {
   it('crea mantenimiento programado al guardar fecha en equipo', () => {
-    const ds = normalizeInventoryDataset({ equipment: [baseEquipment], maintenance: [] });
-    const next = applyEquipmentMaintenanceSync(ds, baseEquipment);
+    const eq = { ...baseEquipment, nextMaintenanceDate: '2029-07-01' };
+    const ds = normalizeInventoryDataset({ equipment: [eq], maintenance: [] });
+    const next = applyEquipmentMaintenanceSync(ds, eq);
     expect(next.maintenance).toHaveLength(1);
     expect(next.maintenance[0]?.id).toBe(autoMaintenanceIdForEquipment('eq-1'));
     expect(next.maintenance[0]?.equipmentId).toBe('eq-1');
-    expect(next.maintenance[0]?.scheduledDate).toBe('2026-07-01');
+    expect(next.maintenance[0]?.scheduledDate).toBe('2029-07-01');
     expect(next.maintenance[0]?.kind).toBe('preventive');
     expect(next.maintenance[0]?.status).toBe('scheduled');
   });

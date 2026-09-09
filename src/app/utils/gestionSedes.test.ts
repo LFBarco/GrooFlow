@@ -14,7 +14,7 @@ describe('gestionSedes', () => {
     expect(normalizeSedeKey('30. Petmovil')).toBe('pet movil');
   });
 
-  it('deduplica sedes y prefiere etiqueta con código de Gestión', () => {
+  it('deduplica sedes y prefiere etiqueta limpia (sin prefijo numérico)', () => {
     const options = buildFormSedeOptions([
       'Benavides',
       '10. Benavides',
@@ -22,7 +22,7 @@ describe('gestionSedes', () => {
       'Pet Movil',
       '30. Petmovil',
     ]);
-    expect(options).toEqual(['10. Benavides', '30. Petmovil', 'Jorge Chavez']);
+    expect(options).toEqual(['Benavides', 'Jorge Chavez', 'Pet Movil']);
   });
 
   it('filtros solo usan el catálogo visible (no inventan sedes extra)', () => {
