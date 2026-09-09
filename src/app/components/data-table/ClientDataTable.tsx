@@ -141,6 +141,8 @@ type ClientDataTableProps<T> = {
   columns: ClientDataTableColumn<T>[];
   getRowId: (row: T) => string;
   emptyMessage?: string;
+  loading?: boolean;
+  loadingRowsCount?: number;
   page: number;
   pageSize: number;
   /** Si true, `rows` ya es la página del servidor (no se vuelve a recortar). */
@@ -155,6 +157,8 @@ export function ClientDataTable<T>({
   columns,
   getRowId,
   emptyMessage = 'Sin datos.',
+  loading = false,
+  loadingRowsCount = 5,
   page,
   pageSize,
   serverPaged = false,
@@ -180,7 +184,17 @@ export function ClientDataTable<T>({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {pageItems.length === 0 ? (
+          {loading ? (
+            Array.from({ length: loadingRowsCount }).map((_, idx) => (
+              <TableRow key={`skeleton-row-${idx}`}>
+                {columns.map((c, colIdx) => (
+                  <TableCell key={c.id || colIdx} className={cn('text-xs py-3', c.className)}>
+                    <div className="h-4 w-full max-w-[140px] animate-pulse rounded bg-slate-300/40 dark:bg-slate-700/50" />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          ) : pageItems.length === 0 ? (
             <TableRow>
               <TableCell colSpan={Math.max(1, columns.length)} className="text-center text-muted-foreground py-10">
                 {emptyMessage}

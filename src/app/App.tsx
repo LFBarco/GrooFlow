@@ -4184,6 +4184,7 @@ export default function App() {
                   <RecentTransactions
                     transactions={filteredTransactions}
                     bankAccounts={bankAccountsForForms}
+                    isLoading={!isDataLoaded}
                     onEdit={openEditDialog}
                     onDelete={handleDeleteTransaction}
                     onBulkDelete={handleBulkDeleteTransactions}
@@ -4431,6 +4432,7 @@ export default function App() {
                 <ProductModule 
                     products={products}
                     providers={providers}
+                    isLoading={!isDataLoaded}
                     onUpdateProducts={handleProductsUpdate}
                     visibleSedes={visibleSedes}
                     currentUserName={currentUser.name}

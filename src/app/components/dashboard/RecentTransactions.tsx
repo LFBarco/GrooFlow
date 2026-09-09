@@ -16,9 +16,12 @@ import { useModuleSurfaces } from "../../utils/moduleSurfaces";
 import { appAlert, appConfirm } from '../ui/app-dialog';
 import { toast } from "sonner";
 
+import { TableSkeletonRows } from "../ui/table-skeleton";
+
 interface RecentTransactionsProps {
   transactions: Transaction[];
   bankAccounts?: BankAccountConfig[];
+  isLoading?: boolean;
   onEdit?: (transaction: Transaction) => void;
   onDelete?: (transactionId: string) => void;
   onBulkDelete?: (transactionIds: string[]) => void;
@@ -39,7 +42,7 @@ type SortKey =
   | 'reference';
 type SortDirection = 'asc' | 'desc';
 
-export function RecentTransactions({ transactions, bankAccounts = [], onEdit, onDelete, onBulkDelete }: RecentTransactionsProps) {
+export function RecentTransactions({ transactions, bankAccounts = [], isLoading = false, onEdit, onDelete, onBulkDelete }: RecentTransactionsProps) {
   const s = useModuleSurfaces();
   const [pageSize, setPageSize] = useState<number>(25);
   const [currentPage, setCurrentPage] = useState(1);
@@ -248,97 +251,100 @@ export function RecentTransactions({ transactions, bankAccounts = [], onEdit, on
             </tr>
           </thead>
           <tbody>
-            {paginatedTransactions.map((transaction) => (
-              <tr
-                key={transaction.id}
-                className="transition-colors"
-                style={{ borderBottom: `1px solid ${s.divider}` }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = s.isDark ? 'rgba(139,92,246,0.05)' : 'rgba(79,70,229,0.06)'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-              >
-                <td className="p-4 align-middle">
-                  <Checkbox
-                    checked={selectedIds.has(transaction.id)}
-                    onCheckedChange={(checked) => toggleSelected(transaction.id, checked === true)}
-                    aria-label={`Seleccionar ${transaction.description}`}
-                  />
-                </td>
-                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
-                  {accountLabel(transaction)}
-                </td>
-                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
-                  {transaction.currency || '-'}
-                </td>
-                <td className="p-4 align-middle text-xs" style={{ color: s.accentText, fontFamily: "'JetBrains Mono', monospace" }}>
-                  {format(parseTransactionDate(transaction.date), "dd/MM/yyyy", { locale: es })}
-                </td>
-                <td className="p-4 align-middle text-xs font-bold" style={{ color: transaction.type === 'income' ? s.chart.income : s.chart.expense }}>
-                  {transaction.type === 'income' ? 'Ingreso' : 'Egreso'}
-                </td>
-                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
-                  {transaction.location || '-'}
-                </td>
-                <td className="p-4 align-middle">
-                  <span className="px-2.5 py-1 rounded-full text-xs font-bold"
-                    style={transaction.type === 'income'
-                      ? { background: `${s.chart.income}18`, border: `1px solid ${s.chart.income}33`, color: s.chart.income }
-                      : { background: `${s.chart.expense}18`, border: `1px solid ${s.chart.expense}33`, color: s.chart.expense }
-                    }
-                  >
-                    {transaction.category}
-                  </span>
-                </td>
-                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
-                  {transaction.subcategory || '-'}
-                </td>
-                <td className="p-4 align-middle text-xs font-medium" style={{ color: s.pageTitle }}>
-                  {transaction.concept || transaction.description || '-'}
-                </td>
-                <td className="p-4 align-middle text-right font-bold text-sm"
-                  style={{ color: transaction.type === 'income' ? s.chart.income : s.chart.expense, fontFamily: "'JetBrains Mono', monospace" }}
+            {isLoading ? (
+              <TableSkeletonRows columnsCount={12} rowsCount={5} hasCheckbox={true} />
+            ) : paginatedTransactions.length > 0 ? (
+              paginatedTransactions.map((transaction) => (
+                <tr
+                  key={transaction.id}
+                  className="transition-colors"
+                  style={{ borderBottom: `1px solid ${s.divider}` }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = s.isDark ? 'rgba(139,92,246,0.05)' : 'rgba(79,70,229,0.06)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
                 >
-                  {transaction.type === 'income' ? '+' : '-'} {formatNumberEs(Math.abs(transaction.amount), 2)}
-                </td>
-                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
-                  {transaction.operation || '-'}
-                </td>
-                <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
-                  {transaction.reference || '-'}
-                </td>
-                <td className="p-4 align-middle text-right">
-                    {onEdit && (
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            onClick={() => onEdit(transaction)}
-                            title="Editar transacción"
-                            className="h-8 w-8 hover:text-cyan-400 hover:bg-cyan-500/10"
-                            style={{ color: 'rgba(255,255,255,0.2)' }}
+                  <td className="p-4 align-middle">
+                    <Checkbox
+                      checked={selectedIds.has(transaction.id)}
+                      onCheckedChange={(checked) => toggleSelected(transaction.id, checked === true)}
+                      aria-label={`Seleccionar ${transaction.description}`}
+                    />
+                  </td>
+                  <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
+                    {accountLabel(transaction)}
+                  </td>
+                  <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
+                    {transaction.currency || '-'}
+                  </td>
+                  <td className="p-4 align-middle text-xs" style={{ color: s.accentText, fontFamily: "'JetBrains Mono', monospace" }}>
+                    {format(parseTransactionDate(transaction.date), "dd/MM/yyyy", { locale: es })}
+                  </td>
+                  <td className="p-4 align-middle text-xs font-bold" style={{ color: transaction.type === 'income' ? s.chart.income : s.chart.expense }}>
+                    {transaction.type === 'income' ? 'Ingreso' : 'Egreso'}
+                  </td>
+                  <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
+                    {transaction.location || '-'}
+                  </td>
+                  <td className="p-4 align-middle">
+                    <span className="px-2.5 py-1 rounded-full text-xs font-bold"
+                      style={transaction.type === 'income'
+                        ? { background: `${s.chart.income}18`, border: `1px solid ${s.chart.income}33`, color: s.chart.income }
+                        : { background: `${s.chart.expense}18`, border: `1px solid ${s.chart.expense}33`, color: s.chart.expense }
+                      }
+                    >
+                      {transaction.category}
+                    </span>
+                  </td>
+                  <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
+                    {transaction.subcategory || '-'}
+                  </td>
+                  <td className="p-4 align-middle text-xs font-medium" style={{ color: s.pageTitle }}>
+                    {transaction.concept || transaction.description || '-'}
+                  </td>
+                  <td className="p-4 align-middle text-right font-bold text-sm"
+                    style={{ color: transaction.type === 'income' ? s.chart.income : s.chart.expense, fontFamily: "'JetBrains Mono', monospace" }}
+                  >
+                    {transaction.type === 'income' ? '+' : '-'} {formatNumberEs(Math.abs(transaction.amount), 2)}
+                  </td>
+                  <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
+                    {transaction.operation || '-'}
+                  </td>
+                  <td className="p-4 align-middle text-xs" style={{ color: s.tableMuted }}>
+                    {transaction.reference || '-'}
+                  </td>
+                  <td className="p-4 align-middle text-right">
+                      {onEdit && (
+                          <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => onEdit(transaction)}
+                              title="Editar transacción"
+                              className="h-8 w-8 hover:text-cyan-400 hover:bg-cyan-500/10"
+                              style={{ color: 'rgba(255,255,255,0.2)' }}
+                          >
+                              <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                      )}
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteOne(transaction)}
+                          title="Eliminar transacción"
+                          className="h-8 w-8 hover:text-red-400 hover:bg-red-500/10"
+                          style={{ color: 'rgba(255,255,255,0.2)' }}
                         >
-                            <Pencil className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                    )}
-                    {onDelete && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteOne(transaction)}
-                        title="Eliminar transacción"
-                        className="h-8 w-8 hover:text-red-400 hover:bg-red-500/10"
-                        style={{ color: 'rgba(255,255,255,0.2)' }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                      )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={13} className="p-8 text-center text-sm" style={{ color: '#6b5fa5' }}>
+                  No hay transacciones registradas
                 </td>
               </tr>
-            ))}
-            {transactions.length === 0 && (
-                <tr>
-                    <td colSpan={13} className="p-8 text-center text-sm" style={{ color: '#6b5fa5' }}>
-                        No hay transacciones registradas
-                    </td>
-                </tr>
             )}
           </tbody>
         </table>

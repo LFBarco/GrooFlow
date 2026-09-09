@@ -16,8 +16,11 @@ import { formatCurrencyEs, formatPercentEs } from '../../utils/numberFormat';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
+import { TableSkeletonRows } from '../ui/table-skeleton';
+
 interface PaymentWorkbenchProps {
   invoices: Invoice[];
+  isLoading?: boolean;
   onSchedulePayment: (invoiceIds: string[]) => void;
   onApprovePayment?: (invoiceIds: string[]) => void;
   bankBalance: number;
@@ -25,6 +28,7 @@ interface PaymentWorkbenchProps {
 
 export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({ 
   invoices, 
+  isLoading = false,
   onSchedulePayment,
   onApprovePayment,
   bankBalance 
@@ -278,14 +282,16 @@ export const PaymentWorkbench: React.FC<PaymentWorkbenchProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {pendingInvoices.length === 0 ? (
+              {isLoading ? (
+                <TableSkeletonRows columnsCount={8} rowsCount={5} hasCheckbox={true} />
+              ) : pendingInvoices.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-6 py-16 text-center text-muted-foreground">
                     <div className="flex flex-col items-center justify-center gap-2">
-                      <div className="p-3 bg-muted rounded-full">
-                         <FileText className="w-6 h-6 opacity-50" />
-                      </div>
-                      <p>No se encontraron facturas pendientes.</p>
+                       <div className="p-3 bg-muted rounded-full">
+                          <FileText className="w-6 h-6 opacity-50" />
+                       </div>
+                       <p>No se encontraron facturas pendientes.</p>
                     </div>
                   </td>
                 </tr>

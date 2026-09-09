@@ -79,6 +79,7 @@ interface ProfessionalFeesModuleProps {
   receipts?: FeeReceipt[];
   onUpdateReceipts?: (receipts: FeeReceipt[]) => void;
   visibleSedes?: string[];
+  isLoading?: boolean;
 }
 
 export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({ 
@@ -88,6 +89,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
   receipts: externalReceipts,
   onUpdateReceipts,
   visibleSedes = [],
+  isLoading = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'professionals' | 'detail' | 'analytics'>('detail');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1379,111 +1381,114 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredReceipts.map((receipt) => {
-                      const prof = professionals.find(p => p.id === receipt.professionalId);
-                      const rentaBruta = receipt.amount;
-                      const impuesto = rentaBruta * 0.08;
-                      const rentaNeta = rentaBruta - impuesto;
-
-                      return (
-                        <TableRow 
-                          key={receipt.id}
-                          className={selectedReceipts.includes(receipt.id) ? "bg-violet-50/50 hover:bg-violet-50" : "hover:bg-muted/30"}
-                        >
-                          {/* Checkbox Cell */}
-                          <TableCell className="w-[40px]">
-                            <input 
-                               type="checkbox"
-                               className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
-                               checked={selectedReceipts.includes(receipt.id)}
-                               onChange={(e) => handleSelectRow(receipt.id, e.target.checked)}
-                            />
-                          </TableCell>
-
-                          {visibleColumns.fechaEmision && <TableCell>{format(receipt.issueDate, 'dd/MM/yyyy')}</TableCell>}
-                          {visibleColumns.tipoDocEmitido && <TableCell className="text-xs">R. Honorarios</TableCell>}
-                          {visibleColumns.nroDocEmitido && <TableCell className="font-mono text-xs">{receipt.receiptNumber}</TableCell>}
-                          {visibleColumns.estadoDocEmitido && <TableCell className="text-xs">Emitido</TableCell>}
-                          {visibleColumns.tipoDocEmisor && <TableCell className="text-xs">RUC</TableCell>}
-                          {visibleColumns.nroDocEmisor && <TableCell className="font-mono text-xs">{prof?.ruc || '-'}</TableCell>}
-                          {visibleColumns.razonSocial && <TableCell className="font-medium text-xs">{receipt.professionalName}</TableCell>}
-                          {visibleColumns.socialEmisor && <TableCell className="text-xs">-</TableCell>}
-                          {visibleColumns.tipoRenta && <TableCell className="text-xs">4ta Categ.</TableCell>}
-                          {visibleColumns.gratis && <TableCell className="text-xs">NO</TableCell>}
-                          {visibleColumns.descripcion && <TableCell className="text-muted-foreground text-xs max-w-[200px] truncate" title={receipt.description}>
-                            {receipt.description}
-                          </TableCell>}
-                          {visibleColumns.observacion && <TableCell className="text-xs text-muted-foreground">-</TableCell>}
-                          {visibleColumns.sede && <TableCell className="text-xs">{receipt.location || 'Principal'}</TableCell>}
-                          {visibleColumns.moneda && <TableCell className="text-xs">PEN</TableCell>}
-                          {visibleColumns.rentaBruta && <TableCell className="text-right font-mono text-xs">
-                            {formatNumberEs(rentaBruta)}
-                          </TableCell>}
-                          {visibleColumns.impuesto && <TableCell className="text-right font-mono text-xs text-red-400">
-                            {formatNumberEs(impuesto)}
-                          </TableCell>}
-                          {visibleColumns.rentaNeta && <TableCell className="text-right font-mono text-xs font-medium">
-                            {formatNumberEs(rentaNeta)}
-                          </TableCell>}
-                          {visibleColumns.montoPendiente && <TableCell className="text-right font-mono text-xs font-medium">
-                            {formatNumberEs(rentaNeta)}
-                          </TableCell>}
-
-                          {/* Sistema */}
-                          {visibleColumns.fechaVencimiento && <TableCell className={receipt.dueDate < new Date() && receipt.status === 'pending' ? 'text-red-500 font-medium text-xs' : 'text-xs'}>
-                            {format(receipt.dueDate, 'dd/MM/yyyy')}
-                          </TableCell>}
-                          {visibleColumns.estadoPago && <TableCell>
-                            {receipt.status === 'pending' ? (
-                               <div className="flex gap-1">
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-orange-500 hover:bg-orange-500/10 hover:text-orange-600" title="Solicitar Pago" onClick={e => { e.stopPropagation(); handleBulkAction('request_payment'); setSelectedReceipts([receipt.id]); }}>
-                                     <ArrowRight className="w-4 h-4" />
-                                  </Button>
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-green-500 hover:bg-green-500/10 hover:text-green-600" title="Aprobar" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('approve'); }}>
-                                     <CheckCircle2 className="w-4 h-4" />
-                                  </Button>
-                                  <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:bg-red-500/10 hover:text-red-600" title="Rechazar" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('reject'); }}>
-                                     <X className="w-4 h-4" />
-                                  </Button>
-                               </div>
-                            ) : receipt.status === 'approved' ? (
-                               <div className="flex gap-1 items-center">
-                                 <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 flex items-center gap-1 w-fit">
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    Aprobado
-                                 </Badge>
-                                 <Button size="icon" variant="ghost" className="h-6 w-6 text-orange-500 hover:bg-orange-500/10" title="Solicitar Pago" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('request_payment'); }}>
-                                    <ArrowRight className="w-3 h-3" />
-                                 </Button>
-                               </div>
-                            ) : receipt.status === 'requested_payment' ? (
-                               <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20 flex items-center gap-1 w-fit">
-                                  <Clock className="w-3 h-3" />
-                                  En Mesa de Pagos
-                               </Badge>
-                            ) : receipt.status === 'paid' ? (
-                               <div className="flex flex-col gap-0.5">
-                                 <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20 flex items-center gap-1 w-fit">
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    Pagado
-                                 </Badge>
-                                 {receipt.paymentDate && <span className="text-[9px] text-muted-foreground">{format(receipt.paymentDate, 'dd/MM/yyyy')}</span>}
-                               </div>
-                            ) : (
-                               <Badge variant="outline" className={`text-[10px] ${getStatusColor(receipt.status)}`}>
-                                   {getStatusLabel(receipt.status)}
-                               </Badge>
-                            )}
-                          </TableCell>}
-                        </TableRow>
-                      );
-                    })}
-                    {filteredReceipts.length === 0 && (
+                    {isLoading ? (
+                      <TableSkeletonRows columnsCount={Object.values(visibleColumns).filter(Boolean).length} rowsCount={5} hasCheckbox={true} />
+                    ) : filteredReceipts.length === 0 ? (
                        <TableRow>
                           <TableCell colSpan={Object.values(visibleColumns).filter(Boolean).length + 1} className="text-center py-8 text-muted-foreground">
                              No se encontraron registros
                           </TableCell>
                        </TableRow>
+                    ) : (
+                      filteredReceipts.map((receipt) => {
+                        const prof = professionals.find(p => p.id === receipt.professionalId);
+                        const rentaBruta = receipt.amount;
+                        const impuesto = rentaBruta * 0.08;
+                        const rentaNeta = rentaBruta - impuesto;
+
+                        return (
+                          <TableRow 
+                            key={receipt.id}
+                            className={selectedReceipts.includes(receipt.id) ? "bg-violet-50/50 hover:bg-violet-50" : "hover:bg-muted/30"}
+                          >
+                            {/* Checkbox Cell */}
+                            <TableCell className="w-[40px]">
+                              <input 
+                                 type="checkbox"
+                                 className="h-4 w-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500 cursor-pointer"
+                                 checked={selectedReceipts.includes(receipt.id)}
+                                 onChange={(e) => handleSelectRow(receipt.id, e.target.checked)}
+                              />
+                            </TableCell>
+
+                            {visibleColumns.fechaEmision && <TableCell>{format(receipt.issueDate, 'dd/MM/yyyy')}</TableCell>}
+                            {visibleColumns.tipoDocEmitido && <TableCell className="text-xs">R. Honorarios</TableCell>}
+                            {visibleColumns.nroDocEmitido && <TableCell className="font-mono text-xs">{receipt.receiptNumber}</TableCell>}
+                            {visibleColumns.estadoDocEmitido && <TableCell className="text-xs">Emitido</TableCell>}
+                            {visibleColumns.tipoDocEmisor && <TableCell className="text-xs">RUC</TableCell>}
+                            {visibleColumns.nroDocEmisor && <TableCell className="font-mono text-xs">{prof?.ruc || '-'}</TableCell>}
+                            {visibleColumns.razonSocial && <TableCell className="font-medium text-xs">{receipt.professionalName}</TableCell>}
+                            {visibleColumns.socialEmisor && <TableCell className="text-xs">-</TableCell>}
+                            {visibleColumns.tipoRenta && <TableCell className="text-xs">4ta Categ.</TableCell>}
+                            {visibleColumns.gratis && <TableCell className="text-xs">NO</TableCell>}
+                            {visibleColumns.descripcion && <TableCell className="text-muted-foreground text-xs max-w-[200px] truncate" title={receipt.description}>
+                              {receipt.description}
+                            </TableCell>}
+                            {visibleColumns.observacion && <TableCell className="text-xs text-muted-foreground">-</TableCell>}
+                            {visibleColumns.sede && <TableCell className="text-xs">{receipt.location || 'Principal'}</TableCell>}
+                            {visibleColumns.moneda && <TableCell className="text-xs">PEN</TableCell>}
+                            {visibleColumns.rentaBruta && <TableCell className="text-right font-mono text-xs">
+                              {formatNumberEs(rentaBruta)}
+                            </TableCell>}
+                            {visibleColumns.impuesto && <TableCell className="text-right font-mono text-xs text-red-400">
+                              {formatNumberEs(impuesto)}
+                            </TableCell>}
+                            {visibleColumns.rentaNeta && <TableCell className="text-right font-mono text-xs font-medium">
+                              {formatNumberEs(rentaNeta)}
+                            </TableCell>}
+                            {visibleColumns.montoPendiente && <TableCell className="text-right font-mono text-xs font-medium">
+                              {formatNumberEs(rentaNeta)}
+                            </TableCell>}
+
+                            {/* Sistema */}
+                            {visibleColumns.fechaVencimiento && <TableCell className={receipt.dueDate < new Date() && receipt.status === 'pending' ? 'text-red-500 font-medium text-xs' : 'text-xs'}>
+                              {format(receipt.dueDate, 'dd/MM/yyyy')}
+                            </TableCell>}
+                            {visibleColumns.estadoPago && <TableCell>
+                              {receipt.status === 'pending' ? (
+                                 <div className="flex gap-1">
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 text-orange-500 hover:bg-orange-500/10 hover:text-orange-600" title="Solicitar Pago" onClick={e => { e.stopPropagation(); handleBulkAction('request_payment'); setSelectedReceipts([receipt.id]); }}>
+                                       <ArrowRight className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 text-green-500 hover:bg-green-500/10 hover:text-green-600" title="Aprobar" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('approve'); }}>
+                                       <CheckCircle2 className="w-4 h-4" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" className="h-6 w-6 text-red-500 hover:bg-red-500/10 hover:text-red-600" title="Rechazar" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('reject'); }}>
+                                       <X className="w-4 h-4" />
+                                    </Button>
+                                 </div>
+                              ) : receipt.status === 'approved' ? (
+                                 <div className="flex gap-1 items-center">
+                                   <Badge variant="outline" className="text-[10px] bg-blue-500/10 text-blue-500 border-blue-500/20 flex items-center gap-1 w-fit">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Aprobado
+                                   </Badge>
+                                   <Button size="icon" variant="ghost" className="h-6 w-6 text-orange-500 hover:bg-orange-500/10" title="Solicitar Pago" onClick={e => { e.stopPropagation(); setSelectedReceipts([receipt.id]); handleBulkAction('request_payment'); }}>
+                                      <ArrowRight className="w-3 h-3" />
+                                   </Button>
+                                 </div>
+                              ) : receipt.status === 'requested_payment' ? (
+                                 <Badge variant="outline" className="text-[10px] bg-orange-500/10 text-orange-500 border-orange-500/20 flex items-center gap-1 w-fit">
+                                    <Clock className="w-3 h-3" />
+                                    En Mesa de Pagos
+                                 </Badge>
+                              ) : receipt.status === 'paid' ? (
+                                 <div className="flex flex-col gap-0.5">
+                                   <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20 flex items-center gap-1 w-fit">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Pagado
+                                   </Badge>
+                                   {receipt.paymentDate && <span className="text-[9px] text-muted-foreground">{format(receipt.paymentDate, 'dd/MM/yyyy')}</span>}
+                                 </div>
+                              ) : (
+                                 <Badge variant="outline" className={`text-[10px] ${getStatusColor(receipt.status)}`}>
+                                     {getStatusLabel(receipt.status)}
+                                 </Badge>
+                              )}
+                            </TableCell>}
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>

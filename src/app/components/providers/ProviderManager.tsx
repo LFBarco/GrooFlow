@@ -23,6 +23,7 @@ import {
     ChevronLeft, ChevronRight, Loader2, FileSpreadsheet,
 } from 'lucide-react';
 import { Checkbox } from '../ui/checkbox';
+import { TableSkeletonRows } from '../ui/table-skeleton';
 import { getProviderDocumentLabel, mergeProviderUsageContexts } from '../../utils/providerAccounting';
 import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 import { toast } from 'sonner';
@@ -2771,21 +2772,14 @@ export function ProviderManager({
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {providerTotalFiltered === 0 ? (
+                        {useServerPaging && serverList.loading ? (
+                            <TableSkeletonRows columnsCount={8} rowsCount={5} hasCheckbox={true} />
+                        ) : providerTotalFiltered === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                                     <div className="flex flex-col items-center justify-center gap-2">
-                                        {useServerPaging && serverList.loading ? (
-                                            <>
-                                                <Loader2 className="w-8 h-8 opacity-40 animate-spin" />
-                                                <p>Cargando proveedores…</p>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Search className="w-8 h-8 opacity-20" />
-                                                <p>No se encontraron proveedores que coincidan con tu búsqueda.</p>
-                                            </>
-                                        )}
+                                        <Search className="w-8 h-8 opacity-20" />
+                                        <p>No se encontraron proveedores que coincidan con tu búsqueda.</p>
                                     </div>
                                 </TableCell>
                             </TableRow>

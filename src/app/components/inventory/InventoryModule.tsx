@@ -117,6 +117,8 @@ function formatCompactCurrency(value: number): string {
   return formatCurrencyEs(value, 0);
 }
 
+import { TableSkeletonRows } from '../ui/table-skeleton';
+
 export interface InventoryModuleProps {
   dataset: InventoryDataset;
   setDataset: React.Dispatch<React.SetStateAction<InventoryDataset>>;
@@ -124,6 +126,7 @@ export interface InventoryModuleProps {
   visibleSedes?: string[];
   defaultSede?: string;
   providers?: Provider[];
+  isLoading?: boolean;
 }
 
 type InventoryTab = 'dashboard' | 'equipment' | 'maintenance';
@@ -135,6 +138,7 @@ export function InventoryModule({
   visibleSedes = [],
   defaultSede = 'Principal',
   providers = [],
+  isLoading = false,
 }: InventoryModuleProps) {
   const [tab, setTab] = useState<InventoryTab>('dashboard');
   const [sedeFilter, setSedeFilter] = useState<string>('all');
@@ -737,67 +741,77 @@ export function InventoryModule({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredEquipment.map((e) => (
-                  <TableRow key={e.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsNewEquipment(false); setEquipmentDialog(e); }}>
-                    <TableCell className="font-mono text-xs">{e.code}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">{e.name}</div>
-                      <div className="text-xs text-muted-foreground">{e.brand} {e.model}</div>
-                      {isEquipmentConsignment(e) ? (
-                        <div className="mt-1 flex flex-wrap items-center gap-1">
-                          <ConsignmentBadge status={e.consignmentStatus ?? 'active'} compact />
-                          {e.consignorName ? (
-                            <span className="text-xs text-muted-foreground">· {e.consignorName}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <div>{e.sede}</div>
-                      {(e.floor || e.room) && (
-                        <div className="text-xs text-muted-foreground">
-                          {e.floor ? `Piso ${e.floor}` : ''}
-                          {e.floor && e.room ? ' · ' : ''}
-                          {e.room ? `Cons. ${e.room}` : ''}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <CategoryBadge
-                        category={e.category}
-                        label={getCategoryLabel(dataset, e.category)}
-                      />
-                    </TableCell>
-                    <TableCell><EquipmentStatusBadge status={e.status} /></TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-1 text-sm">
-                        {e.nextMaintenanceDate || '—'}
-                        {e.nextMaintenanceDate && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrencyEs(e.currentValue)}</TableCell>
-                    <TableCell><UsefulLifeBar percent={computeUsefulLifePercent(e)} /></TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-red-600"
-                          title="Eliminar equipo"
-                          aria-label={`Eliminar ${e.name}`}
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            void deleteEquipment(e);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </div>
+                {isLoading ? (
+                  <TableSkeletonRows columnsCount={9} rowsCount={5} />
+                ) : filteredEquipment.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                      No hay equipos registrados.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredEquipment.map((e) => (
+                    <TableRow key={e.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsNewEquipment(false); setEquipmentDialog(e); }}>
+                      <TableCell className="font-mono text-xs">{e.code}</TableCell>
+                      <TableCell>
+                        <div className="font-medium">{e.name}</div>
+                        <div className="text-xs text-muted-foreground">{e.brand} {e.model}</div>
+                        {isEquipmentConsignment(e) ? (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <ConsignmentBadge status={e.consignmentStatus ?? 'active'} compact />
+                            {e.consignorName ? (
+                              <span className="text-xs text-muted-foreground">· {e.consignorName}</span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <div>{e.sede}</div>
+                        {(e.floor || e.room) && (
+                          <div className="text-xs text-muted-foreground">
+                            {e.floor ? `Piso ${e.floor}` : ''}
+                            {e.floor && e.room ? ' · ' : ''}
+                            {e.room ? `Cons. ${e.room}` : ''}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <CategoryBadge
+                          category={e.category}
+                          label={getCategoryLabel(dataset, e.category)}
+                        />
+                      </TableCell>
+                      <TableCell><EquipmentStatusBadge status={e.status} /></TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-1 text-sm">
+                          {e.nextMaintenanceDate || '—'}
+                          {e.nextMaintenanceDate && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrencyEs(e.currentValue)}</TableCell>
+                      <TableCell><UsefulLifeBar percent={computeUsefulLifePercent(e)} /></TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                            title="Eliminar equipo"
+                            aria-label={`Eliminar ${e.name}`}
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              void deleteEquipment(e);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </Card>

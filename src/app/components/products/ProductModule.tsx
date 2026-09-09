@@ -42,6 +42,7 @@ import { cloneProduct, createDraftProduct, normalizeProductForWorkspace } from '
 import { ProductWorkspace } from './ProductWorkspace';
 import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 import { useSupplierProductsState } from '../../hooks/useSupplierProductsState';
+import { TableSkeletonRows } from '../ui/table-skeleton';
 import { getProductCatalog } from '../../utils/productCatalog';
 import { appAlert, appConfirm } from '../ui/app-dialog';
 
@@ -50,6 +51,7 @@ const PAGE_SIZE = 10;
 interface ProductModuleProps {
   products: Product[];
   providers: Provider[];
+  isLoading?: boolean;
   onUpdateProducts: (products: Product[], successMessage?: string) => Promise<boolean>;
   visibleSedes?: string[];
   currentUserName: string;
@@ -88,6 +90,7 @@ function statusBadge(status: Product['status']) {
 export function ProductModule({
   products,
   providers,
+  isLoading = false,
   onUpdateProducts,
   visibleSedes,
   currentUserName,
@@ -454,7 +457,9 @@ export function ProductModule({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pagedProducts.length === 0 ? (
+              {isLoading ? (
+                <TableSkeletonRows columnsCount={11} rowsCount={5} hasCheckbox={true} />
+              ) : pagedProducts.length === 0 ? (
                 <TableRow className="border-white/5">
                   <TableCell colSpan={12} className="h-32 text-center text-slate-500">
                     No se encontraron productos con los filtros actuales.
