@@ -32,7 +32,8 @@ export type ViewType =
   | 'rrhhAreas'
   | 'rrhhPuestos'
   | 'rrhhTurnosCatalog'
-  | 'reconciliation';
+  | 'reconciliation'
+  | 'profile';
 
 /** Path por defecto (raíz) */
 export const DEFAULT_VIEW: ViewType = 'dashboard';
@@ -81,6 +82,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   rrhhPuestos: '/catalogo/puestos',
   rrhhTurnosCatalog: '/catalogo/turnos',
   reconciliation: '/conciliacion',
+  profile: '/perfil',
 };
 
 /** Path → vista (para leer la URL) */
@@ -149,6 +151,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   rrhhPuestos: 'Catálogo Puestos',
   rrhhTurnosCatalog: 'Catálogo Turnos',
   reconciliation: 'Conciliación',
+  profile: '',
 };
 
 /**
@@ -156,6 +159,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
  */
 export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'dashboard',
+  'profile',
   'alerts',
   'pettycash',
   'treasury',

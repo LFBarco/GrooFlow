@@ -106,6 +106,7 @@ const loadReconciliationModule = named(
   'ReconciliationModule'
 );
 const loadUserProfileDialog = named(() => import('./components/users/UserProfileDialog'), 'UserProfileDialog');
+const loadUserProfilePage = named(() => import('./components/user/UserProfilePage'), 'UserProfilePage');
 
 export const Overview = lazy(loadOverview);
 export const DayOpsBoard = lazy(loadDayOpsBoard);
@@ -141,6 +142,7 @@ export const RrhhModule = lazy(loadRrhhModule);
 export const CatalogCrudPage = lazy(loadCatalogCrudPage);
 export const ReconciliationModule = lazy(loadReconciliationModule);
 export const UserProfileDialog = lazy(loadUserProfileDialog);
+export const UserProfilePage = lazy(loadUserProfilePage);
 
 const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   dashboard: [loadDayOpsBoard, loadOverview, loadCashFlowChart],
@@ -173,6 +175,7 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   rrhhPuestos: [loadCatalogCrudPage],
   rrhhTurnosCatalog: [loadCatalogCrudPage],
   reconciliation: [loadReconciliationModule],
+  profile: [loadUserProfilePage],
 };
 
 const prefetched = new Set<ViewType>();

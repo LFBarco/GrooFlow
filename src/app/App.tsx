@@ -104,6 +104,7 @@ import {
   RrhhModule,
   CatalogCrudPage,
   ReconciliationModule,
+  UserProfilePage,
   Overview,
   DayOpsBoard,
   CashFlowChart,
@@ -3667,7 +3668,7 @@ export default function App() {
              <div className={`transition-all duration-300 ${isSidebarCollapsed ? 'p-2 flex justify-center' : 'p-2.5'}`}>
                 <UserMenu 
                     onLogout={handleLogout} 
-                    onProfileClick={() => setIsProfileOpen(true)} 
+                    onProfileClick={() => navigate(viewToPath('profile'))} 
                     showDetails={!isSidebarCollapsed}
                     side="right"
                     align="end"
@@ -3729,7 +3730,7 @@ export default function App() {
           )}
         <UserMenu 
             onLogout={handleLogout} 
-            onProfileClick={() => setIsProfileOpen(true)} 
+            onProfileClick={() => navigate(viewToPath('profile'))} 
         />
         </div>
       </div>
@@ -4423,6 +4424,22 @@ export default function App() {
             <div className="animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
                 <CatalogCrudPage kind="turnos" canEdit={hasPermission('Catálogo Turnos') || hasPermission('Recursos Humanos')} />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'profile' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <UserProfilePage
+                  onUpdateUser={(patch) => {
+                    setCurrentUser((prev) => ({ ...prev, ...patch }));
+                    persistUsersToCloud(
+                      users.map((u) => (u.id === currentUser.id ? { ...u, ...patch } : u))
+                    );
+                  }}
+                  onLogout={handleLogout}
+                />
               </Suspense>
             </div>
           )}
