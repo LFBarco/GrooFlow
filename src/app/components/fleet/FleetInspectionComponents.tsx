@@ -469,14 +469,14 @@ export function FleetChecklistConfigurator({
 
       <div className="grid gap-4">
         {localSections.map((sec) => (
-          <Card key={sec.id} className="border-white/10 bg-slate-950/70 text-white">
+          <Card key={sec.id} className="border-border bg-card text-card-foreground">
             <CardHeader className="pb-2 flex flex-row items-start justify-between gap-2">
               <div className="flex-1 space-y-2">
-                <Label className="text-xs text-slate-500">Título de categoría</Label>
+                <Label className="text-xs text-muted-foreground">Título de categoría</Label>
                 <Input
                   value={sec.title}
                   onChange={(e) => updateSectionTitle(sec.id, e.target.value)}
-                  className="bg-slate-900/80 border-white/15"
+                  className="bg-background border-border"
                 />
               </div>
               <div className="flex flex-col gap-1 pt-6">
@@ -825,10 +825,10 @@ export function FleetVehicleInspectionBar({
       </div>
 
       <Dialog open={openNew} onOpenChange={setOpenNew}>
-        <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto bg-slate-950 border-white/15 text-white">
+        <DialogContent className="max-w-lg max-h-[92vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Nueva inspección — {vehicle.plate}</DialogTitle>
-            <DialogDescription className="text-slate-400">
+            <DialogDescription>
               Movilidad canina · marque cumplimiento por ítem. El resultado afecta el índice del conductor asignado.
             </DialogDescription>
           </DialogHeader>
@@ -836,19 +836,19 @@ export function FleetVehicleInspectionBar({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label>Fecha y hora</Label>
-              <Input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} className="bg-slate-900 border-white/15" />
+              <Input type="datetime-local" value={dateTime} onChange={(e) => setDateTime(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label>Odómetro (km)</Label>
-              <Input type="number" value={odometerKm || ''} onChange={(e) => setOdometerKm(Number(e.target.value))} className="bg-slate-900 border-white/15" />
+              <Input type="number" value={odometerKm || ''} onChange={(e) => setOdometerKm(Number(e.target.value))} />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Chofer *</Label>
-              <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Nombre completo" className="bg-slate-900 border-white/15" />
+              <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Nombre completo" />
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Supervisor / responsable</Label>
-              <Input value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} className="bg-slate-900 border-white/15" />
+              <Input value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} />
             </div>
           </div>
 
@@ -927,7 +927,7 @@ export function FleetVehicleInspectionBar({
           <SignaturePad label="Firma del supervisor *" value={supSig} onChange={setSupSig} />
 
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" className="border-white/15" onClick={() => setOpenNew(false)}>
+            <Button variant="outline" onClick={() => setOpenNew(false)}>
               Cancelar
             </Button>
             <Button className="bg-emerald-600 hover:bg-emerald-500" onClick={submitInspection}>
@@ -938,15 +938,15 @@ export function FleetVehicleInspectionBar({
       </Dialog>
 
       <Dialog open={openHist} onOpenChange={setOpenHist}>
-        <DialogContent className="max-w-lg max-h-[85vh] bg-slate-950 border-white/15 text-white flex flex-col">
+        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Historial inspecciones — {vehicle.plate}</DialogTitle>
-            <DialogDescription className="text-slate-400">{vehicleInspections.length} registro(s)</DialogDescription>
+            <DialogDescription>{vehicleInspections.length} registro(s)</DialogDescription>
           </DialogHeader>
           <ScrollArea className="flex-1 max-h-[55vh] pr-3">
             <div className="space-y-2">
               {vehicleInspections.map((r) => (
-                <div key={r.id} className="flex items-center gap-2 rounded-lg border border-white/10 p-1 hover:bg-white/5">
+                <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border p-1 hover:bg-muted/50">
                   <button
                     type="button"
                     className="flex-1 text-left p-2 transition-colors"
@@ -956,18 +956,18 @@ export function FleetVehicleInspectionBar({
                     }}
                   >
                     <div className="flex justify-between gap-2">
-                      <span className="text-sm font-medium text-white">{format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}</span>
-                      <Badge variant="outline" className="border-teal-500/40 text-teal-200">
+                      <span className="text-sm font-medium text-foreground">{format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}</span>
+                      <Badge variant="outline" className="border-teal-500/40 text-teal-700 dark:text-teal-200">
                         {r.compliancePercent}%
                       </Badge>
                     </div>
-                    <p className="text-xs text-slate-400 mt-1">{r.driverName}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{r.driverName}</p>
                   </button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-8 w-8 shrink-0 text-red-400 hover:text-red-300"
+                    className="h-8 w-8 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10"
                     onClick={() => void removeInspection(r)}
                     title="Eliminar inspección"
                   >
@@ -975,14 +975,14 @@ export function FleetVehicleInspectionBar({
                   </Button>
                 </div>
               ))}
-              {vehicleInspections.length === 0 && <p className="text-sm text-slate-500">Sin registros.</p>}
+              {vehicleInspections.length === 0 && <p className="text-sm text-muted-foreground">Sin registros.</p>}
             </div>
           </ScrollArea>
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-950 border-white/15 text-white">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle inspección</DialogTitle>
           </DialogHeader>
@@ -1027,19 +1027,19 @@ export function FleetInspectionsGlobalTable({
 
   return (
     <>
-      <Card className="border-white/10 bg-slate-950/70 text-white">
+      <Card className="border-border bg-card text-card-foreground">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <History className="h-4 w-4 text-sky-400" />
+            <History className="h-4 w-4 text-sky-500" />
             Historial global de inspecciones
           </CardTitle>
-          <CardDescription className="text-slate-400">Últimos checklist registrados en la flota</CardDescription>
+          <CardDescription>Últimos checklist registrados en la flota</CardDescription>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[min(420px,55vh)]">
             <Table>
               <TableHeader>
-                <TableRow className="border-white/10">
+                <TableRow className="border-border">
                   <TableHead>Fecha</TableHead>
                   <TableHead>Placa</TableHead>
                   <TableHead>Chofer</TableHead>
@@ -1051,12 +1051,12 @@ export function FleetInspectionsGlobalTable({
                 {rows.map((r) => {
                   const v = dataset.vehicles.find((x) => x.id === r.vehicleId);
                   return (
-                    <TableRow key={r.id} className="border-white/10">
-                      <TableCell className="text-slate-300">{format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}</TableCell>
+                    <TableRow key={r.id} className="border-border">
+                      <TableCell className="text-foreground">{format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}</TableCell>
                       <TableCell className="font-mono">{v?.plate ?? r.vehicleId}</TableCell>
                       <TableCell>{r.driverName}</TableCell>
                       <TableCell className="text-right tabular-nums">
-                        <Badge variant="outline" className="border-white/20">
+                        <Badge variant="outline" className="border-border">
                           {r.compliancePercent}%
                         </Badge>
                       </TableCell>
@@ -1069,7 +1069,7 @@ export function FleetInspectionsGlobalTable({
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-red-400 hover:text-red-300"
+                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
                             onClick={() => void removeInspection(r)}
                             title="Eliminar inspección"
                           >
@@ -1082,13 +1082,13 @@ export function FleetInspectionsGlobalTable({
                 })}
               </TableBody>
             </Table>
-            {rows.length === 0 && <p className="text-sm text-slate-500 py-6 text-center">Sin inspecciones aún.</p>}
+            {rows.length === 0 && <p className="text-sm text-muted-foreground py-6 text-center">Sin inspecciones aún.</p>}
           </ScrollArea>
         </CardContent>
       </Card>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-950 border-white/15 text-white">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle inspección</DialogTitle>
           </DialogHeader>

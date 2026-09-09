@@ -698,83 +698,83 @@ export function PettyCashModule({
             <Dialog open={isExpenseModalOpen} onOpenChange={setIsExpenseModalOpen}>
                 <DialogContent
                     data-testid="petty-cash-expense-dialog"
-                    className="w-[97vw] sm:max-w-[980px] h-auto bg-background border-border text-foreground max-h-[calc(100vh-2rem)] overflow-y-auto shadow-lg dark:bg-[#161427]/95 dark:border-[#3D3B5C]/70 dark:text-white dark:shadow-[0_35px_120px_rgba(0,0,0,0.7)]"
+                    className="w-[97vw] sm:max-w-[960px] max-h-[92vh] overflow-y-auto"
                     onPointerDownOutside={(e) => e.preventDefault()}
                     onEscapeKeyDown={(e) => e.preventDefault()}
                 >
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-cyan-400">
-                            <Plus className="h-5 w-5" />
+                        <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                            <Plus className="h-5 w-5 text-primary" />
                             Registrar Gasto
                         </DialogTitle>
-                        <DialogDescription className="text-sm text-slate-400">
-                            Salida de dinero de la caja de <span className="text-white font-medium">{currentUser.name}</span>.
-                            Tras cada registro puede seguir cargando comprobantes; para salir use la <span className="text-slate-200">X</span> (no se cierra al hacer clic fuera).
+                        <DialogDescription className="text-sm text-muted-foreground">
+                            Salida de dinero de la caja de <strong className="text-foreground font-medium">{currentUser.name}</strong>.
+                            Tras cada registro puede seguir cargando comprobantes; para salir use la X.
                         </DialogDescription>
                     </DialogHeader>
 
                     {availablePettyBalance.closed ? (
-                        <Alert className="border-amber-600/50 bg-amber-950/30 text-amber-100">
+                        <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200">
                             <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle className="text-sm">Semana cerrada</AlertTitle>
-                            <AlertDescription className="text-xs text-amber-200/90">
+                            <AlertTitle className="text-sm font-semibold">Semana cerrada</AlertTitle>
+                            <AlertDescription className="text-xs text-muted-foreground">
                                 No puede registrar gastos en esta semana contable hasta que se abra la siguiente o un
                                 administrador revierta el cierre.
                             </AlertDescription>
                         </Alert>
                     ) : availablePettyBalance.deliveryPending ? (
-                        <Alert className="border-amber-600/50 bg-amber-950/30 text-amber-100">
+                        <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200">
                             <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle className="text-sm">Dotación semanal pendiente</AlertTitle>
-                            <AlertDescription className="text-xs text-amber-200/90">
+                            <AlertTitle className="text-sm font-semibold">Dotación semanal pendiente</AlertTitle>
+                            <AlertDescription className="text-xs text-muted-foreground">
                                 Puede registrar gastos solo hasta el arrastre (
                                 {formatCurrencyEs(availablePettyBalance.carryOnly)}). El fondo fijo de la semana lo
                                 confirmará auditoría al entregar el efectivo.
                             </AlertDescription>
                         </Alert>
                     ) : (
-                        <div className="rounded-lg border border-cyan-900/40 bg-cyan-950/25 px-3 py-2 text-sm">
-                            <span className="text-slate-400">
+                        <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-muted-foreground">
                                 Saldo disponible{' '}
                                 {availablePettyBalance.weekLabel
                                     ? `(semana ${availablePettyBalance.weekLabel})`
                                     : ''}
                                 :{' '}
-                            </span>
-                            <span className="font-mono font-semibold text-cyan-800 dark:text-cyan-300">
-                                {formatCurrencyEs(availablePettyBalance.balance)}
+                                <strong className="font-mono text-base text-primary">
+                                    {formatCurrencyEs(availablePettyBalance.balance)}
+                                </strong>
                             </span>
                             {Number.isFinite(total) && total > 0 ? (
                                 <span
-                                    className={`ml-2 text-xs ${
+                                    className={`text-xs font-medium ${
                                         availablePettyBalance.balance - total < -0.009
-                                            ? 'text-red-400'
-                                            : 'text-slate-400'
+                                            ? 'text-rose-500 font-bold'
+                                            : 'text-muted-foreground'
                                     }`}
                                 >
-                                    → Tras este gasto: S/{' '}
+                                    Tras este gasto: S/{' '}
                                     {formatNumberEs(availablePettyBalance.balance - total)}
                                 </span>
                             ) : null}
                         </div>
                     )}
                     
-                    <div className="grid gap-4 py-4 lg:grid-cols-[1.25fr_1fr]">
+                    <div className="grid gap-4 py-2 lg:grid-cols-[1.25fr_1fr]">
                         <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 p-3 bg-slate-800/30 rounded-lg border border-slate-700/50">
-                            <div className="space-y-2 col-span-2 sm:col-span-1">
-                                <Label className="text-xs font-medium text-slate-400">Sede</Label>
+                        <div className="grid grid-cols-2 gap-4 p-4 bg-muted/40 border border-border/70 rounded-xl">
+                            <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                                <Label className="text-xs font-medium">Sede</Label>
                                 {sedeOptions.length <= 1 ? (
-                                    <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-800/50 text-slate-300 text-sm">
-                                        <Building2 className="w-4 h-4 mr-2 text-cyan-500" />
+                                    <div className="flex items-center h-10 px-3 rounded-xl border border-border bg-background text-foreground text-sm">
+                                        <Building2 className="w-4 h-4 mr-2 text-primary" />
                                         {sedeOptions[0] || '—'}
                                     </div>
                                 ) : (
                                     <Select value={location} onValueChange={setLocation}>
-                                        <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                        <SelectTrigger>
                                             <SelectValue placeholder="Seleccionar Sede" />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                        <SelectContent>
                                             {sedeOptions.map(s => (
                                                 <SelectItem key={s} value={s}>{s}</SelectItem>
                                             ))}
@@ -783,16 +783,16 @@ export function PettyCashModule({
                                 )}
                             </div>
 
-                            <div className="space-y-2 col-span-2 sm:col-span-1">
-                                <Label htmlFor="area" className="text-xs font-medium text-slate-400">Área solicitante</Label>
+                            <div className="space-y-1.5 col-span-2 sm:col-span-1">
+                                <Label htmlFor="area" className="text-xs font-medium">Área solicitante</Label>
                                 <Select
                                     value={area || '__choose__'}
                                     onValueChange={(v) => setArea(v === '__choose__' ? '' : v)}
                                 >
-                                    <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                    <SelectTrigger>
                                         <SelectValue placeholder="Seleccionar área" />
                                     </SelectTrigger>
-                                    <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                    <SelectContent>
                                         <SelectItem value="__choose__">Seleccionar área</SelectItem>
                                         {commercialAreas.map((a) => (
                                             <SelectItem key={a} value={a}>{a}</SelectItem>
@@ -802,11 +802,11 @@ export function PettyCashModule({
                             </div>
                         </div>
 
-                        <div className="space-y-3 p-3 rounded-lg border border-slate-700/50 bg-slate-800/20">
-                            <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">1. Comprobante y proveedor</p>
+                        <div className="space-y-3 p-4 rounded-xl border border-border/70 bg-muted/40">
+                            <p className="text-xs font-bold text-primary uppercase tracking-wider">1. Comprobante y proveedor</p>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="voucherDate" className="text-xs font-medium text-slate-400">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="voucherDate" className="text-xs font-medium">
                                     Fecha del documento (comprobante)
                                 </Label>
                                 <Input
@@ -814,21 +814,20 @@ export function PettyCashModule({
                                     type="date"
                                     value={documentDate}
                                     onChange={(e) => setDocumentDate(e.target.value)}
-                                    className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white"
                                 />
-                                <p className="text-[10px] text-slate-500">
+                                <p className="text-[10px] text-muted-foreground">
                                     La rendición usa la semana seleccionada arriba ({registrationWeek}), no la fecha del comprobante.
                                 </p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-medium text-slate-400">Tipo de documento</Label>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-medium">Tipo de documento</Label>
                                     <Select value={classification} onValueChange={setClassification}>
-                                        <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                        <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                        <SelectContent>
                                             <SelectItem value="Boleta">Boleta</SelectItem>
                                             <SelectItem value="Factura">Factura</SelectItem>
                                             <SelectItem value="RXH">Recibo por Honorarios</SelectItem>
@@ -837,18 +836,18 @@ export function PettyCashModule({
                                         </SelectContent>
                                     </Select>
                                     {usesIgv ? (
-                                        <p className="text-[10px] text-cyan-800 dark:text-cyan-300/80">
+                                        <p className="text-[10px] text-primary">
                                             Factura: se calcula IGV 18% (base + IGV = total a pagar).
                                         </p>
                                     ) : (
-                                        <p className="text-[10px] text-slate-500">
+                                        <p className="text-[10px] text-muted-foreground">
                                             Este tipo de documento no desglosa IGV; el importe va completo al gasto.
                                         </p>
                                     )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-medium text-slate-400">Tipo de identidad</Label>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-medium">Tipo de identidad</Label>
                                     <Select
                                         value={docType}
                                         onValueChange={(val) => {
@@ -856,10 +855,10 @@ export function PettyCashModule({
                                             setDocNumber((prev) => normalizeDocIdentityDigits(prev, val));
                                         }}
                                     >
-                                        <SelectTrigger className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                        <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                        <SelectContent>
                                             <SelectItem value="RUC">RUC</SelectItem>
                                             <SelectItem value="DNI">DNI</SelectItem>
                                             <SelectItem value="CE">CE</SelectItem>
@@ -868,9 +867,9 @@ export function PettyCashModule({
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="docNumber" className="text-xs font-medium text-slate-400">
-                                    N° RUC / DNI / CE <span className="text-red-400">*</span>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="docNumber" className="text-xs font-medium">
+                                    N° RUC / DNI / CE <span className="text-rose-500">*</span>
                                 </Label>
                                 <Input
                                     id="docNumber"
@@ -887,16 +886,16 @@ export function PettyCashModule({
                                     }
                                     inputMode="numeric"
                                     autoComplete="off"
-                                    className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 font-mono"
+                                    className="font-mono"
                                 />
                                 {normalizedDoc.length > 0 && (
                                     <p
                                         className={`text-[11px] ${
                                             matchedProvider && !providerAllowsPettyCash
-                                                ? 'text-rose-400'
+                                                ? 'text-rose-500 font-medium'
                                                 : matchedProvider
-                                                  ? 'text-emerald-400'
-                                                  : 'text-amber-400'
+                                                  ? 'text-emerald-600 dark:text-emerald-400 font-medium'
+                                                  : 'text-amber-600 dark:text-amber-400'
                                         }`}
                                     >
                                         {matchedProvider
@@ -914,20 +913,19 @@ export function PettyCashModule({
                                 )}
                             </div>
 
-                            <div className="space-y-2">
-                                <Label htmlFor="providerName" className="text-xs font-medium text-slate-400">
-                                    Razón social / Nombre <span className="text-red-400">*</span>
+                            <div className="space-y-1.5">
+                                <Label htmlFor="providerName" className="text-xs font-medium">
+                                    Razón social / Nombre <span className="text-rose-500">*</span>
                                 </Label>
                                 <Input
                                     id="providerName"
                                     value={providerName}
                                     onChange={(e) => setProviderName(e.target.value)}
                                     placeholder="Se completa al validar el RUC o documento en el directorio"
-                                    className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600"
                                     readOnly={!!matchedProvider}
                                 />
                                 {docIdentityComplete && !matchedProvider && (
-                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px] text-amber-300 bg-amber-950/25 border border-amber-700/40 rounded px-2 py-1.5">
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2">
                                         <span>
                                             El proveedor no figura en el directorio. Solicite a <strong>Contabilidad</strong> que
                                             lo ingrese o dé de alta en <strong>Proveedores</strong> antes de registrar el gasto.
@@ -937,7 +935,7 @@ export function PettyCashModule({
                                                 type="button"
                                                 size="sm"
                                                 variant="outline"
-                                                className="h-7 shrink-0 text-[11px] border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
+                                                className="h-7 shrink-0 text-[11px]"
                                                 onClick={onRequestProviderRegistration}
                                             >
                                                 Ir a Proveedores
@@ -948,28 +946,28 @@ export function PettyCashModule({
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="docSeries" className="text-xs font-medium text-slate-400">
-                                        Serie <span className="text-red-400">*</span>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="docSeries" className="text-xs font-medium">
+                                        Serie <span className="text-rose-500">*</span>
                                     </Label>
                                     <Input
                                         id="docSeries"
                                         value={docSeries}
                                         onChange={(e) => setDocSeries(e.target.value)}
                                         placeholder="Ej. F001, B002"
-                                        className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 font-mono"
+                                        className="font-mono"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="voucherNumber" className="text-xs font-medium text-slate-400">
-                                        Nro. de documento <span className="text-red-400">*</span>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="voucherNumber" className="text-xs font-medium">
+                                        Nro. de documento <span className="text-rose-500">*</span>
                                     </Label>
                                     <Input
                                         id="voucherNumber"
                                         value={voucherNumber}
                                         onChange={(e) => setVoucherNumber(e.target.value)}
                                         placeholder="Correlativo del comprobante"
-                                        className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 font-mono"
+                                        className="font-mono"
                                     />
                                 </div>
                             </div>
@@ -978,20 +976,20 @@ export function PettyCashModule({
                         </div>
 
                         <div className="space-y-4">
-                        <div className="space-y-3 p-3 rounded-lg border border-slate-700/50 bg-slate-800/20">
-                            <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">2. Clasificación (caja chica)</p>
-                            <p className="text-[11px] text-slate-500 leading-relaxed">{motivoHelperText}</p>
+                        <div className="space-y-3 p-4 rounded-xl border border-border/70 bg-muted/40">
+                            <p className="text-xs font-bold text-primary uppercase tracking-wider">2. Clasificación (caja chica)</p>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">{motivoHelperText}</p>
 
                             {hasPettyConfig ? (
-                                <div className="space-y-2">
-                                    <Label htmlFor="category" className="text-xs font-medium text-slate-400">
-                                        Motivo del gasto <span className="text-red-400">*</span>
+                                <div className="space-y-1.5">
+                                    <Label htmlFor="category" className="text-xs font-medium">
+                                        Motivo del gasto <span className="text-rose-500">*</span>
                                     </Label>
                                     <Select value={category} onValueChange={setCategory}>
-                                        <SelectTrigger id="category" className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white">
+                                        <SelectTrigger id="category">
                                             <SelectValue placeholder="Seleccione el motivo" />
                                         </SelectTrigger>
-                                        <SelectContent className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white max-h-60">
+                                        <SelectContent className="max-h-60">
                                             {expenseCategoryOptions.map((c) => (
                                                 <SelectItem key={c} value={c}>
                                                     {c}
@@ -1001,9 +999,9 @@ export function PettyCashModule({
                                     </Select>
                                 </div>
                             ) : (
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-medium text-slate-400">Motivo del gasto</Label>
-                                    <div className="flex min-h-10 w-full items-center rounded-md border border-slate-700 bg-slate-800/50 px-3 text-sm text-slate-500">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-medium">Motivo del gasto</Label>
+                                    <div className="flex min-h-10 w-full items-center rounded-xl border border-border bg-background px-3 text-sm text-muted-foreground">
                                         {docIdentityComplete && matchedProvider
                                             ? 'Sin motivos configurados'
                                             : 'Valide el documento del proveedor arriba'}
@@ -1012,14 +1010,14 @@ export function PettyCashModule({
                             )}
 
                             {hasPettyConfig && (
-                                <div className="rounded-md border border-slate-700/60 bg-slate-900/40 px-2 py-1.5 text-[11px] text-slate-400">
+                                <div className="rounded-xl border border-border bg-background px-3 py-2 text-[11px] text-muted-foreground">
                                     {suggestedAccountingAccount ? (
                                         <span>
                                             Cuenta de gasto sugerida:{' '}
-                                            <span className="font-mono text-cyan-800 dark:text-cyan-300">{suggestedAccountingAccount}</span>
+                                            <span className="font-mono font-bold text-primary">{suggestedAccountingAccount}</span>
                                         </span>
                                     ) : (
-                                        <span className="text-amber-300/90">
+                                        <span className="text-amber-600 dark:text-amber-400">
                                             Sin cuenta 62/63/64/65 asignada a este motivo: contabilidad puede completarla en
                                             Proveedores.
                                         </span>
@@ -1028,10 +1026,10 @@ export function PettyCashModule({
                             )}
 
                             {matchedProvider && !providerAllowsPettyCash && docIdentityComplete && (
-                                <Alert className="border-red-800/50 bg-red-950/30 text-red-100">
+                                <Alert className="border-rose-500/50 bg-rose-500/10 text-rose-800 dark:text-rose-200">
                                     <AlertTriangle className="h-4 w-4" />
-                                    <AlertTitle className="text-sm">Caja chica desactivada para este RUC</AlertTitle>
-                                    <AlertDescription className="text-xs text-red-200/90 block space-y-1">
+                                    <AlertTitle className="text-sm font-semibold">Caja chica desactivada para este RUC</AlertTitle>
+                                    <AlertDescription className="text-xs text-muted-foreground block space-y-1">
                                         <p>
                                             En su ficha de proveedor está desmarcada la opción <strong>Caja chica</strong>
                                             (Proveedores → Editar → «Ámbito y cuentas (módulos)»). Contabilidad puede habilitarla
@@ -1042,10 +1040,10 @@ export function PettyCashModule({
                             )}
 
                             {matchedProvider && providerAllowsPettyCash && !hasPettyConfig && docIdentityComplete && (
-                                <Alert className="border-amber-700/50 bg-amber-950/30 text-amber-100">
+                                <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200">
                                     <AlertTriangle className="h-4 w-4" />
-                                    <AlertTitle className="text-sm">Falta configuración en el proveedor</AlertTitle>
-                                    <AlertDescription className="text-xs text-amber-200/90 block space-y-1">
+                                    <AlertTitle className="text-sm font-semibold">Falta configuración en el proveedor</AlertTitle>
+                                    <AlertDescription className="text-xs text-muted-foreground block space-y-1">
                                         <p>
                                             Este proveedor aún no tiene motivos de caja chica. Solicite a <strong>Contabilidad</strong> que
                                             abra <strong>Proveedores</strong>, edite al proveedor y complete «Caja chica: motivos
@@ -1055,21 +1053,21 @@ export function PettyCashModule({
                                 </Alert>
                             )}
 
-                            <div className="flex items-center justify-between rounded-md border border-border bg-muted/50 p-2 dark:border-[#3D3B5C] dark:bg-[#22203A]">
-                                <Label htmlFor="extra-expense" className="text-sm font-medium text-foreground cursor-pointer dark:text-white">
+                            <div className="flex items-center justify-between rounded-xl border border-border bg-background p-3">
+                                <Label htmlFor="extra-expense" className="text-sm font-medium text-foreground cursor-pointer">
                                     ¿Gasto extra?
                                 </Label>
                                 <Switch
                                     id="extra-expense"
                                     checked={isExtraExpense}
                                     onCheckedChange={setIsExtraExpense}
-                                    className="data-[state=checked]:bg-cyan-500"
+                                    className="data-[state=checked]:bg-primary"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-3 p-3 rounded-lg border border-slate-700/50 bg-slate-800/20">
-                            <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">3. Importes</p>
+                        <div className="space-y-3 p-4 rounded-xl border border-border/70 bg-muted/40">
+                            <p className="text-xs font-bold text-primary uppercase tracking-wider">3. Importes</p>
                             
                             {usesIgv ? (
                                 <div className="space-y-2">
@@ -1078,22 +1076,21 @@ export function PettyCashModule({
                                             id="petty-igv10"
                                             checked={invoiceIgv10}
                                             onCheckedChange={(c) => setInvoiceIgv10(c === true)}
-                                            className="border-slate-500 data-[state=checked]:bg-cyan-600 data-[state=checked]:border-cyan-500"
                                         />
                                         <Label
                                             htmlFor="petty-igv10"
-                                            className="text-[11px] text-slate-300 cursor-pointer leading-none"
+                                            className="text-[11px] text-muted-foreground cursor-pointer leading-none"
                                         >
                                             IGV 10% (si no tilda: 18%)
                                         </Label>
                                     </div>
                                     <div className="grid grid-cols-3 gap-2 sm:gap-3">
                                         <div className="space-y-1.5 min-w-0">
-                                            <Label htmlFor="amountBI" className="text-xs font-medium text-slate-400">
+                                            <Label htmlFor="amountBI" className="text-xs font-medium">
                                                 Base imponible
                                             </Label>
                                             <div className="relative">
-                                                <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
+                                                <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">S/</span>
                                                 <Input
                                                     id="amountBI"
                                                     type="number"
@@ -1101,30 +1098,30 @@ export function PettyCashModule({
                                                     onChange={(e) => setAmountBI(e.target.value)}
                                                     min={0}
                                                     placeholder="0.00"
-                                                    className="pl-7 bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white font-mono text-sm h-9"
+                                                    className="pl-7 font-mono text-sm h-9"
                                                 />
                                             </div>
                                         </div>
                                         <div className="space-y-1.5 min-w-0">
-                                            <Label htmlFor="igv" className="text-xs font-medium text-slate-400">
+                                            <Label htmlFor="igv" className="text-xs font-medium">
                                                 IGV ({invoiceIgv10 ? 10 : 18}%)
                                             </Label>
                                             <div className="relative">
-                                                <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
+                                                <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">S/</span>
                                                 <Input
                                                     id="igv"
                                                     value={badBi ? '—' : Number.isFinite(igv) ? formatNumberEs(igv) : '—'}
                                                     readOnly
-                                                    className="pl-7 bg-slate-800/50 border-slate-700 text-slate-400 font-mono text-sm h-9 cursor-not-allowed"
+                                                    className="pl-7 font-mono text-sm h-9 cursor-not-allowed opacity-75"
                                                 />
                                             </div>
                                         </div>
                                         <div className="space-y-1.5 min-w-0">
-                                            <Label htmlFor="total" className="text-xs font-medium text-cyan-400">
+                                            <Label htmlFor="total" className="text-xs font-bold text-primary">
                                                 Total
                                             </Label>
                                             <div className="relative">
-                                                <span className="absolute left-2.5 top-2.5 text-cyan-500 text-xs font-bold">S/</span>
+                                                <span className="absolute left-2.5 top-2.5 text-primary text-xs font-bold">S/</span>
                                                 <Input
                                                     id="total"
                                                     value={
@@ -1133,17 +1130,17 @@ export function PettyCashModule({
                                                             : ''
                                                     }
                                                     readOnly
-                                                    className="pl-7 bg-cyan-950/30 border-cyan-900/50 text-cyan-400 font-bold font-mono text-sm h-9"
+                                                    className="pl-7 font-bold font-mono text-sm h-9 text-primary border-primary/30 bg-primary/5"
                                                 />
                                             </div>
                                         </div>
                                     </div>
                                     <div className="space-y-1.5 max-w-xs">
-                                        <Label htmlFor="amountExempt" className="text-xs font-medium text-slate-400">
+                                        <Label htmlFor="amountExempt" className="text-xs font-medium">
                                             Inafecto (opcional)
                                         </Label>
                                         <div className="relative">
-                                            <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
+                                            <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">S/</span>
                                             <Input
                                                 id="amountExempt"
                                                 type="number"
@@ -1151,32 +1148,32 @@ export function PettyCashModule({
                                                 value={amountExempt}
                                                 onChange={(e) => setAmountExempt(e.target.value)}
                                                 placeholder="0.00"
-                                                className="pl-7 bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white font-mono text-sm h-9"
+                                                className="pl-7 font-mono text-sm h-9"
                                             />
                                         </div>
-                                        <p className="text-[10px] text-slate-500 leading-snug">
+                                        <p className="text-[10px] text-muted-foreground leading-snug">
                                             Parte no afecta a IGV; se suma al total a pagar.
                                         </p>
                                     </div>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 gap-4 sm:max-w-xs">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="amountBI" className="text-xs font-medium text-slate-400">
+                                    <div className="space-y-1.5">
+                                        <Label htmlFor="amountBI" className="text-xs font-medium">
                                             Importe gasto
                                         </Label>
                                         <div className="relative">
-                                            <span className="absolute left-2.5 top-2.5 text-slate-500 text-xs">S/</span>
+                                            <span className="absolute left-2.5 top-2.5 text-muted-foreground text-xs">S/</span>
                                             <Input
                                                 id="amountBI"
                                                 type="number"
                                                 value={amountBI}
                                                 onChange={(e) => setAmountBI(e.target.value)}
                                                 placeholder="0.00"
-                                                className="pl-7 bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white font-mono"
+                                                className="pl-7 font-mono"
                                             />
                                         </div>
-                                        <p className="text-[10px] text-slate-500">
+                                        <p className="text-[10px] text-muted-foreground">
                                             Sin IGV: el monto completo afecta el gasto y la salida de caja.
                                         </p>
                                     </div>
@@ -1184,9 +1181,9 @@ export function PettyCashModule({
                             )}
                         </div>
 
-                        <div className="space-y-2 p-3 rounded-lg border border-slate-700/50 bg-slate-800/20">
-                            <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-1">4. Detalle y sustento</p>
-                            <Label htmlFor="description" className="text-xs font-medium text-slate-400">
+                        <div className="space-y-2 p-4 rounded-xl border border-border/70 bg-muted/40">
+                            <p className="text-xs font-bold text-primary uppercase tracking-wider mb-1">4. Detalle y sustento</p>
+                            <Label htmlFor="description" className="text-xs font-medium">
                                 Descripción del gasto
                             </Label>
                             <Textarea
@@ -1194,16 +1191,16 @@ export function PettyCashModule({
                                 value={description}
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder="Describa brevemente en qué se incurrió (opcional pero recomendado)…"
-                                className="bg-background border-border text-foreground dark:bg-[#22203A] dark:border-[#3D3B5C] dark:text-white placeholder:text-muted-foreground dark:placeholder:text-slate-600 min-h-[72px]"
+                                className="min-h-[72px]"
                             />
                         </div>
 
                         </div>
 
-                        <div className="lg:col-span-2">
+                        <div className="lg:col-span-2 pt-2">
                         <Button
                             data-testid="petty-cash-submit-expense"
-                            className="w-full bg-cyan-500 hover:bg-cyan-600 text-black font-bold mt-1 h-11 text-sm"
+                            className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-11 text-sm rounded-xl shadow-md transition-all"
                             onClick={handleRegisterExpense}
                             disabled={
                                 availablePettyBalance.closed ||

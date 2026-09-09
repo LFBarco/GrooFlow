@@ -122,7 +122,7 @@ export function FleetFuelBulkImport({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="bg-slate-950 border-white/15 sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Carga masiva de combustible</DialogTitle>
             <DialogDescription>

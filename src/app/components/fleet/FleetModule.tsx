@@ -572,10 +572,10 @@ function FleetVehiclesSection({
       </div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {dataset.vehicles.map((v) => (
-          <Card key={v.id} className="border-white/10 bg-slate-950/80 text-white">
+          <Card key={v.id} className="border-border bg-card text-card-foreground">
             <CardHeader className="pb-2">
               <div className="flex justify-between gap-2">
-                <Badge className="text-base font-bold tracking-wide bg-emerald-500/20 text-emerald-200 border border-emerald-500/35">
+                <Badge className="text-base font-bold tracking-wide bg-emerald-500/20 text-emerald-700 dark:text-emerald-200 border border-emerald-500/35">
                   {v.plate}
                 </Badge>
                 <Badge variant="outline" className="capitalize shrink-0">
@@ -585,29 +585,29 @@ function FleetVehiclesSection({
               <CardTitle className="text-lg pt-2">
                 {v.brand} {v.model} <span className="text-muted-foreground text-sm">{v.year}</span>
               </CardTitle>
-              <CardDescription className="text-slate-400">
+              <CardDescription className="text-muted-foreground">
                 {fuelTypeLabel(v.fuelType)} · {v.currentOdometerKm.toLocaleString('es-PE')} km · {v.homeBase || '—'}
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3 text-xs text-slate-400">
+            <CardContent className="space-y-3 text-xs text-muted-foreground">
               {v.assignedDriverName && (
                 <p>
                   Conductor habitual:{' '}
-                  <span className="text-white font-medium">{v.assignedDriverName}</span>
+                  <span className="text-foreground font-medium">{v.assignedDriverName}</span>
                   {v.assignedDriverLicense && (
-                    <span className="text-slate-400"> · Lic. {v.assignedDriverLicense}</span>
+                    <span className="text-muted-foreground"> · Lic. {v.assignedDriverLicense}</span>
                   )}
                 </p>
               )}
               {(v.insuranceDue || v.technicalInspectionDue) && (
                 <div className="flex flex-wrap gap-2 pt-2">
                   {v.insuranceDue && (
-                    <span className="rounded-md bg-teal-500/15 px-2 py-1 border border-teal-500/25 text-teal-200">
+                    <span className="rounded-md bg-teal-500/15 px-2 py-1 border border-teal-500/25 text-teal-700 dark:text-teal-200">
                       SOAT / seg · {v.insuranceDue}
                     </span>
                   )}
                   {v.technicalInspectionDue && (
-                    <span className="rounded-md bg-sky-500/15 px-2 py-1 border border-sky-500/25 text-sky-200">
+                    <span className="rounded-md bg-sky-500/15 px-2 py-1 border border-sky-500/25 text-sky-700 dark:text-sky-200">
                       Rev. técnica · {v.technicalInspectionDue}
                     </span>
                   )}
@@ -618,7 +618,7 @@ function FleetVehiclesSection({
                   <Pencil className="h-3.5 w-3.5 mr-1" />
                   Detalle / editar
                 </Button>
-                <Button variant="ghost" size="sm" className="h-8 text-red-400 hover:text-red-300" onClick={() => removeVehicle(v)}>
+                <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => removeVehicle(v)}>
                   Eliminar
                 </Button>
               </div>
@@ -634,16 +634,16 @@ function FleetVehiclesSection({
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto bg-slate-950 border-white/15 text-white">
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar vehículo' : 'Nuevo vehículo'}</DialogTitle>
-            <DialogDescription className="text-slate-400">
+            <DialogDescription>
               Alta unificada: seguros, revisiones programadas y seguimiento de odómetro.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <Label className="text-slate-300">Placa *</Label>
+              <Label>Placa *</Label>
               <Input data-testid="fleet-plate-input" value={form.plate ?? ''} onChange={(e) => setForm((f) => ({ ...f, plate: e.target.value }))} />
             </div>
             <div className="space-y-1.5">
@@ -870,10 +870,10 @@ function FleetMaintenanceSection({
           Registrar mantenimiento
         </Button>
       </div>
-      <ScrollArea className="h-[min(520px,70vh)] rounded-xl border border-white/10 bg-slate-950/60">
+      <ScrollArea className="h-[min(520px,70vh)] rounded-xl border border-border bg-card">
         <Table>
-          <TableHeader className="sticky top-0 bg-slate-900/95 z-[1]">
-            <TableRow className="border-white/10">
+          <TableHeader className="sticky top-0 bg-muted/80 backdrop-blur-sm z-[1]">
+            <TableRow className="border-border">
               <TableHead>Fecha</TableHead>
               <TableHead>Vehículo</TableHead>
               <TableHead>Tipo</TableHead>
@@ -888,23 +888,23 @@ function FleetMaintenanceSection({
               const v = dataset.vehicles.find((x) => x.id === r.vehicleId);
               const tot = Number(r.laborCost) + Number(r.partsCost);
               return (
-                <TableRow key={r.id} className="border-white/10 text-slate-200">
+                <TableRow key={r.id} className="border-border text-foreground">
                   <TableCell>{r.date}</TableCell>
                   <TableCell className="font-mono">{v?.plate ?? r.vehicleId}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className={r.kind === 'preventive' ? 'bg-teal-500/20 text-teal-200' : ''}>
+                    <Badge variant="secondary" className={r.kind === 'preventive' ? 'bg-teal-500/20 text-teal-700 dark:text-teal-200' : ''}>
                       {r.kind === 'preventive' ? 'Preventivo' : 'Correctivo'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-slate-400">{r.location || v?.homeBase || '—'}</TableCell>
-                  <TableCell className="max-w-[240px] truncate text-slate-400">{r.description}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.location || v?.homeBase || '—'}</TableCell>
+                  <TableCell className="max-w-[240px] truncate text-muted-foreground">{r.description}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoneyStr(tot)}</TableCell>
                   <TableCell className="text-right">
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-red-400 hover:text-red-300"
+                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
                       onClick={() => void removeMaintenance(r)}
                       title="Eliminar mantenimiento"
                     >
@@ -919,10 +919,10 @@ function FleetMaintenanceSection({
       </ScrollArea>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="bg-slate-950 border-white/15 text-white max-h-[90vh] overflow-y-auto max-w-lg">
+        <DialogContent className="max-h-[90vh] overflow-y-auto max-w-lg">
           <DialogHeader>
             <DialogTitle>Mantenimiento preventivo / correctivo</DialogTitle>
-            <DialogDescription className="text-slate-400">Registrar costos y repuestos (una línea por repuesto).</DialogDescription>
+            <DialogDescription>Registrar costos y repuestos (una línea por repuesto).</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <FleetSedeField
@@ -1178,7 +1178,7 @@ function FleetFuelSection({
         )}
       </div>
 
-      <ScrollArea className="h-[260px] rounded-xl border border-white/10 bg-slate-950/60">
+      <ScrollArea className="h-[260px] rounded-xl border border-border bg-card">
         <Table>
           <TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Placa</TableHead><TableHead>Sede</TableHead><TableHead>L</TableHead><TableHead>Km</TableHead><TableHead className="text-right">S/</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
           <TableBody>
@@ -1189,7 +1189,7 @@ function FleetFuelSection({
                 <TableRow key={r.id}>
                   <TableCell>{r.date}</TableCell>
                   <TableCell className="font-mono">{pl}</TableCell>
-                  <TableCell className="text-slate-400">{r.location || v?.homeBase || '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">{r.location || v?.homeBase || '—'}</TableCell>
                   <TableCell>{r.liters}</TableCell>
                   <TableCell>{r.odometerKm.toLocaleString('es-PE')}</TableCell>
                   <TableCell className="text-right">{formatCurrencyEs(r.totalCost)}</TableCell>
@@ -1198,7 +1198,7 @@ function FleetFuelSection({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-red-400 hover:text-red-300"
+                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
                       onClick={() => void removeFuelEntry(r)}
                       title="Eliminar repostaje"
                     >
@@ -1213,7 +1213,7 @@ function FleetFuelSection({
       </ScrollArea>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="bg-slate-950 border-white/15">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar combustible</DialogTitle>
             <DialogDescription>Actualiza también el último kilometraje del vehículo.</DialogDescription>
@@ -1262,16 +1262,16 @@ function FleetAlertsSection({ alerts }: { alerts: ReturnType<typeof buildFleetAl
     <div className="space-y-3">
       {alerts.map((a) => (
         <Card key={a.id} className={`border-l-4 ${
-          a.severity === 'critical' ? 'border-l-red-500 bg-red-950/20'
-            : a.severity === 'warning' ? 'border-l-amber-500 bg-amber-950/20'
-            : 'border-l-blue-400 bg-blue-950/15'
-        } border-white/10`}>
+          a.severity === 'critical' ? 'border-l-red-500 bg-red-500/10'
+            : a.severity === 'warning' ? 'border-l-amber-500 bg-amber-500/10'
+            : 'border-l-blue-400 bg-blue-500/10'
+        } border-border`}>
           <CardHeader className="py-3">
             <div className="flex items-center gap-2">
-              <Bell className="h-4 w-4 text-rose-400" />
+              <Bell className="h-4 w-4 text-rose-500" />
               <CardTitle className="text-sm font-semibold">{a.title}</CardTitle>
             </div>
-            <CardDescription className="text-slate-400 text-xs">{a.detail}</CardDescription>
+            <CardDescription className="text-muted-foreground text-xs">{a.detail}</CardDescription>
           </CardHeader>
         </Card>
       ))}
@@ -1286,7 +1286,7 @@ function FleetReportsSection({ dataset }: { dataset: FleetDataset }) {
 
   return (
     <div className="space-y-8">
-      <Card className="border-white/10 bg-slate-950/75">
+      <Card className="border-border bg-card">
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><FileSpreadsheet />Resumen de kilometraje</CardTitle></CardHeader>
         <CardContent><Table>
           <TableHeader><TableRow><TableHead>Placa</TableHead><TableHead>Últimos km declarados</TableHead><TableHead>Km siguiente servicio</TableHead></TableRow></TableHeader>
@@ -1302,7 +1302,7 @@ function FleetReportsSection({ dataset }: { dataset: FleetDataset }) {
         </Table></CardContent>
       </Card>
 
-      <Card className="border-white/10 bg-slate-950/75">
+      <Card className="border-border bg-card">
         <CardHeader><CardTitle className="text-base">Próximos servicios rutina (fecha aceite declarada)</CardTitle></CardHeader>
         <CardContent>
           <Table>
