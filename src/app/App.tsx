@@ -3245,6 +3245,13 @@ export default function App() {
     return out;
   }, [seesAllSedesInCatalog, enabledCatalog, currentUser.sedes]);
 
+  const sedesForUserForms = useMemo((): string[] => {
+    if (seesAllSedesInCatalog) {
+      return enabledCatalog;
+    }
+    return visibleSedes;
+  }, [seesAllSedesInCatalog, enabledCatalog, visibleSedes]);
+
   const canSeeSede = useCallback(
     (sede: string): boolean => {
       const loc = (sede || "Principal").trim();
@@ -3933,7 +3940,7 @@ export default function App() {
                 onUpdateProviders={handleUpdateProviders}
                 receipts={feeReceipts as any[]}
                 onUpdateReceipts={(receipts) => handleFeeReceiptsUpdate(receipts as FeeReceiptGlobal[])}
-                visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                visibleSedes={visibleSedes}
                 onSendToTreasury={(receipts) => {
                   setFeeReceipts((prev) => {
                     const existingIds = new Set(prev.map((r) => r.id));
@@ -4027,7 +4034,7 @@ export default function App() {
                     config={config}
                     providers={providers}
                     bankAccounts={bankAccountsForForms}
-                    sedesCatalog={enabledSedesForForms}
+                    sedesCatalog={sedesForUserForms}
                   />
                 </div>
               </div>
@@ -4292,7 +4299,7 @@ export default function App() {
                 onPersistDataset={persistFleetNow}
                 onPersistChecklist={persistFleetChecklistNow}
                 persistenceReady={isDataLoaded}
-                visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                visibleSedes={visibleSedes}
                 defaultHomeBase={
                   currentUser.sedes?.[0] ||
                   currentUser.location ||
@@ -4311,7 +4318,7 @@ export default function App() {
                   dataset={inventoryDataset}
                   setDataset={handleInventoryDatasetUpdate}
                   onPersistDataset={persistInventoryNow}
-                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  visibleSedes={visibleSedes}
                   defaultSede={
                     currentUser.sedes?.[0] ||
                     currentUser.location ||
@@ -4333,7 +4340,7 @@ export default function App() {
                   onUpdateSystemSettings={handlePersistSystemSettings}
                   onPersistAsistenciaSettings={persistAsistenciaNow}
                   onPersistSystemSettings={persistSystemSettingsNow}
-                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  visibleSedes={visibleSedes}
                   canConfigure={canConfigureAsistencia(currentUser, userRole)}
                   users={users}
                 />
@@ -4347,7 +4354,7 @@ export default function App() {
                 <TurnosModule
                   users={users}
                   systemSettings={systemSettings}
-                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  visibleSedes={visibleSedes}
                   canEdit={hasPermission('Turnos')}
                   currentUser={currentUser}
                 />
@@ -4361,7 +4368,7 @@ export default function App() {
                 <AccidentesModule
                   users={users}
                   systemSettings={systemSettings}
-                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  visibleSedes={visibleSedes}
                   canEdit={hasPermission('Accidentes de Trabajo')}
                   reportedBy={currentUser.name}
                 />
@@ -4375,7 +4382,7 @@ export default function App() {
                 <UniformesModule
                   users={users}
                   systemSettings={systemSettings}
-                  visibleSedes={visibleSedes.length > 0 ? visibleSedes : enabledCatalog}
+                  visibleSedes={visibleSedes}
                   canEdit={hasPermission('Entrega de Uniformes')}
                   deliveredBy={currentUser.name}
                 />
@@ -4619,7 +4626,7 @@ export default function App() {
                   config={config} 
                   providers={providers}
                   bankAccounts={bankAccountsForForms}
-                  sedesCatalog={enabledSedesForForms}
+                  sedesCatalog={sedesForUserForms}
                   initialData={editingTransaction}
                   onCancel={() => setIsEditDialogOpen(false)}
                 />
@@ -4641,7 +4648,7 @@ export default function App() {
                   setIsTransactionImporterOpen(false);
                 }}
                 config={config}
-                sedesCatalog={enabledSedesForForms}
+                sedesCatalog={sedesForUserForms}
                 providers={providers}
                 bankAccounts={bankAccountsForForms}
                 canManageHistoricalImport={isSuperAdmin}
