@@ -121,13 +121,16 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
         toast.success('Reporte P&L exportado a Excel');
     };
 
-    const waterfallData = [
-        { name: 'Ingresos', value: report.revenue.total, fill: s.chart.income },
-        { name: 'COGS', value: -report.cogs.total, fill: s.chart.expense },
-        { name: 'Ut. Bruta', value: report.grossProfit, fill: s.chart.profit, isTotal: true },
-        { name: 'Gastos Op.', value: -report.expenses.total, fill: s.chart.expense },
-        { name: 'Ut. Neta', value: report.netIncome, fill: report.netIncome >= 0 ? s.chart.profit : s.chart.expense, isTotal: true }
-    ];
+    const waterfallData = useMemo(
+        () => [
+            { name: 'Ingresos', value: report.revenue.total || 0, fill: s.chart.income },
+            { name: 'COGS', value: -(report.cogs.total || 0), fill: s.chart.expense },
+            { name: 'Ut. Bruta', value: report.grossProfit || 0, fill: s.chart.profit, isTotal: true },
+            { name: 'Gastos Op.', value: -(report.expenses.total || 0), fill: s.chart.expense },
+            { name: 'Ut. Neta', value: report.netIncome || 0, fill: (report.netIncome || 0) >= 0 ? s.chart.profit : s.chart.expense, isTotal: true },
+        ],
+        [report, s.chart.income, s.chart.expense, s.chart.profit]
+    );
 
     const PercentBadge = ({ value, total }: { value: number, total: number }) => {
         if (!total || total === 0) return <span>-</span>;
@@ -418,13 +421,16 @@ export function PnLView({ transactions, currentDate, onNextMonth, onPrevMonth }:
                                         width={50}
                                     />
                                     <Tooltip
-                                        formatter={(value: number) => [formatMoney(Math.abs(value)), 'Monto']}
+                                        formatter={(value: unknown) => {
+                                            const num = typeof value === 'number' && !isNaN(value) ? value : 0;
+                                            return [formatMoney(Math.abs(num)), 'Monto'];
+                                        }}
                                         cursor={{ fill: 'rgba(139,92,246,0.06)' }}
                                         contentStyle={s.tooltip}
                                         itemStyle={s.tooltipItem}
                                     />
                                     <ReferenceLine y={0} stroke="rgba(139,92,246,0.35)" strokeDasharray="4 4" />
-                                    <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={36}>
+                                    <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={36} isAnimationActive={false}>
                                         {waterfallData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={entry.fill} opacity={0.88} />
                                         ))}
