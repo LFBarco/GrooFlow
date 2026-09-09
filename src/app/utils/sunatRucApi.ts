@@ -1,4 +1,4 @@
-import { getGrooflowApiBase } from '../config/backend';
+import { getGrooflowApiBase } from '../services/repository/apiBase';
 
 export interface SunatRucInfo {
   ruc: string;
