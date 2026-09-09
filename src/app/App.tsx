@@ -3129,12 +3129,7 @@ export default function App() {
     [isSuperAdmin, menuPermissions, userRole]
   );
 
-  // /usuarios no es vista propia: redirige a configuración o dashboard
-  useEffect(() => {
-    if (!isAuthenticated || !isDataLoaded) return;
-    if (urlView !== 'users') return;
-    navigate(hasPermission('Configuración') ? viewToPath('config') : viewToPath('dashboard'), { replace: true });
-  }, [isAuthenticated, isDataLoaded, urlView, navigate, hasPermission]);
+
 
   const accessDeniedModule =
     !routeNotFound &&
@@ -4493,6 +4488,38 @@ export default function App() {
               onApplyProviderAreaRemoved={applyProviderAreaRemoved}
               onResetCustodianPettyCash={handleResetCustodianPettyCash}
             />
+          )}
+
+          {view === 'users' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <UserManager
+                  users={users}
+                  roles={roles}
+                  sedesCatalog={enabledCatalog}
+                  knownSedeNames={catalogSedes}
+                  sedesCatalogEntries={sedesEntriesForDialog}
+                  onSaveSedesCatalog={handleSaveSedesCatalog}
+                  onUpdateRoles={handleUpdateRoles}
+                  onUpdateUser={(updated) => {
+                    const next = users.map((u) => (u.id === updated.id ? updated : u));
+                    setUsers(next);
+                    if (isDataLoaded) void persistUsersToCloud(next);
+                  }}
+                  onAddUser={(newUser) => {
+                    const next = [...users, newUser];
+                    setUsers(next);
+                    if (isDataLoaded) void persistUsersToCloud(next);
+                  }}
+                  onDeleteUser={(userId) => {
+                    const next = users.filter((u) => u.id !== userId);
+                    setUsers(next);
+                    if (isDataLoaded) void persistUsersToCloud(next);
+                  }}
+                  onRefreshUsers={() => void hydrateFromKvRef.current?.()}
+                />
+              </Suspense>
+            </div>
           )}
 
           {view === 'audit' && (

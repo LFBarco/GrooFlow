@@ -1210,8 +1210,11 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
               if (kvHasData) {
                 if (sqlLoad.ok && sqlLoad.data) {
                   if (sqlLoad.empty) {
-                    /** SQL vacío = borrado en producción; no restaurar equipos desde KV obsoleto. */
-                    nextInventory = sqlLoad.data;
+                    /** Si SQL está vacío pero KV tiene datos, preservar datos de KV e inyectarlos a SQL */
+                    nextInventory = kvInv!;
+                    if (sessionUserId) {
+                      void migrateInventoryKvToSql(sqlClient!, nextInventory, sessionUserId);
+                    }
                   } else {
                     nextInventory = mergeInventoryKvAndSql(kvInv!, sqlLoad.data);
                   }

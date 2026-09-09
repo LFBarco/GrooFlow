@@ -266,6 +266,7 @@ export const initialSystemSettings: SystemSettings = {
 
 /** Valores por defecto del submódulo Smart Cash Flow (Fase 2). */
 export const DEFAULT_VETERINARI_BASE_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_VETERINARI_BASE_URL) ||
   'https://veterinari-longrunning.azurewebsites.net/api/oapi';
 
 export const VETERINARI_TEST_ENDPOINTS = [
