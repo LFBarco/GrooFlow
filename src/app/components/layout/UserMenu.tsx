@@ -99,7 +99,7 @@ export function UserMenu({
                         ) : (
                             <>
                                 <Moon className="mr-2 h-4 w-4" />
-                                <span>Cambiar a Modo Cyberpunk</span>
+                                <span>Cambiar a Modo Dark</span>
                             </>
                         )}
                     </DropdownMenuItem>

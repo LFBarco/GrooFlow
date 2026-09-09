@@ -193,7 +193,7 @@ export function UserProfile({ user, onUpdateUser, currentTheme, onToggleTheme, o
                                         <div className="space-y-1">
                                             <div className="font-medium">Tema del Sistema</div>
                                             <div className="text-sm text-muted-foreground">
-                                                {currentTheme === 'dark' ? 'Modo Cyberpunk (Oscuro) activo' : 'Modo Profesional (Claro) activo'}
+                                                {currentTheme === 'dark' ? 'Modo Dark activo' : 'Modo Claro activo'}
                                             </div>
                                         </div>
                                         <div className="flex items-center space-x-2">
