@@ -514,15 +514,60 @@ html.light .text-primary-foreground {
     background: linear-gradient(180deg, #22d3ee 0%, #a855f7 100%);
   }
 
-  /* Form Focus — Neon Glow */
-  input, select, textarea {
-    @apply transition-all duration-200;
+  /* Form Base & Focus — Unified GrooFlow Input Styling */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+  select,
+  textarea,
+  [data-slot="select-trigger"] {
+    @apply transition-all duration-150;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.75rem;
   }
 
-  input:focus, select:focus, textarea:focus {
-    border-color: var(--ring);
-    box-shadow: 0 0 0 1px var(--ring), 0 0 12px rgba(34, 211, 238, 0.15);
-    outline: none;
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+  html.dark select,
+  html.dark textarea,
+  html.dark [data-slot="select-trigger"] {
+    border-color: rgba(61, 59, 92, 0.9);
+  }
+
+  input:hover:not(:disabled):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+  select:hover:not(:disabled),
+  textarea:hover:not(:disabled),
+  [data-slot="select-trigger"]:hover:not(:disabled) {
+    border-color: #94a3b8;
+  }
+
+  html.dark input:hover:not(:disabled):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+  html.dark select:hover:not(:disabled),
+  html.dark textarea:hover:not(:disabled),
+  html.dark [data-slot="select-trigger"]:hover:not(:disabled) {
+    border-color: rgba(139, 92, 246, 0.5);
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [data-slot="select-trigger"]:focus-visible,
+  input:focus,
+  select:focus,
+  textarea:focus,
+  [data-slot="select-trigger"]:focus {
+    border-color: #06b6d4 !important;
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.2), 0 0 12px rgba(34, 211, 238, 0.15) !important;
+    outline: none !important;
+  }
+
+  /* Native select dropdown options styling */
+  select option {
+    background-color: #ffffff;
+    color: #0f172a;
+    padding: 8px;
+  }
+
+  html.dark select option {
+    background-color: #1a1826;
+    color: #f0eeff;
   }
 
   /* Typography */
