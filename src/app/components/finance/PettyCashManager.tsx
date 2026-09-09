@@ -1319,19 +1319,15 @@ ${signatures}
             {/* Custodian Selector (Visible for Admins or if multiple custodians exist) */}
             {custodians.length > 0 && (
                 <div
-                    className="relative overflow-hidden flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between p-4 rounded-xl border border-cyan-500/25 shadow-[0_4px_28px_rgba(34,211,238,0.1)] backdrop-blur-sm"
-                    style={{
-                        background:
-                            'linear-gradient(135deg, rgba(22,20,39,0.97) 0%, rgba(18,16,31,0.98) 50%, rgba(20,184,166,0.1) 100%)',
-                    }}
+                    className="relative overflow-hidden flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between p-4 rounded-xl border border-slate-200 dark:border-cyan-500/25 bg-gradient-to-r from-slate-100 via-cyan-50/50 to-slate-100 dark:from-[#161427]/97 dark:via-[#12101F]/98 dark:to-[#14b8a6]/10 shadow-sm backdrop-blur-sm"
                 >
                     <div className="flex items-center gap-3 shrink-0">
                         <div className="p-2.5 rounded-full bg-cyan-500/15 border border-cyan-500/25 shadow-[0_0_20px_rgba(34,211,238,0.15)]">
-                            <UserCircle className="w-6 h-6 text-cyan-400" />
+                            <UserCircle className="w-6 h-6 text-cyan-500 dark:text-cyan-400" />
                         </div>
                         <div>
                             <h3 className="font-semibold text-sm text-foreground">Responsable de Caja Chica</h3>
-                            <p className="text-xs text-cyan-800/80 dark:text-cyan-200/70">
+                            <p className="text-xs text-muted-foreground dark:text-cyan-200/70">
                                 {canPickMultipleCustodians
                                     ? 'Gestionando fondo de:'
                                     : 'Solo puede ver y operar su propio fondo en sus sedes asignadas.'}
@@ -1372,10 +1368,10 @@ ${signatures}
                             ) : null}
                             <span className="text-xs whitespace-nowrap">
                                 <span className="font-semibold text-foreground/90">Periodo:</span>{' '}
-                                <span className="text-violet-800 dark:text-violet-300/95">{selectedWeekRangeLabel}</span>
+                                <span className="text-violet-700 dark:text-violet-300/95">{selectedWeekRangeLabel}</span>
                             </span>
                             <Select value={selectedWeek} onValueChange={setSelectedWeek}>
-                                <SelectTrigger className="w-[200px] h-9 border-cyan-500/30 bg-cyan-950/25 text-foreground">
+                                <SelectTrigger className="w-[200px] h-9 border-border bg-background dark:border-cyan-500/30 dark:bg-cyan-950/25 text-foreground">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1390,7 +1386,7 @@ ${signatures}
 
                         {canPickMultipleCustodians && custodians.length > 1 ? (
                             <Select value={selectedCustodianId} onValueChange={setSelectedCustodianId}>
-                                <SelectTrigger className="w-full sm:w-[280px] h-auto min-h-[40px] border-cyan-500/35 bg-cyan-950/30 font-medium shadow-inner">
+                                <SelectTrigger className="w-full sm:w-[280px] h-auto min-h-[40px] border-border bg-background dark:border-cyan-500/35 dark:bg-cyan-950/30 font-medium shadow-sm">
                                     <SelectValue placeholder="Seleccionar Responsable" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -1405,10 +1401,10 @@ ${signatures}
                                 </SelectContent>
                             </Select>
                         ) : (
-                            <div className="text-sm font-semibold rounded-lg border border-cyan-500/35 bg-cyan-950/30 px-3 py-2 min-w-[200px] shadow-inner whitespace-nowrap">
+                            <div className="text-sm font-semibold rounded-lg border border-border bg-background dark:border-cyan-500/35 dark:bg-cyan-950/30 px-3 py-2 min-w-[200px] shadow-sm whitespace-nowrap">
                                 {selectedCustodian?.name ?? currentUser.name}
                                 {selectedCustodian && userHasPettyCashFund(selectedCustodian) ? (
-                                    <span className="text-violet-800 dark:text-violet-300/90 font-normal">
+                                    <span className="text-violet-700 dark:text-violet-300/90 font-normal">
                                         {' '}
                                         — Límite {formatCurrencyEs(effectivePettyCashFundLimit(selectedCustodian, settings.totalFundLimit))}
                                     </span>

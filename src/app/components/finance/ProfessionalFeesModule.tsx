@@ -117,6 +117,8 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
 
   // States for Modals
   const [isNewProfessionalOpen, setIsNewProfessionalOpen] = useState(false);
+  const [isSubmittingProf, setIsSubmittingProf] = useState(false);
+  const [selectedProfForDetail, setSelectedProfForDetail] = useState<Provider | null>(null);
   const [isUploadRxHOpen, setIsUploadRxHOpen] = useState(false);
 
   // New Professional Form State
@@ -405,12 +407,12 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
 
   const getStatusColor = (status: FeeReceipt['status']) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20';
-      case 'approved': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      case 'requested_payment': return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
-      case 'paid': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-      case 'rejected': return 'bg-red-500/10 text-red-500 border-red-500/20';
-      default: return 'bg-slate-500/10 text-slate-500 border-slate-500/20';
+      case 'pending': return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30';
+      case 'approved': return 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30';
+      case 'requested_payment': return 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/30';
+      case 'paid': return 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30';
+      case 'rejected': return 'bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/30';
+      default: return 'bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
     }
   };
 
@@ -429,7 +431,9 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
 
   const handleCreateProfessional = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProf.name || !newProf.ruc) {
+    if (isSubmittingProf) return;
+
+    if (!newProf.name.trim() || !newProf.ruc.trim()) {
       toast.error('Nombre y RUC son obligatorios');
       return;
     }
@@ -439,27 +443,32 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
       return;
     }
 
-    const newProvider: Provider = {
-      id: `prof-${Date.now()}`,
-      name: newProf.name,
-      ruc: newProf.ruc,
-      email: newProf.email,
-      type: 'Médico Externo',
-      specialty: newProf.role || 'Colaborador Externo',
-      category: 'Servicios',
-      defaultCreditDays: 0,
-      totalPurchased: 0,
-    };
+    setIsSubmittingProf(true);
+    try {
+      const newProvider: Provider = {
+        id: `prof-${Date.now()}`,
+        name: newProf.name.trim(),
+        ruc: newProf.ruc.trim(),
+        email: newProf.email.trim(),
+        type: 'Médico Externo',
+        specialty: newProf.role.trim() || 'Colaborador Externo',
+        category: 'Servicios',
+        defaultCreditDays: 0,
+        totalPurchased: 0,
+      };
 
-    const saved = await Promise.resolve(onUpdateProviders([...providers, newProvider]));
-    if (saved === false) {
-      toast.error('El profesional no se guardó en el directorio (nube). Reintenta luego.');
-      return;
+      const saved = await Promise.resolve(onUpdateProviders([...providers, newProvider]));
+      if (saved === false) {
+        toast.error('El profesional no se guardó en el directorio (nube). Reintenta luego.');
+        return;
+      }
+      setIsNewProfessionalOpen(false);
+      setNewProf({ name: '', role: '', ruc: '', email: '' });
+      toast.success('Profesional registrado exitosamente en el Directorio');
+      setActiveTab('professionals');
+    } finally {
+      setIsSubmittingProf(false);
     }
-    setIsNewProfessionalOpen(false);
-    setNewProf({ name: '', role: '', ruc: '', email: '' });
-    toast.success('Profesional registrado exitosamente en el Directorio');
-    setActiveTab('professionals');
   };
 
   const handleDownloadTemplate = () => {
@@ -1113,9 +1122,12 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                          {formatCurrencyEs(getPendingAmount(prof.id))}
                        </span>
                      </div>
-                     <Button className="w-full bg-violet-600/10 hover:bg-violet-600/20 text-violet-500 border border-violet-600/20">
-                       Ver Detalle
-                     </Button>
+                      <Button 
+                        onClick={() => setSelectedProfForDetail(prof)}
+                        className="w-full bg-violet-600/10 hover:bg-violet-600/20 text-violet-500 border border-violet-600/20"
+                      >
+                        Ver Detalle
+                      </Button>
                   </div>
                 </Card>
               ))
@@ -1399,7 +1411,7 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                         return (
                           <TableRow 
                             key={receipt.id}
-                            className={selectedReceipts.includes(receipt.id) ? "bg-violet-50/50 hover:bg-violet-50" : "hover:bg-muted/30"}
+                            className={selectedReceipts.includes(receipt.id) ? "bg-violet-50/80 dark:bg-violet-950/40 text-foreground dark:text-violet-100 border-l-2 border-l-violet-500 hover:bg-violet-100/80 dark:hover:bg-violet-900/50" : "hover:bg-muted/30"}
                           >
                             {/* Checkbox Cell */}
                             <TableCell className="w-[40px]">
@@ -1658,9 +1670,109 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
                    </div>
                 </Card>
              </div>
-          </motion.div>
+           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Detail Dialog for Professional */}
+      <Dialog open={!!selectedProfForDetail} onOpenChange={(open) => !open && setSelectedProfForDetail(null)}>
+        <DialogContent className="sm:max-w-[650px] bg-card border-border">
+          {selectedProfForDetail && (() => {
+            const profReceipts = receipts.filter(r => r.professionalId === selectedProfForDetail.id);
+            const totalPending = profReceipts.filter(r => r.status === 'pending' || r.status === 'approved').reduce((a, c) => a + c.amount, 0);
+            const totalPaid = profReceipts.filter(r => r.status === 'paid').reduce((a, c) => a + c.amount, 0);
+            return (
+              <>
+                <DialogHeader>
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center text-white font-bold text-base shadow-md">
+                      {selectedProfForDetail.name.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                    </div>
+                    <div>
+                      <DialogTitle className="text-xl font-bold">{selectedProfForDetail.name}</DialogTitle>
+                      <DialogDescription className="text-xs">
+                        {selectedProfForDetail.specialty || 'Médico Externo / Colaborador'}
+                      </DialogDescription>
+                    </div>
+                  </div>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  {/* KPI Cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 rounded-xl border border-border bg-muted/40 text-center">
+                      <span className="text-[11px] text-muted-foreground block">RUC</span>
+                      <span className="font-mono text-sm font-semibold text-foreground">{selectedProfForDetail.ruc}</span>
+                    </div>
+                    <div className="p-3 rounded-xl border border-amber-500/20 bg-amber-500/5 text-center">
+                      <span className="text-[11px] text-amber-700 dark:text-amber-400 block">Total Pendiente</span>
+                      <span className="font-mono text-sm font-bold text-amber-700 dark:text-amber-400">{formatCurrencyEs(totalPending)}</span>
+                    </div>
+                    <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-center">
+                      <span className="text-[11px] text-emerald-700 dark:text-emerald-400 block">Total Pagado</span>
+                      <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400">{formatCurrencyEs(totalPaid)}</span>
+                    </div>
+                  </div>
+
+                  {/* Info details */}
+                  <div className="grid grid-cols-2 gap-3 p-3 rounded-xl border border-border bg-muted/20 text-xs">
+                    <div>
+                      <span className="text-muted-foreground block">Email:</span>
+                      <span className="font-medium text-foreground">{selectedProfForDetail.email || 'Sin registrar'}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground block">Teléfono / Contacto:</span>
+                      <span className="font-medium text-foreground">{selectedProfForDetail.phone || 'Sin registrar'}</span>
+                    </div>
+                  </div>
+
+                  {/* Recent Receipts List */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-muted-foreground mb-2">Recibos por Honorarios ({profReceipts.length})</h4>
+                    {profReceipts.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic py-4 text-center border border-dashed rounded-lg">No hay recibos registrados para este profesional.</p>
+                    ) : (
+                      <div className="max-h-[220px] overflow-y-auto space-y-2 pr-1">
+                        {profReceipts.map(r => (
+                          <div key={r.id} className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-card text-xs">
+                            <div>
+                              <div className="font-semibold text-foreground font-mono">{r.receiptNumber}</div>
+                              <div className="text-[11px] text-muted-foreground">{r.description || 'Sin descripción'} — {format(r.issueDate, 'dd/MM/yyyy')}</div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="font-bold font-mono text-foreground">{formatCurrencyEs(r.amount)}</span>
+                              <Badge className={getStatusColor(r.status)}>
+                                {getStatusLabel(r.status)}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center pt-3 border-t border-border">
+                  <Button
+                    variant="outline"
+                    className="text-xs border-violet-500/30 text-violet-600 hover:bg-violet-500/10"
+                    onClick={() => {
+                      setProfessionalFilter(selectedProfForDetail.id);
+                      setActiveTab('detail');
+                      setSelectedProfForDetail(null);
+                    }}
+                  >
+                    Filtrar en Gestión de Recibos
+                  </Button>
+                  <Button variant="secondary" onClick={() => setSelectedProfForDetail(null)}>
+                    Cerrar
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

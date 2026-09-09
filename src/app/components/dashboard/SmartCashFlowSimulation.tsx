@@ -361,7 +361,7 @@ export function SmartCashFlowSimulation({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-12 shrink-0">
-        <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] xl:col-span-3">
+        <Card className="bg-card border-border text-card-foreground shadow-sm dark:bg-[#110F20]/90 dark:border-cyan-500/15 xl:col-span-3">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-cyan-900 dark:text-cyan-200">Horizonte</CardTitle>
             <CardDescription className="text-xs">Rango inclusivo yyyy-MM-dd</CardDescription>
@@ -374,7 +374,7 @@ export function SmartCashFlowSimulation({
                   type="date"
                   value={horizonStart}
                   onChange={(e) => patchDraft({ horizonStart: e.target.value })}
-                  className="mt-1 h-9 bg-slate-950/60 border-cyan-500/20"
+                  className="mt-1 h-9 bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/20"
                 />
               </div>
               <div>
@@ -383,7 +383,7 @@ export function SmartCashFlowSimulation({
                   type="date"
                   value={horizonEnd}
                   onChange={(e) => patchDraft({ horizonEnd: e.target.value })}
-                  className="mt-1 h-9 bg-slate-950/60 border-cyan-500/20"
+                  className="mt-1 h-9 bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/20"
                 />
               </div>
             </div>
@@ -404,7 +404,7 @@ export function SmartCashFlowSimulation({
                       e.target.value === '' ? null : Number(e.target.value.replace(',', '.')),
                   })
                 }
-                className="mt-1 h-9 bg-slate-950/60 border-cyan-500/20 font-mono"
+                className="mt-1 h-9 bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/20 font-mono"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
                 Vacío = saldo inicial de{' '}
@@ -427,7 +427,7 @@ export function SmartCashFlowSimulation({
           </CardContent>
         </Card>
 
-        <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] xl:col-span-4">
+        <Card className="bg-card border-border text-card-foreground shadow-sm dark:bg-[#110F20]/90 dark:border-cyan-500/15 xl:col-span-4">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-cyan-900 flex items-center gap-2 dark:text-cyan-200">
               <History className="h-4 w-4" /> Historial → programa (Fase 3)
@@ -445,7 +445,7 @@ export function SmartCashFlowSimulation({
                   type="date"
                   value={histFrom}
                   onChange={(e) => setHistFrom(e.target.value)}
-                  className="mt-1 h-9 bg-slate-950/60 border-cyan-500/20 text-xs"
+                  className="mt-1 h-9 bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/20 text-xs"
                 />
               </div>
               <div>
@@ -454,7 +454,7 @@ export function SmartCashFlowSimulation({
                   type="date"
                   value={histTo}
                   onChange={(e) => setHistTo(e.target.value)}
-                  className="mt-1 h-9 bg-slate-950/60 border-cyan-500/20 text-xs"
+                  className="mt-1 h-9 bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/20 text-xs"
                 />
               </div>
             </div>
@@ -465,7 +465,7 @@ export function SmartCashFlowSimulation({
                   value={histKind}
                   onValueChange={(v) => setHistKind(v as HistoricalKindFilter)}
                 >
-                  <SelectTrigger className="mt-1 h-9 text-xs bg-slate-950/60 border-cyan-500/20">
+                  <SelectTrigger className="mt-1 h-9 text-xs bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/20">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -514,7 +514,7 @@ export function SmartCashFlowSimulation({
           </CardContent>
         </Card>
 
-        <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] xl:col-span-5">
+        <Card className="bg-card border-border text-card-foreground shadow-sm dark:bg-[#110F20]/90 dark:border-cyan-500/15 xl:col-span-5">
           <CardHeader className="pb-0 flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -583,7 +583,7 @@ export function SmartCashFlowSimulation({
         </Card>
       </div>
 
-      <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] shrink-0">
+      <Card className="bg-card border-border text-card-foreground shadow-sm dark:bg-[#110F20]/90 dark:border-cyan-500/15 shrink-0">
         <CardHeader className="py-3 pb-2 flex flex-row items-start gap-2">
           <BarChart3 className="h-4 w-4 text-cyan-800 dark:text-cyan-300 mt-1 shrink-0" />
           <div>
@@ -633,7 +633,7 @@ export function SmartCashFlowSimulation({
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-12 flex-1 min-h-[220px]">
-        <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] lg:col-span-7 flex flex-col min-h-[200px]">
+        <Card className="bg-card border-border text-card-foreground shadow-sm dark:bg-[#110F20]/90 dark:border-cyan-500/15 lg:col-span-7 flex flex-col min-h-[200px]">
           <CardHeader className="py-3 flex flex-row items-center justify-between">
             <CardTitle className="text-sm">Programa (ingresos / egresos)</CardTitle>
             <Button variant="outline" size="sm" onClick={addRow}>
@@ -677,7 +677,7 @@ export function SmartCashFlowSimulation({
                                 })
                               }
                             >
-                              <SelectTrigger className="h-8 text-[11px] bg-slate-950/60 border-cyan-500/15">
+                              <SelectTrigger className="h-8 text-[11px] bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/15">
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
@@ -688,7 +688,7 @@ export function SmartCashFlowSimulation({
                           </TableCell>
                           <TableCell>
                             <Input
-                              className="h-8 text-xs bg-slate-950/60 border-cyan-500/15"
+                              className="h-8 text-xs bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/15"
                               value={row.label}
                               onChange={(e) => updateRow(row.id, { label: e.target.value })}
                             />
@@ -696,7 +696,7 @@ export function SmartCashFlowSimulation({
                           <TableCell>
                             <Input
                               type="date"
-                              className="h-8 text-xs bg-slate-950/60 border-cyan-500/15"
+                              className="h-8 text-xs bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/15"
                               value={row.date.slice(0, 10)}
                               onChange={(e) => updateRow(row.id, { date: e.target.value })}
                             />
@@ -705,7 +705,7 @@ export function SmartCashFlowSimulation({
                             <Input
                               type="number"
                               step="0.01"
-                              className="h-8 text-xs text-right font-mono bg-slate-950/60 border-cyan-500/15"
+                              className="h-8 text-xs text-right font-mono bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/15"
                               value={row.amount}
                               onChange={(e) =>
                                 updateRow(row.id, { amount: Number(e.target.value.replace(',', '.')) })
@@ -724,7 +724,7 @@ export function SmartCashFlowSimulation({
                                   })
                                 }
                               >
-                                <SelectTrigger className="h-8 text-[11px] bg-slate-950/60 border-cyan-500/15">
+                                <SelectTrigger className="h-8 text-[11px] bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/15">
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -739,7 +739,7 @@ export function SmartCashFlowSimulation({
                               <Input
                                 type="number"
                                 step={1}
-                                className="h-8 px-2 text-xs text-center bg-slate-950/60 border-cyan-500/15"
+                                className="h-8 px-2 text-xs text-center bg-background border-border text-foreground dark:bg-slate-950/60 dark:border-cyan-500/15"
                                 value={row.priorityRank ?? ''}
                                 onChange={(e) =>
                                   updateRow(row.id, {
@@ -772,7 +772,7 @@ export function SmartCashFlowSimulation({
         </Card>
 
         <div className="lg:col-span-5 flex flex-col gap-3 min-h-[200px]">
-          <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] flex-1 flex flex-col">
+          <Card className="bg-card border-border text-card-foreground shadow-sm dark:bg-[#110F20]/90 dark:border-cyan-500/15 flex-1 flex flex-col">
             <CardHeader className="py-2">
               <CardTitle className="text-sm flex items-center gap-2">
                 Alertas{' '}
@@ -806,7 +806,7 @@ export function SmartCashFlowSimulation({
             </CardContent>
           </Card>
 
-          <Card className="border-cyan-500/15 bg-[rgba(13,11,30,0.65)] shrink-0">
+          <Card className="bg-card border-border text-card-foreground shadow-sm dark:bg-[#110F20]/90 dark:border-cyan-500/15 shrink-0">
             <CardHeader className="py-2 pb-1">
               <CardTitle className="text-xs text-muted-foreground">Resumen final</CardTitle>
             </CardHeader>

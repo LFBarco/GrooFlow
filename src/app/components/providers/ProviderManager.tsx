@@ -2875,13 +2875,13 @@ export function ProviderManager({
                                     <TableCell>
                                         <div className="space-y-1">
                                             {provider.defaultCreditDays > 0 ? (
-                                                <div className="flex items-center gap-1 text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded w-fit">
+                                                <Badge variant="info" className="gap-1">
                                                     <Clock className="w-3 h-3" /> {provider.defaultCreditDays} días
-                                                </div>
+                                                </Badge>
                                             ) : (
-                                                <div className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded w-fit">
+                                                <Badge variant="success" className="gap-1">
                                                     <CheckCircle2 className="w-3 h-3" /> Contado
-                                                </div>
+                                                </Badge>
                                             )}
                                             {provider.bankName && (
                                                 <div className="text-[10px] text-muted-foreground flex items-center gap-1 mt-1 truncate max-w-[150px]" title={`${provider.bankName}: ${provider.bankAccount}`}>
