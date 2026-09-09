@@ -1246,12 +1246,12 @@ export function PettyCashModule({
                         </div>
                     </div>
                     
-                    <div className="bg-slate-900/45 border border-slate-700/40 rounded-lg p-3 text-xs text-slate-400 space-y-1 opacity-90">
-                         <div className="flex items-center gap-1.5 text-blue-400 font-medium mb-1">
+                    <div className="bg-blue-50/70 border border-blue-200/80 dark:bg-slate-900/45 dark:border-slate-700/40 rounded-lg p-3 text-xs text-slate-700 dark:text-slate-400 space-y-1">
+                         <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-medium mb-1">
                             <Info className="w-3.5 h-3.5" />
                             Política de Caja Chica
                          </div>
-                         <ul className="list-disc pl-4 space-y-0.5 text-slate-400">
+                         <ul className="list-disc pl-4 space-y-0.5 text-slate-600 dark:text-slate-400">
                             <li>Rendición de cuentas: Todos los días <strong>Lunes</strong>.</li>
                             <li>Siempre solicitar <strong>Factura</strong> para sustentar gastos.</li>
                             <li>Gastos mayores a <strong>S/ 300.00</strong> requieren aprobación previa.</li>

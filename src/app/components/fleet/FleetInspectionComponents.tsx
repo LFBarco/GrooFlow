@@ -497,7 +497,7 @@ export function FleetChecklistConfigurator({
                   <Input
                     value={it.label}
                     onChange={(e) => updateItemLabel(sec.id, it.id, e.target.value)}
-                    className="flex-1 bg-slate-900/60 border-white/10 text-sm"
+                    className="flex-1 bg-background border-border text-foreground text-sm"
                   />
                   <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => moveItem(sec.id, it.id, -1)}>
                     <ChevronUp className="h-4 w-4" />
@@ -857,19 +857,19 @@ export function FleetVehicleInspectionBar({
               .sort((a, b) => a.sortOrder - b.sortOrder)
               .map((sec) => (
                 <div key={sec.id}>
-                  <div className="text-xs font-semibold text-violet-300 mb-2">{sec.title}</div>
+                  <div className="text-xs font-semibold text-violet-700 dark:text-violet-300 mb-2">{sec.title}</div>
                   <div className="space-y-2">
                     {[...sec.items]
                       .sort((a, b) => a.sortOrder - b.sortOrder)
                       .map((it) => (
-                        <div key={it.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 px-3 py-2 bg-slate-900/40">
-                          <span className="text-sm text-slate-200">{it.label}</span>
+                        <div key={it.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 bg-muted/40 dark:border-white/10 dark:bg-slate-900/40">
+                          <span className="text-sm text-foreground">{it.label}</span>
                           <div className="flex gap-1">
                             <Button
                               type="button"
                               size="sm"
                               variant={responses[it.id] === 'pass' ? 'default' : 'outline'}
-                              className={responses[it.id] === 'pass' ? 'bg-emerald-600 hover:bg-emerald-500' : 'border-white/15'}
+                              className={responses[it.id] === 'pass' ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'border-border'}
                               onClick={() => setResponses((r) => ({ ...r, [it.id]: 'pass' }))}
                             >
                               Cumple
@@ -878,7 +878,7 @@ export function FleetVehicleInspectionBar({
                               type="button"
                               size="sm"
                               variant={responses[it.id] === 'fail' ? 'destructive' : 'outline'}
-                              className={responses[it.id] === 'fail' ? '' : 'border-white/15'}
+                              className={responses[it.id] === 'fail' ? '' : 'border-border'}
                               onClick={() => setResponses((r) => ({ ...r, [it.id]: 'fail' }))}
                             >
                               No cumple
@@ -891,14 +891,14 @@ export function FleetVehicleInspectionBar({
               ))}
           </div>
 
-          <div className="rounded-lg bg-white/5 border border-white/10 p-3 text-sm">
-            <span className="text-slate-400">Cumplimiento proyectado: </span>
-            <strong className="text-teal-300 tabular-nums">
+          <div className="rounded-lg bg-muted/40 border border-border p-3 text-sm">
+            <span className="text-muted-foreground">Cumplimiento proyectado: </span>
+            <strong className="text-teal-600 dark:text-teal-300 tabular-nums">
               {computeInspectionCompliance(responses, templateIds)}%
             </strong>
           </div>
 
-          <Textarea placeholder="Observaciones (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="bg-slate-900 border-white/15" />
+          <Textarea placeholder="Observaciones (opcional)" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="bg-background border-border text-foreground" />
 
           <div className="space-y-1">
             <Label className="flex items-center gap-1 text-slate-300">

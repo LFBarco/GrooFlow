@@ -53,8 +53,8 @@ export function FleetSedeField({
   if (options.length === 0) {
     return (
       <div className="space-y-1.5">
-        <Label className="text-slate-300">{label}</Label>
-        <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-900/50 text-sm text-slate-400">
+        <Label>{label}</Label>
+        <div className="flex items-center h-10 px-3 rounded-md border border-border bg-muted/50 text-sm text-muted-foreground">
           Sin sedes en catálogo de Gestión
         </div>
       </div>
@@ -63,9 +63,9 @@ export function FleetSedeField({
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-slate-300">{label}</Label>
+      <Label>{label}</Label>
       {baseSedes.length === 1 ? (
-        <div className="flex items-center h-10 px-3 rounded-md border border-slate-700 bg-slate-900/50 text-sm text-slate-200">
+        <div className="flex items-center h-10 px-3 rounded-md border border-border bg-muted/50 text-sm text-foreground">
           {display || baseSedes[0]}
         </div>
       ) : (

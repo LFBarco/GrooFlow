@@ -131,15 +131,15 @@ export function FleetFuelBulkImport({
           </DialogHeader>
 
           <div className="space-y-4 text-sm">
-            <div className="rounded-lg border border-white/10 bg-slate-900/60 p-3 space-y-2">
-              <p className="text-slate-300">
+            <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-2">
+              <p className="text-foreground">
                 Columnas obligatorias: <strong>Placa</strong>, <strong>Fecha</strong>,{' '}
                 <strong>Odómetro km</strong>, <strong>Litros</strong>, <strong>Costo total S/</strong>.
               </p>
-              <p className="text-slate-400 text-xs">
+              <p className="text-muted-foreground text-xs">
                 La placa debe existir en su flota. Opcional: Sede, Estación, Tanque lleno (Si/No), Notas.
               </p>
-              <p className="text-slate-500 text-xs font-mono">{FLEET_FUEL_TEMPLATE_FILENAME}</p>
+              <p className="text-muted-foreground text-xs font-mono">{FLEET_FUEL_TEMPLATE_FILENAME}</p>
             </div>
 
             <Button
