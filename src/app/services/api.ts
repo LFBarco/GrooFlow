@@ -16,7 +16,9 @@
  */
 
 import { repository, KV_KEYS } from './repository';
-import { getGrooflowBackend, isSupabaseBackend } from '../config/backend';
+import { getGrooflowBackend, isRestBackend, isSupabaseBackend } from '../config/backend';
+import { getGrooflowToken } from './repository/apiBase';
+import { localStorageRepository } from './repository/localStorage';
 import { getSupabaseClientLazy, isSupabaseKvFatalAuthErrorLazy } from './repository/supabaseLazy';
 import { isAccessTokenExpired } from '../utils/accessToken';
 import { broadcastKvUpdate, shouldBroadcastKvUpdate } from '../utils/kvCrossTabSync';
@@ -348,6 +350,18 @@ export const api = {
    * Replaces the old direct fetch() call.
    */
   async saveKey(key: string, data: unknown): Promise<boolean> {
+    if (isRestBackend() && !getGrooflowToken()) {
+      try {
+        await localStorageRepository.kv.set(key, data);
+        if (shouldBroadcastKvUpdate(key)) {
+          broadcastKvUpdate(key, data);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     const backend = getGrooflowBackend();
     /** Directorio grande / importaciones masivas: más reintentos por timeouts intermitentes. */
     const maxAttempts =

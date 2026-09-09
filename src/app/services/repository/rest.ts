@@ -71,7 +71,10 @@ async function restFetchNow<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set('Content-Type', 'application/json');
   }
   headers.set('X-Groomers-Client', 'grooflow');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-Authorization', `Bearer ${token}`);
+  }
 
   const res = await fetch(`${getGrooflowApiBase()}${path}`, {
     ...init,
