@@ -686,10 +686,10 @@ export function AuditPanel({
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => {
-                  onDeleteTransaction(selectedAnomaly.id);
+                onClick={async () => {
+                  const targetId = selectedAnomaly.id;
                   setSelectedAnomaly(null);
-                  toast.success('Transacción anómala eliminada correctamente.');
+                  await onDeleteTransaction(targetId);
                 }}
               >
                 <Trash2 className="w-4 h-4 mr-1" />

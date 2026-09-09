@@ -85,10 +85,10 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
       if (result === 'skipped') return;
       const now = Date.now();
       const last = lastSaveErrorAtRef.current['data:transactions'] ?? 0;
-      if (now - last < 8000) return;
+      if (now - last < 60000) return;
       lastSaveErrorAtRef.current['data:transactions'] = now;
-      toast.error(
-        'No se pudieron guardar las transacciones en la nube. Revisa sesión/red antes de cerrar.'
+      toast.warning(
+        'Transacciones guardadas en este equipo. No se pudo sincronizar en la nube (revisa tu sesión).'
       );
     });
   }, [transactions, isDataLoaded]);
@@ -137,23 +137,22 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
           )
         );
 
-        if (result === 'skipped') {
-          toast.error(
-            'No se pudo confirmar el guardado (sesión en transición). Espera un momento e intenta de nuevo.'
-          );
-          return false;
-        }
-        if (!kvSaveSucceeded(result)) {
-          toast.error(
-            'No se pudieron guardar las transacciones en la nube. No cierres ni actualices; revisa conexión/sesión.'
-          );
-          return false;
-        }
-
         latestRef.current = next;
         hydratedFromKvRef.current = true;
         cooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setTransactions(next);
+
+        if (result === 'skipped') {
+          toast.info('Cambio guardado localmente (sesión en transición).');
+          return true;
+        }
+        if (!kvSaveSucceeded(result)) {
+          toast.warning(
+            'Guardado localmente. No se pudo sincronizar con la nube (revisa tu sesión o conexión).'
+          );
+          return true;
+        }
+
         if (successMessage) toast.success(successMessage);
         return true;
       } catch (e) {
