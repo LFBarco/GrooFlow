@@ -261,6 +261,8 @@ export function ProviderManager({
     pettyCashCommercialCategories,
 }: ProviderManagerProps) {
     
+    const safeProviders = useMemo(() => (Array.isArray(providers) ? providers : []), [providers]);
+
     // --- Resolución de Listas (Prioridad: SystemSettings > Defaults) ---
     const providerCategories = getProviderCategories(systemSettings);
     const areas = getProviderAreas(systemSettings);
@@ -581,7 +583,7 @@ export function ProviderManager({
     };
 
     const exportProvidersExcel = () => {
-        if (providers.length === 0) {
+        if (safeProviders.length === 0) {
             toast.error('No hay proveedores para exportar.');
             return;
         }
@@ -601,9 +603,9 @@ export function ProviderManager({
             'CCI',
             'Observaciones',
         ];
-        const rows = providers.map((p) => [
-            p.ruc,
-            p.name,
+        const rows = safeProviders.map((p) => [
+            p.ruc || '',
+            p.name || '',
             p.commercialName || '',
             p.type || '',
             p.category || '',
@@ -621,7 +623,7 @@ export function ProviderManager({
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Proveedores');
         XLSX.writeFile(wb, `proveedores_${new Date().toISOString().slice(0, 10)}.xlsx`);
-        toast.success(`Catálogo de proveedores exportado (${providers.length} registros)`);
+        toast.success(`Catálogo de proveedores exportado (${safeProviders.length} registros)`);
     };
 
     const handleImportClick = () => {
@@ -1362,15 +1364,15 @@ export function ProviderManager({
 
     const filteredProviders = useMemo(
         () =>
-            providers.filter(
+            safeProviders.filter(
                 (p) =>
-                    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    p.ruc.includes(searchTerm) ||
+                    (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (p.ruc || '').includes(searchTerm) ||
                     String(p.category ?? '')
                         .toLowerCase()
                         .includes(searchTerm.toLowerCase()),
             ),
-        [providers, searchTerm],
+        [safeProviders, searchTerm],
     );
 
     const providerTotalFiltered = useServerPaging ? serverList.filtered : filteredProviders.length;
