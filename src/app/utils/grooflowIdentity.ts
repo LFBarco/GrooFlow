@@ -273,15 +273,6 @@ export const MODULE_IDENTITY: Partial<Record<ViewType, ModuleIdentity>> = {
     subtitle: 'Horarios, códigos y esquemas de turnos de personal.',
     icon: Clock,
   }),
-  alerts: id({
-    ambientA: GF_PALETTE.fuchsia,
-    ambientB: GF_PALETTE.purple,
-    accent: '#f43f5e',
-    accentGlow: 'rgba(244, 63, 94, 0.45)',
-    title: 'Centro de Alertas',
-    subtitle: 'Notificaciones, desvíos y atención prioritaria.',
-    icon: Bell,
-  }),
   menuConfig: id({
     ambientA: GF_PALETTE.navy,
     ambientB: GF_PALETTE.purple,
