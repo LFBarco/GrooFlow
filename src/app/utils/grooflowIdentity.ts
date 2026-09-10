@@ -20,7 +20,6 @@ import {
   Building2,
   Briefcase,
   Clock,
-  Bell,
   Menu,
   UserCheck,
   PartyPopper,
