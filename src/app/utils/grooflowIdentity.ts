@@ -23,6 +23,7 @@ import {
   Bell,
   Menu,
   UserCheck,
+  PartyPopper,
 } from 'lucide-react';
 
 import type { ViewType } from '../routes';
@@ -64,7 +65,7 @@ function id(
   return { ...DEFAULT_IDENTITY, ...partial };
 }
 
-export const MODULE_IDENTITY: Record<ViewType, ModuleIdentity> = {
+export const MODULE_IDENTITY: Partial<Record<ViewType, ModuleIdentity>> = {
   dashboard: id({
     ambientA: GF_PALETTE.cyan,
     ambientB: GF_PALETTE.purple,
@@ -299,10 +300,20 @@ export const MODULE_IDENTITY: Record<ViewType, ModuleIdentity> = {
     subtitle: 'Asignación de permisos de navegación por rol.',
     icon: UserCheck,
   }),
+  marketingEventos: id({
+    ambientA: GF_PALETTE.fuchsia,
+    ambientB: GF_PALETTE.pink,
+    accent: '#e879f9',
+    accentGlow: 'rgba(232, 121, 249, 0.45)',
+    title: 'Marketing · Eventos y cursos',
+    subtitle: 'Presupuesto vs real e resultado simple del área.',
+    icon: PartyPopper,
+  }),
 };
 
 export function getModuleIdentity(view: ViewType): ModuleIdentity {
-  return MODULE_IDENTITY[view] ?? MODULE_IDENTITY.dashboard;
+  const fallback = MODULE_IDENTITY.dashboard!;
+  return MODULE_IDENTITY[view] ?? fallback;
 }
 
 export function buildAmbientBackground(identity: ModuleIdentity): string {

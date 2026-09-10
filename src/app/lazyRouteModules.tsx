@@ -99,6 +99,10 @@ const loadUniformesModule = named(
   () => import('./components/uniformes/UniformesModule'),
   'UniformesModule'
 );
+const loadMarketingEventosModule = named(
+  () => import('./components/marketingEventos/MarketingEventosModule'),
+  'MarketingEventosModule'
+);
 const loadRrhhModule = named(() => import('./components/rrhh/RrhhModule'), 'RrhhModule');
 const loadCatalogCrudPage = named(() => import('./components/rrhh/CatalogCrudPage'), 'CatalogCrudPage');
 const loadReconciliationModule = named(
@@ -138,6 +142,7 @@ export const AsistenciaModule = lazy(loadAsistenciaModule);
 export const TurnosModule = lazy(loadTurnosModule);
 export const AccidentesModule = lazy(loadAccidentesModule);
 export const UniformesModule = lazy(loadUniformesModule);
+export const MarketingEventosModule = lazy(loadMarketingEventosModule);
 export const RrhhModule = lazy(loadRrhhModule);
 export const CatalogCrudPage = lazy(loadCatalogCrudPage);
 export const ReconciliationModule = lazy(loadReconciliationModule);
@@ -170,6 +175,7 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   turnos: [loadTurnosModule],
   accidentes: [loadAccidentesModule],
   uniformes: [loadUniformesModule],
+  marketingEventos: [loadMarketingEventosModule],
   rrhh: [loadRrhhModule],
   rrhhAreas: [loadCatalogCrudPage],
   rrhhPuestos: [loadCatalogCrudPage],

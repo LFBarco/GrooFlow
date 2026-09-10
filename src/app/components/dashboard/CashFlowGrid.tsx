@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import { useEffect, useMemo, useState, useRef, useCallback, Fragment } from 'react';
 import type { Transaction, SystemSettings, InvoiceDraft } from '../../types';
 import {
   format,
@@ -105,9 +105,18 @@ const MONTH_OPTIONS = [
   'Diciembre',
 ];
 
-function formatMoney(amount: number, compact = false) {
-  if (Math.abs(amount) < 1e-9) return '—';
-  return compact ? formatAxisThousandsPEN(amount) : formatCurrencyEs(amount, 2);
+function formatMoney(amount: number) {
+  if (!Number.isFinite(amount) || Math.abs(amount) < 1e-9) return '—';
+  return formatCurrencyEs(amount, 2);
+}
+
+/** Eje de gráfico: compacto para no saturar; importes de grilla usan formatMoney. */
+function formatChartAxis(amount: number) {
+  return formatAxisThousandsPEN(amount);
+}
+
+function subcategoryExpandKey(category: string, subcategoryName: string) {
+  return `${category}::${subcategoryName}`;
 }
 
 function cellClasses(
@@ -176,9 +185,14 @@ export function CashFlowGrid({
       ? String(safeCurrentDate.getFullYear())
       : String(yearSelectOptions[0]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const topScrollInnerRef = useRef<HTMLDivElement>(null);
+  const syncingScrollRef = useRef(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [expandedSubcategories, setExpandedSubcategories] = useState<Set<string>>(new Set());
   const didInitExpandCategoriesRef = useRef(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [tempBalance, setTempBalance] = useState<string>('');
@@ -186,7 +200,8 @@ export function CashFlowGrid({
   const [layerReal, setLayerReal] = useState(true);
   const [layerProj, setLayerProj] = useState(true);
   const [layerEst, setLayerEst] = useState(true);
-  const [isDecisionPanelCollapsed, setIsDecisionPanelCollapsed] = useState(false);
+  /** Cerrado por defecto: el asistente no empuja la matriz al abrir el módulo. */
+  const [isDecisionPanelCollapsed, setIsDecisionPanelCollapsed] = useState(true);
   const [draggedCategory, setDraggedCategory] = useState<{ kind: 'income' | 'expense'; category: string } | null>(null);
   const [aiEstimates, setAiEstimates] = useState<Map<string, number>>(() => new Map());
   const [editingCell, setEditingCell] = useState<string | null>(null);
@@ -268,7 +283,71 @@ export function CashFlowGrid({
     if (names.length === 0) return;
     didInitExpandCategoriesRef.current = true;
     setExpandedCategories(new Set(names));
+    const subKeys = new Set<string>();
+    for (const [cat, rows] of [...incomeStructure.entries(), ...expenseStructure.entries()]) {
+      for (const row of rows) {
+        subKeys.add(subcategoryExpandKey(cat, row.subcategoryName));
+      }
+    }
+    setExpandedSubcategories(subKeys);
   }, [incomeStructure, expenseStructure]);
+
+  const syncTopScrollWidth = useCallback(() => {
+    const tableWrap = tableScrollRef.current;
+    const inner = topScrollInnerRef.current;
+    if (!tableWrap || !inner) return;
+    const content = tableWrap.firstElementChild as HTMLElement | null;
+    inner.style.width = `${Math.max(content?.scrollWidth ?? tableWrap.scrollWidth, tableWrap.clientWidth)}px`;
+  }, []);
+
+  useEffect(() => {
+    syncTopScrollWidth();
+    const tableWrap = tableScrollRef.current;
+    if (!tableWrap) return;
+    const content = tableWrap.firstElementChild;
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => syncTopScrollWidth()) : null;
+    if (content && ro) ro.observe(content);
+    window.addEventListener('resize', syncTopScrollWidth);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', syncTopScrollWidth);
+    };
+  }, [
+    syncTopScrollWidth,
+    columns,
+    viewMode,
+    expandedCategories,
+    expandedSubcategories,
+    incomeStructure,
+    expenseStructure,
+  ]);
+
+  const onTableScroll = () => {
+    if (syncingScrollRef.current) return;
+    const table = tableScrollRef.current;
+    const top = topScrollRef.current;
+    if (!table || !top) return;
+    syncingScrollRef.current = true;
+    top.scrollLeft = table.scrollLeft;
+    syncingScrollRef.current = false;
+  };
+
+  const onTopScroll = () => {
+    if (syncingScrollRef.current) return;
+    const table = tableScrollRef.current;
+    const top = topScrollRef.current;
+    if (!table || !top) return;
+    syncingScrollRef.current = true;
+    table.scrollLeft = top.scrollLeft;
+    syncingScrollRef.current = false;
+  };
+
+  const scrollColumnsBy = (direction: -1 | 1) => {
+    const table = tableScrollRef.current;
+    if (!table) return;
+    const step = 72 * 5;
+    table.scrollBy({ left: direction * step, behavior: 'smooth' });
+  };
 
   const updateCategoryOrder = useCallback(
     (kind: 'income' | 'expense', orderedCategories: string[]) => {
@@ -531,10 +610,33 @@ export function CashFlowGrid({
     }));
   }, [viewMode, columns, endBalances]);
 
-  const toggleCategory = (category: string) => {
+  const toggleCategory = (category: string, subcategoryRows?: SubcategoryRow[]) => {
     const next = new Set(expandedCategories);
-    next.has(category) ? next.delete(category) : next.add(category);
+    if (next.has(category)) {
+      next.delete(category);
+    } else {
+      next.add(category);
+      if (subcategoryRows?.length) {
+        setExpandedSubcategories((prev) => {
+          const subs = new Set(prev);
+          for (const row of subcategoryRows) {
+            subs.add(subcategoryExpandKey(category, row.subcategoryName));
+          }
+          return subs;
+        });
+      }
+    }
     setExpandedCategories(next);
+  };
+
+  const toggleSubcategory = (category: string, subcategoryName: string) => {
+    const key = subcategoryExpandKey(category, subcategoryName);
+    setExpandedSubcategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   const openSettings = () => {
@@ -683,6 +785,38 @@ export function CashFlowGrid({
     );
   };
 
+  const getSubcategoryTotalForColumn = (
+    category: string,
+    row: SubcategoryRow,
+    date: Date,
+    isIncome: boolean
+  ) => {
+    if (viewMode !== 'daily') {
+      return row.concepts.reduce(
+        (sum, concept) => sum + getAmountAnnual(category, row.subcategoryName, concept.name, date),
+        0
+      );
+    }
+    return row.concepts.reduce((sum, concept) => {
+      const cell = resolvedCell(
+        matrixDaily,
+        visibility,
+        category,
+        row.subcategoryName,
+        concept.name,
+        date,
+        TODAY
+      );
+      return sum + cell.amount;
+    }, 0);
+  };
+
+  const getSubcategoryRowTotal = (category: string, row: SubcategoryRow, isIncome: boolean) =>
+    row.concepts.reduce(
+      (sum, concept) => sum + getRowTotalTriple(category, row.subcategoryName, concept.name, isIncome),
+      0
+    );
+
   const renderSectionAnnual = (
     structure: Map<string, SubcategoryRow[]>,
     title: string,
@@ -750,7 +884,7 @@ export function CashFlowGrid({
               <tr
                 className="hover:bg-muted/40 cursor-pointer transition-colors font-bold text-xs uppercase group"
                 style={{ background: headerBg }}
-                onClick={() => toggleCategory(category)}
+                onClick={() => toggleCategory(category, subcategoryRows)}
                 draggable
                 onDragStart={() => setDraggedCategory({ kind: isIncome ? 'income' : 'expense', category })}
                 onDragOver={(event) => event.preventDefault()}
@@ -811,68 +945,124 @@ export function CashFlowGrid({
               </tr>
 
               {isExpanded &&
-                subcategoryRows.flatMap((row) =>
-                  row.concepts.map((concept) => {
-                    const rowTotal = columns.reduce(
-                      (s, date) => s + getAmountAnnual(category, row.subcategoryName, concept.name, date),
-                      0
-                    );
-                    return (
+                subcategoryRows.map((row) => {
+                  const subKey = subcategoryExpandKey(category, row.subcategoryName);
+                  const isSubExpanded = expandedSubcategories.has(subKey);
+                  const subTotal = getSubcategoryRowTotal(category, row, isIncome);
+                  return (
+                    <Fragment key={`${category}-${row.subcategoryName}-annual-group`}>
                       <tr
-                        key={`${category}-${row.subcategoryName}-${concept.id}`}
-                        className="hover:bg-muted/30 transition-colors group animate-in fade-in slide-in-from-top-1 duration-200"
+                        className="hover:bg-muted/40 cursor-pointer transition-colors bg-muted/20"
+                        onClick={() => toggleSubcategory(category, row.subcategoryName)}
                       >
                         <td
-                          className={clsx(
-                            'sticky left-0 z-10 w-[120px] max-w-[120px] p-2 border-r border-border bg-card text-xs font-medium text-foreground',
-                            headerBg
-                          )}
+                          className="sticky left-0 z-10 w-[120px] max-w-[120px] p-2 border-r border-border bg-card text-xs font-semibold text-foreground"
                           title={row.subcategoryName}
                         >
-                          <span className="block truncate">{row.subcategoryName}</span>
-                        </td>
-                        <td
-                          className="sticky left-[120px] z-10 w-[180px] max-w-[180px] bg-card p-2 border-r border-border font-medium text-foreground border-l-4 border-l-transparent group-hover:border-l-primary/50 transition-all text-xs"
-                          title={concept.name}
-                        >
-                          <span className="block truncate text-foreground">{concept.name}</span>
-                          {!isIncome && (
-                            <span
-                              className={clsx(
-                                'ml-2 text-[9px] px-1 py-0.5 rounded border uppercase shrink-0',
-                                concept.flexibility === 'fixed'
-                                  ? 'border-red-600/70 text-red-500 bg-red-950/40'
-                                  : 'border-amber-500/50 text-amber-400 bg-amber-950/30'
+                          <div className="flex items-center gap-1 pl-3">
+                            <button type="button" className="p-0.5 rounded-sm hover:bg-accent">
+                              {isSubExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5" />
                               )}
-                            >
-                              {concept.flexibility === 'fixed' ? 'Fijo' : 'Flexible'}
-                            </span>
-                          )}
+                            </button>
+                            <span className="truncate">{row.subcategoryName}</span>
+                          </div>
+                        </td>
+                        <td className="sticky left-[120px] z-10 w-[180px] max-w-[180px] bg-card p-2 border-r border-border text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Subtotal · {row.concepts.length} concepto{row.concepts.length === 1 ? '' : 's'}
                         </td>
                         {columns.map((date) => {
-                          const val = getAmountAnnual(category, row.subcategoryName, concept.name, date);
+                          const val = getSubcategoryTotalForColumn(category, row, date, isIncome);
                           const isCurrent = isSameMonth(date, new Date());
                           return (
                             <td
                               key={dateKey(date)}
                               className={clsx(
-                                'p-2 text-right border-r border-border/40 tabular-nums text-xs',
+                                'p-2 text-right border-r border-border/40 tabular-nums text-xs font-semibold',
                                 isCurrent && 'bg-blue-50/50 dark:bg-blue-900/10'
                               )}
                             >
-                              {val !== 0 && (
+                              {val !== 0 ? (
                                 <span className="text-foreground">{formatMoney(Math.abs(val))}</span>
+                              ) : (
+                                ''
                               )}
                             </td>
                           );
                         })}
-                        <td className="sticky right-0 z-10 bg-muted/10 p-2 text-right font-bold border-l border-border text-xs text-foreground/70">
-                          {formatMoney(Math.abs(rowTotal))}
+                        <td className="sticky right-0 z-10 bg-muted/10 p-2 text-right font-bold border-l border-border text-xs text-foreground">
+                          {formatMoney(Math.abs(subTotal))}
                         </td>
                       </tr>
-                    );
-                  })
-                )}
+                      {isSubExpanded &&
+                        row.concepts.map((concept) => {
+                          const rowTotal = columns.reduce(
+                            (s, date) =>
+                              s + getAmountAnnual(category, row.subcategoryName, concept.name, date),
+                            0
+                          );
+                          return (
+                            <tr
+                              key={`${category}-${row.subcategoryName}-${concept.id}`}
+                              className="hover:bg-muted/30 transition-colors group animate-in fade-in slide-in-from-top-1 duration-200"
+                            >
+                              <td
+                                className={clsx(
+                                  'sticky left-0 z-10 w-[120px] max-w-[120px] p-2 border-r border-border bg-card text-xs font-medium text-muted-foreground',
+                                  headerBg
+                                )}
+                              />
+                              <td
+                                className="sticky left-[120px] z-10 w-[180px] max-w-[180px] bg-card p-2 border-r border-border font-medium text-foreground border-l-4 border-l-transparent group-hover:border-l-primary/50 transition-all text-xs pl-4"
+                                title={concept.name}
+                              >
+                                <span className="block truncate text-foreground">{concept.name}</span>
+                                {!isIncome && (
+                                  <span
+                                    className={clsx(
+                                      'ml-2 text-[9px] px-1 py-0.5 rounded border uppercase shrink-0',
+                                      concept.flexibility === 'fixed'
+                                        ? 'border-red-600/70 text-red-500 bg-red-950/40'
+                                        : 'border-amber-500/50 text-amber-400 bg-amber-950/30'
+                                    )}
+                                  >
+                                    {concept.flexibility === 'fixed' ? 'Fijo' : 'Flexible'}
+                                  </span>
+                                )}
+                              </td>
+                              {columns.map((date) => {
+                                const val = getAmountAnnual(
+                                  category,
+                                  row.subcategoryName,
+                                  concept.name,
+                                  date
+                                );
+                                const isCurrent = isSameMonth(date, new Date());
+                                return (
+                                  <td
+                                    key={dateKey(date)}
+                                    className={clsx(
+                                      'p-2 text-right border-r border-border/40 tabular-nums text-xs',
+                                      isCurrent && 'bg-blue-50/50 dark:bg-blue-900/10'
+                                    )}
+                                  >
+                                    {val !== 0 && (
+                                      <span className="text-foreground">{formatMoney(Math.abs(val))}</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                              <td className="sticky right-0 z-10 bg-muted/10 p-2 text-right font-bold border-l border-border text-xs text-foreground/70">
+                                {formatMoney(Math.abs(rowTotal))}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </Fragment>
+                  );
+                })}
             </tbody>
           );
         })}
@@ -889,12 +1079,12 @@ export function CashFlowGrid({
                 : total;
               return (
                 <td key={`sectotal-${dateKey(date)}`} className="p-2 text-right border-r border-border tabular-nums">
-                  {displayTotal !== 0 ? formatMoney(Math.abs(displayTotal), true) : ''}
+                  {displayTotal !== 0 ? formatMoney(Math.abs(displayTotal)) : ''}
                 </td>
               );
             })}
             <td className="sticky right-0 z-10 p-2 bg-muted/30 border-l border-border tabular-nums font-bold text-right">
-              {formatMoney(Math.abs(isIncome ? initialBalance + st : st), true)}
+              {formatMoney(Math.abs(isIncome ? initialBalance + st : st))}
             </td>
           </tr>
         </tbody>
@@ -923,12 +1113,9 @@ export function CashFlowGrid({
             'sticky left-0 z-20 w-[120px] max-w-[120px] p-2 border-r border-border font-medium text-[11px] bg-muted/95 backdrop-blur dark:border-white/10 dark:bg-[#161222]/95',
             headerBg
           )}
-          title={row.subcategoryName}
-        >
-          <span className="block truncate text-foreground dark:text-zinc-100">{row.subcategoryName}</span>
-        </td>
+        />
         <td
-          className="sticky left-[120px] z-20 w-[180px] max-w-[180px] p-2 border-r border-border font-medium text-[11px] bg-muted/95 backdrop-blur dark:border-white/10 dark:bg-[#161222]/95"
+          className="sticky left-[120px] z-20 w-[180px] max-w-[180px] p-2 border-r border-border font-medium text-[11px] bg-muted/95 backdrop-blur dark:border-white/10 dark:bg-[#161222]/95 pl-4"
           style={{ boxShadow: s.isDark ? '4px 0 12px rgba(0,0,0,0.35)' : '4px 0 12px rgba(148,163,184,0.1)' }}
           title={concept.name}
         >
@@ -1047,7 +1234,7 @@ export function CashFlowGrid({
                 <span className="text-[10px] text-zinc-500 opacity-70">editar</span>
               )}
               {Math.abs(cell.amount) > 1e-9 ? (
-                <span>{formatMoney(Math.abs(cell.amount), true)}</span>
+                <span>{formatMoney(Math.abs(cell.amount))}</span>
               ) : (
                 ''
               )}
@@ -1056,7 +1243,7 @@ export function CashFlowGrid({
         })}
 
         <td className="sticky right-0 z-20 p-2 text-right font-semibold border-l border-white/10 bg-[#161222]/98 text-[11px] text-zinc-200 tabular-nums shadow-[-8px_0_16px_rgba(0,0,0,0.55)]">
-          {formatMoney(Math.abs(rowTotal), true)}
+          {formatMoney(Math.abs(rowTotal))}
         </td>
       </tr>
     );
@@ -1119,7 +1306,7 @@ export function CashFlowGrid({
               <tr
                 className="group cursor-pointer hover:bg-white/5 transition-colors font-bold text-[11px] uppercase"
                 style={{ background: headerBg }}
-                onClick={() => toggleCategory(category)}
+                onClick={() => toggleCategory(category, subcategoryRows)}
                 draggable
                 onDragStart={() => setDraggedCategory({ kind: isIncome ? 'income' : 'expense', category })}
                 onDragOver={(event) => event.preventDefault()}
@@ -1184,11 +1371,64 @@ export function CashFlowGrid({
               </tr>
 
               {isExpanded &&
-                subcategoryRows.flatMap((row) =>
-                  row.concepts.map((concept) =>
-                    renderDailyRow(category, row, concept, headerBg, categoryColorVis, isIncome)
-                  )
-                )}
+                subcategoryRows.map((row) => {
+                  const subKey = subcategoryExpandKey(category, row.subcategoryName);
+                  const isSubExpanded = expandedSubcategories.has(subKey);
+                  const subTotal = getSubcategoryRowTotal(category, row, isIncome);
+                  return (
+                    <Fragment key={`d-${category}-${row.subcategoryName}-group`}>
+                      <tr
+                        className="cursor-pointer hover:bg-white/5 transition-colors bg-white/[0.02]"
+                        onClick={() => toggleSubcategory(category, row.subcategoryName)}
+                      >
+                        <td
+                          className="sticky left-0 z-20 w-[120px] max-w-[120px] p-2 border-r border-border text-[11px] font-semibold bg-muted/95 dark:border-white/10 dark:bg-[#161222]"
+                          title={row.subcategoryName}
+                        >
+                          <div className="flex items-center gap-1 pl-3">
+                            <button type="button" className="p-0.5 rounded hover:bg-white/10">
+                              {isSubExpanded ? (
+                                <ChevronDown className="w-3.5 h-3.5" />
+                              ) : (
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <span className="truncate text-foreground dark:text-zinc-100">
+                              {row.subcategoryName}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="sticky left-[120px] z-20 w-[180px] max-w-[180px] p-2 border-r border-border text-[10px] uppercase tracking-wide text-muted-foreground bg-muted/95 dark:border-white/10 dark:bg-[#161222]">
+                          Subtotal · {row.concepts.length}
+                        </td>
+                        {columns.map((colDate) => {
+                          const amount = getSubcategoryTotalForColumn(category, row, colDate, isIncome);
+                          const sod = startOfDay(TODAY);
+                          const sodCol = startOfDay(colDate);
+                          const past = sodCol < sod;
+                          return (
+                            <td
+                              key={`subtot-${category}-${row.subcategoryName}-${dateKey(colDate)}`}
+                              className={clsx(
+                                'p-1 text-right border-r border-white/10 tabular-nums text-[11px] font-semibold min-h-[38px]',
+                                past ? 'bg-slate-200/90 dark:bg-zinc-800/85 text-muted-foreground' : 'text-foreground'
+                              )}
+                            >
+                              {Math.abs(amount) > 1e-9 ? formatMoney(Math.abs(amount)) : ''}
+                            </td>
+                          );
+                        })}
+                        <td className="sticky right-0 z-20 p-2 text-right font-bold border-l border-white/10 bg-[#161222]/98 text-[11px] text-zinc-200 tabular-nums">
+                          {formatMoney(Math.abs(subTotal))}
+                        </td>
+                      </tr>
+                      {isSubExpanded &&
+                        row.concepts.map((concept) =>
+                          renderDailyRow(category, row, concept, headerBg, categoryColorVis, isIncome)
+                        )}
+                    </Fragment>
+                  );
+                })}
             </tbody>
           );
         })}
@@ -1211,7 +1451,7 @@ export function CashFlowGrid({
                   className="p-2 text-right border-r border-white/10 text-[10px] tabular-nums"
                   style={{ color: sectionColor }}
                 >
-                  {total !== 0 ? formatMoney(Math.abs(total), true) : ''}
+                  {total !== 0 ? formatMoney(Math.abs(total)) : ''}
                 </td>
               );
             })}
@@ -1232,8 +1472,7 @@ export function CashFlowGrid({
                       );
                       return total + (isIncome ? income : expense);
                     }, 0)
-                ),
-                true
+                )
               )}
             </td>
           </tr>
@@ -1512,7 +1751,7 @@ export function CashFlowGrid({
               <ResponsiveContainer width="100%" height={96}>
                 <LineChart data={chartDataDaily}>
                   <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#94a3b8' }} />
-                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} width={44} tickFormatter={(v) => formatMoney(Number(v), true)} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} width={44} tickFormatter={(v) => formatChartAxis(Number(v))} />
                   <Tooltip
                     formatter={(v: number) => [formatMoney(v), 'Saldo']}
                     contentStyle={
@@ -1534,7 +1773,34 @@ export function CashFlowGrid({
           </div>
         )}
 
-        <div className="min-h-0 flex-1 w-full overflow-auto">
+        <div className="shrink-0 px-3 pt-2 pb-1 flex items-center gap-2 border-b border-border/60 dark:border-white/10">
+          <button
+            type="button"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border bg-muted/60 hover:bg-muted text-foreground dark:border-white/15 dark:bg-white/5"
+            title="Desplazar fechas hacia atrás"
+            onClick={() => scrollColumnsBy(-1)}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div
+            ref={topScrollRef}
+            onScroll={onTopScroll}
+            className="flex-1 overflow-x-auto overflow-y-hidden h-3 rounded bg-muted/50 dark:bg-white/5 scrollbar-thin"
+            title="Desplazamiento horizontal de fechas"
+          >
+            <div ref={topScrollInnerRef} className="h-1" />
+          </div>
+          <button
+            type="button"
+            className="h-7 w-7 inline-flex items-center justify-center rounded-md border border-border bg-muted/60 hover:bg-muted text-foreground dark:border-white/15 dark:bg-white/5"
+            title="Desplazar fechas hacia adelante"
+            onClick={() => scrollColumnsBy(1)}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div ref={tableScrollRef} onScroll={onTableScroll} className="min-h-0 flex-1 w-full overflow-auto">
           <div className="w-max min-w-full pb-4">
             <table className="w-full text-sm text-left border-collapse">
               <thead className="sticky top-0 z-30 border-b border-border bg-muted/95 dark:border-white/10 dark:bg-[#120f1c]">
@@ -1595,11 +1861,11 @@ export function CashFlowGrid({
                       key={`s-${i}`}
                       className="p-2 text-right border-r border-border text-[11px] font-mono text-amber-900/90 bg-amber-50/80 dark:border-white/10 dark:text-amber-200/90 dark:bg-zinc-900/40"
                     >
-                      {formatMoney(startBalances[i] ?? 0, true)}
+                      {formatMoney(startBalances[i] ?? 0)}
                     </td>
                   ))}
                   <td className="sticky right-0 z-20 p-2 text-right font-mono font-bold text-amber-900 border-l border-border bg-amber-50 dark:text-amber-200 dark:border-white/10 dark:bg-[#1a1528]">
-                    {formatMoney(initialBalance, true)}
+                    {formatMoney(initialBalance)}
                   </td>
                 </tr>
               </tbody>
@@ -1628,12 +1894,12 @@ export function CashFlowGrid({
                       const v = projectedDraftInvoicesExpense(invoices, date, safeCurrentDate);
                       return (
                         <td key={String(date)} className="p-2 text-right border-r border-white/10 text-amber-200/90 text-[11px] tabular-nums bg-zinc-900/25">
-                          {v > 0 ? formatMoney(v, true) : ''}
+                          {v > 0 ? formatMoney(v) : ''}
                         </td>
                       );
                     })}
                     <td className="sticky right-0 z-20 text-right p-2 border-l border-white/10 text-amber-200 font-bold">
-                      {formatMoney(projectedDraftInvoicesTotal(invoices, safeCurrentDate), true)}
+                      {formatMoney(projectedDraftInvoicesTotal(invoices, safeCurrentDate))}
                     </td>
                   </tr>
                 </tbody>
@@ -1654,7 +1920,7 @@ export function CashFlowGrid({
                           total < 0 ? 'text-red-400' : total > 0 ? 'text-emerald-400' : 'text-zinc-500'
                         )}
                       >
-                        {formatMoney(total, true)}
+                        {formatMoney(total)}
                       </td>
                     );
                   })}
@@ -1682,14 +1948,14 @@ export function CashFlowGrid({
                         )}
                       >
                         <div className="flex flex-col items-end gap-0.5">
-                          <span>{formatMoney(bal, true)}</span>
+                          <span>{formatMoney(bal)}</span>
                           {neg && <AlertTriangle className="w-3.5 h-3.5 text-red-400" />}
                         </div>
                       </td>
                     );
                   })}
                   <td className="sticky right-0 z-20 p-2 text-right text-sm font-bold font-mono border-l border-border bg-sky-50 text-sky-900 dark:border-white/10 dark:bg-[#0f1628] dark:text-sky-100">
-                    {formatMoney(endBalances[endBalances.length - 1] ?? 0, true)}
+                    {formatMoney(endBalances[endBalances.length - 1] ?? 0)}
                   </td>
                 </tr>
               </tbody>
@@ -1851,7 +2117,7 @@ export function CashFlowGrid({
                 (endBalances[endBalances.length - 1] ?? 0) < 0 ? 'text-red-600 dark:text-red-400' : 'text-sky-800 dark:text-sky-200'
               )}
             >
-              {formatMoney(endBalances[endBalances.length - 1] ?? 0, true)}
+              {formatMoney(endBalances[endBalances.length - 1] ?? 0)}
             </p>
             <p className="text-[10px] text-zinc-500">
               Saldo proyectado al fin de mes · {safeFormat(endOfMonth(safeCurrentDate), 'dd/MM/yyyy')}
@@ -1872,21 +2138,21 @@ export function CashFlowGrid({
               <p className="text-[10px] font-bold uppercase text-violet-800 dark:text-violet-300">Resumen del mes</p>
               <div className="flex justify-between">
                 <span>Ingresos (reales/matriz)</span>
-                <span className="text-emerald-400 tabular-nums">{formatMoney(monthSummary.ti, true)}</span>
+                <span className="text-emerald-400 tabular-nums">{formatMoney(monthSummary.ti)}</span>
               </div>
               <div className="flex justify-between">
                 <span>Egresos (matriz)</span>
-                <span className="text-rose-400 tabular-nums">{formatMoney(monthSummary.te, true)}</span>
+                <span className="text-rose-400 tabular-nums">{formatMoney(monthSummary.te)}</span>
               </div>
               {treasuryEnabled && monthSummary.draftTotal > 0 && (
                 <div className="flex justify-between text-amber-900 dark:text-amber-200/90">
                   <span>+ Facturas borrador</span>
-                  <span className="tabular-nums">−{formatMoney(monthSummary.draftTotal, true)}</span>
+                  <span className="tabular-nums">−{formatMoney(monthSummary.draftTotal)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-amber-900 border-t border-border pt-2 dark:text-amber-200 dark:border-white/10">
                 <span>Saldo final (reales)</span>
-                <span className="tabular-nums">{formatMoney(endBalances[endBalances.length - 1] ?? 0, true)}</span>
+                <span className="tabular-nums">{formatMoney(endBalances[endBalances.length - 1] ?? 0)}</span>
               </div>
             </div>
           )}

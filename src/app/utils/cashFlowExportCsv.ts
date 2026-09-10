@@ -39,15 +39,17 @@ export function downloadCashFlowCsv(input: CashFlowCsvExportInput): void {
   for (const section of sections) {
     for (const row of iterConceptRows(config).filter((r) => r.kind === section.kind)) {
       const amounts = columns.map((date) =>
-        resolvedCell(
-          matrixDaily,
-          visibility,
-          row.category,
-          row.subcategory,
-          row.conceptName,
-          date,
-          today
-        ).amount
+        Math.round(
+          resolvedCell(
+            matrixDaily,
+            visibility,
+            row.category,
+            row.subcategory,
+            row.conceptName,
+            date,
+            today
+          ).amount * 100
+        ) / 100
       );
       const total = amounts.reduce((s, v) => s + v, 0);
       aoa.push([

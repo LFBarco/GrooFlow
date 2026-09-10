@@ -101,6 +101,7 @@ import {
   TurnosModule,
   AccidentesModule,
   UniformesModule,
+  MarketingEventosModule,
   RrhhModule,
   CatalogCrudPage,
   ReconciliationModule,
@@ -4382,6 +4383,14 @@ export default function App() {
             </div>
           )}
 
+          {view === 'marketingEventos' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <MarketingEventosModule canEdit={hasPermission('Marketing Eventos')} />
+              </Suspense>
+            </div>
+          )}
+
           {view === 'rrhh' && (
             <div className="animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
@@ -4658,7 +4667,7 @@ export default function App() {
                 sedesCatalog={sedesForUserForms}
                 providers={providers}
                 bankAccounts={bankAccountsForForms}
-                canManageHistoricalImport={isSuperAdmin}
+                canManageHistoricalImport={hasPermission('Transacciones')}
               />
             </DialogContent>
           </Dialog>

@@ -20,7 +20,7 @@ interface TransactionImporterProps {
   sedesCatalog?: string[];
   providers?: Provider[];
   bankAccounts?: BankAccountConfig[];
-  /** Carga histórica masiva: solo Super Administrador */
+  /** Carga histórica masiva: quien tenga el módulo Transacciones asignado en el menú */
   canManageHistoricalImport?: boolean;
 }
 
@@ -330,7 +330,7 @@ export function TransactionImporter({
 
   const processFile = async (file: File) => {
     if (!canManageHistoricalImport) {
-      setError('La carga masiva está habilitada solo para el Super Administrador.');
+      setError('No tienes permiso para importar transacciones. Pide que te asignen el módulo Transacciones en el menú.');
       return;
     }
 
@@ -418,7 +418,7 @@ export function TransactionImporter({
         {!canManageHistoricalImport && (
           <p className="text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
             <Lock className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-            Puedes descargar la plantilla. La importación del archivo completado requiere Super Administrador.
+            Puedes descargar la plantilla. La importación del archivo requiere permiso del módulo Transacciones.
           </p>
         )}
       </div>
@@ -463,7 +463,7 @@ export function TransactionImporter({
       ) : (
         <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-6 text-center text-sm text-slate-500">
           <Lock className="h-8 w-8 mx-auto mb-2 text-slate-400" />
-          Carga histórica restringida al Super Administrador.
+          Sin permiso de Transacciones no se puede subir el archivo. Revisa la asignación de menú de tu perfil.
         </div>
       )}
 

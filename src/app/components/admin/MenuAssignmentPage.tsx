@@ -435,7 +435,8 @@ export function MenuAssignmentPage() {
 
   function toggleMenu(menuId: number, checked: boolean) {
     if (fullAccess || isInherited(menuId)) return;
-    if (!menus.some((m) => m.id === menuId && isAssignable(m))) return;
+    const menuItem = menus.find((m) => m.id === menuId && isAssignable(m));
+    if (!menuItem) return;
     setSelectedMenuIds((prev) => {
       const next = new Set(prev);
       if (checked) next.add(menuId);
@@ -449,6 +450,15 @@ export function MenuAssignmentPage() {
       }
       return next;
     });
+    // Al tildar el módulo: conceder todas las acciones disponibles (usar = ver + operar).
+    if (checked && assignmentMode === 'nivel') {
+      const allActions = new Set(availableActions(menuItem).map((a) => a.clave));
+      setMenuPermissions((p) => {
+        const copy = new Map(p);
+        copy.set(menuId, allActions);
+        return copy;
+      });
+    }
   }
 
   function isActionChecked(menuId: number, action: MenuActionKey) {
@@ -550,14 +560,21 @@ export function MenuAssignmentPage() {
     const visible = [
       ...filteredParentMenus().flatMap((p) => filteredChildMenus(p.id)),
       ...filteredOrphanMenus(),
-    ];
+    ].filter((item) => isAssignable(item) && !isInherited(item.id));
     setSelectedMenuIds((prev) => {
       const next = new Set(prev);
-      for (const item of visible) {
-        if (isAssignable(item)) next.add(item.id);
-      }
+      for (const item of visible) next.add(item.id);
       return next;
     });
+    if (assignmentMode === 'nivel') {
+      setMenuPermissions((prev) => {
+        const next = new Map(prev);
+        for (const item of visible) {
+          next.set(item.id, new Set(availableActions(item).map((a) => a.clave)));
+        }
+        return next;
+      });
+    }
   }
 
   function clearAll() {
@@ -565,6 +582,13 @@ export function MenuAssignmentPage() {
     setSelectedMenuIds((prev) => {
       const next = new Set(prev);
       for (const id of [...next]) {
+        if (!isInherited(id)) next.delete(id);
+      }
+      return next;
+    });
+    setMenuPermissions((prev) => {
+      const next = new Map(prev);
+      for (const id of [...next.keys()]) {
         if (!isInherited(id)) next.delete(id);
       }
       return next;
@@ -600,14 +624,19 @@ export function MenuAssignmentPage() {
       } else {
         const perms = Object.fromEntries(
           menuIds.map((menuId) => {
-            const selected = menuPermissions.get(menuId) ?? new Set<MenuActionKey>();
+            const item = menus.find((m) => m.id === menuId);
+            const available = item ? availableActions(item).map((a) => a.clave) : [];
+            const selected = menuPermissions.get(menuId);
+            // Módulo tildado sin acciones = permiso completo de uso del módulo.
+            const effective =
+              selected && selected.size > 0 ? selected : new Set(available);
             const permissions: MenuActionPermissions = {
               ver: true,
-              agregar: selected.has('agregar'),
-              editar: selected.has('editar'),
-              eliminar: selected.has('eliminar'),
-              exportar: selected.has('exportar'),
-              configurar: selected.has('configurar'),
+              agregar: effective.has('agregar'),
+              editar: effective.has('editar'),
+              eliminar: effective.has('eliminar'),
+              exportar: effective.has('exportar'),
+              configurar: effective.has('configurar'),
             };
             return [menuId, permissions];
           }),
