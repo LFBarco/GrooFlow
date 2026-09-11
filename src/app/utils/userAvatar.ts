@@ -1,9 +1,10 @@
 import type { User } from '../types';
 import { resolveGrooflowMediaUrl } from './userDisplay';
 
-/** Avatar de Gestión; si no hay foto, cadena vacía → el UI muestra iniciales. */
+/** Avatar de Gestión / perfil; si no hay foto, cadena vacía → el UI muestra iniciales. */
 export function getUserAvatarSrc(user: User | null | undefined): string {
-  return resolveGrooflowMediaUrl(user?.avatarUrl);
+  const custom = user?.personalProfile?.customPhotoUrl;
+  return resolveGrooflowMediaUrl(user?.avatarUrl || custom);
 }
 
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {

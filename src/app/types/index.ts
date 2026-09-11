@@ -176,8 +176,17 @@ export interface User {
   lastLogin?: string; // ISO timestamp del último acceso
   tempPassword?: string; // Contraseña temporal asignada por el super admin
   status?: 'active' | 'inactive'; // Estado del usuario
-  /** Foto de perfil (data URL JPEG optimizado). */
+  /** Foto de perfil (data URL JPEG optimizado o URL /uploads). */
   avatarUrl?: string;
+  /** Extras de Mi Perfil (cover, customPhotoUrl, etc.). */
+  personalProfile?: {
+    customPhotoUrl?: string;
+    coverGradient?: string;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    [key: string]: unknown;
+  };
   /** Preferencia de tema (grooflow_perfiles.extra_json / settings:theme). */
   theme?: 'dark' | 'light';
   /** Número de documento (DNI) — app_usuarios.identificacion / Buk. */

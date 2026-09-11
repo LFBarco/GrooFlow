@@ -881,8 +881,15 @@ export default function App() {
     lastSaveErrorAtRef,
   });
 
+  /** Solo super_admin / emails privilegiados. No usar role==='admin' (saltaba menú y KV). */
+  const isSuperAdmin =
+    currentUser.role === 'super_admin' ||
+    !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
+  const canPersistAdminKv = isSuperAdmin;
+
   const { persistSystemSettingsNow, handlePersistSystemSettings } = useSystemSettingsPersistence({
     isDataLoaded,
+    canPersistSystemSettings: canPersistAdminKv,
     systemSettings,
     setSystemSettings,
     hydratedRef: systemSettingsHydratedFromKvRef,
@@ -3070,11 +3077,7 @@ export default function App() {
     return DEFAULT_ROLES.find((r) => r.id === id || r.id.toLowerCase() === low);
   }, [roles, currentUser.role]);
 
-  const isSuperAdmin =
-    currentUser.role === 'super_admin' ||
-    currentUser.role === 'admin' ||
-    !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
-
+  /** Permisos de menú / vistas (isSuperAdmin ya calculado arriba, junto a persistencia KV). */
   const canViewAuditLogs = isAdminAppUser(currentUser) || (APP_BACKEND === 'rest' ? menuPermissions?.['Auditoría'] === true : roleRecordHasModuleAccess(userRole, 'Auditoría'));
 
   const reloadMenuPayload = useCallback(() => {
@@ -3082,8 +3085,44 @@ export default function App() {
     setMenuLoadError('');
     void fetchAuthMenuPayload()
       .then((payload) => {
-        setMenuPermissions(payload.menu_permissions);
-        setMenuSections(payload.menu_sections);
+        const perms = payload.menu_permissions ?? {};
+        setMenuPermissions(perms);
+        // Defensa: no mostrar hojas cuyo modulo_key no tenga ver en el mapa de permisos.
+        const sections = (payload.menu_sections ?? [])
+          .map((sec) => ({
+            ...sec,
+            items: (sec.items ?? []).filter((item) => {
+              const mod = (item.modulo_key || '').trim();
+              if (!mod) return true;
+              return roleHasModuleAccess(perms, mod);
+            }),
+          }))
+          .filter((sec) => sec.items.length > 0);
+        setMenuSections(sections);
+        if (payload.profile) {
+          setCurrentUser((prev) => {
+            if (!prev?.id || String(prev.id) !== String(payload.profile!.id || prev.id)) {
+              return {
+                ...prev,
+                ...payload.profile,
+                id: prev.id || payload.profile!.id,
+                email: prev.email || payload.profile!.email,
+              };
+            }
+            return {
+              ...prev,
+              ...payload.profile,
+              id: prev.id,
+              email: prev.email || payload.profile.email,
+              name: payload.profile.name || prev.name,
+              avatarUrl: payload.profile.avatarUrl || prev.avatarUrl,
+              nivelNombre: payload.profile.nivelNombre || prev.nivelNombre,
+              roleLabel: payload.profile.roleLabel || prev.roleLabel,
+              personalProfile: payload.profile.personalProfile ?? prev.personalProfile,
+              theme: payload.profile.theme ?? prev.theme,
+            };
+          });
+        }
         setMenuLoadError('');
       })
       .catch((e) => {
@@ -3110,12 +3149,12 @@ export default function App() {
 
   const hasPermission = useCallback(
     (moduleName: string): boolean => {
-      if (isSuperAdmin) return true;
-      // REST: solo permisos del menú en BD (/auth/me). Sin mapa de roles local.
+      // REST: el menú asignado en BD manda (también para quienes tenían role admin en perfil).
       if (APP_BACKEND === 'rest') {
         if (!menuPermissions) return false;
         return roleHasModuleAccess(menuPermissions, moduleName);
       }
+      if (isSuperAdmin) return true;
       return roleRecordHasModuleAccess(userRole, moduleName);
     },
     [isSuperAdmin, menuPermissions, userRole]
@@ -3972,6 +4011,7 @@ export default function App() {
                 <DayOpsBoard
                   rrhhSettings={rrhhSettingsForAlerts}
                   turnosSettings={turnosSettingsForAlerts}
+                  canFetchPipelineHealth={hasPermission('Recursos Humanos')}
                   onNavigate={(target) => navigate(viewToPath(target))}
                 />
               </Suspense>

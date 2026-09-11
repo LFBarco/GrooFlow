@@ -2,7 +2,7 @@ import type { Role, User } from '../types';
 
 const GESTION_ORIGIN = 'https://gestionveterinariagroomers.com';
 
-/** Resuelve rutas /uploads/... al origen de Gestión cuando GrooFlow corre en Vercel u otro host. */
+/** Resuelve rutas /uploads/... al origen de Gestión (SPA en /grooflow o Vercel). */
 export function resolveGrooflowMediaUrl(path: string | undefined | null): string {
   const raw = (path ?? '').trim();
   if (!raw) return '';
@@ -10,13 +10,13 @@ export function resolveGrooflowMediaUrl(path: string | undefined | null): string
   const normalized = raw.startsWith('/') ? raw : `/${raw}`;
   if (typeof window === 'undefined') return normalized;
   const host = window.location.hostname;
-  if (
+  const onGestionHost =
+    host === 'gestionveterinariagroomers.com' || host === 'www.gestionveterinariagroomers.com';
+  const needsAbsoluteOrigin =
     host.endsWith('.vercel.app') ||
-    (host !== 'gestionveterinariagroomers.com' &&
-      host !== 'www.gestionveterinariagroomers.com' &&
-      host !== 'localhost' &&
-      host !== '127.0.0.1')
-  ) {
+    (!onGestionHost && host !== 'localhost' && host !== '127.0.0.1') ||
+    (onGestionHost && normalized.startsWith('/uploads/'));
+  if (needsAbsoluteOrigin) {
     return `${GESTION_ORIGIN}${normalized}`;
   }
   return normalized;

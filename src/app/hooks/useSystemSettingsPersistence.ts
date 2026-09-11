@@ -35,6 +35,8 @@ const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 
 export type UseSystemSettingsPersistenceOptions = {
   isDataLoaded: boolean;
+  /** false = solo lectura (no-admin): no autosave ni toast de error por 403. */
+  canPersistSystemSettings?: boolean;
   systemSettings: SystemSettings;
   setSystemSettings: Dispatch<SetStateAction<SystemSettings>>;
   hydratedRef: MutableRefObject<boolean>;
@@ -54,6 +56,7 @@ export function useSystemSettingsPersistence(
 ) {
   const {
     isDataLoaded,
+    canPersistSystemSettings = true,
     systemSettings,
     setSystemSettings,
     hydratedRef,
@@ -76,6 +79,10 @@ export function useSystemSettingsPersistence(
 
   useEffect(() => {
     if (!isDataLoaded || !hydratedRef.current) return;
+    if (!canPersistSystemSettings) {
+      lastSystemPayloadSigRef.current = JSON.stringify(buildSystemKvPayload(systemSettings));
+      return;
+    }
     const systemPayload = buildSystemKvPayload(systemSettings);
     const sig = JSON.stringify(systemPayload);
     if (sig === lastSystemPayloadSigRef.current) return;
@@ -98,7 +105,7 @@ export function useSystemSettingsPersistence(
         );
       }
     });
-  }, [systemSettings, isDataLoaded]);
+  }, [systemSettings, isDataLoaded, canPersistSystemSettings]);
 
   const persistSystemSettingsNow = useCallback(
     async (
@@ -114,6 +121,10 @@ export function useSystemSettingsPersistence(
             );
       const merged = mergeSystemSettings(next);
       setSystemSettings(merged);
+      if (!canPersistSystemSettings) {
+        toast.error('No tienes permiso para modificar la configuración del sistema.');
+        return false;
+      }
       if (!isDataLoaded || !hydratedRef.current) {
         toast.error(
           'Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.'
@@ -182,7 +193,7 @@ export function useSystemSettingsPersistence(
         return ok;
       });
     },
-    [isDataLoaded, setSystemSettings, cloudSync]
+    [isDataLoaded, canPersistSystemSettings, setSystemSettings, cloudSync]
   );
 
   const handlePersistSystemSettings = useCallback(

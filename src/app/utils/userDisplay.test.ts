@@ -20,7 +20,21 @@ describe('userDisplay', () => {
   it('resolves uploads to gestion origin on vercel host', () => {
     const originalWindow = globalThis.window;
     Object.defineProperty(globalThis, 'window', {
-      value: { location: { hostname: 'grooflow.vercel.app' } },
+      value: { location: { hostname: 'grooflow.vercel.app', pathname: '/' } },
+      configurable: true,
+    });
+    expect(resolveGrooflowMediaUrl('/uploads/usuarios/a.jpg')).toBe(
+      'https://gestionveterinariagroomers.com/uploads/usuarios/a.jpg',
+    );
+    Object.defineProperty(globalThis, 'window', { value: originalWindow, configurable: true });
+  });
+
+  it('resolves uploads to absolute gestion origin on gestion /grooflow host', () => {
+    const originalWindow = globalThis.window;
+    Object.defineProperty(globalThis, 'window', {
+      value: {
+        location: { hostname: 'gestionveterinariagroomers.com', pathname: '/grooflow/' },
+      },
       configurable: true,
     });
     expect(resolveGrooflowMediaUrl('/uploads/usuarios/a.jpg')).toBe(

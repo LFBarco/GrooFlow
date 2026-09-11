@@ -84,7 +84,7 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
     } catch {
       return {};
     }
-  }, [storageKey]);
+  }, [storageKey, remote, user]);
 
   // Form states
   const [firstName, setFirstName] = useState(savedExtras.firstName || user.name?.split(' ')[0] || user.name || '');
@@ -98,8 +98,19 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
 
   // Cover & Photo state
   const [selectedCover, setSelectedCover] = useState<string>(savedExtras.coverGradient || COVER_GRADIENTS[0].style);
+  const [customPhotoUrl, setCustomPhotoUrl] = useState<string | null>(
+    savedExtras.customPhotoUrl || user.avatarUrl || null
+  );
+
+  useEffect(() => {
+    const next =
+      (typeof savedExtras.customPhotoUrl === 'string' && savedExtras.customPhotoUrl) ||
+      user.avatarUrl ||
+      null;
+    setCustomPhotoUrl(next);
+    if (user.email) setEmail(user.email);
+  }, [user.id, user.avatarUrl, user.email, savedExtras.customPhotoUrl]);
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(savedExtras.customCoverUrl || null);
-  const [customPhotoUrl, setCustomPhotoUrl] = useState<string | null>(savedExtras.customPhotoUrl || user.avatarUrl || null);
 
   // Security password state
   const [currentPassword, setCurrentPassword] = useState('');

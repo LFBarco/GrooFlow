@@ -563,7 +563,15 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
           deps.transactionsHydratedFromKvRef.current = true;
 
           if (data['maintenance:transactionsClearedAt'] !== TRANSACTION_HISTORY_CLEAR_MARK) {
-            void api.saveKey('maintenance:transactionsClearedAt', TRANSACTION_HISTORY_CLEAR_MARK);
+            const em = (sessionUserRow?.email || sessionEffective?.user?.email || '')
+              .trim()
+              .toLowerCase();
+            const canWriteMaintenance =
+              sessionUserRow?.role === 'super_admin' ||
+              !!(em && getSuperAdminEmails().has(em));
+            if (canWriteMaintenance) {
+              void api.saveKey('maintenance:transactionsClearedAt', TRANSACTION_HISTORY_CLEAR_MARK);
+            }
           }
         }
 

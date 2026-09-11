@@ -136,6 +136,7 @@ export type GrooflowAuthMenuSection = {
 export type GrooflowAuthMenuPayload = {
   menu_permissions: MenuPermissionsMap;
   menu_sections: GrooflowAuthMenuSection[];
+  profile?: User | null;
 };
 
 async function menuFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -316,10 +317,12 @@ export async function fetchAuthMenuPayload(): Promise<GrooflowAuthMenuPayload> {
   const data = await menuFetch<{
     menu_permissions?: MenuPermissionsMap;
     menu_sections?: GrooflowAuthMenuSection[];
+    profile?: User;
   }>('/auth/me');
   return {
     menu_permissions: data.menu_permissions ?? {},
     menu_sections: data.menu_sections ?? [],
+    profile: data.profile ?? null,
   };
 }
 

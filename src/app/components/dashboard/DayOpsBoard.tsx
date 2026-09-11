@@ -30,6 +30,8 @@ type NavigateTarget = 'asistencia' | 'turnos' | 'rrhh' | 'alerts';
 type Props = {
   rrhhSettings?: RrhhSettings | null;
   turnosSettings?: TurnosSettings | null;
+  /** Solo usuarios con menú RRHH / admin deben consultar pipeline-health. */
+  canFetchPipelineHealth?: boolean;
   onNavigate?: (target: NavigateTarget) => void;
 };
 
@@ -84,7 +86,12 @@ function OpsKpi({
  * Fase 7 — Tablero operativo del día (cobertura, críticos, sync, vacantes).
  * Solo lectura FE a partir de KV / contexto local + pipeline health opcional.
  */
-export function DayOpsBoard({ rrhhSettings, turnosSettings, onNavigate }: Props) {
+export function DayOpsBoard({
+  rrhhSettings,
+  turnosSettings,
+  canFetchPipelineHealth = false,
+  onNavigate,
+}: Props) {
   const [opsCtx, setOpsCtx] = useState<AsistenciaOperationalContext | null>(() =>
     loadAsistenciaOperationalContext()
   );
@@ -102,6 +109,11 @@ export function DayOpsBoard({ rrhhSettings, turnosSettings, onNavigate }: Props)
   }, []);
 
   useEffect(() => {
+    if (!canFetchPipelineHealth) {
+      setPipeline(null);
+      setLoadingPipe(false);
+      return;
+    }
     let cancelled = false;
     setLoadingPipe(true);
     void fetchRrhhPipelineHealth()
@@ -117,7 +129,7 @@ export function DayOpsBoard({ rrhhSettings, turnosSettings, onNavigate }: Props)
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canFetchPipelineHealth]);
 
   const rrhh = useMemo(() => mergeRrhhSettings(rrhhSettings), [rrhhSettings]);
   const turnos = useMemo(() => mergeTurnosSettings(turnosSettings), [turnosSettings]);
