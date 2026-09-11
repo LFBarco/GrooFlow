@@ -1,10 +1,40 @@
 import type { User } from '../types';
 import { resolveGrooflowMediaUrl } from './userDisplay';
 
-/** Avatar de Gestión / perfil; si no hay foto, cadena vacía → el UI muestra iniciales. */
+/** True si la URL puede usarse en <img> (no vacía ni data URL truncada). */
+export function isUsableAvatarUrl(path: string | null | undefined): boolean {
+  const raw = (path ?? '').trim();
+  if (!raw) return false;
+  if (raw.startsWith('data:image/')) {
+    const comma = raw.indexOf(',');
+    if (comma < 0) return false;
+    const body = raw.slice(comma + 1).trim();
+    // data: truncada (p. ej. VARCHAR(255)) no decodifica
+    if (body.length < 64) return false;
+    if (raw.length <= 255 && body.length < 180) return false;
+    return true;
+  }
+  if (/^(https?:)?\/\//i.test(raw) || raw.startsWith('blob:')) return true;
+  if (raw.startsWith('/')) return true;
+  return false;
+}
+
+function personalPhoto(user: User | null | undefined): string {
+  const profile = user?.personalProfile;
+  if (!profile || Array.isArray(profile)) return '';
+  const custom = profile.customPhotoUrl;
+  return typeof custom === 'string' ? custom.trim() : '';
+}
+
+/** Avatar de Gestión / perfil; cadena vacía → el UI muestra iniciales (nunca src vacío). */
 export function getUserAvatarSrc(user: User | null | undefined): string {
-  const custom = user?.personalProfile?.customPhotoUrl;
-  return resolveGrooflowMediaUrl(user?.avatarUrl || custom);
+  const candidates = [personalPhoto(user), user?.avatarUrl];
+  for (const candidate of candidates) {
+    if (isUsableAvatarUrl(candidate)) {
+      return resolveGrooflowMediaUrl(candidate);
+    }
+  }
+  return '';
 }
 
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {

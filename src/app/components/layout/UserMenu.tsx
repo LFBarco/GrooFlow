@@ -39,7 +39,7 @@ export function UserMenu({
                 {showDetails ? (
                     <Button variant="ghost" className={`relative w-full h-12 justify-start px-2 rounded-xl border border-transparent transition-all group overflow-hidden ${isDark ? 'hover:border-white/8' : 'hover:border-slate-200'}`} style={{ background: 'transparent' }}>
                         <Avatar className="h-8 w-8 mr-2.5 shrink-0" style={{ ring: '1px solid rgba(34,211,238,0.3)' }}>
-                            <AvatarImage src={getUserAvatarSrc(user)} alt={user.name} />
+                            <AvatarImage src={getUserAvatarSrc(user) || undefined} alt={user.name} />
                             <AvatarFallback className="text-xs font-bold" style={{ background: isDark ? 'rgba(34,211,238,0.15)' : 'rgba(8,145,178,0.12)', color: isDark ? '#22d3ee' : '#0891b2' }}>{user.initials}</AvatarFallback>
                         </Avatar>
                         <div className="flex flex-col items-start text-left flex-1 min-w-0">
@@ -51,7 +51,7 @@ export function UserMenu({
                 ) : (
                     <Button variant="ghost" className="relative h-9 w-9 rounded-full transition-all hover:scale-105 active:scale-95" style={{ border: '1px solid rgba(139,92,246,0.2)' }} data-testid="user-menu-trigger">
                         <Avatar className="h-8 w-8">
-                            <AvatarImage src={getUserAvatarSrc(user)} alt={user.name} />
+                            <AvatarImage src={getUserAvatarSrc(user) || undefined} alt={user.name} />
                             <AvatarFallback className="text-xs font-bold" style={{ background: 'rgba(34,211,238,0.15)', color: '#22d3ee' }}>{user.initials}</AvatarFallback>
                         </Avatar>
                     </Button>

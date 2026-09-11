@@ -24,8 +24,8 @@ import { getGrooflowBackend } from '../../config/backend';
 
 import type { User } from '../../types';
 import { useApp } from '../../context/AppContext';
-import { getUserAvatarSrc } from '../../utils/userAvatar';
-import { getUserRoleLabel } from '../../utils/userDisplay';
+import { getUserAvatarSrc, isUsableAvatarUrl } from '../../utils/userAvatar';
+import { getUserRoleLabel, resolveGrooflowMediaUrl } from '../../utils/userDisplay';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -77,40 +77,69 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
   };
   const storageKey = `grooflow_user_profile_extras_${user.id || 'current'}`;
   const savedExtras = useMemo(() => {
-    if (remote) return (user as User & {personalProfile?: Record<string, any>}).personalProfile ?? {};
+    if (remote) {
+      const profile = user.personalProfile;
+      if (profile && !Array.isArray(profile) && typeof profile === 'object') {
+        return profile as Record<string, unknown>;
+      }
+      return {};
+    }
     try {
       const raw = localStorage.getItem(storageKey);
       return raw ? JSON.parse(raw) : {};
     } catch {
       return {};
     }
-  }, [storageKey, remote, user]);
+  }, [storageKey, remote, user.personalProfile]);
 
   // Form states
-  const [firstName, setFirstName] = useState(savedExtras.firstName || user.name?.split(' ')[0] || user.name || '');
-  const [lastName, setLastName] = useState(savedExtras.lastName || user.name?.split(' ').slice(1).join(' ') || '');
+  const [firstName, setFirstName] = useState(
+    String(savedExtras.firstName || user.name?.split(' ')[0] || user.name || ''),
+  );
+  const [lastName, setLastName] = useState(
+    String(savedExtras.lastName || user.name?.split(' ').slice(1).join(' ') || ''),
+  );
   const [email, setEmail] = useState(user.email || '');
-  const [phone, setPhone] = useState(savedExtras.phone || user.phone || '');
-  const [documentNumber, setDocumentNumber] = useState(savedExtras.documentNumber || user.documentNumber || '');
-  const [gender, setGender] = useState(savedExtras.gender || 'Masculino');
-  const [birthDate, setBirthDate] = useState(savedExtras.birthDate || '');
-  const [userStatus, setUserStatus] = useState(savedExtras.userStatus || 'Disponible');
+  const [phone, setPhone] = useState(String(savedExtras.phone || user.phone || ''));
+  const [documentNumber, setDocumentNumber] = useState(
+    String(savedExtras.documentNumber || user.documentNumber || ''),
+  );
+  const [gender, setGender] = useState(String(savedExtras.gender || 'Masculino'));
+  const [birthDate, setBirthDate] = useState(String(savedExtras.birthDate || ''));
+  const [userStatus, setUserStatus] = useState(String(savedExtras.userStatus || 'Disponible'));
 
   // Cover & Photo state
-  const [selectedCover, setSelectedCover] = useState<string>(savedExtras.coverGradient || COVER_GRADIENTS[0].style);
-  const [customPhotoUrl, setCustomPhotoUrl] = useState<string | null>(
-    savedExtras.customPhotoUrl || user.avatarUrl || null
+  const [selectedCover, setSelectedCover] = useState<string>(
+    String(savedExtras.coverGradient || COVER_GRADIENTS[0].style),
   );
+  const [customPhotoUrl, setCustomPhotoUrl] = useState<string | null>(() => {
+    const fromProfile =
+      typeof savedExtras.customPhotoUrl === 'string' ? savedExtras.customPhotoUrl : '';
+    const candidate = fromProfile || user.avatarUrl || '';
+    return isUsableAvatarUrl(candidate) ? candidate : null;
+  });
+  const [photoBroken, setPhotoBroken] = useState(false);
 
   useEffect(() => {
-    const next =
-      (typeof savedExtras.customPhotoUrl === 'string' && savedExtras.customPhotoUrl) ||
-      user.avatarUrl ||
-      null;
-    setCustomPhotoUrl(next);
+    const fromProfile =
+      typeof savedExtras.customPhotoUrl === 'string' ? savedExtras.customPhotoUrl : '';
+    const candidate = fromProfile || user.avatarUrl || '';
+    setCustomPhotoUrl(isUsableAvatarUrl(candidate) ? candidate : null);
+    setPhotoBroken(false);
     if (user.email) setEmail(user.email);
   }, [user.id, user.avatarUrl, user.email, savedExtras.customPhotoUrl]);
-  const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(savedExtras.customCoverUrl || null);
+
+  const avatarSrc = useMemo(() => {
+    if (photoBroken) return '';
+    const raw = (customPhotoUrl || '').trim();
+    if (isUsableAvatarUrl(raw)) return resolveGrooflowMediaUrl(raw);
+    return getUserAvatarSrc(user);
+  }, [customPhotoUrl, photoBroken, user]);
+
+  const avatarInitials = user.initials || user.name?.slice(0, 2)?.toUpperCase() || '?';
+  const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(
+    typeof savedExtras.customCoverUrl === 'string' ? savedExtras.customCoverUrl : null,
+  );
 
   // Security password state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -256,16 +285,18 @@ export function UserProfilePage({ onUpdateUser, onLogout }: UserProfilePageProps
             <div className="px-5 pb-5 text-center relative">
               <div className="-mt-12 mb-3 inline-block relative">
                 <div
-                  className="w-24 h-24 rounded-2xl overflow-hidden border-4 border-card shadow-md mx-auto bg-muted flex items-center justify-center"
+                  className="w-24 h-24 rounded-2xl overflow-hidden border-4 border-card shadow-md mx-auto bg-muted flex items-center justify-center relative"
                 >
-                  <img
-                    src={customPhotoUrl || getUserAvatarSrc(user)}
-                    alt={user.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = getUserAvatarSrc(user);
-                    }}
-                  />
+                  {avatarSrc ? (
+                    <img
+                      src={avatarSrc}
+                      alt={user.name}
+                      className="w-full h-full object-cover"
+                      onError={() => setPhotoBroken(true)}
+                    />
+                  ) : (
+                    <span className="text-2xl font-bold text-muted-foreground">{avatarInitials}</span>
+                  )}
                 </div>
               </div>
 
