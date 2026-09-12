@@ -39,6 +39,8 @@ export type UseOperationalDomainsPersistenceOptions = {
   cloudSync: CloudSyncTracker;
   kvApplyGenerationRef: MutableRefObject<number>;
   lastSaveErrorAtRef: MutableRefObject<Record<string, number>>;
+  /** Escritura permitida por clave KV (permisos de menú). */
+  canWriteKv: (kvKey: string) => boolean;
   invoices: InvoiceDraft[];
   invoicesRefs: KvDomainRefs<InvoiceDraft[]>;
   invoicesHydratedRef: MutableRefObject<boolean>;
@@ -75,9 +77,12 @@ export type UseOperationalDomainsPersistenceOptions = {
 };
 
 export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersistenceOptions): void {
+  const w = o.canWriteKv;
+
   useKvSqlTableAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.invoicesHydratedRef,
+    canWrite: w('data:invoices'),
     kvKey: 'data:invoices',
     data: o.invoices,
     refs: o.invoicesRefs,
@@ -91,6 +96,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvSqlTableAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.requestsHydratedRef,
+    canWrite: w('data:requests'),
     kvKey: 'data:requests',
     data: o.requests,
     refs: o.requestsRefs,
@@ -104,6 +110,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.chartHydratedRef,
+    canWrite: w('data:chartOfAccounts'),
     kvKey: 'data:chartOfAccounts',
     data: o.chartOfAccounts,
     refs: o.chartRefs,
@@ -116,6 +123,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.productsHydratedRef,
+    canWrite: w('data:products'),
     kvKey: 'data:products',
     data: o.products,
     refs: o.productsRefs,
@@ -128,6 +136,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.feeReceiptsHydratedRef,
+    canWrite: w('data:feeReceipts'),
     kvKey: 'data:feeReceipts',
     data: o.feeReceipts,
     refs: o.feeReceiptsRefs,
@@ -140,6 +149,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.alertHydratedRef,
+    canWrite: w('settings:alertThresholds'),
     kvKey: 'settings:alertThresholds',
     data: o.alertThresholds,
     refs: o.alertRefs,
@@ -152,6 +162,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded && !isRestBackend(),
     hydratedRef: o.themeHydratedRef,
+    canWrite: w('settings:theme'),
     kvKey: 'settings:theme',
     data: o.theme,
     refs: o.themeRefs,
@@ -164,6 +175,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.treasuryHydratedRef,
+    canWrite: w('data:treasuryInvoices'),
     kvKey: 'data:treasuryInvoices',
     data: o.treasuryInvoices,
     refs: o.treasuryInvoicesRefs,
@@ -176,6 +188,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.treasuryHydratedRef,
+    canWrite: w('data:treasuryBankBalance'),
     kvKey: 'data:treasuryBankBalance',
     data: o.treasuryBankBalance,
     refs: o.treasuryBankBalanceRefs,
@@ -189,6 +202,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.treasuryHydratedRef,
+    canWrite: w('data:treasuryPaidHistory'),
     kvKey: 'data:treasuryPaidHistory',
     data: o.treasuryPaidHistory,
     refs: o.treasuryPaidHistoryRefs,
@@ -201,6 +215,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.treasuryHydratedRef,
+    canWrite: w('data:treasurySubscriptions'),
     kvKey: 'data:treasurySubscriptions',
     data: o.treasurySubscriptions,
     refs: o.treasurySubscriptionsRefs,
@@ -213,6 +228,7 @@ export function useOperationalDomainsPersistence(o: UseOperationalDomainsPersist
   useKvAppKeyAutosave({
     isDataLoaded: o.isDataLoaded,
     hydratedRef: o.treasuryHydratedRef,
+    canWrite: w('data:treasuryBankMovements'),
     kvKey: 'data:treasuryBankMovements',
     data: o.treasuryBankMovements,
     refs: o.treasuryBankMovementsRefs,

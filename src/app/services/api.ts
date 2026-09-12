@@ -22,6 +22,7 @@ import { localStorageRepository } from './repository/localStorage';
 import { getSupabaseClientLazy, isSupabaseKvFatalAuthErrorLazy } from './repository/supabaseLazy';
 import { isAccessTokenExpired } from '../utils/accessToken';
 import { broadcastKvUpdate, shouldBroadcastKvUpdate } from '../utils/kvCrossTabSync';
+import { isKvPermissionDeniedError, markKvPermissionDenied } from '../utils/kvWriteAccess';
 import { toast } from 'sonner';
 
 /** Evitar spam por cada autosave si la sesión murió */
@@ -410,6 +411,11 @@ export const api = {
             invokeKvSessionFatalHandler();
           }
           console.warn(`[api] saveKey aborted "${key}" (sin sesión renovable)`, error);
+          return false;
+        }
+        if (isKvPermissionDeniedError(error)) {
+          markKvPermissionDenied(key);
+          console.debug(`[api] saveKey omitted "${key}" (sin permiso de módulo)`);
           return false;
         }
         const last = attempt === maxAttempts;

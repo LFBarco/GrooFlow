@@ -90,6 +90,9 @@ export type UseInventoryPersistenceOptions = {
 
   cloudSync: CloudSyncTracker;
 
+  /** Si false, no hace PUT de inventario (usuario sin módulo). */
+  canPersist?: boolean;
+
 };
 
 
@@ -120,6 +123,8 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
     cloudSync,
 
+    canPersist = true,
+
   } = options;
 
 
@@ -142,7 +147,7 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
   useEffect(() => {
 
-    if (!isDataLoaded || !hydratedRef.current) return;
+    if (!isDataLoaded || !hydratedRef.current || !canPersist) return;
 
     if (skipExplicitAutosaveRef.current) return;
 
@@ -204,13 +209,21 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
     });
 
-  }, [inventoryDataset, isDataLoaded]);
+  }, [inventoryDataset, isDataLoaded, canPersist]);
 
 
 
   const persistInventoryNow = useCallback(
 
     async (next: InventoryDataset, successMessage?: string): Promise<boolean> => {
+
+      if (!canPersist) {
+
+        toast.error('No tienes permiso para modificar el inventario.');
+
+        return false;
+
+      }
 
       if (!isDataLoaded || !hydratedRef.current) {
 
@@ -362,7 +375,7 @@ export function useInventoryPersistence(options: UseInventoryPersistenceOptions)
 
     },
 
-    [isDataLoaded, setInventoryDataset]
+    [isDataLoaded, setInventoryDataset, canPersist]
 
   );
 

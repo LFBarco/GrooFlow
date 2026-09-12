@@ -27,6 +27,8 @@ export type KvSqlTableAutosaveOptions<T> = {
   hydratedRef: MutableRefObject<boolean>;
   /** Condición extra (ej. providersCloudHydrationDone). */
   when?: boolean;
+  /** Si false, no intenta PUT (usuario sin módulo). Default true. */
+  canWrite?: boolean;
   kvKey: string;
   data: T;
   refs: KvDomainRefs<T>;
@@ -44,6 +46,7 @@ export function useKvSqlTableAutosave<T>(options: KvSqlTableAutosaveOptions<T>):
     isDataLoaded,
     hydratedRef,
     when = true,
+    canWrite = true,
     kvKey,
     data,
     refs,
@@ -56,7 +59,7 @@ export function useKvSqlTableAutosave<T>(options: KvSqlTableAutosaveOptions<T>):
   } = options;
 
   useEffect(() => {
-    if (!isDataLoaded || !hydratedRef.current || !when) return;
+    if (!isDataLoaded || !hydratedRef.current || !when || !canWrite) return;
     void autosaveKvDomain({
       kvKey,
       payload: data,
@@ -70,13 +73,15 @@ export function useKvSqlTableAutosave<T>(options: KvSqlTableAutosaveOptions<T>):
         void backupDomainSqlAfterKvSave(sqlEnabled, kvKey, data, saveSql, lastSaveErrorAtRef);
       }
     });
-  }, [data, isDataLoaded, when]);
+  }, [data, isDataLoaded, when, canWrite]);
 }
 
 export type KvAppKeyAutosaveOptions<T> = {
   isDataLoaded: boolean;
   hydratedRef: MutableRefObject<boolean>;
   when?: boolean;
+  /** Si false, no intenta PUT (usuario sin módulo). Default true. */
+  canWrite?: boolean;
   kvKey: string;
   data: T;
   refs: KvDomainRefs<T>;
@@ -94,6 +99,7 @@ export function useKvAppKeyAutosave<T>(options: KvAppKeyAutosaveOptions<T>): voi
     isDataLoaded,
     hydratedRef,
     when = true,
+    canWrite = true,
     kvKey,
     data,
     refs,
@@ -105,7 +111,7 @@ export function useKvAppKeyAutosave<T>(options: KvAppKeyAutosaveOptions<T>): voi
   } = options;
 
   useEffect(() => {
-    if (!isDataLoaded || !hydratedRef.current || !when) return;
+    if (!isDataLoaded || !hydratedRef.current || !when || !canWrite) return;
     if (skipIfUndefined && data === undefined) return;
     void autosaveKvDomain({
       kvKey,
@@ -120,5 +126,5 @@ export function useKvAppKeyAutosave<T>(options: KvAppKeyAutosaveOptions<T>): voi
         void backupAppKvAfterKvSave(PRODUCTION_USE_SQL, kvKey, data, lastSaveErrorAtRef);
       }
     });
-  }, [data, isDataLoaded, when]);
+  }, [data, isDataLoaded, when, canWrite]);
 }

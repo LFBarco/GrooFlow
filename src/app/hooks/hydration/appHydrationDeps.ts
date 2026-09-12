@@ -156,6 +156,8 @@ export type AppHydrationDeps = {
   setTreasuryPaidHistory: Dispatch<SetStateAction<unknown[]>>;
   setTreasurySubscriptions: Dispatch<SetStateAction<unknown[]>>;
   setTreasuryBankMovements: Dispatch<SetStateAction<unknown[]>>;
+  /** Evita PUT de inventario/merge si el usuario no tiene el módulo. */
+  canWriteKv: (kvKey: string) => boolean;
   GUEST_USER: User;
   initialInvoices: InvoiceDraft[];
   initialProducts: Product[];

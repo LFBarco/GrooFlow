@@ -160,6 +160,7 @@ import {
 import { mergePettyCashFilterCatalog } from "./utils/providerCatalog";
 import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
 import { getFirstAllowedViewPath, roleHasModuleAccess, roleRecordHasModuleAccess } from "./utils/rolePermissions";
+import { canWriteKvKey } from "./utils/kvWriteAccess";
 import { GrooFlowSidebarNav } from "./components/layout/GrooFlowSidebarNav";
 import { fetchAuthMenuPayload, type GrooflowAuthMenuSection, type MenuPermissionsMap } from "./services/menuApi";
 import { getSuperAdminEmails } from "./config/superAdmins";
@@ -696,6 +697,28 @@ export default function App() {
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
+  /** Solo super_admin / emails privilegiados. No usar role==='admin' (saltaba menú y KV). */
+  const isSuperAdmin =
+    currentUser.role === 'super_admin' ||
+    !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
+  const canPersistAdminKv = isSuperAdmin;
+
+  const kvPermissionsForWrite = useMemo((): Record<string, boolean> | null => {
+    if (APP_BACKEND === 'rest') return menuPermissions;
+    const id = (currentUser.role || '').trim();
+    const exact = roles.find((r) => r.id === id);
+    if (exact?.permissions) return exact.permissions;
+    const low = id.toLowerCase();
+    const ci = roles.find((r) => r.id.toLowerCase() === low);
+    return ci?.permissions ?? null;
+  }, [menuPermissions, roles, currentUser.role]);
+
+  const canWriteAppKv = useCallback(
+    (kvKey: string) =>
+      canWriteKvKey(kvKey, { isSuperAdmin, permissions: kvPermissionsForWrite }),
+    [isSuperAdmin, kvPermissionsForWrite]
+  );
+
   useAppDataHydration({
     resetAllKvDomainRefs,
     resetKvSaveChains,
@@ -812,6 +835,7 @@ export default function App() {
     setTreasuryPaidHistory,
     setTreasurySubscriptions,
     setTreasuryBankMovements,
+    canWriteKv: canWriteAppKv,
     GUEST_USER,
     initialInvoices: DEMO_INITIAL_INVOICES,
     initialProducts: DEMO_INITIAL_PRODUCTS,
@@ -859,6 +883,7 @@ export default function App() {
 
   useConfigPersistence({
     isDataLoaded,
+    canPersistConfig: canWriteAppKv('settings:config'),
     config,
     hydratedRef: configHydratedFromKvRef,
     chainRef: configKvChainRef,
@@ -880,12 +905,6 @@ export default function App() {
     kvApplyGenerationRef,
     lastSaveErrorAtRef,
   });
-
-  /** Solo super_admin / emails privilegiados. No usar role==='admin' (saltaba menú y KV). */
-  const isSuperAdmin =
-    currentUser.role === 'super_admin' ||
-    !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
-  const canPersistAdminKv = isSuperAdmin;
 
   const { persistSystemSettingsNow, handlePersistSystemSettings } = useSystemSettingsPersistence({
     isDataLoaded,
@@ -985,6 +1004,7 @@ export default function App() {
     cloudSync: cloudSyncTrackerRef.current,
     kvApplyGenerationRef,
     lastSaveErrorAtRef,
+    canWriteKv: canWriteAppKv,
     invoices,
     invoicesRefs: {
       chainRef: invoicesKvChainRef,
@@ -1072,6 +1092,7 @@ export default function App() {
 
   const { persistFleetNow, persistFleetChecklistNow, handleFleetDatasetUpdate } = useFleetPersistence({
     isDataLoaded,
+    canPersist: canWriteAppKv('data:fleet'),
     fleetDataset,
     setFleetDataset,
     hydratedRef: fleetHydratedFromKvRef,
@@ -1087,6 +1108,7 @@ export default function App() {
 
   const { persistInventoryNow, handleInventoryDatasetUpdate } = useInventoryPersistence({
     isDataLoaded,
+    canPersist: canWriteAppKv('data:inventory'),
     inventoryDataset,
     setInventoryDataset,
     hydratedRef: inventoryHydratedFromKvRef,

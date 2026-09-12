@@ -2,6 +2,7 @@ import type { MutableRefObject } from 'react';
 import { toast } from 'sonner';
 import { api } from '../services/api';
 import { enqueueKvSerializedSave, kvSaveSucceeded, type KvSaveResult } from './kvSerializedSave';
+import { takeKvPermissionDenied } from './kvWriteAccess';
 
 /** Tras un POST exitoso, ignorar GET remotos unos segundos (replica / cache / re-hydrate). */
 export const KV_DOMAIN_COOLDOWN_MS = 8000;
@@ -134,14 +135,19 @@ export async function autosaveKvDomain<T>(options: {
   } catch (e) {
     console.warn(`[kvDomain] autosave ${kvKey}`, e);
     result = 'failed';
-  } finally {
-    sync?.onEnd(kvSaveSucceeded(result), kvKey);
   }
   const ok = kvSaveSucceeded(result);
+  /** 403 por módulo no asignado: esperado; no ensucia el indicador ni muestra toast. */
+  const permissionDenied = !ok && takeKvPermissionDenied(kvKey);
+  sync?.onEnd(ok || permissionDenied, kvKey);
 
   if (ok) {
     refs.cooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
     return true;
+  }
+
+  if (permissionDenied) {
+    return false;
   }
 
   const now = Date.now();

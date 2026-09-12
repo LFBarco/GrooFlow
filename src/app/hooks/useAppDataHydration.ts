@@ -698,6 +698,12 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             toast.error(
               'No se pudieron leer los productos desde la nube. Se detuvo el autoguardado para no borrar el catálogo.'
             );
+          } else if (
+            backend === 'rest' &&
+            !Object.prototype.hasOwnProperty.call(data, 'data:products')
+          ) {
+            /** Clave ausente en bootstrap = sin permiso de lectura; no habilitar autosave. */
+            deps.productsHydratedFromKvRef.current = false;
           } else if (allowProductsRemote) {
             const rawPv = data['data:products'];
             const kvUnique = Array.isArray(rawPv)
@@ -1034,6 +1040,16 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             toast.error(
               'No se pudo leer Tesorería desde la nube. Se detuvo el autoguardado para no perder datos.'
             );
+          } else if (
+            backend === 'rest' &&
+            !Object.prototype.hasOwnProperty.call(data, 'data:treasuryInvoices') &&
+            !Object.prototype.hasOwnProperty.call(data, 'data:treasuryBankBalance') &&
+            !Object.prototype.hasOwnProperty.call(data, 'data:treasuryPaidHistory') &&
+            !Object.prototype.hasOwnProperty.call(data, 'data:treasurySubscriptions') &&
+            !Object.prototype.hasOwnProperty.call(data, 'data:treasuryBankMovements')
+          ) {
+            deps.treasuryHydratedFromKvRef.current = false;
+            deps.treasuryBankBalanceLoadedFromKvRef.current = false;
           } else if (allowTreasuryRemote) {
             const sessionUserId = sessionEffective?.user?.id ?? null;
             const rawTi = data['data:treasuryInvoices'];
@@ -1205,9 +1221,16 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
             toast.error(
               'No se pudo leer Inventario de equipos desde la nube. Se detuvo el autoguardado.'
             );
+          } else if (
+            backend === 'rest' &&
+            !INVENTORY_USE_SQL &&
+            !Object.prototype.hasOwnProperty.call(data, 'data:inventory')
+          ) {
+            deps.inventoryHydratedFromKvRef.current = false;
           } else if (allowInventoryRemote || INVENTORY_USE_SQL) {
             let nextInventory: InventoryDataset;
             const sessionUserId = sessionEffective?.user?.id ?? null;
+            const canWriteInventory = deps.canWriteKv('data:inventory');
 
             if (INVENTORY_USE_SQL) {
               const sqlLoad = await loadInventoryFromSql(sqlClient!);
@@ -1229,21 +1252,25 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 } else {
                   nextInventory = kvInv!;
                 }
-                void api.saveKey('data:inventory', nextInventory).then((ok) => {
-                  if (!ok) {
-                    console.warn('[hydration] inventory merge→KV backup failed');
-                  }
-                });
+                if (canWriteInventory) {
+                  void api.saveKey('data:inventory', nextInventory).then((ok) => {
+                    if (!ok) {
+                      console.warn('[hydration] inventory merge→KV backup failed');
+                    }
+                  });
+                }
                 if (sqlLoad.ok && sessionUserId && sqlLoad.data && !sqlLoad.empty) {
                   void migrateInventoryKvToSql(sqlClient!, nextInventory, sessionUserId);
                 }
               } else if (sqlLoad.ok && sqlLoad.data && !sqlLoad.empty) {
                 nextInventory = sqlLoad.data;
-                void api.saveKey('data:inventory', nextInventory).then((ok) => {
-                  if (!ok) {
-                    console.warn('[hydration] inventory SQL→KV backup failed');
-                  }
-                });
+                if (canWriteInventory) {
+                  void api.saveKey('data:inventory', nextInventory).then((ok) => {
+                    if (!ok) {
+                      console.warn('[hydration] inventory SQL→KV backup failed');
+                    }
+                  });
+                }
               } else if (kvInv != null) {
                 nextInventory = kvInv;
               } else if (sqlLoad.ok && sqlLoad.data) {

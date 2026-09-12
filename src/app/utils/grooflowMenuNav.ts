@@ -1,4 +1,5 @@
 import { pathToView, VIEW_TO_PATH, type ViewType } from '../routes';
+import { canonicalizeMenuRoute } from './menuRouteCatalog';
 import { normalizeMenuIcon } from './menuIcon';
 import { resolveMenuIconColorClass } from './menuIconColors';
 
@@ -19,13 +20,7 @@ export type GrooflowNavMenuSection = {
 const KNOWN_MENU_PATHS = new Set(Object.values(VIEW_TO_PATH));
 
 export function menuRouteToView(route: string): ViewType | null {
-  let normalized = (route || '/').trim();
-  if (normalized === '/grooflow') normalized = '/';
-  else if (normalized.startsWith('/grooflow/')) {
-    normalized = normalized.slice('/grooflow'.length) || '/';
-  }
-  if (!normalized.startsWith('/')) normalized = `/${normalized}`;
-  normalized = normalized.replace(/\/$/, '') || '/';
+  const normalized = canonicalizeMenuRoute(route);
   if (!KNOWN_MENU_PATHS.has(normalized)) return null;
   return pathToView(normalized);
 }

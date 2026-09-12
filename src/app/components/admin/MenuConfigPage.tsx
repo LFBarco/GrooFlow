@@ -38,6 +38,11 @@ import {
   type MenuSectionVm,
 } from '../../services/menuApi';
 import { normalizeMenuIcon } from '../../utils/menuIcon';
+import {
+  knownMenuRoutes,
+  prepareMenuLeafRoute,
+  suggestMenuRouteFromLabel,
+} from '../../utils/menuRouteCatalog';
 import { Button } from '../ui/button';
 import {
   AlertDialog,
@@ -292,7 +297,7 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
   }, [loadTree]);
 
   const routeSuggestions = useMemo(() => {
-    const routes = new Set<string>();
+    const routes = new Set<string>(knownMenuRoutes());
     for (const item of allItems) {
       const ruta = (item.ruta ?? '').trim();
       if (ruta && ruta !== '/') routes.add(ruta);
@@ -520,11 +525,31 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
 
   async function saveRow(item: MenuItem, toastLabel = 'Guardado') {
     try {
+      const isLeaf = Number(item.es_padre) !== 1;
+      let ruta = isLeaf ? (item.ruta ?? '').trim() : '';
+      let modulo_key = (item.modulo_key ?? '').trim();
+      if (isLeaf) {
+        const prepared = prepareMenuLeafRoute({
+          ruta,
+          texto: item.texto,
+          modulo_key,
+        });
+        if ('error' in prepared) {
+          toast.error(prepared.error);
+          return;
+        }
+        ruta = prepared.ruta;
+        modulo_key = prepared.modulo_key;
+        item.ruta = ruta;
+        item.modulo_key = modulo_key;
+        setSections((prev) => [...prev]);
+      }
       const updated = await updateMenuItem(item.id, {
         texto: item.texto.trim(),
         icono: item.icono,
         icon_color: item.icon_color ?? '',
-        ruta: Number(item.es_padre) === 1 ? '' : (item.ruta ?? '').trim(),
+        ruta,
+        modulo_key: isLeaf ? modulo_key : undefined,
         es_padre: item.es_padre,
         padre_id: item.padre_id ?? null,
         orden: item.orden,
@@ -536,6 +561,10 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo guardar');
     }
+  }
+
+  function suggestRouteFromName(draft: MenuDraft): MenuDraft {
+    return { ...draft, ruta: suggestMenuRouteFromLabel(draft.texto) };
   }
 
   function openIconPicker(target: IconPickerTarget) {
@@ -565,17 +594,6 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
     }
     setIconPickerOpen(false);
     setIconPickerTarget(null);
-  }
-
-  function suggestRouteFromName(draft: MenuDraft) {
-    const slug = draft.texto
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '_')
-      .replace(/^_+|_+$/g, '');
-    if (slug) draft.ruta = `/${slug}`;
   }
 
   async function saveNewSection() {
@@ -612,9 +630,12 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
       toast.error('Escribe un nombre para la opción');
       return;
     }
-    const ruta = newChildDraft.draft.ruta.trim();
-    if (!ruta || ruta === '/') {
-      toast.error('La ruta es obligatoria (ej. /config/usuarios)');
+    const prepared = prepareMenuLeafRoute({
+      ruta: newChildDraft.draft.ruta.trim(),
+      texto: newChildDraft.draft.texto,
+    });
+    if ('error' in prepared) {
+      toast.error(prepared.error);
       return;
     }
     const block = sections.find((s) => s.section.id === newChildDraft.padreId);
@@ -625,7 +646,8 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
         texto: newChildDraft.draft.texto.trim(),
         icono: newChildDraft.draft.icono,
         icon_color: newChildDraft.draft.icon_color,
-        ruta,
+        ruta: prepared.ruta,
+        modulo_key: prepared.modulo_key,
         es_padre: 0,
         padre_id: newChildDraft.padreId,
         orden,
@@ -723,7 +745,7 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
             setSections([...sections]);
           }}
           onBlur={() => void saveRow(child)}
-          placeholder="/ruta/angular"
+          placeholder="/proveedores o /solicitudes"
         />
         <button
           type="button"
@@ -762,6 +784,8 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Opciones de menú</h1>
           <p className="menu-builder__hint">
             Arrastra o usa las flechas para ordenar. Edita en línea y pulsa el disco para guardar.
+            Rutas canónicas: Compras = <code>/solicitudes</code>, Proveedores = <code>/proveedores</code>.
+            La varita sugiere la ruta correcta desde el nombre.
           </p>
         </div>
         <div className="menu-builder__actions">
@@ -812,7 +836,9 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
                   kind="section"
                   routeSuggestions={routeSuggestions}
                   onOpenIcon={() => openIconPicker({ kind: 'draft', draft: newSectionDraft })}
-                  onSuggestRoute={() => suggestRouteFromName(newSectionDraft)}
+                  onSuggestRoute={() =>
+                    setNewSectionDraft((d) => (d ? suggestRouteFromName(d) : d))
+                  }
                   onChange={setNewSectionDraft}
                 />
                 <div className="menu-builder__draft-actions">
@@ -964,7 +990,11 @@ export function MenuConfigPage({ onMenuChanged }: MenuConfigPageProps) {
                                   kind="child"
                                   routeSuggestions={routeSuggestions}
                                   onOpenIcon={() => openIconPicker({ kind: 'draft', draft: newChildDraft.draft })}
-                                  onSuggestRoute={() => suggestRouteFromName(newChildDraft.draft)}
+                                  onSuggestRoute={() =>
+                                    setNewChildDraft((cur) =>
+                                      cur ? { ...cur, draft: suggestRouteFromName(cur.draft) } : cur,
+                                    )
+                                  }
                                   onChange={(draft) => setNewChildDraft({ ...newChildDraft, draft })}
                                 />
                                 <div className="menu-builder__draft-actions">

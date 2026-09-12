@@ -56,6 +56,8 @@ function extendFleetCooldown(cooldownUntilRef: MutableRefObject<number>) {
 
 export type UseFleetPersistenceOptions = {
   isDataLoaded: boolean;
+  /** Si false, no hace PUT de flota (usuario sin módulo). */
+  canPersist?: boolean;
   fleetDataset: FleetDataset;
   setFleetDataset: Dispatch<SetStateAction<FleetDataset>>;
   hydratedRef: MutableRefObject<boolean>;
@@ -72,6 +74,7 @@ export type UseFleetPersistenceOptions = {
 export function useFleetPersistence(options: UseFleetPersistenceOptions) {
   const {
     isDataLoaded,
+    canPersist = true,
     fleetDataset,
     setFleetDataset,
     hydratedRef,
@@ -132,7 +135,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
   );
 
   useEffect(() => {
-    if (!isDataLoaded || !hydratedRef.current) return;
+    if (!isDataLoaded || !hydratedRef.current || !canPersist) return;
     if (skipExplicitAutosaveRef.current) {
       if (autosaveTimerRef.current) {
         clearTimeout(autosaveTimerRef.current);
@@ -186,7 +189,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
-  }, [fleetDataset, isDataLoaded, backupFleetSql, cloudSync]);
+  }, [fleetDataset, isDataLoaded, canPersist, backupFleetSql, cloudSync]);
 
   const persistFleetChecklistNow = useCallback(
     async (

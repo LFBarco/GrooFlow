@@ -22,7 +22,8 @@ describe('goLive', () => {
   it('desactiva alertas de módulos excluidos', () => {
     const sources = goLiveAlertSources();
     expect(sources.invoices).toBe(false);
-    expect(sources.purchaseRequests).toBe(false);
+    /** Compras ya está en go-live; las alertas de solicitudes deben activarse. */
+    expect(sources.purchaseRequests).toBe(true);
   });
 
   it('oculta capa de tesorería en flujo de caja durante go-live', () => {

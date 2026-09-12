@@ -3,13 +3,12 @@
  * Quitar un módulo de esta lista cuando esté listo para producción.
  *
  * Nota: la tabla/KV `requisitions` no tiene UI propia; las solicitudes de compra
- * usan `data:requests` y el módulo Compras.
+ * usan `data:requests` y el módulo Compras (`/solicitudes`).
+ * Productos y Compras ya están en uso operativo → no se excluyen.
  */
 export const GO_LIVE_EXCLUDED_MODULES = [
   'Tesorería',
   'Honorarios',
-  'Productos',
-  'Compras',
 ] as const;
 
 export type GoLiveExcludedModule = (typeof GO_LIVE_EXCLUDED_MODULES)[number];

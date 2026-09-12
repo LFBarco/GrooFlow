@@ -10,11 +10,14 @@ import {
   kvSaveSucceeded,
   type KvSaveResult,
 } from '../utils/kvSerializedSave';
+import { takeKvPermissionDenied } from '../utils/kvWriteAccess';
 
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 
 export type UseConfigPersistenceOptions = {
   isDataLoaded: boolean;
+  /** Solo quienes tienen módulo Configuración (o super-admin). */
+  canPersistConfig?: boolean;
   config: ConfigStructure;
   hydratedRef: MutableRefObject<boolean>;
   chainRef: MutableRefObject<Promise<KvSaveResult>>;
@@ -28,6 +31,7 @@ export type UseConfigPersistenceOptions = {
 export function useConfigPersistence(options: UseConfigPersistenceOptions): void {
   const {
     isDataLoaded,
+    canPersistConfig = true,
     config,
     hydratedRef,
     chainRef,
@@ -38,7 +42,7 @@ export function useConfigPersistence(options: UseConfigPersistenceOptions): void
   } = options;
 
   useEffect(() => {
-    if (!isDataLoaded || !hydratedRef.current) return;
+    if (!isDataLoaded || !hydratedRef.current || !canPersistConfig) return;
     void enqueueKvSerializedSave(
       chainRef,
       kvApplyGenerationRef,
@@ -57,11 +61,12 @@ export function useConfigPersistence(options: UseConfigPersistenceOptions): void
         return;
       }
       if (result === 'skipped') return;
+      if (takeKvPermissionDenied('settings:config')) return;
       const now = Date.now();
       const last = lastSaveErrorAtRef.current['settings:config'] ?? 0;
       if (now - last < 8000) return;
       lastSaveErrorAtRef.current['settings:config'] = now;
       toast.error('No se pudo guardar Configuración → Operaciones. Reintente en unos segundos.');
     });
-  }, [config, isDataLoaded]);
+  }, [config, isDataLoaded, canPersistConfig]);
 }
