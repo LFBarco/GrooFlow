@@ -53,6 +53,7 @@ import type { ProductCatalogSettings } from '../../types';
 import { defaultProductCatalog } from '../../utils/productCatalog';
 import { round2 } from './productDraftUtils';
 import { ProductSupplierOffersPanel } from './ProductSupplierOffersPanel';
+import { appConfirm } from '../ui/app-dialog';
 
 const PAGE_SIZE = 10;
 
@@ -362,6 +363,19 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
     toast.success(isNew ? 'Producto creado' : 'Cambios guardados');
   };
 
+  const isDirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(baseline),
+    [draft, baseline],
+  );
+
+  const requestClose = useCallback(async () => {
+    if (isDirty) {
+      const ok = await appConfirm('Hay cambios sin guardar. ¿Salir sin guardar?');
+      if (!ok) return;
+    }
+    onClose();
+  }, [isDirty, onClose]);
+
   const kardexRows = ex.kardex ?? [];
   const auditRows = ex.audit ?? [];
   const lotRows = ex.lots ?? [];
@@ -372,10 +386,13 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background" data-testid="product-workspace">
+    <div
+      className="fixed inset-0 z-50 flex flex-col bg-background md:left-[var(--grooflow-sidebar-w,256px)]"
+      data-testid="product-workspace"
+    >
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <Button type="button" variant="outline" size="sm" className="border-white/15" onClick={onClose}>
+          <Button type="button" variant="outline" size="sm" className="border-white/15" onClick={() => void requestClose()}>
             <ArrowLeft className="mr-2 h-4 w-4" />
             Regresar al listado
           </Button>
@@ -716,7 +733,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
               </CardContent>
             </Card>
             <div className="flex justify-between gap-3">
-              <Button type="button" variant="outline" className="border-white/15" onClick={onClose}>Cancelar</Button>
+              <Button type="button" variant="outline" className="border-white/15" onClick={() => void requestClose()}>Cancelar</Button>
               <Button type="button" className="bg-emerald-600" onClick={handleSave}><Plus className="mr-2 h-4 w-4" />Guardar cambios</Button>
             </div>
           </TabsContent>
@@ -834,7 +851,7 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
               </CardContent>
             </Card>
             <div className="flex justify-between">
-              <Button type="button" variant="outline" className="border-white/15" onClick={onClose}>Cancelar</Button>
+              <Button type="button" variant="outline" className="border-white/15" onClick={() => void requestClose()}>Cancelar</Button>
               <Button type="button" className="bg-emerald-600" onClick={handleSave}><Plus className="mr-2 h-4 w-4" />Guardar cambios</Button>
             </div>
           </TabsContent>
@@ -1101,9 +1118,9 @@ export function ProductWorkspace(props: ProductWorkspaceProps) {
           </TabsContent>
         </div>
 
-        <div className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[60] border-t border-border bg-card/95 px-4 py-3 backdrop-blur">
+        <div className="pointer-events-auto fixed bottom-0 left-0 right-0 z-[60] border-t border-border bg-card/95 px-4 py-3 backdrop-blur md:left-[var(--grooflow-sidebar-w,256px)]">
           <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4">
-            <Button type="button" variant="outline" className="border-white/15" onClick={onClose}><ArrowLeft className="mr-2 h-4 w-4" />Regresar al listado</Button>
+            <Button type="button" variant="outline" className="border-white/15" onClick={() => void requestClose()}><ArrowLeft className="mr-2 h-4 w-4" />Regresar al listado</Button>
             <Button type="button" className="bg-emerald-600" onClick={handleSave}><Plus className="mr-2 h-4 w-4" />Guardar cambios</Button>
           </div>
         </div>

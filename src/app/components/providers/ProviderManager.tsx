@@ -1527,15 +1527,18 @@ export function ProviderManager({
     };
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-150 -mt-2" data-testid="providers-module">
+        <div className="space-y-4 animate-in fade-in duration-150" data-testid="providers-module">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3">
                 <div className="space-y-0.5 min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wider text-indigo-600 dark:text-indigo-300">
+                        Logística
+                    </p>
                     <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                         <Users className="w-7 h-7 text-primary shrink-0" />
                         Directorio de Proveedores
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                        Gestiona tus contactos comerciales, condiciones de crédito y cuentas bancarias.
+                        Contactos comerciales, crédito, cuentas bancarias e importación masiva. Usa Configuración para catálogos.
                     </p>
                 </div>
                 <div className="flex gap-2 items-center">
@@ -1967,9 +1970,37 @@ export function ProviderManager({
                             <Alert>
                                 <Info className="h-4 w-4" />
                                 <AlertTitle className="text-sm">Resumen</AlertTitle>
-                                <AlertDescription className="text-sm">
-                                    {importPreview.toCreate.length} nuevo(s) · {importPreview.toUpdate.length}{' '}
-                                    actualización(es). Confirma para guardar en el catálogo.
+                                <AlertDescription className="text-sm space-y-1">
+                                    <p>
+                                        {importPreview.toCreate.length} nuevo(s) · {importPreview.toUpdate.length}{' '}
+                                        actualización(es). Confirma para guardar en el catálogo.
+                                    </p>
+                                    {(importPreview.errors > 0 ||
+                                        importPreview.invalidRuc > 0 ||
+                                        importPreview.invalidCatalog > 0 ||
+                                        importPreview.invalidPettyMotive > 0 ||
+                                        importPreview.invalidExpenseClassification > 0 ||
+                                        importPreview.fileDupes > 0) && (
+                                        <p className="text-amber-700 dark:text-amber-300">
+                                            Omitidos/avisos: {importPreview.errors} error(es)
+                                            {importPreview.invalidRuc > 0
+                                                ? ` · ${importPreview.invalidRuc} documento inválido`
+                                                : ''}
+                                            {importPreview.invalidCatalog > 0
+                                                ? ` · ${importPreview.invalidCatalog} catálogo`
+                                                : ''}
+                                            {importPreview.invalidPettyMotive > 0
+                                                ? ` · ${importPreview.invalidPettyMotive} caja chica`
+                                                : ''}
+                                            {importPreview.invalidExpenseClassification > 0
+                                                ? ` · ${importPreview.invalidExpenseClassification} clasif. flujo`
+                                                : ''}
+                                            {importPreview.fileDupes > 0
+                                                ? ` · ${importPreview.fileDupes} duplicado(s) en archivo`
+                                                : ''}
+                                            . Revisa los toasts anteriores para el detalle.
+                                        </p>
+                                    )}
                                 </AlertDescription>
                             </Alert>
                         </div>

@@ -341,13 +341,31 @@ export function PurchaseRequestManager({
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setAttachment(reader.result as string);
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+        const maxBytes = 5 * 1024 * 1024;
+        const okType =
+            file.type.startsWith('image/') ||
+            file.type === 'application/pdf' ||
+            /\.(pdf|png|jpe?g|webp|gif)$/i.test(file.name);
+        if (!okType) {
+            toast.error('Solo se permiten imágenes o PDF.');
+            e.target.value = '';
+            return;
         }
+        if (file.size > maxBytes) {
+            toast.error('El archivo supera 5 MB. Reduce el tamaño e inténtalo de nuevo.');
+            e.target.value = '';
+            return;
+        }
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setAttachment(reader.result as string);
+        };
+        reader.onerror = () => {
+            toast.error('No se pudo leer el archivo.');
+            e.target.value = '';
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleRemoveAttachment = () => {
@@ -411,6 +429,10 @@ export function PurchaseRequestManager({
     };
 
     const handleAction = () => {
+        if (actionDialog.type === 'reject' && !actionComment.trim()) {
+            toast.error('Indica un motivo de rechazo en el comentario.');
+            return;
+        }
         onRequestStatusChange(
             actionDialog.requestId, 
             actionDialog.type === 'approve' ? 'approved' : 'rejected',
@@ -460,16 +482,19 @@ export function PurchaseRequestManager({
     };
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-150 -mt-2">
+        <div className="space-y-4 animate-in fade-in duration-150">
             {/* Header Section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-border/60 pb-3">
                 <div className="space-y-0.5 min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wider text-orange-600 dark:text-orange-300">
+                        Logística
+                    </p>
                     <h2 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
                         <ShoppingCart className="w-7 h-7 text-orange-500 shrink-0" />
                         Solicitudes de Compra
                     </h2>
                     <p className="text-sm text-muted-foreground">
-                        Gestiona requerimientos y autorizaciones de gastos antes de que ocurran.
+                        Requerimientos y autorizaciones antes del gasto. Adjunta proforma (imagen/PDF, máx. 5 MB).
                     </p>
                 </div>
                 <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -557,6 +582,11 @@ export function PurchaseRequestManager({
                                                 readOnly={useLineDetail}
                                             />
                                         </div>
+                                        {useLineDetail ? (
+                                            <p className="text-xs text-muted-foreground">
+                                                Se calcula sola con la suma de las líneas de producto.
+                                            </p>
+                                        ) : null}
                                     </div>
                                     <div className="space-y-2">
                                         <Label>Condición de Pago</Label>
@@ -1114,7 +1144,11 @@ export function PurchaseRequestManager({
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-2">
-                            <Label>Comentarios / Feedback (Opcional)</Label>
+                            <Label>
+                                {actionDialog.type === 'reject'
+                                    ? 'Motivo del rechazo *'
+                                    : 'Comentarios / Feedback (Opcional)'}
+                            </Label>
                             <Textarea 
                                 placeholder={actionDialog.type === 'approve' ? "Ej: Aprobado, procedan con el pago..." : "Ej: Rechazado por presupuesto excedido..."}
                                 value={actionComment}
@@ -1122,6 +1156,11 @@ export function PurchaseRequestManager({
                                 rows={3}
                                 className="resize-none"
                             />
+                            {actionDialog.type === 'reject' ? (
+                                <p className="text-xs text-muted-foreground">
+                                    El motivo queda registrado para quien solicitó la compra.
+                                </p>
+                            ) : null}
                         </div>
                     </div>
                     <DialogFooter>

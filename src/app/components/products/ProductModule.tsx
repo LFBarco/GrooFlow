@@ -219,6 +219,7 @@ export function ProductModule({
       return;
     }
     const count = selectedIds.size;
+    if (!(await appConfirm(`¿Desactivar ${count} producto(s) seleccionado(s)?`))) return;
     const ok = await onUpdateProducts(
       products.map((product) =>
         selectedIds.has(product.id) ? { ...product, status: 'inactive' as const, updatedAt: new Date() } : product,
@@ -265,8 +266,9 @@ export function ProductModule({
   };
 
   const handleAudit = () => {
-    toast.info('Auditoría de productos', {
-      description: `${lowStockCount} con stock bajo, ${outOfStockCount} sin stock, ${products.length} registrados.`,
+    const inactive = products.filter((p) => p.status === 'inactive').length;
+    toast.info('Resumen de catálogo', {
+      description: `${products.length} productos · ${lowStockCount} stock bajo · ${outOfStockCount} sin stock · ${inactive} inactivos. Abre una ficha y ve a la pestaña Auditoría para el historial por producto.`,
     });
   };
 
@@ -346,9 +348,11 @@ export function ProductModule({
             <div>
               <h2 className="flex items-center gap-2 text-xl font-bold" style={{ color: s.pageTitle }}>
                 <Package className="h-5 w-5" style={{ color: s.chart.projection }} />
-                Productos
+                Catálogo de productos
               </h2>
-              <p className="text-xs" style={{ color: s.pageSubtitle }}>Pulsa una fila para abrir la ficha (pestañas Editar, Precios, etc.).</p>
+              <p className="text-xs" style={{ color: s.pageSubtitle }}>
+                Pulsa una fila para abrir la ficha. Al editar, el formulario respeta el espacio del menú lateral.
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" className="border-border bg-background text-foreground hover:bg-muted" onClick={() => setCatalogOpen(true)}>
@@ -510,13 +514,34 @@ export function ProductModule({
                     <TableCell className="text-center">{statusBadge(product.status)}</TableCell>
                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" className="text-cyan-800 hover:bg-cyan-50 hover:text-cyan-950 dark:text-cyan-300 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-100" onClick={() => openWorkspaceProduct(product)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Abrir ficha"
+                          aria-label="Abrir ficha"
+                          className="text-cyan-800 hover:bg-cyan-50 hover:text-cyan-950 dark:text-cyan-300 dark:hover:bg-cyan-500/10 dark:hover:text-cyan-100"
+                          onClick={() => openWorkspaceProduct(product)}
+                        >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="text-amber-300 hover:bg-amber-500/10 hover:text-amber-100" onClick={() => openWorkspaceProduct(product)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Editar producto"
+                          aria-label="Editar producto"
+                          className="text-amber-300 hover:bg-amber-500/10 hover:text-amber-100"
+                          onClick={() => openWorkspaceProduct(product)}
+                        >
                           <Edit2 className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="text-red-300 hover:bg-red-500/10 hover:text-red-100" onClick={() => handleDeleteProduct(product.id)}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Eliminar"
+                          aria-label="Eliminar"
+                          className="text-red-300 hover:bg-red-500/10 hover:text-red-100"
+                          onClick={() => handleDeleteProduct(product.id)}
+                        >
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -529,7 +554,13 @@ export function ProductModule({
         </div>
 
         <div className="flex flex-col gap-3 border-t border-white/5 p-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-          <span>Pagina: {page} de {totalPages} | Registros del 1 al {filteredProducts.length} | Total {filteredProducts.length}</span>
+          <span>
+            Página {page} de {totalPages} · Registros{' '}
+            {filteredProducts.length === 0
+              ? '0'
+              : `${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, filteredProducts.length)}`}{' '}
+            de {filteredProducts.length}
+          </span>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="border-white/10 bg-transparent" disabled={page === 1} onClick={() => setPage(1)}>Primera</Button>
             <Button variant="outline" size="sm" className="border-white/10 bg-transparent" disabled={page === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Anterior</Button>
