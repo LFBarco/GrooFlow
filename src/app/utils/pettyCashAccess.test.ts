@@ -3,6 +3,7 @@ import type { User } from '../types';
 import type { Role } from '../components/users/types';
 import {
   canAuditPettyCashFunds,
+  canRegisterPettyCashForOthers,
   canViewAllPettyCashFunds,
   filterPettyCashTransactionsForViewer,
 } from './pettyCashAccess';
@@ -49,6 +50,21 @@ describe('pettyCashAccess', () => {
     expect(canViewAllPettyCashFunds(u)).toBe(true);
     expect(canApprovePettyCashMovements(u)).toBe(true);
     expect(canAdminFundTopUp(u)).toBe(true);
+  });
+
+  it('Auditoría y Contabilidad pueden registrar gastos por otros', () => {
+    expect(
+      canRegisterPettyCashForOthers(user({ id: '6', name: 'Aud', role: 'auditoria', nivelNombre: 'Auditoría' }))
+    ).toBe(true);
+    expect(
+      canRegisterPettyCashForOthers(user({ id: '2', name: 'Conta', role: 'groomer', nivelNombre: 'Contabilidad' }))
+    ).toBe(true);
+    expect(
+      canRegisterPettyCashForOthers(user({ id: '1', name: 'Iris', role: 'groomer', nivelNombre: 'Encargado de Sede' }))
+    ).toBe(false);
+    expect(
+      canRegisterPettyCashForOthers(user({ id: '3', name: 'J', role: 'groomer', nivelNombre: 'Jefes' }))
+    ).toBe(false);
   });
 
   it('filtra movimientos por custodio para no elevados', () => {

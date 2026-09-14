@@ -138,6 +138,9 @@ interface PettyCashManagerProps {
     /** Semana contable activa (controlada desde el módulo padre para alinear registro de gastos). */
     selectedWeek?: string;
     onSelectedWeekChange?: (week: string) => void;
+    /** Responsable activo (controlado desde el módulo para registrar gastos a su nombre). */
+    selectedCustodianId?: string;
+    onSelectedCustodianChange?: (custodianId: string) => void;
 }
 
 function pettyCashStatusLabel(status: PettyCashTransaction['status']): string {
@@ -184,6 +187,8 @@ export function PettyCashManager({
     onRevokeFundDelivery,
     selectedWeek: selectedWeekProp,
     onSelectedWeekChange,
+    selectedCustodianId: selectedCustodianIdProp,
+    onSelectedCustodianChange,
 }: PettyCashManagerProps) {
     const commitTransactions = async (next: PettyCashTransaction[], successMsg?: string) => {
         const ok = await Promise.resolve(onUpdateTransactions(next));
@@ -293,7 +298,12 @@ export function PettyCashManager({
         return currentUser.id;
     }, [currentUser, custodians]);
 
-    const [selectedCustodianId, setSelectedCustodianId] = useState<string>(defaultCustodianId);
+    const [selectedCustodianIdInternal, setSelectedCustodianIdInternal] = useState<string>(defaultCustodianId);
+    const selectedCustodianId = selectedCustodianIdProp ?? selectedCustodianIdInternal;
+    const setSelectedCustodianId = (id: string) => {
+        onSelectedCustodianChange?.(id);
+        if (selectedCustodianIdProp === undefined) setSelectedCustodianIdInternal(id);
+    };
 
     // Update selectedCustodianId when default changes (e.g. data loaded)
     useEffect(() => {

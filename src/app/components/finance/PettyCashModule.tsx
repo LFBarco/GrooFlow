@@ -59,6 +59,9 @@ import { formatCurrencyEs, formatNumberEs } from '../../utils/numberFormat';
 import { PettyCashPrintableFormsDialog } from './PettyCashPrintableFormsDialog';
 import { PettyCashJournalPreview } from './PettyCashJournalPreview';
 import { effectivePettyCashFundLimit, userHasPettyCashFund } from '../../utils/pettyCashFund';
+import { canRegisterPettyCashForOthers } from '../../utils/pettyCashAccess';
+import { filterPettyCashCustodianUsersForViewer } from '../../utils/pettyCashCustodianVisibility';
+import { userHasGlobalSedeAccess } from '../../utils/roleAccess';
 import { fetchSunatRucData } from '../../utils/sunatRucApi';
 
 function pettyConfigKey(value: string | undefined) {
@@ -147,6 +150,8 @@ export function PettyCashModule({
     const [printFormsOpen, setPrintFormsOpen] = useState(false);
     /** Semana contable donde el usuario registra gastos (no depende de la fecha del comprobante). */
     const [registrationWeek, setRegistrationWeek] = useState<string>(() => getPettyCashWeekKey(new Date()));
+    /** Responsable cuyo fondo se usa al registrar (Auditoría/Contabilidad pueden elegir otro). */
+    const [selectedCustodianId, setSelectedCustodianId] = useState<string>(currentUser.id);
 
     const [amountBI, setAmountBI] = useState('');
     const [description, setDescription] = useState('');
@@ -199,6 +204,44 @@ export function PettyCashModule({
     }, [sedeOptions, location]);
 
     const showAuditTab = canApprovePettyCashMovements(currentUser, roles);
+    const canRegisterForOthers = useMemo(
+        () => canRegisterPettyCashForOthers(currentUser, roles),
+        [currentUser, roles]
+    );
+    const viewerSeesAllSedes = useMemo(
+        () => userHasGlobalSedeAccess(currentUser),
+        [currentUser]
+    );
+    const expenseCustodians = useMemo(
+        () =>
+            filterPettyCashCustodianUsersForViewer(
+                users,
+                currentUser,
+                sedeOptions,
+                viewerSeesAllSedes,
+                roles
+            ),
+        [users, currentUser, sedeOptions, viewerSeesAllSedes, roles]
+    );
+    const defaultExpenseCustodianId = useMemo(() => {
+        if (!canRegisterForOthers) return currentUser.id;
+        if (expenseCustodians.some((c) => c.id === currentUser.id) && userHasPettyCashFund(currentUser)) {
+            return currentUser.id;
+        }
+        return expenseCustodians[0]?.id ?? currentUser.id;
+    }, [canRegisterForOthers, expenseCustodians, currentUser]);
+
+    useEffect(() => {
+        if (expenseCustodians.length === 0) return;
+        if (!expenseCustodians.some((c) => c.id === selectedCustodianId)) {
+            setSelectedCustodianId(defaultExpenseCustodianId);
+        }
+    }, [expenseCustodians, selectedCustodianId, defaultExpenseCustodianId]);
+
+    const expenseCustodian = useMemo(() => {
+        const id = canRegisterForOthers ? selectedCustodianId : currentUser.id;
+        return users.find((u) => u.id === id) ?? (id === currentUser.id ? currentUser : undefined) ?? currentUser;
+    }, [canRegisterForOthers, selectedCustodianId, users, currentUser]);
     const normalizedDoc = useMemo(
         () => normalizeDocIdentityDigits(docNumber, docType),
         [docNumber, docType]
@@ -345,27 +388,27 @@ export function PettyCashModule({
 
     /** Saldo y cierre según la semana seleccionada en el manager, no la fecha del comprobante. */
     const availablePettyBalance = useMemo(() => {
-        const limit = effectivePettyCashFundLimit(currentUser, settings.totalFundLimit);
+        const limit = effectivePettyCashFundLimit(expenseCustodian, settings.totalFundLimit);
         if (limit <= 0) {
             return { closed: false as const, balance: 0, weekLabel: '' as string, deliveryPending: false, carryOnly: 0 };
         }
         const w = registrationWeek;
         const fundDeliveries = settings.fundDeliveries ?? [];
-        const openingCarry = getUserOpeningCarryState(currentUser);
+        const openingCarry = getUserOpeningCarryState(expenseCustodian);
         const opening = getWeekOpeningBreakdown(
-            currentUser.id,
+            expenseCustodian.id,
             w,
             settings.weekClosures,
             fundDeliveries,
             limit,
             openingCarry
         );
-        if (isPettyCashWeekClosedForCustodian(currentUser.id, w, settings.weekClosures)) {
+        if (isPettyCashWeekClosedForCustodian(expenseCustodian.id, w, settings.weekClosures)) {
             return { closed: true as const, balance: 0, weekLabel: w, deliveryPending: false, carryOnly: 0 };
         }
         const balance = getPettyCashWeekBalance(
             transactions,
-            currentUser.id,
+            expenseCustodian.id,
             w,
             settings.weekClosures,
             limit,
@@ -384,11 +427,11 @@ export function PettyCashModule({
         settings.weekClosures,
         settings.fundDeliveries,
         settings.totalFundLimit,
-        currentUser.id,
-        currentUser.pettyCashLimit,
-        currentUser.pettyCashFundEnabled,
-        currentUser.pettyCashOpeningCarrySuggested,
-        currentUser.pettyCashOpeningCarryConsumedAt,
+        expenseCustodian.id,
+        expenseCustodian.pettyCashLimit,
+        expenseCustodian.pettyCashFundEnabled,
+        expenseCustodian.pettyCashOpeningCarrySuggested,
+        expenseCustodian.pettyCashOpeningCarryConsumedAt,
         registrationWeek,
     ]);
 
@@ -469,8 +512,12 @@ export function PettyCashModule({
             return;
         }
 
-        if (!userHasPettyCashFund(currentUser)) {
-            toast.error('Su usuario no tiene fondo fijo asignado.');
+        if (!userHasPettyCashFund(expenseCustodian)) {
+            toast.error(
+                canRegisterForOthers
+                    ? 'El responsable seleccionado no tiene fondo fijo asignado.'
+                    : 'Su usuario no tiene fondo fijo asignado.'
+            );
             return;
         }
 
@@ -528,15 +575,15 @@ export function PettyCashModule({
         if (Number.isNaN(docDateParsed.getTime())) docDateParsed = new Date();
 
         const weekStr = registrationWeek;
-        const custodianId = currentUser.id;
-        const fundLimit = effectivePettyCashFundLimit(currentUser, settings.totalFundLimit);
+        const custodianId = expenseCustodian.id;
+        const fundLimit = effectivePettyCashFundLimit(expenseCustodian, settings.totalFundLimit);
         if (fundLimit <= 0) {
-            toast.error('No hay fondo disponible para este usuario.');
+            toast.error('No hay fondo disponible para este responsable.');
             return;
         }
 
         if (isPettyCashWeekClosedForCustodian(custodianId, weekStr, settings.weekClosures)) {
-            toast.error('Esta semana ya está cerrada para su caja; no puede registrar más gastos en ella.');
+            toast.error('Esta semana ya está cerrada para esta caja; no puede registrar más gastos en ella.');
             return;
         }
 
@@ -546,7 +593,8 @@ export function PettyCashModule({
             weekStr,
             settings.weekClosures,
             fundLimit,
-            settings.fundDeliveries
+            settings.fundDeliveries,
+            getUserOpeningCarryState(expenseCustodian)
         );
         if (balanceBefore - totalVal < -0.009) {
             const pendingMsg = availablePettyBalance.deliveryPending
@@ -566,6 +614,10 @@ export function PettyCashModule({
         }
 
         const weekForEntry = registrationWeek;
+        const registeredForOther =
+            canRegisterForOthers && custodianId !== currentUser.id
+                ? ` [Registrado por ${currentUser.name}]`
+                : '';
 
         const newExpense: PettyCashTransaction = {
             id: `pc-${Date.now()}`,
@@ -577,8 +629,8 @@ export function PettyCashModule({
             igvRate: usesIgvRow ? (rate as 0.1 | 0.18) : undefined,
             amountExempt: usesIgvRow ? exVal : undefined,
             description:
-                description.trim() ||
-                `${category} — ${providerName.trim() || 'Proveedor'}`,
+                (description.trim() ||
+                    `${category} — ${providerName.trim() || 'Proveedor'}`) + registeredForOther,
             category: commercialCategories.includes(category) ? category : commercialCategories[0]!,
             ...(suggestedAccountingAccount ? { accountingAccount: suggestedAccountingAccount } : {}),
             requester: currentUser.name,
@@ -593,7 +645,7 @@ export function PettyCashModule({
             isExtraExpense: isExtraExpense,
             status: 'pending_audit',
             weekNumber: weekForEntry,
-            custodianId: currentUser.id,
+            custodianId,
             type: 'expense',
             location: sedeOptions.includes(location) ? location : sedeOptions[0],
         };
@@ -604,8 +656,12 @@ export function PettyCashModule({
                 return;
             }
             resetExpenseForm();
+            const forWhom =
+                canRegisterForOthers && custodianId !== currentUser.id
+                    ? ` · Fondo: ${expenseCustodian.name}`
+                    : '';
             toast.success('Gasto guardado correctamente', {
-                description: `Semana ${weekForEntry} · Total: ${formatCurrencyEs(totalVal)} (${classification}). Puede registrar otro gasto.`,
+                description: `Semana ${weekForEntry}${forWhom} · Total: ${formatCurrencyEs(totalVal)} (${classification}). Puede registrar otro gasto.`,
             });
         });
     };
@@ -708,10 +764,30 @@ export function PettyCashModule({
                             Registrar Gasto
                         </DialogTitle>
                         <DialogDescription className="text-sm text-muted-foreground">
-                            Salida de dinero de la caja de <strong className="text-foreground font-medium">{currentUser.name}</strong>.
+                            Salida de dinero de la caja de{' '}
+                            <strong className="text-foreground font-medium">{expenseCustodian.name}</strong>.
                             Tras cada registro puede seguir cargando comprobantes; para salir use la X.
                         </DialogDescription>
                     </DialogHeader>
+
+                    {canRegisterForOthers && expenseCustodians.length > 0 ? (
+                        <div className="space-y-1.5">
+                            <Label className="text-xs font-medium">Responsable / fondo</Label>
+                            <Select value={selectedCustodianId} onValueChange={setSelectedCustodianId}>
+                                <SelectTrigger data-testid="petty-cash-expense-custodian">
+                                    <SelectValue placeholder="Seleccionar responsable" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {expenseCustodians.map((c) => (
+                                        <SelectItem key={c.id} value={c.id}>
+                                            {c.name}
+                                            {c.id === currentUser.id ? ' (usted)' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    ) : null}
 
                     {availablePettyBalance.closed ? (
                         <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200">
@@ -1283,6 +1359,8 @@ export function PettyCashModule({
                         onRevokeFundDelivery={onRevokeFundDelivery}
                         selectedWeek={registrationWeek}
                         onSelectedWeekChange={setRegistrationWeek}
+                        selectedCustodianId={selectedCustodianId}
+                        onSelectedCustodianChange={setSelectedCustodianId}
                     />
                 )}
 

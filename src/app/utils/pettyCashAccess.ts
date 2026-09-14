@@ -109,6 +109,26 @@ export function canAuditPettyCashFunds(
   return false;
 }
 
+/**
+ * Puede registrar gastos a nombre de otros responsables (su fondo).
+ * Auditoría y Contabilidad (+ admin).
+ */
+export function canRegisterPettyCashForOthers(
+  user: User | null | undefined,
+  roles?: Role[] | null
+): boolean {
+  if (!user) return false;
+  if (canAuditPettyCashFunds(user, roles)) return true;
+
+  const blob = pettyCashIdentityBlob(user, roles);
+  if (matchesAnyHint(blob, ['contabilidad', 'contador'])) return true;
+
+  const roleId = String(user.role || '').trim().toLowerCase();
+  if (roleId === 'contabilidad' || roleId === 'accounting') return true;
+
+  return false;
+}
+
 /** Filtra movimientos visibles según custodio (responsable) o sedes (elevado). */
 export function filterPettyCashTransactionsForViewer<
   T extends { custodianId?: string; userId?: string; location?: string },
