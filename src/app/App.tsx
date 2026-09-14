@@ -167,6 +167,10 @@ import { getSuperAdminEmails } from "./config/superAdmins";
 import { goLiveAlertSources } from "./config/goLive";
 import { isUserSessionBlocked } from "./utils/userSessionGuard";
 import { weekKeyMatches } from "./utils/pettyCashWeekKey";
+import {
+  canViewAllPettyCashFunds,
+  filterPettyCashTransactionsForViewer,
+} from "./utils/pettyCashAccess";
 import type { FleetDataset } from "./types/fleet";
 import type { InventoryDataset } from "./types/inventory";
 import { mergeFleetRemoteIntoLocal } from "./utils/fleetMerge";
@@ -3316,14 +3320,11 @@ export default function App() {
     },
     [seesAllSedesInCatalog, catalogSedes, visibleSedes]
   );
-  /** Vista consolidada caja chica: requiere permiso del módulo + criterio de sede/rol. */
+  /** Vista consolidada caja chica: requiere permiso del módulo + perfiles que ven todos los fondos. */
   const canAccessPettyCashConsolidated =
     hasPermission('Caja Chica') &&
     (currentUser.allSedes === true ||
-      currentUser.role === 'super_admin' ||
-      currentUser.role === 'admin' ||
-      currentUser.role === 'auditoria' ||
-      currentUser.role === 'manager' ||
+      canViewAllPettyCashFunds(currentUser, roles) ||
       !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase())));
 
   const { categories: commercialCategories, areas: commercialAreas } = useMemo(
@@ -3553,22 +3554,24 @@ export default function App() {
     );
   };
   const filteredPettyCashBySede = useMemo(
-    () => pettyCashTransactions.filter((tx) => !tx.location || canSeeSede(tx.location)),
-    [pettyCashTransactions, canSeeSede]
+    () =>
+      filterPettyCashTransactionsForViewer(pettyCashTransactions, currentUser, {
+        roles,
+        canSeeSede,
+      }),
+    [pettyCashTransactions, currentUser, roles, canSeeSede]
   );
 
   const handleUpdatePettyCashTransactions = useCallback(
     async (nextVisibleTransactions: PettyCashTransaction[]): Promise<boolean> => {
-      const prevVisibleIds = new Set(
-        pettyCashTransactions
-          .filter((tx) => !tx.location || canSeeSede(tx.location))
-          .map((tx) => tx.id)
-      );
+      const prevVisible = filterPettyCashTransactionsForViewer(pettyCashTransactions, currentUser, {
+        roles,
+        canSeeSede,
+      });
+      const prevVisibleIds = new Set(prevVisible.map((tx) => tx.id));
       const newMovements = nextVisibleTransactions.filter((tx) => !prevVisibleIds.has(tx.id));
 
-      const hiddenTransactions = pettyCashTransactions.filter(
-        (tx) => tx.location && !canSeeSede(tx.location)
-      );
+      const hiddenTransactions = pettyCashTransactions.filter((tx) => !prevVisibleIds.has(tx.id));
       const merged = [...nextVisibleTransactions, ...hiddenTransactions];
 
       const ok = await persistPettyCashNow(merged);
@@ -3581,7 +3584,7 @@ export default function App() {
       }
       return ok;
     },
-    [canSeeSede, pettyCashTransactions, persistPettyCashNow]
+    [canSeeSede, currentUser, pettyCashTransactions, persistPettyCashNow, roles]
   );
 
   const filteredRequestsBySede = useMemo(
@@ -4661,7 +4664,7 @@ export default function App() {
                   }
                   chartOfAccounts={chartOfAccounts}
                   accountingLinks={systemSettings.accounting ?? {}}
-                  journalPettyCashTransactions={pettyCashTransactions}
+                  journalPettyCashTransactions={filteredPettyCashBySede}
                 />
              </div>
           )}

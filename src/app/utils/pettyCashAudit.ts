@@ -1,6 +1,6 @@
 import type { PettyCashTransaction, User } from '../types';
 import type { Role } from '../components/users/types';
-import { getSuperAdminEmails } from '../config/superAdmins';
+import { canAuditPettyCashFunds } from './pettyCashAccess';
 
 /** Categoría reservada para ingresos de refuerzo de fondo (administración). */
 export const ADMIN_FUND_TOPUP_CATEGORY = 'Asignación extraordinaria de fondo';
@@ -33,42 +33,23 @@ export function getPettyCashRowType(t: PettyCashTransaction): 'income' | 'expens
 
 /**
  * Puede aprobar o rechazar movimientos de caja chica en auditoría.
- * Incluye super_admin por id de rol, correos privilegiados en config y roles
- * personalizados con permisos de Auditoría + Caja Chica (mismo criterio que el módulo global).
+ * Auditoría (+ admin). Contabilidad/Jefes/Gerencia ven fondos pero no aprueban.
  */
 export function canApprovePettyCashMovements(user: User | null | undefined, roles?: Role[] | null): boolean {
-    if (!user?.role) return false;
-    const roleId = String(user.role).trim();
-    if (['auditoria', 'admin', 'super_admin'].includes(roleId)) return true;
-
-    const email = (user.email || '').trim().toLowerCase();
-    if (email && getSuperAdminEmails().has(email)) return true;
-
-    const norm = roleId.toLowerCase().replace(/\s+/g, '_');
-    if (norm === 'super_admin' || norm === 'superadministrador' || norm === 'superadmin') return true;
-
-    if (roles?.length) {
-        const row = roles.find((r) => r.id === roleId);
-        const p = row?.permissions;
-        if (p?.['Auditoría'] === true && p?.['Caja Chica'] === true) return true;
-        /** Rol tipo “acceso total” (todos los módulos en true). */
-        if (row && p && Object.keys(p).length > 0 && Object.values(p).every((v) => v === true)) return true;
-    }
-
-    return false;
+    return canAuditPettyCashFunds(user, roles);
 }
 
-/** Puede registrar refuerzos excepcionales de fondo a un responsable. */
-export function canAdminFundTopUp(user: User): boolean {
-    return ['admin', 'super_admin', 'manager'].includes(user.role);
+/** Puede registrar refuerzos de fondo (misma regla que aprobación / dotación). */
+export function canAdminFundTopUp(user: User, roles?: Role[] | null): boolean {
+    return canAuditPettyCashFunds(user, roles);
 }
 
-/** Puede confirmar entrega de dotación semanal (auditoría / jefe de auditoría). */
+/** Puede confirmar entrega de dotación semanal (auditoría). */
 export function canConfirmPettyCashFundDelivery(
     user: User | null | undefined,
     roles?: Role[] | null
 ): boolean {
-    return canApprovePettyCashMovements(user, roles);
+    return canAuditPettyCashFunds(user, roles);
 }
 
 export function isFundDeliveryIncome(t: PettyCashTransaction): boolean {

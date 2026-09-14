@@ -63,6 +63,7 @@ import {
     canSelectMultiplePettyCashCustodians,
     filterPettyCashCustodianUsersForViewer,
 } from '../../utils/pettyCashCustodianVisibility';
+import { canViewAllPettyCashFunds } from '../../utils/pettyCashAccess';
 import { effectivePettyCashFundLimit, userHasPettyCashFund } from '../../utils/pettyCashFund';
 import { getPettyCashWeekKey, parsePettyCashWeekKey, weekKeyMatches } from '../../utils/pettyCashWeekKey';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -460,7 +461,7 @@ export function PettyCashManager({
         !!onClosePettyCashWeek &&
         !!selectedCustodianId &&
         (selectedCustodianId === currentUser.id ||
-            ['admin', 'super_admin', 'manager'].includes(currentUser.role));
+            canViewAllPettyCashFunds(currentUser, roles));
 
     const fundDenominator = Math.max(openingFundForWeek, 1);
 
@@ -893,7 +894,7 @@ export function PettyCashManager({
         const msg =
             `¿Registrar pre-cierre de la semana ${selectedWeek}?\n\n` +
             `Esto marca que presentó la rendición para revisión. ` +
-            `Podrá seguir registrando gastos si el saldo lo permite; el cierre definitivo lo hará contabilidad tras aprobar el 100% de los movimientos.`;
+            `Podrá seguir registrando gastos si el saldo lo permite; el cierre definitivo lo hará auditoría tras aprobar el 100% de los movimientos.`;
         if (!await appConfirm(msg)) return;
         const pre: PettyCashWeekPreClosure = {
             id: `pcp-${Date.now()}`,
@@ -909,7 +910,7 @@ export function PettyCashManager({
     };
 
     const handleSaveAdminTopup = async () => {
-        if (!canAdminFundTopUp(currentUser)) {
+        if (!canAdminFundTopUp(currentUser, roles)) {
             toast.error('Sin permiso para asignar refuerzo de fondo.');
             return;
         }
@@ -1525,7 +1526,7 @@ ${signatures}
                                     ) : null}
                                     {weeklyAdminTopupIncome > 0 ? (
                                         <div className="flex justify-between text-amber-700 dark:text-amber-400 pl-2">
-                                            <span>· Refuerzos admin.</span>
+                                            <span>· Refuerzos auditoría</span>
                                             <span className="tabular-nums">{formatCurrencyEs(weeklyAdminTopupIncome)}</span>
                                         </div>
                                     ) : null}
@@ -1559,7 +1560,7 @@ ${signatures}
                             Confirmar dotación semanal
                         </Button>
                     ) : null}
-                    {canAdminFundTopUp(currentUser) && selectedCustodianId ? (
+                    {canAdminFundTopUp(currentUser, roles) && selectedCustodianId ? (
                         <Button
                             size="lg"
                             className="w-full"
@@ -1573,7 +1574,7 @@ ${signatures}
                             title="Suma efectivo al saldo de la semana seleccionada (casos excepcionales)"
                         >
                             <Banknote className="w-4 h-4 mr-2 text-amber-600" />
-                            Refuerzo de fondo (admin)
+                            Refuerzo de fondo (auditoría)
                         </Button>
                     ) : null}
                     <Button size="lg" className="w-full" variant="outline" onClick={handlePrintRendition}>
