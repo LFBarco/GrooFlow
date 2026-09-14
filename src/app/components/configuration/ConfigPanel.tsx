@@ -42,6 +42,7 @@ import {
 } from '../../utils/bankAccounts';
 import { MapPin, Globe, Building2 as Building2Icon } from 'lucide-react';
 import { DEFAULT_ROLES, type Role } from '../users/types';
+import { getUserRoleLabel } from '../../utils/userDisplay';
 import { appConfirm } from '../ui/app-dialog';
 import {
   Dialog,
@@ -115,13 +116,30 @@ export function ConfigPanel({
     );
   }, [currentUser?.email, currentUser?.role]);
   const catalogEntries = getSedesCatalogEntries(systemSettings);
-  const roleNameById = new Map<string, string>(
-    [...DEFAULT_ROLES, ...roles].map((r) => [r.id, r.name]),
-  );
-  const getRoleLabel = (roleId: string) =>
-    roleNameById.get(roleId) || roleId.replace(/_/g, ' ');
+  /** Nivel de Gestión (app_niveles), no el rol RBAC interno de GrooFlow. */
+  const getNivelLabel = (user: User) => getUserRoleLabel(user, [...DEFAULT_ROLES, ...roles]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(Object.keys(config)[0]);
   const [categoryListFilter, setCategoryListFilter] = useState<'all' | TransactionType>('all');
+  const [fundNivelFilter, setFundNivelFilter] = useState<string>('all');
+
+  const fundAssignableUsers = useMemo(
+    () => users.filter((u) => u.role !== 'super_admin'),
+    [users]
+  );
+
+  const fundNivelOptions = useMemo(() => {
+    const labels = new Set<string>();
+    for (const u of fundAssignableUsers) {
+      const label = getNivelLabel(u).trim();
+      if (label) labels.add(label);
+    }
+    return Array.from(labels).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [fundAssignableUsers, roles]);
+
+  const fundUsersFiltered = useMemo(() => {
+    if (fundNivelFilter === 'all') return fundAssignableUsers;
+    return fundAssignableUsers.filter((u) => getNivelLabel(u) === fundNivelFilter);
+  }, [fundAssignableUsers, fundNivelFilter, roles]);
 
   const visibleCategories = useMemo(
     () =>
@@ -1601,12 +1619,33 @@ export function ConfigPanel({
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="flex flex-wrap items-center gap-3 mb-3">
+                    <Label htmlFor="fund-nivel-filter" className="text-sm text-muted-foreground shrink-0">
+                      Filtrar por nivel
+                    </Label>
+                    <Select value={fundNivelFilter} onValueChange={setFundNivelFilter}>
+                      <SelectTrigger id="fund-nivel-filter" className="w-[240px] bg-background">
+                        <SelectValue placeholder="Todos los niveles" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos los niveles</SelectItem>
+                        {fundNivelOptions.map((nivel) => (
+                          <SelectItem key={nivel} value={nivel}>
+                            {nivel}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">
+                      {fundUsersFiltered.length} de {fundAssignableUsers.length} usuarios
+                    </span>
+                  </div>
                   <div className="border rounded-md overflow-hidden">
                     <Table>
                       <TableHeader className="bg-muted/50">
                         <TableRow>
                           <TableHead>Usuario</TableHead>
-                          <TableHead>Rol</TableHead>
+                          <TableHead>Nivel</TableHead>
                           <TableHead className="text-center">Aplica Fondo Fijo</TableHead>
                           <TableHead className="text-right">Fondo fijo (S/)</TableHead>
                           <TableHead className="text-right">Arrastre apertura (S/)</TableHead>
@@ -1616,7 +1655,17 @@ export function ConfigPanel({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {users.filter(u => u.role !== 'super_admin').map((user) => (
+                        {fundUsersFiltered.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={isSystemAdmin && onResetCustodianPettyCash ? 6 : 5}
+                              className="text-center text-sm text-muted-foreground py-8"
+                            >
+                              No hay usuarios con ese nivel.
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          fundUsersFiltered.map((user) => (
                           <TableRow key={user.id}>
                             <TableCell className="font-medium">
                               <div className="flex flex-col">
@@ -1625,7 +1674,7 @@ export function ConfigPanel({
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline">{getRoleLabel(user.role)}</Badge>
+                              <Badge variant="outline">{getNivelLabel(user)}</Badge>
                             </TableCell>
                             <TableCell className="text-center">
                               <div className="flex justify-center">
@@ -1704,7 +1753,8 @@ export function ConfigPanel({
                               </TableCell>
                             ) : null}
                           </TableRow>
-                        ))}
+                        ))
+                        )}
                       </TableBody>
                     </Table>
                   </div>
@@ -1853,7 +1903,7 @@ export function ConfigPanel({
                       <TableHeader className="bg-muted/50">
                         <TableRow>
                           <TableHead>Usuario</TableHead>
-                          <TableHead>Rol</TableHead>
+                          <TableHead>Nivel</TableHead>
                           <TableHead>Acceso</TableHead>
                           <TableHead>Sedes Asignadas</TableHead>
                         </TableRow>
@@ -1873,7 +1923,7 @@ export function ConfigPanel({
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="text-xs">{getRoleLabel(user.role)}</Badge>
+                              <Badge variant="outline" className="text-xs">{getNivelLabel(user)}</Badge>
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-2">
