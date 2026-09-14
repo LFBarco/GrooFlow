@@ -6,6 +6,7 @@ import {
   canRegisterPettyCashForOthers,
   canViewAllPettyCashFunds,
   filterPettyCashTransactionsForViewer,
+  isContabilidadPettyCashProfile,
 } from './pettyCashAccess';
 import { canAdminFundTopUp, canApprovePettyCashMovements } from './pettyCashAudit';
 import { canSelectMultiplePettyCashCustodians } from './pettyCashCustodianVisibility';
@@ -33,6 +34,16 @@ describe('pettyCashAccess', () => {
     expect(canSelectMultiplePettyCashCustodians(u)).toBe(true);
     expect(canApprovePettyCashMovements(u)).toBe(false);
     expect(canAdminFundTopUp(u)).toBe(false);
+  });
+
+  it('Contabilidad por menú Gestión (sin nivelNombre) puede registrar por otros', () => {
+    const u = user({ id: 'c1', name: 'Carhim', role: 'groomer' });
+    const menu = { Contabilidad: true, 'Caja Chica': true };
+    expect(isContabilidadPettyCashProfile(u, [], menu)).toBe(true);
+    expect(canViewAllPettyCashFunds(u, [], menu)).toBe(true);
+    expect(canRegisterPettyCashForOthers(u, [], menu)).toBe(true);
+    expect(canApprovePettyCashMovements(u, [], menu)).toBe(false);
+    expect(isContabilidadPettyCashProfile(u, [], { Contabilidad: true })).toBe(true);
   });
 
   it('Jefes y Gerencia ven fondos', () => {

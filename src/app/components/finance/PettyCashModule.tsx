@@ -78,11 +78,15 @@ interface PettyCashModuleProps {
     settings: PettyCashSettings;
     users: User[];
     currentUser: User;
-    /** Roles del sistema (permisos Auditoría + Caja Chica para consola de auditoría). */
-    roles?: Role[];
-    visibleSedes?: string[];
-    /** Consolidado multi-sede: solo usuarios con todas las sedes. */
-    canAccessConsolidated?: boolean;
+  /** Roles del sistema (permisos Auditoría + Caja Chica para consola de auditoría). */
+  roles?: Role[];
+  /** Permisos de menú Gestión (REST): Contabilidad + Caja Chica. */
+  menuPermissions?: Record<string, boolean> | null;
+  visibleSedes?: string[];
+  /** Catálogo completo de sedes habilitadas (fallback Contabilidad sin sedes asignadas). */
+  catalogSedes?: string[];
+  /** Consolidado multi-sede: solo usuarios con todas las sedes. */
+  canAccessConsolidated?: boolean;
     businessName?: string;
     businessLegalName?: string;
     businessRuc?: string;
@@ -123,7 +127,9 @@ export function PettyCashModule({
     users, 
     currentUser,
     roles = [],
+    menuPermissions = null,
     visibleSedes = [],
+    catalogSedes = [],
     canAccessConsolidated = false,
     businessName = 'GrooFlow',
     businessLegalName = '',
@@ -165,10 +171,12 @@ export function PettyCashModule({
     const [area, setArea] = useState<string>('');
     const [isExtraExpense, setIsExtraExpense] = useState(false);
     
-    const sedeOptions = useMemo(
-        () => (visibleSedes.length > 0 ? [...visibleSedes] : []),
-        [visibleSedes.join('|')]
-    );
+    const sedeOptions = useMemo(() => {
+        const assigned = visibleSedes.length > 0 ? [...visibleSedes] : [];
+        if (assigned.length > 0) return assigned;
+        // Contabilidad/Auditoría sin sedes personales: operar con el catálogo.
+        return catalogSedes.length > 0 ? [...catalogSedes] : [];
+    }, [visibleSedes.join('|'), catalogSedes.join('|')]);
     const defaultSede = sedeOptions[0] || currentUser.location || 'Principal';
     const [location, setLocation] = useState<string>(defaultSede);
     const [documentDate, setDocumentDate] = useState<string>(() =>
@@ -203,14 +211,14 @@ export function PettyCashModule({
         }
     }, [sedeOptions, location]);
 
-    const showAuditTab = canApprovePettyCashMovements(currentUser, roles);
+    const showAuditTab = canApprovePettyCashMovements(currentUser, roles, menuPermissions);
     const canRegisterForOthers = useMemo(
-        () => canRegisterPettyCashForOthers(currentUser, roles),
-        [currentUser, roles]
+        () => canRegisterPettyCashForOthers(currentUser, roles, menuPermissions),
+        [currentUser, roles, menuPermissions]
     );
     const viewerSeesAllSedes = useMemo(
-        () => userHasGlobalSedeAccess(currentUser),
-        [currentUser]
+        () => userHasGlobalSedeAccess(currentUser) || (canRegisterForOthers && visibleSedes.length === 0),
+        [currentUser, canRegisterForOthers, visibleSedes.length]
     );
     const expenseCustodians = useMemo(
         () =>
@@ -219,9 +227,10 @@ export function PettyCashModule({
                 currentUser,
                 sedeOptions,
                 viewerSeesAllSedes,
-                roles
+                roles,
+                menuPermissions
             ),
-        [users, currentUser, sedeOptions, viewerSeesAllSedes, roles]
+        [users, currentUser, sedeOptions, viewerSeesAllSedes, roles, menuPermissions]
     );
     const defaultExpenseCustodianId = useMemo(() => {
         if (!canRegisterForOthers) return currentUser.id;
@@ -729,7 +738,14 @@ export function PettyCashModule({
                         data-testid="petty-cash-add-expense"
                         onClick={() => setIsExpenseModalOpen(true)}
                         className="bg-cyan-500 hover:bg-cyan-600 text-black font-medium"
-                        disabled={sedeOptions.length === 0}
+                        disabled={sedeOptions.length === 0 && !canRegisterForOthers}
+                        title={
+                          sedeOptions.length === 0 && !canRegisterForOthers
+                            ? 'Sin sedes asignadas'
+                            : canRegisterForOthers
+                              ? 'Registrar gasto en el fondo de un responsable'
+                              : undefined
+                        }
                     >
                         <Plus className="mr-2 h-4 w-4" />
                         Registrar Gasto
@@ -1345,6 +1361,7 @@ export function PettyCashModule({
                         users={users}
                         currentUser={currentUser}
                         roles={roles}
+                        menuPermissions={menuPermissions}
                         businessName={businessName}
                         categoryCatalog={commercialCategories}
                         areaCatalog={commercialAreas}

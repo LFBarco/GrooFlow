@@ -168,6 +168,7 @@ import { goLiveAlertSources } from "./config/goLive";
 import { isUserSessionBlocked } from "./utils/userSessionGuard";
 import { weekKeyMatches } from "./utils/pettyCashWeekKey";
 import {
+  canRegisterPettyCashForOthers,
   canViewAllPettyCashFunds,
   filterPettyCashTransactionsForViewer,
 } from "./utils/pettyCashAccess";
@@ -3324,8 +3325,44 @@ export default function App() {
   const canAccessPettyCashConsolidated =
     hasPermission('Caja Chica') &&
     (currentUser.allSedes === true ||
-      canViewAllPettyCashFunds(currentUser, roles) ||
+      canViewAllPettyCashFunds(currentUser, roles, menuPermissions) ||
       !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase())));
+
+  const canRegisterPettyCashAsAccounting = useMemo(
+    () => canRegisterPettyCashForOthers(currentUser, roles, menuPermissions),
+    [currentUser, roles, menuPermissions]
+  );
+  const canViewAllPettyCash = useMemo(
+    () => canViewAllPettyCashFunds(currentUser, roles, menuPermissions),
+    [currentUser, roles, menuPermissions]
+  );
+  /** Contabilidad/Auditoría: catálogo completo para registrar/ver fondos aunque no tengan sedes personales. */
+  const pettyCashVisibleSedes = useMemo((): string[] => {
+    if (canRegisterPettyCashAsAccounting) {
+      return enabledCatalog.length > 0 ? [...enabledCatalog] : [...visibleSedes];
+    }
+    if (canViewAllPettyCash && visibleSedes.length === 0) {
+      return [...enabledCatalog];
+    }
+    return visibleSedes;
+  }, [canRegisterPettyCashAsAccounting, canViewAllPettyCash, enabledCatalog, visibleSedes]);
+
+  const canSeeSedeForPettyCash = useCallback(
+    (location: string) => {
+      if (seesAllSedesInCatalog) return true;
+      if (canRegisterPettyCashAsAccounting || (canViewAllPettyCash && visibleSedes.length === 0)) {
+        return true;
+      }
+      return canSeeSede(location);
+    },
+    [
+      seesAllSedesInCatalog,
+      canRegisterPettyCashAsAccounting,
+      canViewAllPettyCash,
+      visibleSedes.length,
+      canSeeSede,
+    ]
+  );
 
   const { categories: commercialCategories, areas: commercialAreas } = useMemo(
     () => mergePettyCashFilterCatalog(systemSettings, pettyCashTransactions),
@@ -3557,16 +3594,18 @@ export default function App() {
     () =>
       filterPettyCashTransactionsForViewer(pettyCashTransactions, currentUser, {
         roles,
-        canSeeSede,
+        menuPermissions,
+        canSeeSede: canSeeSedeForPettyCash,
       }),
-    [pettyCashTransactions, currentUser, roles, canSeeSede]
+    [pettyCashTransactions, currentUser, roles, menuPermissions, canSeeSedeForPettyCash]
   );
 
   const handleUpdatePettyCashTransactions = useCallback(
     async (nextVisibleTransactions: PettyCashTransaction[]): Promise<boolean> => {
       const prevVisible = filterPettyCashTransactionsForViewer(pettyCashTransactions, currentUser, {
         roles,
-        canSeeSede,
+        menuPermissions,
+        canSeeSede: canSeeSedeForPettyCash,
       });
       const prevVisibleIds = new Set(prevVisible.map((tx) => tx.id));
       const newMovements = nextVisibleTransactions.filter((tx) => !prevVisibleIds.has(tx.id));
@@ -3584,7 +3623,7 @@ export default function App() {
       }
       return ok;
     },
-    [canSeeSede, currentUser, pettyCashTransactions, persistPettyCashNow, roles]
+    [canSeeSedeForPettyCash, currentUser, menuPermissions, pettyCashTransactions, persistPettyCashNow, roles]
   );
 
   const filteredRequestsBySede = useMemo(
@@ -4636,7 +4675,9 @@ export default function App() {
                   users={users}
                   currentUser={currentUser}
                   roles={roles}
-                  visibleSedes={visibleSedes}
+                  menuPermissions={menuPermissions}
+                  visibleSedes={pettyCashVisibleSedes}
+                  catalogSedes={enabledCatalog}
                   canAccessConsolidated={canAccessPettyCashConsolidated}
                   businessName={systemSettings.businessName}
                   businessLegalName={systemSettings.businessLegalName}

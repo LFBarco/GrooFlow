@@ -1,7 +1,10 @@
 import type { User } from '../types';
 import type { Role } from '../components/users/types';
 import { userHasGlobalSedeAccess } from './roleAccess';
-import { canViewAllPettyCashFunds } from './pettyCashAccess';
+import {
+  canViewAllPettyCashFunds,
+  type PettyCashMenuPermissions,
+} from './pettyCashAccess';
 import { userHasPettyCashFund } from './pettyCashFund';
 
 /**
@@ -10,9 +13,10 @@ import { userHasPettyCashFund } from './pettyCashFund';
  */
 export function canSelectMultiplePettyCashCustodians(
   user: User | null | undefined,
-  roles?: Role[] | null
+  roles?: Role[] | null,
+  menuPermissions?: PettyCashMenuPermissions
 ): boolean {
-  return canViewAllPettyCashFunds(user, roles);
+  return canViewAllPettyCashFunds(user, roles, menuPermissions);
 }
 
 /** Sedes asignadas al usuario respecto a un catálogo habilitado (nombres normalizados). */
@@ -31,15 +35,17 @@ export function userAssignedSedeNames(user: User, enabledCatalog: string[]): str
  * Lista de usuarios que pueden aparecer como "Responsable de Caja Chica".
  * - Quien no tiene permiso elevado: solo él mismo.
  * - Quien sí: responsables con fondo activo cuya sede intersecta con el viewer.
+ * - Elevado sin sedes asignadas: todos los fondos (p. ej. Contabilidad).
  */
 export function filterPettyCashCustodianUsersForViewer(
   allUsers: User[],
   viewer: User,
   viewerVisibleSedes: string[],
   viewerSeesAllSedes: boolean,
-  roles?: Role[] | null
+  roles?: Role[] | null,
+  menuPermissions?: PettyCashMenuPermissions
 ): User[] {
-  const canPick = canSelectMultiplePettyCashCustodians(viewer, roles);
+  const canPick = canSelectMultiplePettyCashCustodians(viewer, roles, menuPermissions);
   const self = allUsers.find((u) => u.id === viewer.id) ?? viewer;
 
   if (!canPick) {
@@ -47,13 +53,13 @@ export function filterPettyCashCustodianUsersForViewer(
   }
 
   const catalog = viewerVisibleSedes.length > 0 ? viewerVisibleSedes : [];
+  const treatAsAllSedes = viewerSeesAllSedes || viewerVisibleSedes.length === 0;
 
   return allUsers.filter((u) => {
     const hasFund = userHasPettyCashFund(u);
     if (!hasFund) return false;
-    if (viewerSeesAllSedes) return true;
+    if (treatAsAllSedes) return true;
     const custodianSedes = userAssignedSedeNames(u, catalog);
-    if (!viewerVisibleSedes.length) return u.id === viewer.id;
     return custodianSedes.some((s) => viewerVisibleSedes.includes(s));
   });
 }

@@ -114,6 +114,8 @@ interface PettyCashManagerProps {
     users: User[];
     currentUser: User;
     roles?: Role[];
+    /** Permisos menú Gestión (Contabilidad / Caja Chica). */
+    menuPermissions?: Record<string, boolean> | null;
     businessName?: string;
     /** Categorías comerciales (Configuración → Contabilidad). */
     categoryCatalog: string[];
@@ -173,6 +175,7 @@ export function PettyCashManager({
     users,
     currentUser,
     roles = [],
+    menuPermissions = null,
     businessName = 'GrooFlow',
     categoryCatalog,
     areaCatalog = [],
@@ -274,8 +277,8 @@ export function PettyCashManager({
     );
 
     const canPickMultipleCustodians = useMemo(
-        () => canSelectMultiplePettyCashCustodians(currentUser, roles),
-        [currentUser, roles]
+        () => canSelectMultiplePettyCashCustodians(currentUser, roles, menuPermissions),
+        [currentUser, roles, menuPermissions]
     );
 
     // Responsables visibles: solo el propio usuario salvo auditoría / admin / super / gerencia (y sedes acordes).
@@ -285,10 +288,11 @@ export function PettyCashManager({
                 users,
                 currentUser,
                 sedeOptions,
-                viewerSeesAllSedes,
-                roles
+                viewerSeesAllSedes || (canPickMultipleCustodians && sedeOptions.length === 0),
+                roles,
+                menuPermissions
             ),
-        [users, currentUser, sedeOptions, viewerSeesAllSedes, roles]
+        [users, currentUser, sedeOptions, viewerSeesAllSedes, canPickMultipleCustodians, roles, menuPermissions]
     );
 
     // Determine default custodian
@@ -471,7 +475,7 @@ export function PettyCashManager({
         !!onClosePettyCashWeek &&
         !!selectedCustodianId &&
         (selectedCustodianId === currentUser.id ||
-            canViewAllPettyCashFunds(currentUser, roles));
+            canViewAllPettyCashFunds(currentUser, roles, menuPermissions));
 
     const fundDenominator = Math.max(openingFundForWeek, 1);
 
@@ -843,7 +847,7 @@ export function PettyCashManager({
     };
 
     const approvePettyMovement = (row: PettyCashTransaction) => {
-        if (!canApprovePettyCashMovements(currentUser, roles)) return;
+        if (!canApprovePettyCashMovements(currentUser, roles, menuPermissions)) return;
         if (weekAlreadyClosed) {
             toast.error('La semana está cerrada; no se puede modificar el estado de auditoría.');
             return;
@@ -856,7 +860,7 @@ export function PettyCashManager({
     };
 
     const rejectPettyMovement = async (row: PettyCashTransaction) => {
-        if (!canApprovePettyCashMovements(currentUser, roles)) return;
+        if (!canApprovePettyCashMovements(currentUser, roles, menuPermissions)) return;
         if (weekAlreadyClosed) {
             toast.error('La semana está cerrada.');
             return;
@@ -1807,7 +1811,7 @@ ${signatures}
                                                                 Aprobado
                                                             </Badge>
                                                         ) : expense.status === 'pending_audit' &&
-                                                          canApprovePettyCashMovements(currentUser, roles) &&
+                                                          canApprovePettyCashMovements(currentUser, roles, menuPermissions) &&
                                                           !weekAlreadyClosed ? (
                                                             <div className="flex justify-end gap-0.5">
                                                                 <Button

@@ -35,21 +35,30 @@ export function getPettyCashRowType(t: PettyCashTransaction): 'income' | 'expens
  * Puede aprobar o rechazar movimientos de caja chica en auditoría.
  * Auditoría (+ admin). Contabilidad/Jefes/Gerencia ven fondos pero no aprueban.
  */
-export function canApprovePettyCashMovements(user: User | null | undefined, roles?: Role[] | null): boolean {
-    return canAuditPettyCashFunds(user, roles);
+export function canApprovePettyCashMovements(
+    user: User | null | undefined,
+    roles?: Role[] | null,
+    menuPermissions?: import('./pettyCashAccess').PettyCashMenuPermissions
+): boolean {
+    return canAuditPettyCashFunds(user, roles, menuPermissions);
 }
 
 /** Puede registrar refuerzos de fondo (misma regla que aprobación / dotación). */
-export function canAdminFundTopUp(user: User, roles?: Role[] | null): boolean {
-    return canAuditPettyCashFunds(user, roles);
+export function canAdminFundTopUp(
+    user: User,
+    roles?: Role[] | null,
+    menuPermissions?: import('./pettyCashAccess').PettyCashMenuPermissions
+): boolean {
+    return canAuditPettyCashFunds(user, roles, menuPermissions);
 }
 
 /** Puede confirmar entrega de dotación semanal (auditoría). */
 export function canConfirmPettyCashFundDelivery(
     user: User | null | undefined,
-    roles?: Role[] | null
+    roles?: Role[] | null,
+    menuPermissions?: import('./pettyCashAccess').PettyCashMenuPermissions
 ): boolean {
-    return canAuditPettyCashFunds(user, roles);
+    return canAuditPettyCashFunds(user, roles, menuPermissions);
 }
 
 export function isFundDeliveryIncome(t: PettyCashTransaction): boolean {

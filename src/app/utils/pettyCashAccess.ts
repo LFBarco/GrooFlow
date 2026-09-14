@@ -1,10 +1,11 @@
 /**
- * ACL de Caja Chica: nivel Gestión + rol RBAC GrooFlow.
+ * ACL de Caja Chica: nivel Gestión + rol RBAC GrooFlow + menú Gestión.
  *
  * Reglas de negocio:
  * 1. Responsable: solo su fondo.
  * 2. Auditoría, Jefes, Gerencia, Contabilidad (+ admin): ven todos los fondos (según sedes).
  * 3. Auditoría (+ admin): aprueba gastos, confirma dotación y refuerzo.
+ * 4. Auditoría y Contabilidad: registran gastos a nombre de otros responsables.
  */
 import type { Role } from '../components/users/types';
 import type { User } from '../types';
@@ -18,6 +19,7 @@ const VIEW_ALL_NIVEL_HINTS = [
   'auditoria',
   'contabilidad',
   'contador',
+  'contadur',
   'jefes',
   'jefe',
   'gerencia',
@@ -25,9 +27,13 @@ const VIEW_ALL_NIVEL_HINTS = [
   'manager',
 ];
 
+const CONTABILIDAD_NIVEL_HINTS = ['contabilidad', 'contador', 'contadur'];
+
 /** Quién aprueba / dotación / refuerzo (más estricto que “ver todos”). */
 const AUDIT_ROLE_IDS = new Set(['auditoria', 'admin', 'super_admin']);
 const AUDIT_NIVEL_HINTS = ['auditor', 'auditoria'];
+
+export type PettyCashMenuPermissions = Record<string, boolean> | null | undefined;
 
 function stripAccents(s: string): string {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -57,13 +63,42 @@ function isPrivilegedEmail(user: User): boolean {
   return !!(email && getSuperAdminEmails().has(email));
 }
 
+function moduleOn(
+  source: Record<string, boolean> | null | undefined,
+  name: string
+): boolean {
+  return source?.[name] === true;
+}
+
+/** Perfil Contabilidad por nivel, rol RBAC o menú Gestión (Contabilidad + Caja Chica). */
+export function isContabilidadPettyCashProfile(
+  user: User | null | undefined,
+  roles?: Role[] | null,
+  menuPermissions?: PettyCashMenuPermissions
+): boolean {
+  if (!user) return false;
+
+  const blob = pettyCashIdentityBlob(user, roles);
+  if (matchesAnyHint(blob, CONTABILIDAD_NIVEL_HINTS)) return true;
+
+  const roleId = String(user.role || '').trim().toLowerCase();
+  if (roleId === 'contabilidad' || roleId === 'accounting') return true;
+
+  const roleRecord = resolveRoleRecord(user, roles);
+  if (moduleOn(roleRecord?.permissions, 'Contabilidad')) return true;
+  if (moduleOn(menuPermissions, 'Contabilidad')) return true;
+
+  return false;
+}
+
 /**
  * Puede ver / seleccionar fondos de otros responsables.
  * Incluye Contabilidad, Jefes y Gerencia por nivel de Gestión.
  */
 export function canViewAllPettyCashFunds(
   user: User | null | undefined,
-  roles?: Role[] | null
+  roles?: Role[] | null,
+  menuPermissions?: PettyCashMenuPermissions
 ): boolean {
   if (!user) return false;
   if (isPrivilegedEmail(user)) return true;
@@ -74,10 +109,14 @@ export function canViewAllPettyCashFunds(
   const blob = pettyCashIdentityBlob(user, roles);
   if (matchesAnyHint(blob, VIEW_ALL_NIVEL_HINTS)) return true;
 
+  if (isContabilidadPettyCashProfile(user, roles, menuPermissions)) return true;
+
   const roleRecord = resolveRoleRecord(user, roles);
   const p = roleRecord?.permissions;
   if (p?.['Auditoría'] === true && p?.['Caja Chica'] === true) return true;
   if (p && Object.keys(p).length > 0 && Object.values(p).every((v) => v === true)) return true;
+
+  if (moduleOn(menuPermissions, 'Auditoría') && moduleOn(menuPermissions, 'Caja Chica')) return true;
 
   return false;
 }
@@ -88,7 +127,8 @@ export function canViewAllPettyCashFunds(
  */
 export function canAuditPettyCashFunds(
   user: User | null | undefined,
-  roles?: Role[] | null
+  roles?: Role[] | null,
+  menuPermissions?: PettyCashMenuPermissions
 ): boolean {
   if (!user) return false;
   if (isPrivilegedEmail(user)) return true;
@@ -106,6 +146,8 @@ export function canAuditPettyCashFunds(
   if (p?.['Auditoría'] === true && p?.['Caja Chica'] === true) return true;
   if (p && Object.keys(p).length > 0 && Object.values(p).every((v) => v === true)) return true;
 
+  if (moduleOn(menuPermissions, 'Auditoría') && moduleOn(menuPermissions, 'Caja Chica')) return true;
+
   return false;
 }
 
@@ -115,18 +157,12 @@ export function canAuditPettyCashFunds(
  */
 export function canRegisterPettyCashForOthers(
   user: User | null | undefined,
-  roles?: Role[] | null
+  roles?: Role[] | null,
+  menuPermissions?: PettyCashMenuPermissions
 ): boolean {
   if (!user) return false;
-  if (canAuditPettyCashFunds(user, roles)) return true;
-
-  const blob = pettyCashIdentityBlob(user, roles);
-  if (matchesAnyHint(blob, ['contabilidad', 'contador'])) return true;
-
-  const roleId = String(user.role || '').trim().toLowerCase();
-  if (roleId === 'contabilidad' || roleId === 'accounting') return true;
-
-  return false;
+  if (canAuditPettyCashFunds(user, roles, menuPermissions)) return true;
+  return isContabilidadPettyCashProfile(user, roles, menuPermissions);
 }
 
 /** Filtra movimientos visibles según custodio (responsable) o sedes (elevado). */
@@ -137,10 +173,11 @@ export function filterPettyCashTransactionsForViewer<
   viewer: User,
   options: {
     roles?: Role[] | null;
+    menuPermissions?: PettyCashMenuPermissions;
     canSeeSede: (sede: string) => boolean;
   }
 ): T[] {
-  const elevated = canViewAllPettyCashFunds(viewer, options.roles);
+  const elevated = canViewAllPettyCashFunds(viewer, options.roles, options.menuPermissions);
   if (!elevated) {
     const vid = String(viewer.id);
     return transactions.filter((t) => {
