@@ -78,9 +78,12 @@ export type CostCentersDashboardStats = {
   areas: number;
   cargos: number;
   colaboradores_asignados?: number;
+  reglas_activas?: number;
   por_tipo: Record<string, number>;
   gastos_pendientes: number;
   gastos_distribuidos: number;
+  monto_distribuido_periodo?: number;
+  periodo?: string;
   nota?: string;
 };
 
@@ -138,4 +141,103 @@ export type ReplaceAssignmentsPayload = {
   fecha_fin?: string | null;
   motivo?: string;
   lines: AssignmentLineInput[];
+};
+
+export type ReglaMetodo = 'PORCENTAJE' | 'POR_VENTAS' | 'POR_M2' | 'POR_HEADCOUNT' | 'IGUAL';
+export type TipoAsignacionGasto = 'DIRECTO' | 'REGLA' | 'PERSONAL' | 'SIN_ASIGNAR';
+export type GastoCcEstado = 'pendiente' | 'distribuido' | 'anulado';
+export type GastoOrigenTipo = 'manual' | 'caja' | 'transaccion' | 'factura' | 'personal';
+
+export type DistributionRuleDetail = {
+  id?: number;
+  centro_costo_id: number;
+  porcentaje?: number | null;
+  criterio?: string | null;
+  sort_order?: number;
+  centro_codigo?: string;
+  centro_nombre?: string;
+};
+
+export type DistributionRule = {
+  id: number;
+  codigo: string;
+  nombre: string;
+  metodo: ReglaMetodo;
+  descripcion?: string;
+  vigencia_desde?: string | null;
+  vigencia_hasta?: string | null;
+  estado: CatalogEstado;
+  detalle: DistributionRuleDetail[];
+};
+
+export type CostExpense = {
+  id: number;
+  fecha: string;
+  monto: number;
+  moneda: string;
+  concepto: string;
+  sede_nombre?: string | null;
+  origen_tipo: GastoOrigenTipo;
+  origen_id?: string | null;
+  centro_costo_origen_id?: number | null;
+  tipo_asignacion: TipoAsignacionGasto;
+  regla_id?: number | null;
+  colaborador_id?: string | null;
+  periodo: string;
+  estado: GastoCcEstado;
+  notas?: string | null;
+  centro_origen_codigo?: string;
+  centro_origen_nombre?: string;
+  regla_codigo?: string;
+  regla_nombre?: string;
+  distribucion?: Array<{
+    id: number;
+    centro_costo_id: number;
+    porcentaje: number;
+    monto: number;
+    metodo_snapshot?: string;
+    centro_codigo?: string;
+    centro_nombre?: string;
+  }>;
+};
+
+export type CostExpensesPage = {
+  items: CostExpense[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type CostCentersReport = {
+  periodo: string;
+  por_centro: Array<{
+    id: number;
+    codigo: string;
+    nombre: string;
+    tipo: string;
+    sede_nombre?: string | null;
+    total: number;
+    n_gastos: number;
+  }>;
+  por_sede: Array<{ sede: string; total: number }>;
+  por_unidad_negocio: Array<{ unidad_negocio: string; codigo: string; total: number }>;
+  por_area: Array<{ area: string; total: number }>;
+  por_tipo_asignacion: Array<{ tipo_asignacion: string; total: number; n: number }>;
+  pendientes: { n: number; total: number };
+  personal: Array<{ colaborador_id: string; total: number; n: number }>;
+};
+
+export type CostCentersPnlFeed = {
+  periodo: string;
+  items: Array<{
+    centro_costo_id: number;
+    codigo: string;
+    nombre: string;
+    tipo: string;
+    sede_nombre?: string | null;
+    monto: number;
+    naturaleza: string;
+  }>;
+  total: number;
+  nota?: string;
 };

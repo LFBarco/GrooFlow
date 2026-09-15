@@ -18,12 +18,16 @@ import type {
   CollaboratorCostAssignmentLine,
   CostCenter,
   CostCentersDashboardStats,
+  DistributionRule,
   OrgArea,
   OrgPosition,
   OrgSubarea,
   TipoCentroCosto,
 } from '../../types/costCenters';
 import { costCentersApi } from '../../utils/costCentersApi';
+import { CostCentersRulesTab } from './CostCentersRulesTab';
+import { CostCentersExpensesTab } from './CostCentersExpensesTab';
+import { CostCentersReportsTab } from './CostCentersReportsTab';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -58,8 +62,18 @@ type Props = {
   sedeNames?: string[];
 };
 
-type TabKey = 'dashboard' | 'centers' | 'units' | 'areas' | 'subareas' | 'positions' | 'assignments';
-type CatalogTab = Exclude<TabKey, 'dashboard' | 'assignments'>;
+type TabKey =
+  | 'dashboard'
+  | 'assignments'
+  | 'rules'
+  | 'expenses'
+  | 'reports'
+  | 'centers'
+  | 'units'
+  | 'areas'
+  | 'subareas'
+  | 'positions';
+type CatalogTab = Exclude<TabKey, 'dashboard' | 'assignments' | 'rules' | 'expenses' | 'reports'>;
 
 const TIPO_CC: TipoCentroCosto[] = ['DIRECTO', 'COMPARTIDO', 'SEDE', 'CORPORATIVO', 'SOPORTE'];
 
@@ -85,6 +99,7 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
   const [subareas, setSubareas] = useState<OrgSubarea[]>([]);
   const [positions, setPositions] = useState<OrgPosition[]>([]);
   const [centers, setCenters] = useState<CostCenter[]>([]);
+  const [rules, setRules] = useState<DistributionRule[]>([]);
   const [filterSede, setFilterSede] = useState<string>('__all__');
   const [filterTipo, setFilterTipo] = useState<string>('__all__');
   const [search, setSearch] = useState('');
@@ -116,13 +131,14 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, u, a, sub, p, c] = await Promise.all([
+      const [s, u, a, sub, p, c, r] = await Promise.all([
         costCentersApi.stats(),
         costCentersApi.listBusinessUnits(true),
         costCentersApi.listAreas(true),
         costCentersApi.listSubareas(true),
         costCentersApi.listPositions(true),
         costCentersApi.listCenters(true),
+        costCentersApi.listRules(true).catch(() => [] as DistributionRule[]),
       ]);
       setStats(s);
       setUnits(u);
@@ -130,6 +146,7 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
       setSubareas(sub);
       setPositions(p);
       setCenters(c);
+      setRules(r);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo cargar centros de costos');
     } finally {
@@ -355,8 +372,7 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Centros de Costos</h1>
           <p className="text-sm text-muted-foreground">
-            Organización, centros de costo y asignación de colaboradores (fase 2). Gastos y reglas
-            de distribución llegan después.
+            Organización, asignaciones, reglas, gastos, distribución y feed P&amp;L dimensional.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -377,6 +393,9 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
         <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="assignments">Asignaciones</TabsTrigger>
+          <TabsTrigger value="rules">Reglas</TabsTrigger>
+          <TabsTrigger value="expenses">Gastos</TabsTrigger>
+          <TabsTrigger value="reports">Reportes / P&amp;L</TabsTrigger>
           <TabsTrigger value="centers">Centros</TabsTrigger>
           <TabsTrigger value="units">Unidades</TabsTrigger>
           <TabsTrigger value="areas">Áreas</TabsTrigger>
@@ -385,22 +404,26 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
             <Kpi title="Centros activos" value={stats?.centros_activos ?? 0} icon={<Wallet className="h-4 w-4" />} />
             <Kpi
               title="Colaboradores asignados"
               value={stats?.colaboradores_asignados ?? 0}
               icon={<Users className="h-4 w-4" />}
             />
-            <Kpi title="Unidades de negocio" value={stats?.unidades_negocio ?? 0} icon={<Building2 className="h-4 w-4" />} />
+            <Kpi title="Reglas activas" value={stats?.reglas_activas ?? 0} icon={<Network className="h-4 w-4" />} />
+            <Kpi title="Gastos pendientes" value={stats?.gastos_pendientes ?? 0} icon={<Layers className="h-4 w-4" />} />
+            <Kpi title="Gastos distribuidos" value={stats?.gastos_distribuidos ?? 0} icon={<Building2 className="h-4 w-4" />} />
             <Kpi title="Áreas" value={stats?.areas ?? 0} icon={<Layers className="h-4 w-4" />} />
-            <Kpi title="Cargos" value={stats?.cargos ?? 0} icon={<Network className="h-4 w-4" />} />
           </div>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Distribución por tipo de centro</CardTitle>
               <CardDescription>
-                {stats?.nota || 'KPIs de gasto se habilitan con la fase de distribución.'}
+                {stats?.nota || 'Módulo completo (fases 1–8).'}
+                {stats?.monto_distribuido_periodo != null
+                  ? ` · Periodo ${stats.periodo}: S/ ${Number(stats.monto_distribuido_periodo).toFixed(2)}`
+                  : ''}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap gap-2">
@@ -529,6 +552,23 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
               Siguiente
             </Button>
           </div>
+        </TabsContent>
+
+        <TabsContent value="rules" className="space-y-3">
+          <CostCentersRulesTab canEdit={canEdit} centers={centers} />
+        </TabsContent>
+
+        <TabsContent value="expenses" className="space-y-3">
+          <CostCentersExpensesTab
+            canEdit={canEdit}
+            centers={centers}
+            rules={rules}
+            onChanged={() => void loadAll()}
+          />
+        </TabsContent>
+
+        <TabsContent value="reports" className="space-y-3">
+          <CostCentersReportsTab initialPeriodo={stats?.periodo} />
         </TabsContent>
 
         <TabsContent value="centers" className="space-y-3">

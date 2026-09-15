@@ -5,6 +5,11 @@ import type {
   CollaboratorsAssignmentsPage,
   CostCenter,
   CostCentersDashboardStats,
+  CostCentersPnlFeed,
+  CostCentersReport,
+  CostExpense,
+  CostExpensesPage,
+  DistributionRule,
   OrgArea,
   OrgPosition,
   OrgSubarea,
@@ -186,5 +191,126 @@ export const costCentersApi = {
     const res = await grooflowFetch(`/cost-centers/assignments/${id}`, { method: 'DELETE' });
     const json = await readJson(res);
     if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+  },
+
+  listRules: (all = true) => catalogList<DistributionRule>(`/cost-centers/rules${all ? '?all=1' : ''}`),
+  getRule: async (id: number): Promise<DistributionRule> => {
+    const res = await grooflowFetch(`/cost-centers/rules/${id}`);
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json.item as DistributionRule;
+  },
+  saveRule: (data: Partial<DistributionRule> & { detalle: DistributionRule['detalle'] }, id?: number) =>
+    catalogSave<DistributionRule>('/cost-centers/rules', data as Record<string, unknown>, id),
+  deleteRule: (id: number) => catalogDelete('/cost-centers/rules', id),
+  simulateRule: async (
+    reglaId: number,
+    monto: number
+  ): Promise<{
+    regla_id: number;
+    metodo: string;
+    monto: number;
+    lines: Array<{
+      centro_costo_id: number;
+      centro_codigo?: string;
+      centro_nombre?: string;
+      porcentaje: number;
+      monto: number;
+    }>;
+    nota?: string;
+  }> => {
+    const res = await grooflowFetch('/cost-centers/rules/simulate', {
+      method: 'POST',
+      body: JSON.stringify({ regla_id: reglaId, monto }),
+    });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json as {
+      regla_id: number;
+      metodo: string;
+      monto: number;
+      lines: Array<{
+        centro_costo_id: number;
+        centro_codigo?: string;
+        centro_nombre?: string;
+        porcentaje: number;
+        monto: number;
+      }>;
+      nota?: string;
+    };
+  },
+
+  listExpenses: async (params: {
+    page?: number;
+    pageSize?: number;
+    estado?: string;
+    periodo?: string;
+    search?: string;
+  }): Promise<CostExpensesPage> => {
+    const q = new URLSearchParams();
+    if (params.page) q.set('page', String(params.page));
+    if (params.pageSize) q.set('pageSize', String(params.pageSize));
+    if (params.estado) q.set('estado', params.estado);
+    if (params.periodo) q.set('periodo', params.periodo);
+    if (params.search) q.set('search', params.search);
+    const qs = q.toString();
+    const res = await grooflowFetch(`/cost-centers/expenses${qs ? `?${qs}` : ''}`);
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return {
+      items: (json.items as CostExpense[]) ?? [],
+      total: Number(json.total ?? 0),
+      page: Number(json.page ?? 1),
+      pageSize: Number(json.pageSize ?? 25),
+    };
+  },
+  saveExpense: async (data: Record<string, unknown>, id?: number): Promise<CostExpense> => {
+    const res = await grooflowFetch(id ? `/cost-centers/expenses/${id}` : '/cost-centers/expenses', {
+      method: id ? 'PUT' : 'POST',
+      body: JSON.stringify(data),
+    });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json.item as CostExpense;
+  },
+  createPersonalExpense: async (data: Record<string, unknown>): Promise<CostExpense> => {
+    const res = await grooflowFetch('/cost-centers/expenses/personal', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json.item as CostExpense;
+  },
+  deleteExpense: (id: number) => catalogDelete('/cost-centers/expenses', id),
+  distributeExpense: async (id: number): Promise<CostExpense> => {
+    const res = await grooflowFetch(`/cost-centers/expenses/${id}/distribute`, { method: 'POST', body: '{}' });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json.item as CostExpense;
+  },
+  reverseExpense: async (id: number): Promise<CostExpense> => {
+    const res = await grooflowFetch(`/cost-centers/expenses/${id}/reverse`, { method: 'POST', body: '{}' });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json.item as CostExpense;
+  },
+
+  reports: async (periodo: string): Promise<CostCentersReport> => {
+    const res = await grooflowFetch(`/cost-centers/reports?periodo=${encodeURIComponent(periodo)}`);
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json.report as CostCentersReport;
+  },
+  pnlFeed: async (periodo: string): Promise<CostCentersPnlFeed> => {
+    const res = await grooflowFetch(`/cost-centers/pnl-feed?periodo=${encodeURIComponent(periodo)}`);
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return {
+      periodo: String(json.periodo ?? periodo),
+      items: (json.items as CostCentersPnlFeed['items']) ?? [],
+      total: Number(json.total ?? 0),
+      nota: json.nota ? String(json.nota) : undefined,
+    };
   },
 };
