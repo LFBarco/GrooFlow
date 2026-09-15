@@ -8,11 +8,14 @@ import {
   RefreshCw,
   Sparkles,
   Trash2,
+  Users,
   Wallet,
 } from 'lucide-react';
 
 import type {
   BusinessUnit,
+  CollaboratorAssignmentSummary,
+  CollaboratorCostAssignmentLine,
   CostCenter,
   CostCentersDashboardStats,
   OrgArea,
@@ -55,9 +58,14 @@ type Props = {
   sedeNames?: string[];
 };
 
-type TabKey = 'dashboard' | 'centers' | 'units' | 'areas' | 'subareas' | 'positions';
+type TabKey = 'dashboard' | 'centers' | 'units' | 'areas' | 'subareas' | 'positions' | 'assignments';
+type CatalogTab = Exclude<TabKey, 'dashboard' | 'assignments'>;
 
 const TIPO_CC: TipoCentroCosto[] = ['DIRECTO', 'COMPARTIDO', 'SEDE', 'CORPORATIVO', 'SOPORTE'];
+
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function EstadoBadge({ estado }: { estado: string }) {
   const active = estado === 'activo';
@@ -82,9 +90,28 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
   const [search, setSearch] = useState('');
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogKind, setDialogKind] = useState<TabKey>('centers');
+  const [dialogKind, setDialogKind] = useState<CatalogTab>('centers');
   const [editingId, setEditingId] = useState<number | undefined>();
   const [form, setForm] = useState<Record<string, string>>({});
+
+  // Asignaciones (fase 2)
+  const [asigItems, setAsigItems] = useState<CollaboratorAssignmentSummary[]>([]);
+  const [asigTotal, setAsigTotal] = useState(0);
+  const [asigPage, setAsigPage] = useState(1);
+  const [asigSearch, setAsigSearch] = useState('');
+  const [asigSearchApplied, setAsigSearchApplied] = useState('');
+  const [asigFilter, setAsigFilter] = useState<'all' | 'assigned' | 'pending'>('all');
+  const [asigLoading, setAsigLoading] = useState(false);
+  const [asigEditorOpen, setAsigEditorOpen] = useState(false);
+  const [asigSelected, setAsigSelected] = useState<CollaboratorAssignmentSummary | null>(null);
+  const [asigHistory, setAsigHistory] = useState<CollaboratorCostAssignmentLine[]>([]);
+  const [asigFechaInicio, setAsigFechaInicio] = useState(todayIso());
+  const [asigFechaFin, setAsigFechaFin] = useState('');
+  const [asigMotivo, setAsigMotivo] = useState('');
+  const [asigLines, setAsigLines] = useState<
+    { centro_costo_id: string; porcentaje: string; es_principal: boolean }[]
+  >([{ centro_costo_id: '', porcentaje: '100', es_principal: true }]);
+  const [asigSaving, setAsigSaving] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -110,9 +137,34 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
     }
   }, []);
 
+  const loadAssignments = useCallback(
+    async (opts?: { search?: string; page?: number; assignment?: 'all' | 'assigned' | 'pending' }) => {
+      setAsigLoading(true);
+      try {
+        const page = await costCentersApi.listCollaborators({
+          page: opts?.page ?? asigPage,
+          pageSize: 25,
+          search: (opts?.search ?? asigSearchApplied).trim() || undefined,
+          assignment: opts?.assignment ?? asigFilter,
+        });
+        setAsigItems(page.items);
+        setAsigTotal(page.total);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'No se pudo cargar colaboradores');
+      } finally {
+        setAsigLoading(false);
+      }
+    },
+    [asigPage, asigSearchApplied, asigFilter]
+  );
+
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    if (tab === 'assignments') void loadAssignments();
+  }, [tab, loadAssignments]);
 
   const filteredCenters = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -128,14 +180,27 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
     });
   }, [centers, filterSede, filterTipo, search]);
 
-  const openCreate = (kind: TabKey) => {
+  const activeCenters = useMemo(
+    () => centers.filter((c) => c.estado === 'activo'),
+    [centers]
+  );
+
+  const asigSum = useMemo(
+    () =>
+      Math.round(
+        asigLines.reduce((acc, l) => acc + (Number(l.porcentaje) || 0), 0) * 100
+      ) / 100,
+    [asigLines]
+  );
+
+  const openCreate = (kind: CatalogTab) => {
     setDialogKind(kind);
     setEditingId(undefined);
     setForm({ estado: 'activo', tipo: 'DIRECTO', tipo_costo: 'DIRECTO', genera_ingreso: 'DIRECTO' });
     setDialogOpen(true);
   };
 
-  const openEdit = (kind: TabKey, row: Record<string, unknown>) => {
+  const openEdit = (kind: CatalogTab, row: Record<string, unknown>) => {
     setDialogKind(kind);
     setEditingId(Number(row.id));
     const next: Record<string, string> = {};
@@ -145,6 +210,78 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
     }
     setForm(next);
     setDialogOpen(true);
+  };
+
+  const openAssignmentEditor = async (row: CollaboratorAssignmentSummary) => {
+    setAsigSelected(row);
+    setAsigFechaInicio(todayIso());
+    setAsigFechaFin('');
+    setAsigMotivo('');
+    setAsigEditorOpen(true);
+    try {
+      const hist = await costCentersApi.listAssignments(row.colaborador_id, false);
+      setAsigHistory(hist);
+      const vigentes = hist.filter((h) => {
+        if (h.estado !== 'activo') return false;
+        const today = todayIso();
+        if (h.fecha_inicio > today) return false;
+        if (h.fecha_fin && h.fecha_fin < today) return false;
+        return true;
+      });
+      if (vigentes.length > 0) {
+        setAsigLines(
+          vigentes.map((v) => ({
+            centro_costo_id: String(v.centro_costo_id),
+            porcentaje: String(v.porcentaje),
+            es_principal: Boolean(v.es_principal),
+          }))
+        );
+        const fi = vigentes[0]?.fecha_inicio;
+        if (fi) setAsigFechaInicio(fi);
+      } else {
+        setAsigLines([{ centro_costo_id: '', porcentaje: '100', es_principal: true }]);
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo cargar historial');
+      setAsigHistory([]);
+      setAsigLines([{ centro_costo_id: '', porcentaje: '100', es_principal: true }]);
+    }
+  };
+
+  const saveAssignment = async () => {
+    if (!canEdit || !asigSelected) return;
+    if (Math.abs(asigSum - 100) > 0.02) {
+      toast.error(`La suma debe ser 100% (actual: ${asigSum}%)`);
+      return;
+    }
+    const lines = asigLines
+      .filter((l) => l.centro_costo_id && Number(l.porcentaje) > 0)
+      .map((l) => ({
+        centro_costo_id: Number(l.centro_costo_id),
+        porcentaje: Number(l.porcentaje),
+        es_principal: l.es_principal,
+      }));
+    if (lines.length === 0) {
+      toast.error('Agrega al menos una línea con centro y porcentaje');
+      return;
+    }
+    setAsigSaving(true);
+    try {
+      await costCentersApi.replaceAssignments({
+        colaborador_id: asigSelected.colaborador_id,
+        fecha_inicio: asigFechaInicio,
+        fecha_fin: asigFechaFin || null,
+        motivo: asigMotivo || undefined,
+        lines,
+      });
+      toast.success('Asignación guardada (suma 100%)');
+      setAsigEditorOpen(false);
+      await Promise.all([loadAssignments(), loadAll()]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo guardar asignación');
+    } finally {
+      setAsigSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -171,7 +308,7 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
     }
   };
 
-  const handleDelete = async (kind: TabKey, id: number) => {
+  const handleDelete = async (kind: CatalogTab, id: number) => {
     if (!canEdit) return;
     if (!confirm('¿Desactivar este registro? (no se elimina físicamente)')) return;
     try {
@@ -208,8 +345,9 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
     subareas: 'Subárea',
     positions: 'Cargo',
     centers: 'Centro de costo',
-    dashboard: '',
   }[dialogKind];
+
+  const asigPages = Math.max(1, Math.ceil(asigTotal / 25));
 
   return (
     <div className="space-y-6" data-testid="cost-centers-module">
@@ -217,8 +355,8 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Centros de Costos</h1>
           <p className="text-sm text-muted-foreground">
-            Organización + unidades de negocio + centros de costo (fase catálogos). Los gastos y
-            reglas de distribución llegan en las siguientes fases.
+            Organización, centros de costo y asignación de colaboradores (fase 2). Gastos y reglas
+            de distribución llegan después.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -238,6 +376,7 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
       <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
         <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="assignments">Asignaciones</TabsTrigger>
           <TabsTrigger value="centers">Centros</TabsTrigger>
           <TabsTrigger value="units">Unidades</TabsTrigger>
           <TabsTrigger value="areas">Áreas</TabsTrigger>
@@ -246,8 +385,13 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Kpi title="Centros activos" value={stats?.centros_activos ?? 0} icon={<Wallet className="h-4 w-4" />} />
+            <Kpi
+              title="Colaboradores asignados"
+              value={stats?.colaboradores_asignados ?? 0}
+              icon={<Users className="h-4 w-4" />}
+            />
             <Kpi title="Unidades de negocio" value={stats?.unidades_negocio ?? 0} icon={<Building2 className="h-4 w-4" />} />
             <Kpi title="Áreas" value={stats?.areas ?? 0} icon={<Layers className="h-4 w-4" />} />
             <Kpi title="Cargos" value={stats?.cargos ?? 0} icon={<Network className="h-4 w-4" />} />
@@ -270,6 +414,121 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
               ) : null}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="assignments" className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              className="max-w-xs"
+              placeholder="Buscar colaborador…"
+              value={asigSearch}
+              onChange={(e) => setAsigSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  setAsigPage(1);
+                  setAsigSearchApplied(asigSearch);
+                }
+              }}
+            />
+            <Select
+              value={asigFilter}
+              onValueChange={(v) => {
+                setAsigPage(1);
+                setAsigFilter(v as 'all' | 'assigned' | 'pending');
+              }}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="assigned">Asignación completa</SelectItem>
+                <SelectItem value="pending">Pendientes (&lt;100%)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setAsigPage(1);
+                setAsigSearchApplied(asigSearch);
+                void loadAssignments({ search: asigSearch, page: 1 });
+              }}
+              disabled={asigLoading}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${asigLoading ? 'animate-spin' : ''}`} />
+              Buscar
+            </Button>
+            <span className="text-sm text-muted-foreground ml-auto">
+              {asigTotal} colaboradores · pág. {asigPage}/{asigPages}
+            </span>
+          </div>
+          <DataTable
+            columns={['Colaborador', 'Cargo / Área', 'Sede', '% asignado', 'Centro principal', '']}
+            rows={asigItems.map((row) => [
+              <div key="n">
+                <div className="font-medium">{row.nombre}</div>
+                <div className="text-xs text-muted-foreground">
+                  {row.documento || row.colaborador_id}
+                </div>
+              </div>,
+              <div key="c" className="text-sm">
+                <div>{row.cargo || '—'}</div>
+                <div className="text-xs text-muted-foreground">{row.area || ''}</div>
+              </div>,
+              row.sede || '—',
+              <div key="p" className="flex items-center gap-2">
+                <span className="tabular-nums font-medium">{row.asignado_pct}%</span>
+                <Badge variant={row.completo ? 'default' : 'secondary'} className={row.completo ? 'bg-teal-600' : ''}>
+                  {row.completo ? 'OK' : `Falta ${row.pendiente_pct}%`}
+                </Badge>
+              </div>,
+              row.centro_principal
+                ? `${row.centro_principal.codigo} · ${row.centro_principal.nombre}`
+                : '—',
+              canEdit ? (
+                <Button
+                  key="a"
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void openAssignmentEditor(row)}
+                >
+                  Asignar
+                </Button>
+              ) : (
+                <Button
+                  key="a"
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void openAssignmentEditor(row)}
+                >
+                  Ver
+                </Button>
+              ),
+            ])}
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={asigPage <= 1}
+              onClick={() => setAsigPage((p) => Math.max(1, p - 1))}
+            >
+              Anterior
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={asigPage >= asigPages}
+              onClick={() => setAsigPage((p) => p + 1)}
+            >
+              Siguiente
+            </Button>
+          </div>
         </TabsContent>
 
         <TabsContent value="centers" className="space-y-3">
@@ -629,6 +888,196 @@ export function CostCentersModule({ canEdit = false, sedeNames = [] }: Props) {
             <Button type="button" onClick={() => void handleSave()} disabled={!canEdit}>
               Guardar
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={asigEditorOpen} onOpenChange={setAsigEditorOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Asignación de costos
+              {asigSelected ? ` · ${asigSelected.nombre}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              La suma de porcentajes debe ser exactamente 100%. Al guardar se cierra el set vigente
+              anterior (histórico soft) y se crea el nuevo con vigencia.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label>Fecha inicio</Label>
+                <Input
+                  type="date"
+                  value={asigFechaInicio}
+                  onChange={(e) => setAsigFechaInicio(e.target.value)}
+                  disabled={!canEdit}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Fecha fin (opcional)</Label>
+                <Input
+                  type="date"
+                  value={asigFechaFin}
+                  onChange={(e) => setAsigFechaFin(e.target.value)}
+                  disabled={!canEdit}
+                />
+              </div>
+            </div>
+            <Field
+              label="Motivo / nota"
+              value={asigMotivo}
+              onChange={setAsigMotivo}
+            />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Distribución</Label>
+                <span
+                  className={`text-sm tabular-nums font-medium ${
+                    Math.abs(asigSum - 100) < 0.02 ? 'text-teal-700' : 'text-amber-700'
+                  }`}
+                >
+                  Suma: {asigSum}%
+                </span>
+              </div>
+              {asigLines.map((line, idx) => (
+                <div key={idx} className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-2">
+                  <div className="min-w-[200px] flex-1 space-y-1">
+                    <Label className="text-xs">Centro de costo</Label>
+                    <Select
+                      value={line.centro_costo_id || '__none__'}
+                      onValueChange={(v) =>
+                        setAsigLines((rows) =>
+                          rows.map((r, i) =>
+                            i === idx ? { ...r, centro_costo_id: v === '__none__' ? '' : v } : r
+                          )
+                        )
+                      }
+                      disabled={!canEdit}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {activeCenters.map((c) => (
+                          <SelectItem key={c.id} value={String(c.id)}>
+                            {c.codigo} · {c.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <Label className="text-xs">%</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      value={line.porcentaje}
+                      disabled={!canEdit}
+                      onChange={(e) =>
+                        setAsigLines((rows) =>
+                          rows.map((r, i) => (i === idx ? { ...r, porcentaje: e.target.value } : r))
+                        )
+                      }
+                    />
+                  </div>
+                  <label className="flex items-center gap-1.5 text-xs pb-2">
+                    <input
+                      type="checkbox"
+                      checked={line.es_principal}
+                      disabled={!canEdit}
+                      onChange={(e) =>
+                        setAsigLines((rows) =>
+                          rows.map((r, i) => ({
+                            ...r,
+                            es_principal: i === idx ? e.target.checked : e.target.checked ? false : r.es_principal,
+                          }))
+                        )
+                      }
+                    />
+                    Principal
+                  </label>
+                  {canEdit && asigLines.length > 1 ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setAsigLines((rows) => rows.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="h-4 w-4 text-rose-500" />
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+              {canEdit ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setAsigLines((rows) => [
+                      ...rows,
+                      { centro_costo_id: '', porcentaje: '0', es_principal: false },
+                    ])
+                  }
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Línea
+                </Button>
+              ) : null}
+            </div>
+            {asigHistory.length > 0 ? (
+              <div className="space-y-2">
+                <Label>Historial</Label>
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-border text-xs">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Centro</TableHead>
+                        <TableHead>%</TableHead>
+                        <TableHead>Vigencia</TableHead>
+                        <TableHead>Estado</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {asigHistory.map((h) => (
+                        <TableRow key={h.id}>
+                          <TableCell>
+                            {h.centro_codigo || h.centro_costo_id} {h.centro_nombre || ''}
+                          </TableCell>
+                          <TableCell className="tabular-nums">{h.porcentaje}%</TableCell>
+                          <TableCell>
+                            {h.fecha_inicio}
+                            {h.fecha_fin ? ` → ${h.fecha_fin}` : ' → abierto'}
+                          </TableCell>
+                          <TableCell>
+                            <EstadoBadge estado={h.estado} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAsigEditorOpen(false)}>
+              Cerrar
+            </Button>
+            {canEdit ? (
+              <Button
+                type="button"
+                onClick={() => void saveAssignment()}
+                disabled={asigSaving || Math.abs(asigSum - 100) > 0.02}
+              >
+                {asigSaving ? 'Guardando…' : 'Guardar set (100%)'}
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

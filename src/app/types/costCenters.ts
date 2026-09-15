@@ -77,8 +77,65 @@ export type CostCentersDashboardStats = {
   unidades_negocio: number;
   areas: number;
   cargos: number;
+  colaboradores_asignados?: number;
   por_tipo: Record<string, number>;
   gastos_pendientes: number;
   gastos_distribuidos: number;
   nota?: string;
+};
+
+/** Asignación colaborador ↔ centro de costo (Fase 2). */
+export type CollaboratorCostAssignmentLine = {
+  id: number;
+  colaborador_id: string;
+  centro_costo_id: number;
+  porcentaje: number;
+  fecha_inicio: string;
+  fecha_fin?: string | null;
+  es_principal: number | boolean;
+  motivo?: string | null;
+  estado: CatalogEstado;
+  centro_codigo?: string;
+  centro_nombre?: string;
+  centro_tipo?: string;
+  centro_sede?: string | null;
+};
+
+export type CollaboratorAssignmentSummary = {
+  colaborador_id: string;
+  buk_id: number;
+  nombre: string;
+  documento: string;
+  cargo: string;
+  area: string;
+  sede: string;
+  email: string;
+  linked_usuario_id?: string | null;
+  asignado_pct: number;
+  pendiente_pct: number;
+  completo: boolean;
+  n_lineas: number;
+  centro_principal?: { id: number; codigo: string; nombre: string } | null;
+};
+
+export type CollaboratorsAssignmentsPage = {
+  items: CollaboratorAssignmentSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  fecha_referencia: string;
+};
+
+export type AssignmentLineInput = {
+  centro_costo_id: number;
+  porcentaje: number;
+  es_principal?: boolean;
+};
+
+export type ReplaceAssignmentsPayload = {
+  colaborador_id: string;
+  fecha_inicio: string;
+  fecha_fin?: string | null;
+  motivo?: string;
+  lines: AssignmentLineInput[];
 };

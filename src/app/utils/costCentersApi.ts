@@ -1,11 +1,14 @@
 import { getGrooflowApiBase, getGrooflowToken } from '../services/repository/apiBase';
 import type {
   BusinessUnit,
+  CollaboratorCostAssignmentLine,
+  CollaboratorsAssignmentsPage,
   CostCenter,
   CostCentersDashboardStats,
   OrgArea,
   OrgPosition,
   OrgSubarea,
+  ReplaceAssignmentsPayload,
 } from '../types/costCenters';
 
 async function grooflowFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -126,4 +129,62 @@ export const costCentersApi = {
   saveCenter: (data: Partial<CostCenter>, id?: number) =>
     catalogSave<CostCenter>(CC, data as Record<string, unknown>, id),
   deleteCenter: (id: number) => catalogDelete(CC, id),
+
+  listCollaborators: async (params: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    assignment?: 'all' | 'assigned' | 'pending';
+  }): Promise<CollaboratorsAssignmentsPage> => {
+    const q = new URLSearchParams();
+    if (params.page) q.set('page', String(params.page));
+    if (params.pageSize) q.set('pageSize', String(params.pageSize));
+    if (params.search) q.set('search', params.search);
+    if (params.assignment) q.set('assignment', params.assignment);
+    const qs = q.toString();
+    const res = await grooflowFetch(`/cost-centers/assignments/collaborators${qs ? `?${qs}` : ''}`);
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return {
+      items: (json.items as CollaboratorsAssignmentsPage['items']) ?? [],
+      total: Number(json.total ?? 0),
+      page: Number(json.page ?? 1),
+      pageSize: Number(json.pageSize ?? 25),
+      fecha_referencia: String(json.fecha_referencia ?? ''),
+    };
+  },
+
+  listAssignments: async (
+    colaboradorId: string,
+    onlyActive = false
+  ): Promise<CollaboratorCostAssignmentLine[]> => {
+    const q = new URLSearchParams({ colaborador_id: colaboradorId });
+    if (onlyActive) q.set('active', '1');
+    const res = await grooflowFetch(`/cost-centers/assignments?${q}`);
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return (json.items as CollaboratorCostAssignmentLine[]) ?? [];
+  },
+
+  replaceAssignments: async (
+    payload: ReplaceAssignmentsPayload
+  ): Promise<{ colaborador_id: string; cerradas: number; lines: CollaboratorCostAssignmentLine[] }> => {
+    const res = await grooflowFetch('/cost-centers/assignments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return {
+      colaborador_id: String(json.colaborador_id ?? ''),
+      cerradas: Number(json.cerradas ?? 0),
+      lines: (json.lines as CollaboratorCostAssignmentLine[]) ?? [],
+    };
+  },
+
+  deactivateAssignment: async (id: number): Promise<void> => {
+    const res = await grooflowFetch(`/cost-centers/assignments/${id}`, { method: 'DELETE' });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+  },
 };
