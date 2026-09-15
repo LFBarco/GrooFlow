@@ -349,13 +349,20 @@ export function mergeSmartCashFlowSettings(
 /**
  * Fusiona ajustes leídos del KV con valores por defecto.
  * Evita `pettyCash` indefinido / incompleto (pantalla en blanco o crash al abrir Caja chica / Config).
+ * Si `previous` trae catálogos de proveedores y el remoto los omite (proyección incompleta), se conservan.
  */
-export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | undefined): SystemSettings {
+export function mergeSystemSettings(
+  incoming: Partial<SystemSettings> | null | undefined,
+  previous?: SystemSettings | null
+): SystemSettings {
   const base = initialSystemSettings;
+  const prevProviders = previous?.providers;
   if (!incoming || typeof incoming !== 'object') {
-    return { ...base };
+    return previous ? { ...previous } : { ...base };
   }
   const pc = incoming.pettyCash;
+  const incomingCats = incoming.providers?.categories;
+  const incomingAreas = incoming.providers?.areas;
   return {
     ...base,
     ...incoming,
@@ -380,13 +387,17 @@ export function mergeSystemSettings(incoming: Partial<SystemSettings> | null | u
     },
     providers: {
       categories:
-        incoming.providers?.categories && incoming.providers.categories.length > 0
-          ? incoming.providers.categories
-          : base.providers.categories,
+        Array.isArray(incomingCats) && incomingCats.length > 0
+          ? incomingCats
+          : Array.isArray(prevProviders?.categories) && prevProviders.categories.length > 0
+            ? prevProviders.categories
+            : base.providers.categories,
       areas:
-        incoming.providers?.areas && incoming.providers.areas.length > 0
-          ? incoming.providers.areas
-          : base.providers.areas,
+        Array.isArray(incomingAreas) && incomingAreas.length > 0
+          ? incomingAreas
+          : Array.isArray(prevProviders?.areas) && prevProviders.areas.length > 0
+            ? prevProviders.areas
+            : base.providers.areas,
     },
     productCatalog: mergeProductCatalog(incoming.productCatalog ?? base.productCatalog),
     sedesCatalog: Array.isArray(incoming.sedesCatalog)

@@ -1284,7 +1284,10 @@ export default function App() {
       case 'settings:system': {
         if (PRODUCTION_USE_SQL) return;
         if (!systemSettingsHydratedFromKvRef.current) return;
-        const base = mergeSystemSettings(value as Partial<SystemSettings>);
+        const base = mergeSystemSettings(
+          value as Partial<SystemSettings>,
+          systemSettingsKvLatestRef.current
+        );
         const merged = mergePettyCashMetaIntoSettings(
           base,
           pettyCashMetaKvLatestRef.current

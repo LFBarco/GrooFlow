@@ -460,7 +460,7 @@ export function useAppDataHydration(deps: AppHydrationDeps): void {
                 )) as Partial<SystemSettings> | null | undefined) ?? remote;
             }
             const mergedBase = resolvedRemote
-              ? mergeSystemSettings(resolvedRemote)
+              ? mergeSystemSettings(resolvedRemote, deps.systemSettingsKvLatestRef.current)
               : initialSystemSettings;
             const legacyMeta = extractPettyCashMeta(mergedBase.pettyCash);
             let remoteMeta = normalizePettyCashMeta(data[PETTY_CASH_META_KV_KEY]);
