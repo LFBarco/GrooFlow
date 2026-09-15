@@ -26,6 +26,7 @@ const SEED_BY_MODULO: Record<string, string> = {
   'Estado de Resultados': 'text-pink-400 group-hover/btn:text-pink-300',
   Reportes: 'text-amber-400 group-hover/btn:text-amber-300',
   'Caja Chica': 'text-teal-400 group-hover/btn:text-teal-300',
+  'Centros de Costos': 'text-cyan-400 group-hover/btn:text-cyan-300',
   Honorarios: 'text-violet-400 group-hover/btn:text-violet-300',
   Proveedores: 'text-indigo-400 group-hover/btn:text-indigo-300',
   Contabilidad: 'text-sky-400 group-hover/btn:text-sky-300',

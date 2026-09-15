@@ -15,6 +15,7 @@ export const FINANCE_CHILD_MODULES = [
   'Honorarios',
   'Cuentas por Pagar',
   'Caja Chica',
+  'Centros de Costos',
   'Contabilidad',
   'Reportes',
 ] as const;

@@ -80,6 +80,7 @@ import {
   ConfigPanel,
   MonthlySummary,
   PettyCashModule,
+  CostCentersModule,
   ProfessionalFeesModule,
   ProviderManager,
   PurchaseRequestManager,
@@ -4711,6 +4712,21 @@ export default function App() {
                   journalPettyCashTransactions={filteredPettyCashBySede}
                 />
              </div>
+          )}
+
+          {view === 'costCenters' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <CostCentersModule
+                  canEdit={
+                    isSuperAdmin ||
+                    hasPermission('Centros de Costos') ||
+                    hasPermission('Contabilidad')
+                  }
+                  sedeNames={enabledCatalog}
+                />
+              </Suspense>
+            </div>
           )}
 
           {/* User Profile Dialog - Always Available */}

@@ -18,6 +18,7 @@ export type ViewType =
   | 'menuConfig'
   | 'menuAssignment'
   | 'pettycash'
+  | 'costCenters'
   | 'treasury'
   | 'fees'
   | 'alerts'
@@ -62,6 +63,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   pnl: '/estado-resultados',
   reports: '/reportes',
   pettycash: '/caja-chica',
+  costCenters: '/centros-costos',
   fees: '/honorarios',
   providers: '/proveedores',
   accounting: '/contabilidad',
@@ -132,6 +134,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   pnl: 'Estado de Resultados',
   reports: 'Reportes',
   pettycash: 'Caja Chica',
+  costCenters: 'Centros de Costos',
   fees: 'Honorarios',
   providers: 'Proveedores',
   accounting: 'Contabilidad',
@@ -165,6 +168,7 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'profile',
   'alerts',
   'pettycash',
+  'costCenters',
   'treasury',
   'transactions',
   'cashflow',

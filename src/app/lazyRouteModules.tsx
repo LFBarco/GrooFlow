@@ -53,6 +53,10 @@ const loadTransactionImporter = named(
 );
 const loadPnLView = named(() => import('./components/finance/PnLView'), 'PnLView');
 const loadPettyCashModule = named(() => import('./components/finance/PettyCashModule'), 'PettyCashModule');
+const loadCostCentersModule = named(
+  () => import('./components/finance/CostCentersModule'),
+  'CostCentersModule'
+);
 const loadCashFlowGrid = named(() => import('./components/dashboard/CashFlowGrid'), 'CashFlowGrid');
 const loadSmartCashFlowSimulation = named(
   () => import('./components/dashboard/SmartCashFlowSimulation'),
@@ -120,6 +124,7 @@ export const TransactionForm = lazy(loadTransactionForm);
 export const TransactionImporter = lazy(loadTransactionImporter);
 export const PnLView = lazy(loadPnLView);
 export const PettyCashModule = lazy(loadPettyCashModule);
+export const CostCentersModule = lazy(loadCostCentersModule);
 export const CashFlowGrid = lazy(loadCashFlowGrid);
 export const SmartCashFlowSimulation = lazy(loadSmartCashFlowSimulation);
 export const AnalyticsDashboard = lazy(loadAnalyticsDashboard);
@@ -159,6 +164,7 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   pnl: [loadPnLView],
   reports: [loadMonthlySummary],
   pettycash: [loadPettyCashModule],
+  costCenters: [loadCostCentersModule],
   fees: [loadProfessionalFeesModule],
   providers: [loadProviderManager],
   accounting: [loadChartOfAccountsModule],
