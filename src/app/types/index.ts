@@ -511,6 +511,13 @@ export interface ChartOfAccountEntry {
   porcentaje?: string;
   plFuncionGroo?: string;
   plplFuncionGoo?: string;
+  /** Clasificación gerencial (P&L Gerencial) — no modifica el plan Starsoft. */
+  mgrNaturalezaCodigo?: string;
+  mgrPnlCodigo?: string;
+  mgrAreaCodigo?: string;
+  mgrCentroCodigo?: string;
+  mgrTipoCosto?: 'DIRECTO' | 'INDIRECTO' | 'NA';
+  mgrDriverCodigo?: string;
   /** Ayuda para filtros y reglas futuras. */
   kind?: 'expense' | 'tax_igv' | 'cash_bank' | 'other';
   active: boolean;

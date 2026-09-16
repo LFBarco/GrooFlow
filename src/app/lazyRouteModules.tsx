@@ -52,6 +52,7 @@ const loadTransactionImporter = named(
   'TransactionImporter'
 );
 const loadPnLView = named(() => import('./components/finance/PnLView'), 'PnLView');
+const loadMgrPnlModule = named(() => import('./components/finance/MgrPnlModule'), 'MgrPnlModule');
 const loadPettyCashModule = named(() => import('./components/finance/PettyCashModule'), 'PettyCashModule');
 const loadCostCentersModule = named(
   () => import('./components/finance/CostCentersModule'),
@@ -123,6 +124,7 @@ export const RecentTransactions = lazy(loadRecentTransactions);
 export const TransactionForm = lazy(loadTransactionForm);
 export const TransactionImporter = lazy(loadTransactionImporter);
 export const PnLView = lazy(loadPnLView);
+export const MgrPnlModule = lazy(loadMgrPnlModule);
 export const PettyCashModule = lazy(loadPettyCashModule);
 export const CostCentersModule = lazy(loadCostCentersModule);
 export const CashFlowGrid = lazy(loadCashFlowGrid);
@@ -162,6 +164,7 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   transactions: [loadTransactionForm, loadRecentTransactions, loadTransactionImporter],
   cashflow: [loadCashFlowGrid, loadSmartCashFlowSimulation],
   pnl: [loadPnLView],
+  mgrPnl: [loadMgrPnlModule],
   reports: [loadMonthlySummary],
   pettycash: [loadPettyCashModule],
   costCenters: [loadCostCentersModule],

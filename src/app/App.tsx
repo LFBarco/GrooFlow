@@ -81,6 +81,7 @@ import {
   MonthlySummary,
   PettyCashModule,
   CostCentersModule,
+  MgrPnlModule,
   ProfessionalFeesModule,
   ProviderManager,
   PurchaseRequestManager,
@@ -4335,6 +4336,11 @@ export default function App() {
 
           {view === 'pnl' && (
              <div className="animate-in fade-in duration-150">
+               <div className="mb-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                 Vista de <strong>resultado por categorías de flujo</strong> (misma fuente que
+                 transacciones / caja). El P&amp;L gerencial por cuenta, naturaleza y centro de
+                 costo está en <em>P&amp;L Gerencial</em>.
+               </div>
                <PnLView 
                  transactions={transactions} 
                  currentDate={safeCurrentDate} 
@@ -4342,6 +4348,22 @@ export default function App() {
                  onNextMonth={handleNextMonth}
                />
              </div>
+          )}
+
+          {view === 'mgrPnl' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <MgrPnlModule
+                  canEdit={
+                    isSuperAdmin ||
+                    hasPermission('P&L Gerencial') ||
+                    hasPermission('Contabilidad') ||
+                    hasPermission('Centros de Costos')
+                  }
+                  chartOfAccounts={chartOfAccounts}
+                />
+              </Suspense>
+            </div>
           )}
 
           {view === 'reports' && (

@@ -12,6 +12,8 @@ export const FINANCE_CHILD_MODULES = [
   'Transacciones',
   'Flujo de Caja',
   'Estado de Resultados',
+  'Resultado por Flujo',
+  'P&L Gerencial',
   'Honorarios',
   'Cuentas por Pagar',
   'Caja Chica',
@@ -44,6 +46,9 @@ export function roleHasModuleAccess(
    * módulos que el usuario desmarcó intencionalmente.
    */
   if (permissions[moduleName] === false) return false;
+  /** Renombre: Estado de Resultados → Resultado por Flujo */
+  if (moduleName === 'Resultado por Flujo' && permissions['Estado de Resultados'] === true) return true;
+  if (moduleName === 'Estado de Resultados' && permissions['Resultado por Flujo'] === true) return true;
   /** Antes “Alertas” dependía de Dashboard. */
   if (moduleName === 'Alertas' && permissions['Dashboard'] === true) return true;
   if (permissions['Finanzas'] === true && isFinanceChildModule(moduleName)) return true;

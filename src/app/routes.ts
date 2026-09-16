@@ -7,6 +7,7 @@ export type ViewType =
   | 'transactions'
   | 'cashflow'
   | 'pnl'
+  | 'mgrPnl'
   | 'config'
   | 'reports'
   | 'analytics'
@@ -61,6 +62,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   transactions: '/transacciones',
   cashflow: '/flujo-caja',
   pnl: '/estado-resultados',
+  mgrPnl: '/pnl-gerencial',
   reports: '/reportes',
   pettycash: '/caja-chica',
   costCenters: '/centros-costos',
@@ -131,7 +133,8 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   treasury: 'Tesorería',
   transactions: 'Transacciones',
   cashflow: 'Flujo de Caja',
-  pnl: 'Estado de Resultados',
+  pnl: 'Resultado por Flujo',
+  mgrPnl: 'P&L Gerencial',
   reports: 'Reportes',
   pettycash: 'Caja Chica',
   costCenters: 'Centros de Costos',
@@ -173,6 +176,7 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'transactions',
   'cashflow',
   'pnl',
+  'mgrPnl',
   'reports',
   'fees',
   'providers',
