@@ -582,6 +582,16 @@ export interface BukPeIntegrationSettings {
   lastValidationOk?: boolean;
   lastValidationMessage?: string;
   catalogEndpoints?: BukCatalogEndpointConfig[];
+  /**
+   * Sync programado Buk.pe (maestro empleados) → app_usuarios (Gestión).
+   * Ficha laboral: DNI, puesto/cargo, contrato. Turno operativo viene del enrich Ctrlit en colaboradores.
+   */
+  staffSyncEnabled?: boolean;
+  /** Intervalo del sync de usuarios (minutos). Default 60. */
+  staffSyncIntervalMinutes?: number;
+  lastStaffSyncAt?: string;
+  lastStaffSyncOk?: boolean;
+  lastStaffSyncMessage?: string;
 }
 
 export interface AccountingLinkSettings {

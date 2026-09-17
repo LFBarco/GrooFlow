@@ -10,6 +10,8 @@ export function defaultBukPeSettings(): BukPeIntegrationSettings {
     apiBaseUrl: DEFAULT_BUK_PE_BASE_URL,
     apiToken: '',
     enabled: false,
+    staffSyncEnabled: true,
+    staffSyncIntervalMinutes: 60,
     catalogEndpoints: [
       {
         id: 'bukpe-employees',
@@ -30,10 +32,37 @@ export function defaultBukPeSettings(): BukPeIntegrationSettings {
 }
 
 export function mergeBukPeSettings(
-  partial?: Partial<BukPeIntegrationSettings> | null
+  partial?: Partial<BukPeIntegrationSettings> | null,
+  legacyAsistenciaBuk?: {
+    staffSyncEnabled?: boolean;
+    staffSyncIntervalMinutes?: number;
+    lastStaffSyncAt?: string;
+    lastStaffSyncOk?: boolean;
+    lastStaffSyncMessage?: string;
+  } | null
 ): BukPeIntegrationSettings {
   const base = defaultBukPeSettings();
-  if (!partial || typeof partial !== 'object') return { ...base };
+  if (!partial || typeof partial !== 'object') {
+    // Migración suave desde Asistencia si Buk.pe aún no tiene meta de sync.
+    if (legacyAsistenciaBuk && typeof legacyAsistenciaBuk === 'object') {
+      return {
+        ...base,
+        staffSyncEnabled: legacyAsistenciaBuk.staffSyncEnabled ?? base.staffSyncEnabled,
+        staffSyncIntervalMinutes:
+          typeof legacyAsistenciaBuk.staffSyncIntervalMinutes === 'number'
+            ? Math.max(15, Math.min(1440, legacyAsistenciaBuk.staffSyncIntervalMinutes))
+            : base.staffSyncIntervalMinutes,
+        lastStaffSyncAt: legacyAsistenciaBuk.lastStaffSyncAt,
+        lastStaffSyncOk: legacyAsistenciaBuk.lastStaffSyncOk,
+        lastStaffSyncMessage: legacyAsistenciaBuk.lastStaffSyncMessage,
+      };
+    }
+    return { ...base };
+  }
+  const hasOwnStaffMeta =
+    partial.lastStaffSyncAt != null ||
+    partial.staffSyncEnabled !== undefined ||
+    partial.staffSyncIntervalMinutes !== undefined;
   return {
     ...base,
     ...partial,
@@ -41,6 +70,22 @@ export function mergeBukPeSettings(
       ? sanitizeBukPeBaseUrl(partial.apiBaseUrl)
       : base.apiBaseUrl,
     apiToken: partial.apiToken ?? base.apiToken,
+    staffSyncEnabled:
+      partial.staffSyncEnabled !== undefined
+        ? partial.staffSyncEnabled
+        : !hasOwnStaffMeta && legacyAsistenciaBuk?.staffSyncEnabled !== undefined
+          ? legacyAsistenciaBuk.staffSyncEnabled
+          : base.staffSyncEnabled,
+    staffSyncIntervalMinutes:
+      typeof partial.staffSyncIntervalMinutes === 'number' && partial.staffSyncIntervalMinutes > 0
+        ? Math.max(15, Math.min(1440, partial.staffSyncIntervalMinutes))
+        : !hasOwnStaffMeta && typeof legacyAsistenciaBuk?.staffSyncIntervalMinutes === 'number'
+          ? Math.max(15, Math.min(1440, legacyAsistenciaBuk.staffSyncIntervalMinutes))
+          : base.staffSyncIntervalMinutes,
+    lastStaffSyncAt: partial.lastStaffSyncAt ?? (!hasOwnStaffMeta ? legacyAsistenciaBuk?.lastStaffSyncAt : undefined),
+    lastStaffSyncOk: partial.lastStaffSyncOk ?? (!hasOwnStaffMeta ? legacyAsistenciaBuk?.lastStaffSyncOk : undefined),
+    lastStaffSyncMessage:
+      partial.lastStaffSyncMessage ?? (!hasOwnStaffMeta ? legacyAsistenciaBuk?.lastStaffSyncMessage : undefined),
     catalogEndpoints: Array.isArray(partial.catalogEndpoints)
       ? partial.catalogEndpoints
       : base.catalogEndpoints,
@@ -117,13 +162,17 @@ export type BukPeConnectionResult = {
 };
 
 async function postBukPeProxy(
-  path: 'test' | 'probe',
-  body: Record<string, unknown>
+  path: 'test' | 'probe' | 'sync-usuarios',
+  body: Record<string, unknown>,
+  timeoutMs = 60_000
 ): Promise<Response> {
   const backend = getGrooflowBackend();
   if (backend === 'rest') {
     const token = getGrooflowToken();
     if (!token) throw new Error('Sesión caducada. Vuelve a iniciar sesión.');
+    const ctrl = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+      ? { signal: AbortSignal.timeout(timeoutMs) }
+      : {};
     return fetch(`${getGrooflowApiBase()}/proxy/buk-pe/${path}`, {
       method: 'POST',
       headers: {
@@ -131,6 +180,7 @@ async function postBukPeProxy(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      ...ctrl,
     });
   }
   const functionsUrl = await getSupabaseFunctionsUrlLazy();
@@ -146,6 +196,54 @@ async function postBukPeProxy(
     },
     body: JSON.stringify(body),
   });
+}
+
+export type BukPeStaffSyncResult = {
+  ok: boolean;
+  matched?: number;
+  updated?: number;
+  unmatched_buk?: number;
+  users_scanned?: number;
+  by_source?: { empleados?: number; turnos?: number };
+  message?: string;
+  error?: string;
+  duration_ms?: number;
+  synced_at?: string;
+};
+
+/** Proyecta ficha Buk.pe (colaboradores) → app_usuarios. Turno vacío se rellena desde Ctrlit si hay token. */
+export async function syncBukPeUsuariosToGestion(input?: {
+  baseUrl?: string;
+  apiToken?: string;
+}): Promise<BukPeStaffSyncResult> {
+  const backend = getGrooflowBackend();
+  if (backend === 'local') {
+    throw new Error('El sync Buk.pe requiere el backend REST de GrooFlow.');
+  }
+  const body: Record<string, unknown> = {};
+  if (input?.baseUrl) body.baseUrl = sanitizeBukPeBaseUrl(input.baseUrl);
+  if (input?.apiToken) body.apiToken = normalizeBukPeToken(input.apiToken);
+
+  const res = await postBukPeProxy('sync-usuarios', body, 180_000);
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok || json.ok === false) {
+    return {
+      ok: false,
+      error: String(json.error ?? json.message ?? `HTTP ${res.status}`),
+      duration_ms: typeof json.duration_ms === 'number' ? json.duration_ms : undefined,
+    };
+  }
+  return {
+    ok: true,
+    matched: Number(json.matched ?? 0),
+    updated: Number(json.updated ?? 0),
+    unmatched_buk: Number(json.unmatched_buk ?? 0),
+    users_scanned: Number(json.users_scanned ?? 0),
+    by_source: (json.by_source as BukPeStaffSyncResult['by_source']) ?? undefined,
+    message: String(json.message ?? ''),
+    duration_ms: typeof json.duration_ms === 'number' ? json.duration_ms : undefined,
+    synced_at: typeof json.synced_at === 'string' ? json.synced_at : undefined,
+  };
 }
 
 export async function validateBukPeConnection(input: {

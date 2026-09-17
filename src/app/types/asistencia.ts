@@ -393,12 +393,18 @@ export interface BukAsistenciaIntegrationSettings {
   autoRefreshWindowStart?: string;
   autoRefreshWindowEnd?: string;
   lastAutoRefreshAt?: string;
-  /** Sync programado de nómina/turnos → app_usuarios (panel + cron). */
+  /**
+   * @deprecated El sync de usuarios a Gestión vive en Buk.pe (settings.bukPe).
+   * Se conservan por compatibilidad de datos legacy.
+   */
   staffSyncEnabled?: boolean;
-  /** Intervalo del sync de usuarios (minutos). Default 60. */
+  /** @deprecated Ver bukPe.staffSyncIntervalMinutes */
   staffSyncIntervalMinutes?: number;
+  /** @deprecated Ver bukPe.lastStaffSyncAt */
   lastStaffSyncAt?: string;
+  /** @deprecated Ver bukPe.lastStaffSyncOk */
   lastStaffSyncOk?: boolean;
+  /** @deprecated Ver bukPe.lastStaffSyncMessage */
   lastStaffSyncMessage?: string;
   /** Pipeline marcaciones → historial MySQL (Fase 3). */
   marcacionesPipelineEnabled?: boolean;
