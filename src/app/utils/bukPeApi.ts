@@ -27,6 +27,27 @@ export function defaultBukPeSettings(): BukPeIntegrationSettings {
         description: 'Colaboradores con estado activo.',
         enabled: true,
       },
+      {
+        id: 'bukpe-areas',
+        name: 'Areas',
+        pathOrUrl: 'organization/areas/?status=both&page=1&page_size=25',
+        description: 'Áreas organizacionales (GET /organization/areas).',
+        enabled: true,
+      },
+      {
+        id: 'bukpe-role-families',
+        name: 'Familias',
+        pathOrUrl: 'role_families?page=1&page_size=25',
+        description: 'Familias de cargos (GET /role_families).',
+        enabled: true,
+      },
+      {
+        id: 'bukpe-roles',
+        name: 'Roles',
+        pathOrUrl: 'roles?page=1&page_size=25',
+        description: 'Cargos / roles (GET /roles).',
+        enabled: true,
+      },
     ],
   };
 }

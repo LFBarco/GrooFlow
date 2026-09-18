@@ -18,12 +18,6 @@ function roleName(role: unknown): string | undefined {
   return asString(r?.name);
 }
 
-function roleFamily(role: unknown): string | undefined {
-  const r = asRecord(role);
-  const fam = asRecord(r?.role_family);
-  return asString(fam?.name);
-}
-
 export function isBukPeEmployeeTerminated(status: string | undefined): boolean {
   const s = (status ?? '').trim().toLowerCase();
   return TERMINATED_STATUSES.has(s);
@@ -32,8 +26,14 @@ export function isBukPeEmployeeTerminated(status: string | undefined): boolean {
 export function normalizeBukPeEmployee(raw: Record<string, unknown>): BukPeEmployeeRow {
   const currentJob = asRecord(raw.current_job);
   const role = currentJob?.role;
+  const roleRec = asRecord(role);
+  const roleFam = asRecord(roleRec?.role_family);
+  const boss = asRecord(currentJob?.boss);
   const status = asString(raw.status) ?? 'desconocido';
   const endDate = asString(currentJob?.end_date) ?? asString(raw.active_until);
+  const familyName = asString(roleFam?.name);
+  const orgAreaIdRaw = currentJob?.area_id;
+  const roleIdRaw = roleRec?.id ?? currentJob?.role_id;
 
   return {
     bukId: Number(raw.id ?? 0),
@@ -41,70 +41,162 @@ export function normalizeBukPeEmployee(raw: Record<string, unknown>): BukPeEmplo
     fullName: asString(raw.full_name) ?? asString(raw.first_name) ?? 'Sin nombre',
     firstName: asString(raw.first_name),
     surname: asString(raw.surname),
+    secondSurname: asString(raw.second_surname),
     documentType: asString(raw.document_type),
-    documentNumber: asString(raw.document_number),
+    documentNumber: asString(raw.document_number) ?? asString(raw.rut),
     email: asString(raw.email),
     personalEmail: asString(raw.personal_email),
     phone: asString(raw.phone) ?? asString(raw.office_phone),
+    officePhone: asString(raw.office_phone),
     status,
     isActive: !isBukPeEmployeeTerminated(status),
     isTerminated: isBukPeEmployeeTerminated(status),
     birthday: asString(raw.birthday),
     gender: asString(raw.gender),
     nationality: asString(raw.nationality),
+    countryCode: asString(raw.country_code),
+    civilStatus: asString(raw.civil_status),
     address: asString(raw.address),
-    distrito: asString(raw.distrito),
+    street: asString(raw.street),
+    streetNumber: asString(raw.street_number),
+    officeNumber: asString(raw.office_number),
+    city: asString(raw.city),
+    region: asString(raw.region),
+    distrito: asString(raw.distrito) ?? asString(raw.district),
     departamento: asString(raw.departamento),
-    cargo: roleName(role),
-    cargoCode: asRecord(role)?.code ? asString(asRecord(role)?.code) : undefined,
-    area: roleFamily(role),
+    locationId: asString(raw.location_id) ?? asString(currentJob?.location_id),
+    codeSheet: asString(raw.code_sheet),
+    periodType: asString(raw.period_type),
+    university: asString(raw.university),
+    degree: asString(raw.degree),
+    privateRole: typeof raw.private_role === 'boolean' ? raw.private_role : undefined,
+    cargo: roleName(role) ?? (typeof role === 'string' ? asString(role) : undefined),
+    cargoCode: roleRec?.code ? asString(roleRec.code) : undefined,
+    roleId: roleIdRaw != null && roleIdRaw !== '' ? Number(roleIdRaw) : undefined,
+    roleDescription: asString(roleRec?.description),
+    roleRequirements: asString(roleRec?.requirements),
+    area: familyName,
+    roleFamilyId: roleFam?.id != null ? Number(roleFam.id) : undefined,
+    roleFamilyName: familyName,
+    roleFamilyQuantity: roleFam?.quantity_of_roles != null ? Number(roleFam.quantity_of_roles) : undefined,
+    orgAreaId: orgAreaIdRaw != null && orgAreaIdRaw !== '' ? Number(orgAreaIdRaw) : undefined,
+    companyId: currentJob?.company_id != null ? Number(currentJob.company_id) : undefined,
+    weeklyHours: currentJob?.weekly_hours != null ? Number(currentJob.weekly_hours) : undefined,
+    costCenter: asString(currentJob?.cost_center),
+    periodicity: asString(currentJob?.periodicity),
+    frequency: asString(currentJob?.frequency),
+    workingScheduleType: asString(currentJob?.working_schedule_type),
+    bossId: boss?.id != null ? Number(boss.id) : undefined,
+    bossDocument: asString(boss?.document_number) ?? asString(boss?.rut),
+    noticeDate: asString(currentJob?.notice_date),
+    contractSubscriptionDate: asString(currentJob?.contract_subscription_date),
     sede: asString(currentJob?.recinto_primario) ?? asString(raw.location_id),
     contractType: asString(currentJob?.contract_type),
     startDate: asString(currentJob?.start_date) ?? asString(raw.active_since),
     endDate: endDate,
     activeSince: asString(raw.active_since),
     activeUntil: asString(raw.active_until),
+    terminationReason: asString(raw.termination_reason),
     pensionFund: asString(raw.pension_fund),
+    pensionRegime: asString(raw.pension_regime),
     healthCompany: asString(raw.health_company),
     paymentMethod: asString(raw.payment_method),
+    paymentPeriod: asString(raw.payment_period),
+    paymentCurrency: asString(raw.payment_currency),
+    accountType: asString(raw.account_type),
+    advancePayment: asString(raw.advance_payment),
     bank: asString(raw.bank),
+    retired: typeof raw.retired === 'boolean' ? raw.retired : undefined,
+    retirementRegime: asString(raw.retirement_regime),
     raw,
   };
 }
 
 export const RRHH_COLUMN_DEFS: RrhhColumnDef[] = [
+  // Identidad (employees)
   { id: 'fullName', label: 'Nombre completo', defaultVisible: true, group: 'Identidad' },
   { id: 'firstName', label: 'Nombres', group: 'Identidad' },
-  { id: 'surname', label: 'Apellidos', group: 'Identidad' },
+  { id: 'surname', label: 'Apellido', group: 'Identidad' },
+  { id: 'secondSurname', label: 'Segundo apellido', group: 'Identidad' },
   { id: 'documentNumber', label: 'Documento', defaultVisible: true, group: 'Identidad' },
   { id: 'documentType', label: 'Tipo doc.', group: 'Identidad' },
+  { id: 'codeSheet', label: 'Código ficha', group: 'Identidad' },
   { id: 'personId', label: 'Person ID Buk', group: 'Identidad' },
+  // Contacto
   { id: 'email', label: 'Email corporativo', defaultVisible: true, group: 'Contacto' },
   { id: 'personalEmail', label: 'Email personal', group: 'Contacto' },
   { id: 'phone', label: 'Teléfono', defaultVisible: true, group: 'Contacto' },
+  { id: 'officePhone', label: 'Tel. oficina', group: 'Contacto' },
+  // Laboral / trabajo actual
   { id: 'status', label: 'Estado Buk', defaultVisible: true, group: 'Laboral' },
   { id: 'cargo', label: 'Cargo', defaultVisible: true, group: 'Laboral' },
   { id: 'cargoCode', label: 'Código cargo', group: 'Laboral' },
-  { id: 'area', label: 'Área / familia', defaultVisible: true, group: 'Laboral' },
+  { id: 'roleId', label: 'ID cargo', group: 'Laboral' },
+  { id: 'roleDescription', label: 'Desc. cargo', group: 'Laboral' },
+  { id: 'roleRequirements', label: 'Requisitos cargo', group: 'Laboral' },
+  { id: 'roleFamilyName', label: 'Familia de cargos', defaultVisible: true, group: 'Laboral' },
+  { id: 'area', label: 'Familia (legacy)', group: 'Laboral' },
+  { id: 'roleFamilyId', label: 'ID familia', group: 'Laboral' },
+  { id: 'roleFamilyQuantity', label: 'Cargos en familia', group: 'Laboral' },
+  { id: 'orgAreaName', label: 'Área organizacional', defaultVisible: true, group: 'Organización' },
+  { id: 'orgAreaId', label: 'ID área', group: 'Organización' },
+  { id: 'orgAreaParentName', label: 'Área padre', group: 'Organización' },
+  { id: 'orgAreaStatus', label: 'Estado área', group: 'Organización' },
+  { id: 'orgAreaCostCenter', label: 'CC del área', group: 'Organización' },
+  { id: 'orgAreaDepth', label: 'Nivel área', group: 'Organización' },
+  { id: 'companyId', label: 'ID empresa', group: 'Organización' },
   { id: 'sede', label: 'Sede / recinto', group: 'Laboral' },
   { id: 'contractType', label: 'Tipo contrato', group: 'Laboral' },
   { id: 'startDate', label: 'Inicio', defaultVisible: true, group: 'Laboral' },
   { id: 'endDate', label: 'Fin / baja', defaultVisible: true, group: 'Laboral' },
   { id: 'activeSince', label: 'Activo desde', group: 'Laboral' },
   { id: 'activeUntil', label: 'Activo hasta', group: 'Laboral' },
+  { id: 'noticeDate', label: 'Fecha aviso', group: 'Laboral' },
+  { id: 'contractSubscriptionDate', label: 'Suscripción contrato', group: 'Laboral' },
+  { id: 'terminationReason', label: 'Motivo baja', group: 'Laboral' },
+  { id: 'weeklyHours', label: 'Horas semanales', group: 'Laboral' },
+  { id: 'costCenter', label: 'Centro de costo', group: 'Laboral' },
+  { id: 'periodicity', label: 'Periodicidad', group: 'Laboral' },
+  { id: 'frequency', label: 'Frecuencia', group: 'Laboral' },
+  { id: 'workingScheduleType', label: 'Tipo jornada', group: 'Laboral' },
+  { id: 'bossId', label: 'ID jefe', group: 'Laboral' },
+  { id: 'bossDocument', label: 'Doc. jefe', group: 'Laboral' },
+  // Personal
   { id: 'birthday', label: 'Nacimiento', group: 'Personal' },
   { id: 'gender', label: 'Género', group: 'Personal' },
+  { id: 'civilStatus', label: 'Estado civil', group: 'Personal' },
   { id: 'nationality', label: 'Nacionalidad', group: 'Personal' },
+  { id: 'countryCode', label: 'País', group: 'Personal' },
   { id: 'address', label: 'Dirección', group: 'Personal' },
+  { id: 'street', label: 'Calle', group: 'Personal' },
+  { id: 'streetNumber', label: 'Nº calle', group: 'Personal' },
+  { id: 'officeNumber', label: 'Depto / oficina', group: 'Personal' },
+  { id: 'city', label: 'Ciudad', group: 'Personal' },
+  { id: 'region', label: 'Región', group: 'Personal' },
   { id: 'distrito', label: 'Distrito', group: 'Personal' },
   { id: 'departamento', label: 'Departamento', group: 'Personal' },
+  { id: 'locationId', label: 'ID localidad', group: 'Personal' },
+  { id: 'university', label: 'Universidad', group: 'Personal' },
+  { id: 'degree', label: 'Título', group: 'Personal' },
+  // Planilla
   { id: 'pensionFund', label: 'AFP', group: 'Planilla' },
+  { id: 'pensionRegime', label: 'Régimen pensión', group: 'Planilla' },
   { id: 'healthCompany', label: 'EPS / salud', group: 'Planilla' },
   { id: 'paymentMethod', label: 'Forma pago', group: 'Planilla' },
+  { id: 'paymentPeriod', label: 'Periodo pago', group: 'Planilla' },
+  { id: 'paymentCurrency', label: 'Moneda pago', group: 'Planilla' },
+  { id: 'periodType', label: 'Frecuencia pago', group: 'Planilla' },
+  { id: 'accountType', label: 'Tipo cuenta', group: 'Planilla' },
+  { id: 'advancePayment', label: 'Anticipo', group: 'Planilla' },
   { id: 'bank', label: 'Banco', group: 'Planilla' },
+  { id: 'retired', label: 'Jubilado', group: 'Planilla' },
+  { id: 'retirementRegime', label: 'Régimen jubilación', group: 'Planilla' },
+  { id: 'privateRole', label: 'Rol privado', group: 'Planilla' },
+  // Sistema
   { id: 'bukId', label: 'ID Buk', group: 'Sistema' },
   { id: 'linkedUsuarioId', label: 'Usuario Gestión', group: 'Sistema' },
   { id: 'identityStatus', label: 'Estado vínculo', group: 'Sistema' },
+  // Asistencia Ctrlit
   { id: 'rutAsistencia', label: 'RUT asistencia', group: 'Asistencia (Ctrlit)' },
   { id: 'recintoLabel', label: 'Recinto asistencia', defaultVisible: true, group: 'Asistencia (Ctrlit)' },
   { id: 'areaAsistencia', label: 'Área asistencia', group: 'Asistencia (Ctrlit)' },
@@ -127,6 +219,7 @@ export function getEmployeeCellValue(row: BukPeEmployeeRow, columnId: string): s
   const v = row[columnId as keyof BukPeEmployeeRow];
   if (v == null) return '—';
   if (typeof v === 'boolean') return v ? 'Sí' : 'No';
+  if (typeof v === 'number') return String(v);
   return String(v);
 }
 

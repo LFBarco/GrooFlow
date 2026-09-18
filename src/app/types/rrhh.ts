@@ -13,33 +13,84 @@ export interface BukPeEmployeeRow {
   fullName: string;
   firstName?: string;
   surname?: string;
+  secondSurname?: string;
   documentType?: string;
   documentNumber?: string;
   email?: string;
   personalEmail?: string;
   phone?: string;
+  officePhone?: string;
   status: string;
   isActive: boolean;
   isTerminated: boolean;
   birthday?: string;
   gender?: string;
   nationality?: string;
+  countryCode?: string;
+  civilStatus?: string;
   address?: string;
+  street?: string;
+  streetNumber?: string;
+  officeNumber?: string;
+  city?: string;
+  region?: string;
   distrito?: string;
   departamento?: string;
+  locationId?: string;
+  codeSheet?: string;
+  periodType?: string;
+  university?: string;
+  degree?: string;
+  privateRole?: boolean;
+  /** Cargo (roles.name) */
   cargo?: string;
   cargoCode?: string;
+  roleId?: number;
+  roleDescription?: string;
+  roleRequirements?: string;
+  /**
+   * Familia de cargos (role_family.name).
+   * Histórico: se usaba como «área» en UI.
+   */
   area?: string;
+  roleFamilyId?: number;
+  roleFamilyName?: string;
+  roleFamilyQuantity?: number;
+  /** Área organizacional (organization/areas vía current_job.area_id). */
+  orgAreaId?: number;
+  orgAreaName?: string;
+  orgAreaParentName?: string;
+  orgAreaStatus?: string;
+  orgAreaCostCenter?: string;
+  orgAreaDepth?: number;
+  companyId?: number;
+  weeklyHours?: number;
+  costCenter?: string;
+  periodicity?: string;
+  frequency?: string;
+  workingScheduleType?: string;
+  bossId?: number;
+  bossDocument?: string;
+  noticeDate?: string;
+  contractSubscriptionDate?: string;
   sede?: string;
   contractType?: string;
   startDate?: string;
   endDate?: string;
   activeSince?: string;
   activeUntil?: string;
+  terminationReason?: string;
   pensionFund?: string;
+  pensionRegime?: string;
   healthCompany?: string;
   paymentMethod?: string;
+  paymentPeriod?: string;
+  paymentCurrency?: string;
+  accountType?: string;
+  advancePayment?: string;
   bank?: string;
+  retired?: boolean;
+  retirementRegime?: string;
   /** Campos enriquecidos desde Buk Asistencia (Ctrlit). */
   rutAsistencia?: string;
   recintoNombre?: string;
