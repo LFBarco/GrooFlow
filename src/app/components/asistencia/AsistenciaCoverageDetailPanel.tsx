@@ -37,7 +37,7 @@ export function AsistenciaCoverageDetailPanel({ summary, sedeName }: Props) {
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Detalle de requisitos</CardTitle>
         <CardDescription>
-          Cargos mínimos vs presentes según marcaciones Buk · {summary.dateLabel}
+          Cargos mínimos vs presentes por huellero de la sede · {summary.dateLabel}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

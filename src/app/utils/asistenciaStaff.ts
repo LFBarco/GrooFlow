@@ -32,6 +32,12 @@ import {
   mergeAsistenciaSettings,
   parseBukEntradaFormatMinutes,
 } from './asistenciaData';
+import {
+  findBukRecordForStaffAnySede,
+  resolveEffectiveSedeForLive,
+  staffSedeBase,
+} from './asistenciaSedeOperativa';
+import { normalizeSedeKey } from './gestionSedes';
 
 const DEFAULT_SCHEDULE = { start: '08:00', end: '18:00' };
 
@@ -285,11 +291,35 @@ export function staffForSede(
   date?: Date
 ): AsistenciaStaffMember[] {
   const merged = mergeAsistenciaSettings(settings);
+  const sedeKey = normalizeSedeKey(sedeName);
   return (merged.staff ?? [])
-    .filter(
-      (s) =>
-        s.sedeName === sedeName && staffMatchesShiftFilter(s, shiftFilter, date)
-    )
+    .filter((s) => {
+      const base = staffSedeBase(s, merged);
+      return normalizeSedeKey(base) === sedeKey && staffMatchesShiftFilter(s, shiftFilter, date);
+    })
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.fullName.localeCompare(b.fullName));
+}
+
+/**
+ * Personal que debe verse en el organigrama en vivo de esta sede:
+ * sede efectiva = huellero del día (si marcó) o sede base (centro de costo).
+ */
+export function staffForSedeLive(
+  settings: AsistenciaSettings,
+  sedeName: string,
+  records: BukAsistenciaRecord[],
+  date: Date,
+  shiftFilter: AsistenciaShiftFilter = 'all',
+  visibleSedes?: string[]
+): AsistenciaStaffMember[] {
+  const merged = mergeAsistenciaSettings(settings);
+  const sedeKey = normalizeSedeKey(sedeName);
+  return (merged.staff ?? [])
+    .filter((s) => staffMatchesShiftFilter(s, shiftFilter, date))
+    .filter((s) => {
+      const eff = resolveEffectiveSedeForLive(s, records, date, merged, visibleSedes);
+      return normalizeSedeKey(eff.effectiveSede) === sedeKey;
+    })
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.fullName.localeCompare(b.fullName));
 }
 
@@ -323,24 +353,38 @@ export function buildLiveSedeSummary(input: {
   records: BukAsistenciaRecord[];
   date: Date;
   shiftFilter?: AsistenciaShiftFilter;
+  visibleSedes?: string[];
 }): AsistenciaLiveSedeSummary {
   const shiftFilter = input.shiftFilter ?? 'all';
   const settings = mergeAsistenciaSettings(input.settings);
   const profile = getSedeProfile(settings, input.sedeName);
-  const staffList = staffForSede(settings, input.sedeName, shiftFilter, input.date);
+  const staffList = staffForSedeLive(
+    settings,
+    input.sedeName,
+    input.records,
+    input.date,
+    shiftFilter,
+    input.visibleSedes
+  );
 
   const liveStates: AsistenciaStaffLiveState[] = staffList.map((staff) => {
-    const buk = findBukRecordForStaff(
+    const eff = resolveEffectiveSedeForLive(
       staff,
       input.records,
-      input.sedeName,
-      profile,
+      input.date,
       settings,
-      input.date
+      input.visibleSedes
     );
+    // Status según marcación real (cualquier recinto); ya filtramos por sede efectiva.
+    const buk = eff.record ?? findBukRecordForStaffAnySede(staff, input.records, input.date);
     const live = resolveLiveStatus(staff, buk, input.date);
+    let statusNote = live.statusNote;
+    if (eff.coveringFromBase && eff.sedeBase) {
+      const coverNote = `Cubre desde ${eff.sedeBase}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
+      statusNote = statusNote ? `${coverNote}. ${statusNote}` : coverNote;
+    }
     const matchHint =
-      live.status === 'ausente' && !live.statusNote && input.records.length > 0
+      live.status === 'ausente' && !statusNote && input.records.length > 0
         ? diagnoseStaffBukMatch({
             staff,
             records: input.records,
@@ -349,7 +393,16 @@ export function buildLiveSedeSummary(input: {
             date: input.date,
           })
         : undefined;
-    return { staff, ...live, matchHint };
+    return {
+      staff,
+      ...live,
+      statusNote,
+      matchHint,
+      sedeBase: eff.sedeBase,
+      sedeOperativaHoy: eff.sedeOperativaHoy,
+      coveringFromBase: eff.coveringFromBase,
+      bukRecintoHoy: eff.bukRecintoHoy,
+    };
   });
 
   const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
@@ -475,6 +528,7 @@ export function buildLiveConsolidatedSummary(input: {
   records: BukAsistenciaRecord[];
   date: Date;
   shiftFilter?: AsistenciaShiftFilter;
+  visibleSedes?: string[];
 }): AsistenciaLiveConsolidatedSummary {
   const sedes = input.sedeNames.map((sedeName) =>
     buildLiveSedeSummary({
@@ -483,6 +537,7 @@ export function buildLiveConsolidatedSummary(input: {
       records: input.records,
       date: input.date,
       shiftFilter: input.shiftFilter,
+      visibleSedes: input.visibleSedes ?? input.sedeNames,
     })
   );
   return {

@@ -96,7 +96,15 @@ export const ASISTENCIA_LIVE_STATUS_LABELS: Record<AsistenciaLiveStatus, string>
 /** Persona registrada en la estructura de la sede. */
 export interface AsistenciaStaffMember {
   id: string;
+  /**
+   * Sede de pertenencia / plantilla del organigrama (centro de costo Buk.pe).
+   * En la vista en vivo, la persona puede mostrarse en otra sede si marcó allí hoy.
+   */
   sedeName: string;
+  /** Alias explícito de sede base (si falta, se usa sedeName). */
+  sedeBase?: string;
+  /** Código centro de costo Buk.pe (ej. 606060 Magdalena). */
+  homeCostCenterCode?: string;
   fullName: string;
   cargoLabel: string;
   /** Id de columna del organigrama (área built-in o personalizada). */
@@ -205,6 +213,14 @@ export interface AsistenciaStaffLiveState {
   statusNote?: string;
   /** Por qué no hubo match con Buk (solo si ausente y hay datos cargados). */
   matchHint?: string;
+  /** Sede de pertenencia (centro de costo). */
+  sedeBase?: string;
+  /** Sede del huellero/recinto donde marcó hoy. */
+  sedeOperativaHoy?: string;
+  /** True si está cubriendo fuera de su sede base. */
+  coveringFromBase?: boolean;
+  /** Etiqueta recinto Buk del día. */
+  bukRecintoHoy?: string;
 }
 
 export interface AsistenciaLiveSubAreaBlock {
@@ -443,6 +459,13 @@ export interface AsistenciaOperationalContext {
   bukEnabled: boolean;
 }
 
+/** Mapeo centro de costo Buk.pe → sede GrooFlow (override del default 101010…). */
+export interface AsistenciaCostCenterSedeMapping {
+  costCenterCode: string;
+  sedeName: string;
+  label?: string;
+}
+
 export interface AsistenciaSettings {
   buk?: BukAsistenciaIntegrationSettings;
   requirements: AsistenciaOrgRequirement[];
@@ -452,6 +475,8 @@ export interface AsistenciaSettings {
   sedeProfiles?: AsistenciaSedeProfile[];
   areaKeywords?: AsistenciaAreaKeywords;
   sedeMappings?: AsistenciaSedeMapping[];
+  /** Override: código CC Buk.pe → sede (pertenencia / proyección). */
+  costCenterSedeMappings?: AsistenciaCostCenterSedeMapping[];
 }
 
 export type AsistenciaCoverageStatus = 'complete' | 'partial' | 'missing' | 'over';

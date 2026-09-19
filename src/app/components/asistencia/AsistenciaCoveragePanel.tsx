@@ -66,7 +66,8 @@ export function AsistenciaCoveragePanel({ summary, sedeName, compact }: Props) {
         </CardTitle>
         {!compact ? (
           <CardDescription>
-            Dotación requerida vs presentes según marcaciones Buk · {summary.dateLabel}
+            Dotación vs presentes por huellero/recinto de la sede (físico del día) · {summary.dateLabel}.
+            Quien cubre desde otra sede cuenta aquí, no en su sede base.
           </CardDescription>
         ) : null}
       </CardHeader>

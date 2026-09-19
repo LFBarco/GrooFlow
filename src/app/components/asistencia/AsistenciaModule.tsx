@@ -31,8 +31,9 @@ import { buildFilterSedeOptions, buildFormSedeOptions } from '../../utils/gestio
 import {
   cacheAgeLabel,
 } from '../../utils/bukAsistenciaCache';
-import { buildLiveConsolidatedSummary, buildLiveSedeSummary, staffForSede } from '../../utils/asistenciaStaff';
+import { buildLiveConsolidatedSummary, buildLiveSedeSummary } from '../../utils/asistenciaStaff';
 import { buildBukDashboardSummary, buildBukMultiSedeDashboard, type BukDashboardRow } from '../../utils/asistenciaBukDashboard';
+import { fetchBukPeOrgLookupByRut, type BukPeOrgLookupEntry } from '../../utils/asistenciaBukOrgLookup';
 import {
   defaultAsistenciaFilters,
   filterBukDashboardRows,
@@ -153,10 +154,21 @@ export function AsistenciaModule({
   const [detailLive, setDetailLive] = useState<AsistenciaStaffLiveState | null>(null);
   const [detailBukRow, setDetailBukRow] = useState<BukDashboardRow | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [orgByRut, setOrgByRut] = useState<Map<string, BukPeOrgLookupEntry> | undefined>();
   const [snapshots, setSnapshots] = useState(() => listAsistenciaSnapshots());
   const [documentVisible, setDocumentVisible] = useState(
     () => typeof document === 'undefined' || !document.hidden
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchBukPeOrgLookupByRut().then((map) => {
+      if (!cancelled) setOrgByRut(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,8 +238,9 @@ export function AsistenciaModule({
         records,
         date: dateObj,
         shiftFilter,
+        visibleSedes: sedeOptions,
       }),
-    [activeSede, asistencia, records, dateObj, shiftFilter]
+    [activeSede, asistencia, records, dateObj, shiftFilter, sedeOptions]
   );
 
   const consolidatedSummary = useMemo(
@@ -238,6 +251,7 @@ export function AsistenciaModule({
         records,
         date: dateObj,
         shiftFilter,
+        visibleSedes: sedeOptions,
       }),
     [sedeOptions, asistencia, records, dateObj, shiftFilter]
   );
@@ -270,23 +284,26 @@ export function AsistenciaModule({
         sedeName: activeSede,
         settings: asistencia,
         date: dateObj,
+        orgByRut,
       }),
-    [records, activeSede, asistencia, dateObj]
+    [records, activeSede, asistencia, dateObj, orgByRut]
   );
 
   const bukAreaOptions = useMemo(
     () =>
-      [...new Set(bukDashboardSummary.rows.map((r) => r.area).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b, 'es')
+      [...new Set(bukDashboardSummary.rows.map((r) => r.orgAreaName || r.area).filter((a) => a && a !== '—'))].sort(
+        (a, b) => a.localeCompare(b, 'es')
       ),
     [bukDashboardSummary.rows]
   );
 
   const bukSpecialtyOptions = useMemo(
     () =>
-      [...new Set(bukDashboardSummary.rows.map((r) => r.especialidad).filter(Boolean))].sort((a, b) =>
-        a.localeCompare(b, 'es')
-      ),
+      [
+        ...new Set(
+          bukDashboardSummary.rows.map((r) => r.roleFamilyName || r.especialidad).filter((a) => a && a !== '—')
+        ),
+      ].sort((a, b) => a.localeCompare(b, 'es')),
     [bukDashboardSummary.rows]
   );
 
@@ -297,8 +314,9 @@ export function AsistenciaModule({
         sedeNames: sedeOptions,
         settings: asistencia,
         date: dateObj,
+        orgByRut,
       }),
-    [records, sedeOptions, asistencia, dateObj]
+    [records, sedeOptions, asistencia, dateObj, orgByRut]
   );
 
   const weekTrend = useMemo(
@@ -479,8 +497,8 @@ export function AsistenciaModule({
   }, []);
 
   const hasAnyStaff = useMemo(
-    () => sedeOptions.some((s) => staffForSede(asistencia, s).length > 0),
-    [sedeOptions, asistencia]
+    () => (asistencia.staff?.length ?? 0) > 0,
+    [asistencia.staff]
   );
 
   const saveAsistencia = useCallback(
@@ -525,15 +543,8 @@ export function AsistenciaModule({
           setMainTab('config');
           return;
         }
-        if (
-          mainTab === 'live' &&
-          liveViewMode === 'single' &&
-          staffForSede(asistencia, activeSede).length === 0
-        ) {
-          toast.error('Registra personal en la sede seleccionada o usa vista consolidada.');
-          setMainTab('config');
-          return;
-        }
+        // No bloquear por sede activa vacía: quien cubre desde otra base
+        // solo aparece tras cargar marcaciones (staffForSedeLive).
       }
       const result = await refreshBuk({
         activeSede,
@@ -566,8 +577,6 @@ export function AsistenciaModule({
     [
       mainTab,
       hasAnyStaff,
-      liveViewMode,
-      asistencia,
       activeSede,
       dateObj,
       refreshBuk,
@@ -1032,6 +1041,7 @@ export function AsistenciaModule({
               sedeName={activeSede}
               date={dateObj}
               filters={filters}
+              orgByRut={orgByRut}
               onRowClick={openBukRowDetail}
               onExport={handleExportBuk}
             />

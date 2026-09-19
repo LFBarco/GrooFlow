@@ -23,6 +23,7 @@ export function asistenciaSettingsHasContent(
     (partial.staff?.length ?? 0) > 0 ||
     (partial.sedeProfiles?.length ?? 0) > 0 ||
     (partial.sedeMappings?.length ?? 0) > 0 ||
+    (partial.costCenterSedeMappings?.length ?? 0) > 0 ||
     (partial.requirements?.length ?? 0) > 0 ||
     partial.buk?.enabled === true ||
     !!(partial.buk?.apiToken?.trim())
@@ -44,6 +45,11 @@ export function resolveAsistenciaSettings(
 
   const sedeProfiles = mergeByKey(fromLegacy.sedeProfiles, fromDedicated.sedeProfiles, (p) => p.sedeName);
   const sedeMappings = mergeByKey(fromLegacy.sedeMappings, fromDedicated.sedeMappings, (m) => m.sedeName);
+  const costCenterSedeMappings = mergeByKey(
+    fromLegacy.costCenterSedeMappings,
+    fromDedicated.costCenterSedeMappings,
+    (m) => m.costCenterCode
+  );
   const requirements = mergeByKey(fromLegacy.requirements, fromDedicated.requirements, (r) => r.id);
 
   return mergeAsistenciaSettings({
@@ -52,6 +58,7 @@ export function resolveAsistenciaSettings(
     staff,
     sedeProfiles,
     sedeMappings,
+    costCenterSedeMappings,
     requirements,
     buk: { ...fromLegacy.buk, ...fromDedicated.buk },
   });
@@ -91,6 +98,9 @@ export function patchAsistenciaSettings(
       Array.isArray(patch.sedeMappings) && patch.sedeMappings.length > 0
         ? next.sedeMappings
         : base.sedeMappings,
+    costCenterSedeMappings: Array.isArray(patch.costCenterSedeMappings)
+      ? next.costCenterSedeMappings
+      : base.costCenterSedeMappings,
     requirements:
       Array.isArray(patch.requirements) && patch.requirements.length > 0
         ? next.requirements

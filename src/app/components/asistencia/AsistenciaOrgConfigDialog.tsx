@@ -4,11 +4,13 @@ import { toast } from 'sonner';
 
 import type {
   AsistenciaAreaGroup,
+  AsistenciaCostCenterSedeMapping,
   AsistenciaOrgRequirement,
   AsistenciaSettings,
 } from '../../types/asistencia';
 import { ASISTENCIA_AREA_GROUP_LABELS } from '../../types/asistencia';
 import { buildDefaultRequirementsForSede } from '../../utils/asistenciaData';
+import { DEFAULT_BUK_PE_COST_CENTER_SEDES } from '../../utils/asistenciaSedeOperativa';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -49,13 +51,53 @@ export function AsistenciaOrgConfigDialog({
 }: Props) {
   const [draft, setDraft] = useState<AsistenciaSettings>(settings);
 
-  const syncDraft = () => setDraft({ ...settings, requirements: [...settings.requirements] });
+  const syncDraft = () =>
+    setDraft({
+      ...settings,
+      requirements: [...settings.requirements],
+      costCenterSedeMappings: [...(settings.costCenterSedeMappings ?? [])],
+    });
 
   const patchReq = (id: string, patch: Partial<AsistenciaOrgRequirement>) => {
     setDraft((d) => ({
       ...d,
       requirements: d.requirements.map((r) => (r.id === id ? { ...r, ...patch } : r)),
     }));
+  };
+
+  const ccRows = draft.costCenterSedeMappings ?? [];
+
+  const patchCc = (index: number, patch: Partial<AsistenciaCostCenterSedeMapping>) => {
+    setDraft((d) => {
+      const rows = [...(d.costCenterSedeMappings ?? [])];
+      rows[index] = { ...rows[index], ...patch };
+      return { ...d, costCenterSedeMappings: rows };
+    });
+  };
+
+  const addCcRow = () => {
+    setDraft((d) => ({
+      ...d,
+      costCenterSedeMappings: [
+        ...(d.costCenterSedeMappings ?? []),
+        { costCenterCode: '', sedeName: sedeOptions[0] ?? '' },
+      ],
+    }));
+  };
+
+  const removeCcRow = (index: number) => {
+    setDraft((d) => ({
+      ...d,
+      costCenterSedeMappings: (d.costCenterSedeMappings ?? []).filter((_, i) => i !== index),
+    }));
+  };
+
+  const seedDefaultCostCenters = () => {
+    const rows: AsistenciaCostCenterSedeMapping[] = Object.entries(DEFAULT_BUK_PE_COST_CENTER_SEDES).map(
+      ([costCenterCode, sedeName]) => ({ costCenterCode, sedeName })
+    );
+    setDraft((d) => ({ ...d, costCenterSedeMappings: rows }));
+    toast.success('Mapa default CC → sede cargado (puedes editarlo).');
   };
 
   const addRow = () => {
@@ -92,7 +134,10 @@ export function AsistenciaOrgConfigDialog({
       toast.error('Agrega al menos un cargo en la estructura.');
       return;
     }
-    onSave({ ...draft, requirements: clean });
+    const cleanCc = (draft.costCenterSedeMappings ?? []).filter(
+      (r) => r.costCenterCode.trim() && r.sedeName.trim()
+    );
+    onSave({ ...draft, requirements: clean, costCenterSedeMappings: cleanCc });
     onOpenChange(false);
     toast.success('Estructura organizacional guardada.');
   };
@@ -147,6 +192,68 @@ export function AsistenciaOrgConfigDialog({
                 );
               })}
             </div>
+          </div>
+
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <Label className="text-sm font-medium">Centro de costo Buk.pe → sede base</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Define la pertenencia del organigrama (no el huellero del día). Si está vacío, se usa el mapa
+                  interno (101010 Benavides, 606060 Magdalena…).
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={seedDefaultCostCenters}>
+                  <Wand2 className="h-3.5 w-3.5 mr-1" />
+                  Defaults
+                </Button>
+                <Button type="button" variant="outline" size="sm" onClick={addCcRow}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  CC
+                </Button>
+              </div>
+            </div>
+            {ccRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Sin overrides. El sistema usará el mapa default hasta que cargues «Defaults» o agregues filas.
+              </p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {ccRows.map((row, idx) => (
+                  <div key={`cc-${idx}`} className="flex gap-2 items-center">
+                    <Input
+                      placeholder="Código CC"
+                      value={row.costCenterCode}
+                      onChange={(e) => patchCc(idx, { costCenterCode: e.target.value.replace(/\D/g, '').slice(0, 6) })}
+                      className="h-8 w-24 font-mono"
+                    />
+                    <Select
+                      value={row.sedeName || '__none__'}
+                      onValueChange={(v) => patchCc(idx, { sedeName: v === '__none__' ? '' : v })}
+                    >
+                      <SelectTrigger className="h-8 flex-1">
+                        <SelectValue placeholder="Sede" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {sedeOptions.map((s) => (
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                        {row.sedeName && !sedeOptions.includes(row.sedeName) ? (
+                          <SelectItem value={row.sedeName}>{row.sedeName}</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => removeCcRow(idx)}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between items-center gap-2">

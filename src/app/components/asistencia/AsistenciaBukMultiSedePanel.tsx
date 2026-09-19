@@ -105,7 +105,7 @@ export function AsistenciaBukMultiSedePanel({ multi, filters, onRowClick }: Prop
                 <TableHeader>
                   <TableRow>
                     <TableHead>Nombre</TableHead>
-                    <TableHead>Área</TableHead>
+                    <TableHead>Área organizacional</TableHead>
                     <TableHead>RUT</TableHead>
                     <TableHead>Llegó</TableHead>
                     <TableHead>Entrada</TableHead>
@@ -121,7 +121,7 @@ export function AsistenciaBukMultiSedePanel({ multi, filters, onRowClick }: Prop
                       <TableCell className="font-medium">
                         {row.nombre} {row.apellidos}
                       </TableCell>
-                      <TableCell>{row.area}</TableCell>
+                      <TableCell>{row.orgAreaName || row.area}</TableCell>
                       <TableCell className="font-mono text-xs">{row.rut}</TableCell>
                       <TableCell>{row.arrived ? 'Sí' : 'No'}</TableCell>
                       <TableCell className="tabular-nums">{row.entradaHora ?? '—'}</TableCell>

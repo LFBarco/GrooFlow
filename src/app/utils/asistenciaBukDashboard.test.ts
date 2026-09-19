@@ -88,7 +88,7 @@ describe('asistenciaBukDashboard', () => {
     expect(summary.rows[0]?.punctuality).toBe('late');
   });
 
-  it('incluye hora de salida y agrupa por especialidad', () => {
+  it('incluye hora de salida y agrupa por familia de cargos', () => {
     const settings = mergeAsistenciaSettings({
       sedeProfiles: [
         { sedeName: '50.- La Molina', bukRecintoCode: 'Petmax · Petmax Principal' },
@@ -127,10 +127,30 @@ describe('asistenciaBukDashboard', () => {
       sedeName: '50.- La Molina',
       settings,
       date: new Date('2026-06-15T12:00:00'),
+      orgByRut: new Map([
+        [
+          '111',
+          {
+            roleFamilyName: 'Asistentes',
+            orgAreaParentName: 'Clínica',
+            orgAreaName: 'Medicina',
+          },
+        ],
+        [
+          '222',
+          {
+            roleFamilyName: 'Counter',
+            orgAreaParentName: 'Operaciones',
+            orgAreaName: 'Recepción',
+          },
+        ],
+      ]),
     });
     expect(summary.leftSameDay).toBe(1);
     expect(summary.rows.find((r) => r.id === 1)?.salidaHora).toBe('17:30');
-    expect(summary.specialtyGroups).toHaveLength(2);
-    expect(summary.specialtyGroups[0]?.especialidad).toBeTruthy();
+    expect(summary.familyGroups).toHaveLength(2);
+    expect(summary.parentAreaGroups.map((g) => g.name).sort()).toEqual(['Clínica', 'Operaciones']);
+    expect(summary.orgAreaGroups.map((g) => g.name).sort()).toEqual(['Medicina', 'Recepción']);
+    expect(summary.rows.find((r) => r.id === 1)?.roleFamilyName).toBe('Asistentes');
   });
 });

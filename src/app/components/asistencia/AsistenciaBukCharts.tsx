@@ -101,9 +101,9 @@ export function AsistenciaBukCharts({ summary, areaGroups }: Props) {
     <div className="space-y-6">
       <div className="grid gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2 rounded-xl border border-border dark:border-slate-800 bg-slate-900/40 p-4">
-          <p className="text-sm font-semibold text-foreground mb-1">Asistencia por área</p>
+          <p className="text-sm font-semibold text-foreground mb-1">Asistencia por área organizacional</p>
           <p className="text-xs text-muted-foreground mb-4">
-            Personas con entrada marcada, a tiempo, con tardanza y sin entrada.
+            Agrupado según Buk.pe (área organizacional). Familia → área padre → área org.
           </p>
           <div className="h-[320px] w-full">
             <ResponsiveContainer width="100%" height="100%">

@@ -39,8 +39,6 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
       autoRefreshIntervalMinutes: 30,
       autoRefreshWindowStart: '06:00',
       autoRefreshWindowEnd: '22:00',
-      staffSyncEnabled: true,
-      staffSyncIntervalMinutes: 60,
       marcacionesPipelineEnabled: true,
       marcacionesPipelineIntervalMinutes: 30,
       catalogEndpoints: [
@@ -58,6 +56,7 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
     sedeProfiles: [],
     areaKeywords: { ...DEFAULT_ASISTENCIA_AREA_KEYWORDS },
     sedeMappings: [],
+    costCenterSedeMappings: [],
   };
 }
 
@@ -92,6 +91,9 @@ export function mergeAsistenciaSettings(
           : spread.areaKeywords!.peluqueria,
     },
     sedeMappings: Array.isArray(partial.sedeMappings) ? partial.sedeMappings : spread.sedeMappings ?? [],
+    costCenterSedeMappings: Array.isArray(partial.costCenterSedeMappings)
+      ? partial.costCenterSedeMappings
+      : spread.costCenterSedeMappings ?? [],
   };
 }
 

@@ -467,4 +467,63 @@ describe('asistenciaStaff', () => {
     });
     expect(hint).toMatch(/RUT/);
   });
+
+  it('ubica en sede operativa B cuando la base es A (cubre desde)', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's-cover',
+      sedeName: 'Magdalena',
+      sedeBase: 'Magdalena',
+      homeCostCenterCode: '606060',
+      fullName: 'Carla Cover',
+      cargoLabel: 'Asistente',
+      area: 'medica',
+      expectedTime: '08:00',
+      isCritical: false,
+      rut: '22222222',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [
+        { sedeName: 'Magdalena', bukRecintoCode: 'MAG' },
+        { sedeName: 'Benavides', bukRecintoCode: 'BEN' },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 9,
+        trab_id: 9,
+        rut_trabajador: '22222222',
+        nombre: 'Carla',
+        codigo_recinto: 'BEN',
+        nombre_recinto: 'Benavides',
+        dia_entrada: '19/09/2026',
+        entrada: '2026-09-19T08:10:00',
+        entrada_format: '08:10',
+        salida: null,
+      },
+    ];
+    const date = new Date(2026, 8, 19, 12, 0, 0);
+    const atBase = buildLiveSedeSummary({
+      sedeName: 'Magdalena',
+      settings,
+      records,
+      date,
+      visibleSedes: ['Magdalena', 'Benavides'],
+    });
+    expect(atBase.areas.flatMap((a) => a.staff).map((s) => s.staff.id)).not.toContain('s-cover');
+
+    const atOps = buildLiveSedeSummary({
+      sedeName: 'Benavides',
+      settings,
+      records,
+      date,
+      visibleSedes: ['Magdalena', 'Benavides'],
+    });
+    const live = atOps.areas.flatMap((a) => a.staff).find((s) => s.staff.id === 's-cover');
+    expect(live).toBeTruthy();
+    expect(live?.coveringFromBase).toBe(true);
+    expect(live?.sedeBase).toBe('Magdalena');
+    expect(live?.sedeOperativaHoy).toBe('Benavides');
+    expect(live?.statusNote).toMatch(/Cubre desde Magdalena/i);
+  });
 });

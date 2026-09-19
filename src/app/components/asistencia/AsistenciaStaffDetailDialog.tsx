@@ -81,8 +81,19 @@ export function AsistenciaStaffDetailDialog({
               <p className="font-medium text-foreground">{cargo}</p>
               <p className="flex items-center gap-1 text-muted-foreground">
                 <MapPin className="h-3.5 w-3.5 shrink-0" />
-                {sede}
+                {live?.sedeOperativaHoy && live.coveringFromBase
+                  ? `${live.sedeOperativaHoy} (hoy)`
+                  : sede}
               </p>
+              {live?.coveringFromBase && live.sedeBase ? (
+                <p className="text-xs text-teal-700 dark:text-teal-300">
+                  Sede base (CC): {live.sedeBase}
+                  {staff?.homeCostCenterCode ? ` · ${staff.homeCostCenterCode}` : ''}
+                  {live.bukRecintoHoy ? ` · Huellero: ${live.bukRecintoHoy}` : ''}
+                </p>
+              ) : staff?.homeCostCenterCode ? (
+                <p className="text-xs text-muted-foreground">CC: {staff.homeCostCenterCode}</p>
+              ) : null}
               {staff && viewDate ? (
                 <p className="text-xs text-indigo-600 dark:text-indigo-300">
                   {shiftLabelForStaff(staff, viewDate)}

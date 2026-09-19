@@ -71,6 +71,7 @@ export function StaffLiveCard({
   critical,
   matchHint,
   statusNote,
+  coveringLabel,
   editLayout,
   dragHandleRef,
   isDragging,
@@ -86,6 +87,8 @@ export function StaffLiveCard({
   critical?: boolean;
   matchHint?: string;
   statusNote?: string;
+  /** Ej. "Base: Magdalena" cuando cubre en otra sede. */
+  coveringLabel?: string;
   editLayout?: boolean;
   dragHandleRef?: (node: HTMLDivElement | null) => void;
   isDragging?: boolean;
@@ -116,7 +119,9 @@ export function StaffLiveCard({
       } ${
         absent
           ? 'border-red-200 bg-red-50/90 dark:border-red-500/30 dark:bg-slate-900/80'
-          : 'border-border bg-card dark:border-slate-700 dark:bg-slate-900/90'
+          : coveringLabel
+            ? 'border-teal-200 bg-teal-50/80 dark:border-teal-500/30 dark:bg-teal-950/20'
+            : 'border-border bg-card dark:border-slate-700 dark:bg-slate-900/90'
       } ${editLayout ? 'cursor-grab ring-1 ring-indigo-500/30 active:cursor-grabbing' : onClick ? 'cursor-pointer hover:border-teal-400/60 hover:shadow-sm' : ''}`}
     >
       {editLayout ? (
@@ -141,6 +146,11 @@ export function StaffLiveCard({
             <p className="truncate text-xs text-muted-foreground">{cargo}</p>
             {shiftLabel ? (
               <p className="truncate text-[10px] text-indigo-600 dark:text-indigo-300/90">{shiftLabel}</p>
+            ) : null}
+            {coveringLabel ? (
+              <p className="truncate text-[10px] font-medium text-teal-700 dark:text-teal-300/90">
+                {coveringLabel}
+              </p>
             ) : null}
           </div>
         </div>

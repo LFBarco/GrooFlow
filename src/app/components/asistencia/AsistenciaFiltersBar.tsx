@@ -202,7 +202,7 @@ export function AsistenciaFiltersBar({
 
           {showBukFilters && areaOptions.length > 0 ? (
             <div className="space-y-1">
-              <Label className="text-xs">Área Buk</Label>
+              <Label className="text-xs">Área organizacional</Label>
               <Select value={filters.areaFilter} onValueChange={(v) => set({ areaFilter: v })}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
@@ -221,7 +221,7 @@ export function AsistenciaFiltersBar({
 
           {showBukFilters && specialtyOptions.length > 0 ? (
             <div className="space-y-1 sm:col-span-2">
-              <Label className="text-xs">Especialidad</Label>
+              <Label className="text-xs">Familia de cargos</Label>
               <Select
                 value={filters.specialtyFilter}
                 onValueChange={(v) => set({ specialtyFilter: v })}

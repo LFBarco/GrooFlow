@@ -21,8 +21,9 @@ export function exportAsistenciaBukExcel(
   const headers = [
     'Nombre',
     'Apellidos',
-    'Área',
-    'Especialidad',
+    'Familia de cargos',
+    'Área padre',
+    'Área organizacional',
     'RUT',
     'Llegó',
     'Puntualidad',
@@ -33,8 +34,9 @@ export function exportAsistenciaBukExcel(
   const data = rows.map((r) => [
     r.nombre,
     r.apellidos,
-    r.area,
-    r.especialidad,
+    r.roleFamilyName,
+    r.orgAreaParentName,
+    r.orgAreaName,
     r.rut,
     r.arrived ? 'Sí' : 'No',
     r.punctuality === 'on_time' ? 'A tiempo' : r.punctuality === 'late' ? 'Tardanza' : '—',

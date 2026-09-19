@@ -353,9 +353,76 @@ export function BukAsistenciaIntegrationSection({
               {format(new Date(buk.lastAutoRefreshAt), "d MMM yyyy, HH:mm", { locale: es })}
             </p>
           ) : null}
+        </div>
+
+        <div className="rounded-lg border p-4 space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Pipeline marcaciones (servidor)</p>
+              <p className="text-xs text-muted-foreground">
+                Cron GrooFlow guarda el día en MySQL para historial y organigrama en vivo, aunque nadie tenga
+                el módulo abierto.
+              </p>
+            </div>
+            <Switch
+              checked={buk.marcacionesPipelineEnabled !== false}
+              disabled={readOnly || buk.enabled !== true}
+              onCheckedChange={(v) =>
+                patchBuk(
+                  { marcacionesPipelineEnabled: v },
+                  {
+                    persist: true,
+                    message: v
+                      ? 'Pipeline de marcaciones activado.'
+                      : 'Pipeline de marcaciones desactivado.',
+                  }
+                )
+              }
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <Label htmlFor="buk-pipe-interval">Intervalo cron (min)</Label>
+              <Input
+                id="buk-pipe-interval"
+                type="number"
+                min={10}
+                max={1440}
+                defaultValue={buk.marcacionesPipelineIntervalMinutes ?? 30}
+                disabled={readOnly || buk.marcacionesPipelineEnabled === false}
+                onBlur={(e) => {
+                  const n = Math.max(10, Math.min(1440, Number(e.target.value) || 30));
+                  patchBuk({ marcacionesPipelineIntervalMinutes: n }, { persist: true });
+                }}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-muted-foreground">Última corrida</Label>
+              <p className="text-sm text-foreground min-h-9 flex items-center">
+                {buk.lastMarcacionesPipelineAt ? (
+                  <>
+                    {format(new Date(buk.lastMarcacionesPipelineAt), "d MMM yyyy, HH:mm", { locale: es })}
+                    {buk.lastMarcacionesPipelineOk === false ? (
+                      <span className="ml-2 text-destructive text-xs">falló</span>
+                    ) : buk.lastMarcacionesPipelineCount != null ? (
+                      <span className="ml-2 text-muted-foreground text-xs">
+                        · {buk.lastMarcacionesPipelineCount} reg.
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground text-xs">Aún no ha corrido</span>
+                )}
+              </p>
+            </div>
+          </div>
+          {buk.lastMarcacionesPipelineMessage ? (
+            <p className="text-xs text-muted-foreground break-words">{buk.lastMarcacionesPipelineMessage}</p>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             La sincronización de ficha laboral hacia usuarios de Gestión está en{' '}
-            <strong>Buk.pe — RRHH</strong>. Aquí solo se gestionan marcaciones y auto-refresh de asistencia.
+            <strong>Buk.pe — RRHH</strong>. Aquí solo se gestionan marcaciones, auto-refresh y el pipeline del
+            servidor.
           </p>
         </div>
       </CardContent>

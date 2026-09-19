@@ -8,10 +8,11 @@ import {
   Layers,
   List,
   MapPin,
+  Network,
   X,
   XCircle,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -20,6 +21,7 @@ import {
   buildBukDashboardSummary,
   type BukDashboardRow,
 } from '../../utils/asistenciaBukDashboard';
+import { fetchBukPeOrgLookupByRut, type BukPeOrgLookupEntry } from '../../utils/asistenciaBukOrgLookup';
 import { filterBukDashboardRows } from '../../utils/asistenciaFilters';
 import { getSedeProfile } from '../../utils/asistenciaStaff';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -36,12 +38,15 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AsistenciaBukCharts } from './AsistenciaBukCharts';
 
+type DashboardView = 'list' | 'charts' | 'family' | 'parent' | 'org';
+
 type Props = {
   records: BukAsistenciaRecord[];
   settings: AsistenciaSettings;
   sedeName: string;
   date: Date;
   filters: AsistenciaFilters;
+  orgByRut?: Map<string, BukPeOrgLookupEntry>;
   onRowClick?: (row: BukDashboardRow) => void;
   onExport?: () => void;
 };
@@ -130,8 +135,9 @@ function BukRowsTable({
         <TableRow className="border-border hover:bg-transparent dark:border-slate-800">
           <TableHead className="text-slate-400">Nombre</TableHead>
           <TableHead className="text-slate-400">Apellidos</TableHead>
-          <TableHead className="text-slate-400">Área</TableHead>
-          <TableHead className="text-slate-400">Especialidad</TableHead>
+          <TableHead className="text-slate-400">Familia de cargos</TableHead>
+          <TableHead className="text-slate-400">Área padre</TableHead>
+          <TableHead className="text-slate-400">Área organizacional</TableHead>
           <TableHead className="text-slate-400">RUT</TableHead>
           <TableHead className="text-slate-400">¿Llegó?</TableHead>
           <TableHead className="text-slate-400 text-center w-[90px]">Puntualidad</TableHead>
@@ -150,11 +156,14 @@ function BukRowsTable({
           >
             <TableCell className="font-medium text-foreground">{row.nombre}</TableCell>
             <TableCell className="text-slate-300">{row.apellidos || '—'}</TableCell>
-            <TableCell className="text-slate-300 max-w-[180px] truncate" title={row.area}>
-              {row.area}
+            <TableCell className="text-slate-300 max-w-[160px] truncate" title={row.roleFamilyName}>
+              {row.roleFamilyName}
             </TableCell>
-            <TableCell className="text-slate-300 max-w-[220px] truncate" title={row.especialidad}>
-              {row.especialidad}
+            <TableCell className="text-slate-300 max-w-[140px] truncate" title={row.orgAreaParentName}>
+              {row.orgAreaParentName}
+            </TableCell>
+            <TableCell className="text-slate-300 max-w-[160px] truncate" title={row.orgAreaName}>
+              {row.orgAreaName}
             </TableCell>
             <TableCell className="text-slate-400 font-mono text-xs">{row.rut}</TableCell>
             <TableCell>
@@ -184,16 +193,87 @@ function BukRowsTable({
   );
 }
 
+function NamedGroupSections({
+  groups,
+  emptyLabel,
+  footerNoun,
+  totalPeople,
+  onRowClick,
+}: {
+  groups: { name: string; rows: BukDashboardRow[] }[];
+  emptyLabel: string;
+  footerNoun: string;
+  totalPeople: number;
+  onRowClick?: (row: BukDashboardRow) => void;
+}) {
+  if (groups.length === 0) {
+    return <p className="text-center text-slate-500 py-8 text-sm">{emptyLabel}</p>;
+  }
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <div
+          key={group.name}
+          className="rounded-xl border border-border overflow-hidden dark:border-slate-800"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/50 dark:border-slate-800 dark:bg-slate-900/80 px-4 py-3">
+            <div>
+              <p className="font-semibold text-foreground">{group.name}</p>
+              <p className="text-xs text-muted-foreground">{group.rows.length} persona(s) en vista</p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
+                {group.rows.filter((r) => r.arrived).length} llegaron
+              </span>
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
+                {group.rows.filter((r) => r.punctuality === 'on_time').length} a tiempo
+              </span>
+              <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-orange-400">
+                {group.rows.filter((r) => r.punctuality === 'late').length} tarde
+              </span>
+              <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-red-400">
+                {group.rows.filter((r) => !r.arrived).length} sin entrada
+              </span>
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">
+                {group.rows.filter((r) => r.leftSameDay).length} con salida
+              </span>
+            </div>
+          </div>
+          <BukRowsTable rows={group.rows} onRowClick={onRowClick} />
+        </div>
+      ))}
+      <p className="text-xs text-muted-foreground">
+        {groups.length} {footerNoun} · {totalPeople} persona(s) en total.
+      </p>
+    </div>
+  );
+}
+
 export function AsistenciaBukDashboard({
   records,
   settings,
   sedeName,
   date,
   filters,
+  orgByRut: orgByRutProp,
   onRowClick,
   onExport,
 }: Props) {
-  const [view, setView] = useState<'list' | 'specialty' | 'area' | 'charts'>('list');
+  const [view, setView] = useState<DashboardView>('list');
+  const [orgByRutLocal, setOrgByRutLocal] = useState<Map<string, BukPeOrgLookupEntry> | undefined>();
+
+  useEffect(() => {
+    if (orgByRutProp) return;
+    let cancelled = false;
+    void fetchBukPeOrgLookupByRut().then((map) => {
+      if (!cancelled) setOrgByRutLocal(map);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgByRutProp]);
+
+  const orgByRut = orgByRutProp ?? orgByRutLocal;
 
   const summary = useMemo(
     () =>
@@ -202,8 +282,9 @@ export function AsistenciaBukDashboard({
         sedeName,
         settings,
         date,
+        orgByRut,
       }),
-    [records, sedeName, settings, date]
+    [records, sedeName, settings, date, orgByRut]
   );
 
   const sedeProfile = useMemo(() => getSedeProfile(settings, sedeName), [settings, sedeName]);
@@ -233,29 +314,32 @@ export function AsistenciaBukDashboard({
     [filteredRows]
   );
 
-  const filteredSpecialtyGroups = useMemo(
-    () =>
-      summary.specialtyGroups
-        .map((group) => ({
-          ...group,
-          rows: filterBukDashboardRows(group.rows, filters),
-        }))
-        .filter((group) => group.rows.length > 0),
-    [summary.specialtyGroups, filters]
-  );
+  const filterNamedGroups = (groups: { name: string; rows: BukDashboardRow[] }[]) =>
+    groups
+      .map((group) => ({
+        ...group,
+        rows: filterBukDashboardRows(group.rows, filters),
+      }))
+      .filter((group) => group.rows.length > 0);
 
-  const filteredAreaGroups = useMemo(
-    () =>
-      summary.areaGroups
-        .map((group) => ({
-          ...group,
-          rows: filterBukDashboardRows(group.rows, filters),
-        }))
-        .filter((group) => group.rows.length > 0),
-    [summary.areaGroups, filters]
+  const filteredFamilyGroups = useMemo(
+    () => filterNamedGroups(summary.familyGroups),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- filters drives filterNamedGroups
+    [summary.familyGroups, filters]
+  );
+  const filteredParentGroups = useMemo(
+    () => filterNamedGroups(summary.parentAreaGroups),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [summary.parentAreaGroups, filters]
+  );
+  const filteredOrgGroups = useMemo(
+    () => filterNamedGroups(summary.orgAreaGroups),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [summary.orgAreaGroups, filters]
   );
 
   const dateLabel = format(date, "d 'de' MMMM yyyy", { locale: es });
+  const orgReady = Boolean(orgByRut && orgByRut.size > 0);
 
   if (records.length === 0) {
     return (
@@ -326,7 +410,11 @@ export function AsistenciaBukDashboard({
                 Dashboard Buk — {dateLabel}
               </CardTitle>
               <CardDescription className="text-slate-400">
-                Datos directos de la API. Puntualidad turno día: entrada a las {dayStart} con {toleranceMin} min de tolerancia.
+                Marcaciones Ctrlit + estructura Buk.pe (Familia → Área padre → Área organizacional).
+                Puntualidad turno día: {dayStart} + {toleranceMin} min.
+                {!orgReady
+                  ? ' Sin cruce RRHH aún: se usan textos de marcación como respaldo.'
+                  : null}
               </CardDescription>
             </div>
             {onExport ? (
@@ -338,8 +426,8 @@ export function AsistenciaBukDashboard({
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Tabs value={view} onValueChange={(v) => setView(v as 'list' | 'specialty' | 'area' | 'charts')}>
-            <TabsList className="bg-muted/60 border border-border dark:bg-slate-900 dark:border-slate-800">
+          <Tabs value={view} onValueChange={(v) => setView(v as DashboardView)}>
+            <TabsList className="h-auto flex-wrap bg-muted/60 border border-border dark:bg-slate-900 dark:border-slate-800">
               <TabsTrigger
                 value="list"
                 className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
@@ -353,21 +441,45 @@ export function AsistenciaBukDashboard({
                 <BarChart3 className="h-4 w-4 mr-1" /> Gráficos
               </TabsTrigger>
               <TabsTrigger
-                value="area"
+                value="family"
                 className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
               >
-                <MapPin className="h-4 w-4 mr-1" /> Por área
+                <Layers className="h-4 w-4 mr-1" /> Familia de cargos
               </TabsTrigger>
               <TabsTrigger
-                value="specialty"
+                value="parent"
                 className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
               >
-                <Layers className="h-4 w-4 mr-1" /> Por especialidad
+                <Network className="h-4 w-4 mr-1" /> Área padre
+              </TabsTrigger>
+              <TabsTrigger
+                value="org"
+                className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
+              >
+                <MapPin className="h-4 w-4 mr-1" /> Área organizacional
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="charts" className="mt-4">
-              <AsistenciaBukCharts summary={summary} areaGroups={filteredAreaGroups} />
+              <AsistenciaBukCharts
+                summary={{
+                  ...summary,
+                  arrived: filteredStats.arrived,
+                  absent: filteredStats.absent,
+                  onTime: filteredStats.onTime,
+                  late: filteredStats.late,
+                }}
+                areaGroups={filteredOrgGroups.map((g) => ({
+                  ...g,
+                  area: g.name,
+                  total: g.rows.length,
+                  arrived: g.rows.filter((r) => r.arrived).length,
+                  absent: g.rows.filter((r) => !r.arrived).length,
+                  leftSameDay: g.rows.filter((r) => r.leftSameDay).length,
+                  onTime: g.rows.filter((r) => r.punctuality === 'on_time').length,
+                  late: g.rows.filter((r) => r.punctuality === 'late').length,
+                }))}
+              />
             </TabsContent>
 
             <TabsContent value="list" className="mt-4">
@@ -380,89 +492,34 @@ export function AsistenciaBukDashboard({
               </p>
             </TabsContent>
 
-            <TabsContent value="area" className="mt-4 space-y-4">
-              {filteredAreaGroups.length === 0 ? (
-                <p className="text-center text-slate-500 py-8 text-sm">
-                  Sin resultados para los filtros aplicados.
-                </p>
-              ) : (
-                filteredAreaGroups.map((group) => (
-                  <div key={group.area} className="rounded-xl border border-border overflow-hidden dark:border-slate-800">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/50 dark:border-slate-800 dark:bg-slate-900/80 px-4 py-3">
-                      <div>
-                        <p className="font-semibold text-foreground">{group.area}</p>
-                        <p className="text-xs text-muted-foreground">{group.rows.length} persona(s) en vista</p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
-                          {group.rows.filter((r) => r.arrived).length} llegaron
-                        </span>
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
-                          {group.rows.filter((r) => r.punctuality === 'on_time').length} a tiempo
-                        </span>
-                        <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-orange-400">
-                          {group.rows.filter((r) => r.punctuality === 'late').length} tarde
-                        </span>
-                        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-red-400">
-                          {group.rows.filter((r) => !r.arrived).length} sin entrada
-                        </span>
-                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">
-                          {group.rows.filter((r) => r.leftSameDay).length} con salida
-                        </span>
-                      </div>
-                    </div>
-                    <BukRowsTable rows={group.rows} onRowClick={onRowClick} />
-                  </div>
-                ))
-              )}
-              <p className="text-xs text-muted-foreground">
-                {filteredAreaGroups.length} área(s) · {filteredRows.length} persona(s) en total.
-              </p>
+            <TabsContent value="family" className="mt-4">
+              <NamedGroupSections
+                groups={filteredFamilyGroups}
+                emptyLabel="Sin resultados para los filtros aplicados."
+                footerNoun="familia(s)"
+                totalPeople={filteredRows.length}
+                onRowClick={onRowClick}
+              />
             </TabsContent>
 
-            <TabsContent value="specialty" className="mt-4 space-y-4">
-              {filteredSpecialtyGroups.length === 0 ? (
-                <p className="text-center text-slate-500 py-8 text-sm">
-                  Sin resultados para los filtros aplicados.
-                </p>
-              ) : (
-                filteredSpecialtyGroups.map((group) => (
-                  <div
-                    key={group.especialidad}
-                    className="rounded-xl border border-border overflow-hidden dark:border-slate-800"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/50 dark:border-slate-800 dark:bg-slate-900/80 px-4 py-3">
-                      <div>
-                        <p className="font-semibold text-foreground">{group.especialidad}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {group.rows.length} persona(s) en vista
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 text-xs">
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
-                          {group.rows.filter((r) => r.arrived).length} llegaron
-                        </span>
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-400">
-                          {group.rows.filter((r) => r.punctuality === 'on_time').length} a tiempo
-                        </span>
-                        <span className="rounded-full bg-orange-500/15 px-2 py-0.5 text-orange-400">
-                          {group.rows.filter((r) => r.punctuality === 'late').length} tarde
-                        </span>
-                        <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-red-400">
-                          {group.rows.filter((r) => !r.arrived).length} sin entrada
-                        </span>
-                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-400">
-                          {group.rows.filter((r) => r.leftSameDay).length} con salida
-                        </span>
-                      </div>
-                    </div>
-                    <BukRowsTable rows={group.rows} onRowClick={onRowClick} />
-                  </div>
-                ))
-              )}
-              <p className="text-xs text-muted-foreground">
-                {filteredSpecialtyGroups.length} especialidad(es) · {filteredRows.length} persona(s) en total.
-              </p>
+            <TabsContent value="parent" className="mt-4">
+              <NamedGroupSections
+                groups={filteredParentGroups}
+                emptyLabel="Sin área padre en RRHH. Sincroniza Buk.pe (organization/areas) o revisa el cruce por DNI."
+                footerNoun="área(s) padre"
+                totalPeople={filteredRows.length}
+                onRowClick={onRowClick}
+              />
+            </TabsContent>
+
+            <TabsContent value="org" className="mt-4">
+              <NamedGroupSections
+                groups={filteredOrgGroups}
+                emptyLabel="Sin resultados para los filtros aplicados."
+                footerNoun="área(s) organizacional(es)"
+                totalPeople={filteredRows.length}
+                onRowClick={onRowClick}
+              />
             </TabsContent>
           </Tabs>
         </CardContent>

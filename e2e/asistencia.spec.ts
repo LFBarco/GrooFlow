@@ -41,4 +41,16 @@ test.describe('Asistencia E2E', () => {
     await page.getByTestId('asistencia-tab-config').click();
     await expect(page.getByText(staffName)).toBeVisible({ timeout: 20_000 });
   });
+
+  test('vista en vivo muestra organigrama o vacío sin forzar config por sede sin base', async ({
+    page,
+  }) => {
+    await page.goto('/asistencia');
+    await expect(page.getByTestId('asistencia-module')).toBeVisible({ timeout: 30_000 });
+    await page.getByRole('tab', { name: /Operativa en vivo/i }).click();
+    // El refresh no debe redirigir a Config solo porque la sede activa no tiene plantilla base.
+    await expect(page.getByTestId('asistencia-tab-config')).toBeVisible();
+    const liveTab = page.getByRole('tab', { name: /Operativa en vivo/i });
+    await expect(liveTab).toHaveAttribute('data-state', 'active');
+  });
 });

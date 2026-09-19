@@ -7,13 +7,26 @@ import {
   resolveBukEntryPunctuality,
 } from './asistenciaData';
 import { filterBukRecordsForSedeDate, getSedeProfile } from './asistenciaStaff';
+import {
+  lookupBukPeOrgByRut,
+  type BukPeOrgLookupEntry,
+} from './asistenciaBukOrgLookup';
 
 export type BukDashboardRow = {
   id: number;
   nombre: string;
   apellidos: string;
+  /** @deprecated Preferir roleFamilyName / orgArea*; se mantiene por filtros legacy Ctrlit. */
   especialidad: string;
+  /** @deprecated Preferir orgAreaName; se mantiene por filtros legacy Ctrlit. */
   area: string;
+  /** Familia de cargos (Buk.pe). */
+  roleFamilyName: string;
+  /** Área padre organizacional (Buk.pe). */
+  orgAreaParentName: string;
+  /** Área organizacional (Buk.pe). */
+  orgAreaName: string;
+  cargo?: string;
   rut: string;
   arrived: boolean;
   leftSameDay: boolean;
@@ -24,8 +37,8 @@ export type BukDashboardRow = {
   isDayShift: boolean;
 };
 
-export type BukDashboardSpecialtyGroup = {
-  especialidad: string;
+export type BukDashboardNamedGroup = {
+  name: string;
   total: number;
   arrived: number;
   absent: number;
@@ -35,16 +48,10 @@ export type BukDashboardSpecialtyGroup = {
   rows: BukDashboardRow[];
 };
 
-export type BukDashboardAreaGroup = {
-  area: string;
-  total: number;
-  arrived: number;
-  absent: number;
-  leftSameDay: number;
-  onTime: number;
-  late: number;
-  rows: BukDashboardRow[];
-};
+/** @deprecated alias de grupo por familia */
+export type BukDashboardSpecialtyGroup = BukDashboardNamedGroup & { especialidad: string };
+/** @deprecated alias de grupo por área org */
+export type BukDashboardAreaGroup = BukDashboardNamedGroup & { area: string };
 
 export type BukDashboardSummary = {
   total: number;
@@ -54,13 +61,23 @@ export type BukDashboardSummary = {
   onTime: number;
   late: number;
   rows: BukDashboardRow[];
+  /** Familia de cargos → … */
+  familyGroups: BukDashboardNamedGroup[];
+  /** Área padre → … */
+  parentAreaGroups: BukDashboardNamedGroup[];
+  /** Área organizacional → … */
+  orgAreaGroups: BukDashboardNamedGroup[];
+  /** Compat: mismos que familyGroups / orgAreaGroups. */
   specialtyGroups: BukDashboardSpecialtyGroup[];
   areaGroups: BukDashboardAreaGroup[];
 };
 
 export type BukMultiSedeDashboard = {
   sedes: { sedeName: string; summary: BukDashboardSummary }[];
-  totals: Omit<BukDashboardSummary, 'rows' | 'specialtyGroups' | 'areaGroups'>;
+  totals: Omit<
+    BukDashboardSummary,
+    'rows' | 'specialtyGroups' | 'areaGroups' | 'familyGroups' | 'parentAreaGroups' | 'orgAreaGroups'
+  >;
 };
 
 export function buildBukMultiSedeDashboard(input: {
@@ -68,6 +85,7 @@ export function buildBukMultiSedeDashboard(input: {
   sedeNames: string[];
   settings: AsistenciaSettings;
   date: Date;
+  orgByRut?: Map<string, BukPeOrgLookupEntry>;
 }): BukMultiSedeDashboard {
   const sedes = input.sedeNames.map((sedeName) => ({
     sedeName,
@@ -76,6 +94,7 @@ export function buildBukMultiSedeDashboard(input: {
       sedeName,
       settings: input.settings,
       date: input.date,
+      orgByRut: input.orgByRut,
     }),
   }));
 
@@ -109,11 +128,43 @@ function groupStats(rows: BukDashboardRow[]) {
   };
 }
 
+function groupByName(
+  rows: BukDashboardRow[],
+  keyOf: (row: BukDashboardRow) => string
+): BukDashboardNamedGroup[] {
+  const by = new Map<string, BukDashboardRow[]>();
+  for (const row of rows) {
+    const key = keyOf(row) || '—';
+    const list = by.get(key) ?? [];
+    list.push(row);
+    by.set(key, list);
+  }
+  return [...by.entries()]
+    .map(([name, groupRows]) => ({
+      name,
+      ...groupStats(groupRows),
+      rows: groupRows,
+    }))
+    .sort((a, b) => {
+      if (b.total !== a.total) return b.total - a.total;
+      return a.name.localeCompare(b.name, 'es');
+    });
+}
+
+function labelOrDash(...candidates: Array<string | undefined | null>): string {
+  for (const c of candidates) {
+    const t = (c ?? '').trim();
+    if (t && t !== '—') return t;
+  }
+  return '—';
+}
+
 export function buildBukDashboardSummary(input: {
   records: BukAsistenciaRecord[];
   sedeName: string;
   settings: AsistenciaSettings;
   date: Date;
+  orgByRut?: Map<string, BukPeOrgLookupEntry>;
 }): BukDashboardSummary {
   const profile = getSedeProfile(input.settings, input.sedeName);
   const filtered = filterBukRecordsForSedeDate(
@@ -128,12 +179,22 @@ export function buildBukDashboardSummary(input: {
       const arrived = hasBukEntradaMarcada(r);
       const leftSameDay = hasBukSalidaMarcadaOnDate(r, input.date);
       const isDayShift = r.turno_noche !== true;
+      const ctrlitArea = (r.area || '').trim();
+      const ctrlitEsp = (r.especialidad || '').trim();
+      const pe = lookupBukPeOrgByRut(input.orgByRut, r.rut_trabajador);
+      const roleFamilyName = labelOrDash(pe?.roleFamilyName, ctrlitEsp, ctrlitArea);
+      const orgAreaParentName = labelOrDash(pe?.orgAreaParentName);
+      const orgAreaName = labelOrDash(pe?.orgAreaName, ctrlitArea, ctrlitEsp);
       return {
         id: r.id,
         nombre: (r.nombre || '').trim(),
         apellidos: apellidosFromRecord(r),
-        especialidad: (r.especialidad || r.area || '—').trim(),
-        area: (r.area || '—').trim(),
+        especialidad: roleFamilyName,
+        area: orgAreaName,
+        roleFamilyName,
+        orgAreaParentName,
+        orgAreaName,
+        cargo: pe?.cargo,
         rut: (r.rut_trabajador || '—').trim(),
         arrived,
         leftSameDay,
@@ -159,43 +220,18 @@ export function buildBukDashboardSummary(input: {
   const onTime = rows.filter((r) => r.punctuality === 'on_time').length;
   const late = rows.filter((r) => r.punctuality === 'late').length;
 
-  const bySpecialty = new Map<string, BukDashboardRow[]>();
-  for (const row of rows) {
-    const key = row.especialidad || '—';
-    const list = bySpecialty.get(key) ?? [];
-    list.push(row);
-    bySpecialty.set(key, list);
-  }
+  const familyGroups = groupByName(rows, (r) => r.roleFamilyName);
+  const parentAreaGroups = groupByName(rows, (r) => r.orgAreaParentName);
+  const orgAreaGroups = groupByName(rows, (r) => r.orgAreaName);
 
-  const specialtyGroups: BukDashboardSpecialtyGroup[] = [...bySpecialty.entries()]
-    .map(([especialidad, groupRows]) => ({
-      especialidad,
-      ...groupStats(groupRows),
-      rows: groupRows,
-    }))
-    .sort((a, b) => {
-      if (b.total !== a.total) return b.total - a.total;
-      return a.especialidad.localeCompare(b.especialidad, 'es');
-    });
-
-  const byArea = new Map<string, BukDashboardRow[]>();
-  for (const row of rows) {
-    const key = row.area || '—';
-    const list = byArea.get(key) ?? [];
-    list.push(row);
-    byArea.set(key, list);
-  }
-
-  const areaGroups: BukDashboardAreaGroup[] = [...byArea.entries()]
-    .map(([area, groupRows]) => ({
-      area,
-      ...groupStats(groupRows),
-      rows: groupRows,
-    }))
-    .sort((a, b) => {
-      if (b.total !== a.total) return b.total - a.total;
-      return a.area.localeCompare(b.area, 'es');
-    });
+  const specialtyGroups: BukDashboardSpecialtyGroup[] = familyGroups.map((g) => ({
+    ...g,
+    especialidad: g.name,
+  }));
+  const areaGroups: BukDashboardAreaGroup[] = orgAreaGroups.map((g) => ({
+    ...g,
+    area: g.name,
+  }));
 
   return {
     total: rows.length,
@@ -205,6 +241,9 @@ export function buildBukDashboardSummary(input: {
     onTime,
     late,
     rows,
+    familyGroups,
+    parentAreaGroups,
+    orgAreaGroups,
     specialtyGroups,
     areaGroups,
   };

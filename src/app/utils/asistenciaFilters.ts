@@ -192,18 +192,39 @@ export function filterBukDashboardRows(
     if (filters.arrivalFilter === 'absent' && row.arrived) return false;
     if (filters.arrivalFilter === 'on_time' && row.punctuality !== 'on_time') return false;
     if (filters.arrivalFilter === 'late' && row.punctuality !== 'late') return false;
-    if (filters.areaFilter !== '__all__' && row.area !== filters.areaFilter) return false;
-    if (filters.specialtyFilter !== '__all__' && row.especialidad !== filters.specialtyFilter) {
+    if (
+      filters.areaFilter !== '__all__' &&
+      row.orgAreaName !== filters.areaFilter &&
+      row.area !== filters.areaFilter &&
+      row.orgAreaParentName !== filters.areaFilter
+    ) {
+      return false;
+    }
+    if (
+      filters.specialtyFilter !== '__all__' &&
+      row.roleFamilyName !== filters.specialtyFilter &&
+      row.especialidad !== filters.specialtyFilter
+    ) {
       return false;
     }
     if (filters.liveStatus === 'ausente' && row.arrived) return false;
-    if (filters.liveStatus === 'tarde' && row.punctuality !== 'late') return false;
-    if (filters.liveStatus === 'trabajando' && (!row.arrived || row.punctuality === 'late')) {
-      return false;
+    if (filters.liveStatus === 'trabajando' && !row.arrived) return false;
+    if (q) {
+      const hay = [
+        row.nombre,
+        row.apellidos,
+        row.rut,
+        row.roleFamilyName,
+        row.orgAreaParentName,
+        row.orgAreaName,
+        row.cargo ?? '',
+        row.area,
+        row.especialidad,
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!hay.includes(q)) return false;
     }
-    if (filters.liveStatus === 'presente' && !row.arrived) return false;
-    if (!q) return true;
-    const hay = `${row.nombre} ${row.apellidos} ${row.especialidad} ${row.area} ${row.rut}`.toLowerCase();
-    return hay.includes(q);
+    return true;
   });
 }

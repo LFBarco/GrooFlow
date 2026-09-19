@@ -104,6 +104,11 @@ function DraggableStaffCard({
       critical={live.staff.isCritical}
       matchHint={live.matchHint}
       statusNote={live.statusNote}
+      coveringLabel={
+        live.coveringFromBase && live.sedeBase
+          ? `Base: ${live.sedeBase}`
+          : undefined
+      }
       shiftLabel={shiftLabelForStaff(live.staff, viewDate)}
       editLayout={editLayout}
       dragHandleRef={ref}
@@ -510,6 +515,11 @@ export function AsistenciaLiveSedeBlock({
               critical={summary.manager.staff.isCritical}
               matchHint={summary.manager.matchHint}
               statusNote={summary.manager.statusNote}
+              coveringLabel={
+                summary.manager.coveringFromBase && summary.manager.sedeBase
+                  ? `Base: ${summary.manager.sedeBase}`
+                  : undefined
+              }
               shiftLabel={shiftLabelForStaff(summary.manager.staff, viewDate)}
               onClick={!editLayout && onStaffClick ? () => onStaffClick(summary.manager!) : undefined}
               planVsReal={summary.manager && getPlanVsReal ? getPlanVsReal(summary.manager) : undefined}
