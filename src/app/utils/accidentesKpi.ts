@@ -96,7 +96,7 @@ export function computeAccidentesKpis(input: {
     frequencyIndex: Math.round(frequencyIndex * 100) / 100,
     gravityIndex: Math.round(gravityIndex * 100) / 100,
     sinistralityRate: Math.round(sinistralityRate * 10) / 10,
-    daysWithoutAccident: daysWithoutAccident(records.filter(hasLostTime)),
+    daysWithoutAccident: daysWithoutAccident(records),
     lastAccidentDate: lastAccident?.eventDate ?? null,
     totalCost,
     medicalCost,

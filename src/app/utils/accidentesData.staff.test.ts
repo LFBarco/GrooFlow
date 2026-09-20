@@ -160,6 +160,31 @@ describe('buildStaffOptions', () => {
     expect(options[0]?.homeSede).toBe('Benavides');
     expect(options[0]?.sedesLabel).toBe('Benavides, Jorge Chavez, San Borja +4');
   });
+  it('Buk colaboradores: nombre, cargo, área padre, ingreso y contrato', () => {
+    const options = buildStaffOptions({
+      users: [],
+      visibleSedes: ['Benavides'],
+      employees: [
+        {
+          bukId: 42,
+          fullName: 'María Pérez',
+          cargo: 'Auxiliar veterinario',
+          orgAreaParentName: 'Clínica',
+          contractType: 'Indeterminado',
+          startDate: '2024-01-15',
+          sede: 'Benavides',
+        },
+      ],
+    });
+    expect(options).toHaveLength(1);
+    expect(options[0]?.id).toBe('buk:42');
+    expect(options[0]?.name).toBe('María Pérez');
+    expect(options[0]?.jobTitle).toBe('Auxiliar veterinario');
+    expect(options[0]?.workArea).toBe('Clínica');
+    expect(options[0]?.hireDate).toBe('2024-01-15');
+    expect(options[0]?.contractType).toMatch(/Indeterminado/i);
+    expect(options[0]?.source).toBe('rrhh');
+  });
 });
 
 describe('resolveStaffOptionKey', () => {

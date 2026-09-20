@@ -3,6 +3,7 @@
  * Evita autosaves KV (y toasts) cuando el usuario no puede escribir esa clave.
  */
 import { roleHasModuleAccess } from './rolePermissions';
+import { hasAnyWriteMenuAction, type MenuActionsMap } from './menuActions';
 
 /** Módulos que conceden escritura a cada clave KV. */
 export const KV_WRITE_MODULES: Record<string, readonly string[]> = {
@@ -68,12 +69,14 @@ export function isKvPermissionDeniedError(error: unknown): boolean {
  * - Super-admin: sí
  * - Sin mapa de permisos aún (REST): no (evita carrera post-login)
  * - Resto: algún módulo de escritura concedido (respeta go-live vía roleHasModuleAccess)
+ * - Si hay menuActions: además exige al menos una acción de escritura en ese módulo
  */
 export function canWriteKvKey(
   kvKey: string,
   options: {
     isSuperAdmin: boolean;
     permissions: Record<string, boolean> | null | undefined;
+    menuActions?: MenuActionsMap | null;
   }
 ): boolean {
   if (options.isSuperAdmin) return true;
@@ -90,5 +93,9 @@ export function canWriteKvKey(
   ) {
     return false;
   }
-  return modules.some((mod) => roleHasModuleAccess(options.permissions!, mod));
+  const allowedMods = modules.filter((mod) => roleHasModuleAccess(options.permissions!, mod));
+  if (allowedMods.length === 0) return false;
+  // Sin mapa de acciones (backend viejo): conservar comportamiento por módulo.
+  if (options.menuActions == null) return true;
+  return hasAnyWriteMenuAction(options.menuActions, allowedMods);
 }

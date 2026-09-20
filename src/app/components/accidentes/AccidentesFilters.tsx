@@ -31,6 +31,8 @@ import { cn } from '../ui/utils';
 type Props = {
   filters: AccidentesFilters;
   sedeOptions: string[];
+  /** Áreas dinámicas (área padre de colaboradores / registros). */
+  workAreaOptions?: string[];
   onChange: (filters: AccidentesFilters) => void;
 };
 
@@ -79,10 +81,18 @@ const PRESETS: { label: string; apply: (base: AccidentesFilters) => AccidentesFi
   },
 ];
 
-export function AccidentesFiltersBar({ filters, sedeOptions, onChange }: Props) {
+export function AccidentesFiltersBar({
+  filters,
+  sedeOptions,
+  workAreaOptions,
+  onChange,
+}: Props) {
   const set = (patch: Partial<AccidentesFilters>) => onChange({ ...filters, ...patch });
   const activeCount = countAccidentesActiveFilters(filters);
   const [open, setOpen] = useState(false);
+  const areaChoices = [
+    ...new Set([...(workAreaOptions ?? []), ...VET_WORK_AREAS].map((a) => a.trim()).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b, 'es'));
 
   return (
     <Collapsible
@@ -191,7 +201,7 @@ export function AccidentesFiltersBar({ filters, sedeOptions, onChange }: Props) 
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todas">Todas las áreas</SelectItem>
-                {VET_WORK_AREAS.map((a) => (
+                {areaChoices.map((a) => (
                   <SelectItem key={a} value={a}>
                     {a}
                   </SelectItem>

@@ -151,6 +151,7 @@ import { mergeRrhhSettings, RRHH_SETTINGS_KV_KEY } from "./utils/rrhhData";
 import type { RrhhSettings } from "./types/rrhh";
 import { canConfigureAsistencia } from "./utils/asistenciaAccess";
 import { canConfigureFleet } from "./utils/fleetAccess";
+import { hasMenuAction } from "./utils/menuActions";
 import { resetAsistenciaUiLocks } from "./utils/asistenciaUiCleanup";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
@@ -165,7 +166,7 @@ import { mergeRolesWithDefaults } from "./utils/mergeRolesWithDefaults";
 import { getFirstAllowedViewPath, roleHasModuleAccess, roleRecordHasModuleAccess } from "./utils/rolePermissions";
 import { canWriteKvKey } from "./utils/kvWriteAccess";
 import { GrooFlowSidebarNav } from "./components/layout/GrooFlowSidebarNav";
-import { fetchAuthMenuPayload, type GrooflowAuthMenuSection, type MenuPermissionsMap } from "./services/menuApi";
+import { fetchAuthMenuPayload, type GrooflowAuthMenuSection, type MenuActionsMap, type MenuPermissionsMap } from "./services/menuApi";
 import { getSuperAdminEmails } from "./config/superAdmins";
 import { goLiveAlertSources } from "./config/goLive";
 import { isUserSessionBlocked } from "./utils/userSessionGuard";
@@ -316,6 +317,7 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>(DEFAULT_ROLES);
   const [menuPermissions, setMenuPermissions] = useState<MenuPermissionsMap | null>(null);
+  const [menuActions, setMenuActions] = useState<MenuActionsMap | null>(null);
   const [menuSections, setMenuSections] = useState<GrooflowAuthMenuSection[] | null>(null);
   const [menuLoadError, setMenuLoadError] = useState('');
   const [currentUser, setCurrentUser] = useState<User>(() => readCachedAppUser() ?? GUEST_USER);
@@ -723,8 +725,12 @@ export default function App() {
 
   const canWriteAppKv = useCallback(
     (kvKey: string) =>
-      canWriteKvKey(kvKey, { isSuperAdmin, permissions: kvPermissionsForWrite }),
-    [isSuperAdmin, kvPermissionsForWrite]
+      canWriteKvKey(kvKey, {
+        isSuperAdmin,
+        permissions: kvPermissionsForWrite,
+        menuActions: APP_BACKEND === 'rest' ? menuActions : null,
+      }),
+    [isSuperAdmin, kvPermissionsForWrite, menuActions]
   );
 
   useAppDataHydration({
@@ -3121,6 +3127,7 @@ export default function App() {
       .then((payload) => {
         const perms = payload.menu_permissions ?? {};
         setMenuPermissions(perms);
+        setMenuActions(payload.menu_actions);
         // Defensa: no mostrar hojas cuyo modulo_key no tenga ver en el mapa de permisos.
         const sections = (payload.menu_sections ?? [])
           .map((sec) => ({
@@ -3161,6 +3168,7 @@ export default function App() {
       })
       .catch((e) => {
         setMenuPermissions(null);
+        setMenuActions(null);
         setMenuSections(null);
         setMenuLoadError(e instanceof Error ? e.message : 'No se pudo cargar el menú');
       });
@@ -3169,6 +3177,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || APP_BACKEND !== 'rest') {
       setMenuPermissions(null);
+      setMenuActions(null);
       setMenuSections(null);
       return;
     }
@@ -4432,7 +4441,9 @@ export default function App() {
                   enabledCatalog[0] ||
                   'Principal'
                 }
-                canEdit={canWriteAppKv('data:fleet')}
+                canAdd={hasMenuAction(menuActions, 'Gestión Vehicular', 'agregar', { isSuperAdmin })}
+                canEdit={hasMenuAction(menuActions, 'Gestión Vehicular', 'editar', { isSuperAdmin })}
+                canDelete={hasMenuAction(menuActions, 'Gestión Vehicular', 'eliminar', { isSuperAdmin })}
                 canConfigure={canConfigureFleet(currentUser, userRole)}
                 users={users}
                 providers={providers}
@@ -4498,7 +4509,19 @@ export default function App() {
                   users={users}
                   systemSettings={systemSettings}
                   visibleSedes={visibleSedes}
-                  canEdit={hasPermission('Accidentes de Trabajo')}
+                  canAdd={hasMenuAction(menuActions, 'Accidentes de Trabajo', 'agregar', { isSuperAdmin })}
+                  canEdit={hasMenuAction(menuActions, 'Accidentes de Trabajo', 'editar', { isSuperAdmin })}
+                  canDelete={hasMenuAction(menuActions, 'Accidentes de Trabajo', 'eliminar', { isSuperAdmin })}
+                  canConfigure={
+                    isSuperAdmin ||
+                    hasMenuAction(menuActions, 'Accidentes de Trabajo', 'configurar', { isSuperAdmin }) ||
+                    hasMenuAction(menuActions, 'Accidentes de Trabajo', 'editar', { isSuperAdmin })
+                  }
+                  canExport={
+                    isSuperAdmin ||
+                    hasMenuAction(menuActions, 'Accidentes de Trabajo', 'exportar', { isSuperAdmin }) ||
+                    hasPermission('Accidentes de Trabajo')
+                  }
                   reportedBy={currentUser.name}
                 />
               </Suspense>

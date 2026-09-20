@@ -627,9 +627,9 @@ export function MenuAssignmentPage() {
             const item = menus.find((m) => m.id === menuId);
             const available = item ? availableActions(item).map((a) => a.clave) : [];
             const selected = menuPermissions.get(menuId);
-            // Módulo tildado sin acciones = permiso completo de uso del módulo.
-            const effective =
-              selected && selected.size > 0 ? selected : new Set(available);
+            // undefined = módulo recién asignado sin mapa → conceder acciones disponibles.
+            // Set vacío = el admin desmarcó agregar/editar/eliminar a propósito (solo ver).
+            const effective = selected !== undefined ? selected : new Set(available);
             const permissions: MenuActionPermissions = {
               ver: true,
               agregar: effective.has('agregar'),

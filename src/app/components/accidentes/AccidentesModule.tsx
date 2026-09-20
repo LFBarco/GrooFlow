@@ -14,6 +14,7 @@ import {
 } from '../../utils/accidentesData';
 import { computeAccidentesKpis } from '../../utils/accidentesKpi';
 import { useAccidentesModuleState } from '../../hooks/useAccidentesModuleState';
+import { useHrCollaborators } from '../../hooks/useHrCollaborators';
 import { useHrStaffRecords } from '../../hooks/useHrStaffRecords';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -25,13 +26,17 @@ import { AccidenteDetailDialog } from './AccidenteDetailDialog';
 import { AccidentesDashboard } from './AccidentesDashboard';
 import { AccidentesFiltersBar, defaultAccidentesFilters } from './AccidentesFilters';
 import { AccidentesTable } from './AccidentesTable';
-import { appAlert, appConfirm } from '../ui/app-dialog';
+import { appConfirm } from '../ui/app-dialog';
 
 export interface AccidentesModuleProps {
   users: User[];
   systemSettings: SystemSettings;
   visibleSedes?: string[];
+  canAdd?: boolean;
   canEdit?: boolean;
+  canDelete?: boolean;
+  canConfigure?: boolean;
+  canExport?: boolean;
   reportedBy?: string;
 }
 
@@ -43,11 +48,17 @@ export function AccidentesModule({
   users,
   systemSettings,
   visibleSedes = [],
+  canAdd = false,
   canEdit = false,
+  canDelete = false,
+  canConfigure = false,
+  canExport = true,
   reportedBy,
 }: AccidentesModuleProps) {
+  const canPersist = canAdd || canEdit || canDelete || canConfigure;
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
-  const { settings, loading, saving, updateSettings } = useAccidentesModuleState(canEdit);
+  const { settings, loading, saving, updateSettings } = useAccidentesModuleState(canPersist);
+  const { employees: collaborators, loading: collaboratorsLoading } = useHrCollaborators();
   const { uniforms: uniformRecords } = useHrStaffRecords();
   const [filters, setFilters] = useState(defaultFilters);
   const [formOpen, setFormOpen] = useState(false);
@@ -59,9 +70,10 @@ export function AccidentesModule({
     const extras = [
       ...settings.records.map((r) => r.sede),
       ...(asistencia.staff ?? []).map((s) => s.sedeName),
+      ...collaborators.map((c) => c.sede || ''),
     ];
     return buildFilterSedeOptions({ visibleSedes, extra: extras });
-  }, [visibleSedes, settings.records, asistencia]);
+  }, [visibleSedes, settings.records, asistencia, collaborators]);
 
   const formSedeOptions = useMemo(
     () => buildFormSedeOptions(visibleSedes),
@@ -69,9 +81,21 @@ export function AccidentesModule({
   );
 
   const staffOptions = useMemo(
-    () => buildStaffOptions({ users, asistencia, visibleSedes: formSedeOptions }),
-    [users, asistencia, formSedeOptions]
+    () =>
+      buildStaffOptions({
+        users,
+        asistencia,
+        visibleSedes: formSedeOptions,
+        employees: collaborators,
+      }),
+    [users, asistencia, formSedeOptions, collaborators]
   );
+
+  const areaFilterOptions = useMemo(() => {
+    const fromStaff = staffOptions.map((s) => s.workArea);
+    const fromRecords = settings.records.map((r) => r.workArea);
+    return [...new Set([...fromStaff, ...fromRecords].map((a) => a.trim()).filter(Boolean))];
+  }, [staffOptions, settings.records]);
 
   const filteredRecords = useMemo(
     () => filterAccidentRecords(settings.records, filters),
@@ -84,11 +108,13 @@ export function AccidentesModule({
   );
 
   const openNew = () => {
+    if (!canAdd) return;
     setEditing(null);
     setFormOpen(true);
   };
 
   const openEdit = (record: WorkplaceAccidentRecord) => {
+    if (!canEdit) return;
     setEditing(record);
     setFormOpen(true);
   };
@@ -96,6 +122,9 @@ export function AccidentesModule({
   const handleSave = (
     record: Omit<WorkplaceAccidentRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
   ) => {
+    const isNew = !editing && !record.id;
+    if (isNew && !canAdd) return;
+    if (!isNew && !canEdit) return;
     updateSettings(
       (prev) => upsertAccidentRecord(prev, record),
       editing ? 'Accidente actualizado.' : 'Accidente registrado correctamente.'
@@ -103,11 +132,13 @@ export function AccidentesModule({
   };
 
   const handleDelete = async (id: string) => {
+    if (!canDelete) return;
     if (!await appConfirm('¿Eliminar este registro de accidente?')) return;
     updateSettings((prev) => removeAccidentRecord(prev, id), 'Registro eliminado.');
   };
 
   const handleAdvanceWorkflow = (recordId: string, status: AccidentWorkflowStatus) => {
+    if (!canEdit) return;
     updateSettings((prev) => {
       const record = prev.records.find((r) => r.id === recordId);
       if (!record) return prev;
@@ -127,6 +158,8 @@ export function AccidentesModule({
     );
   }
 
+  const formCanWrite = editing ? canEdit : canAdd;
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-6 shadow-sm dark:border-slate-700">
@@ -138,32 +171,44 @@ export function AccidentesModule({
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Accidentes de trabajo</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Registro estandarizado, KPI de frecuencia y gravedad, mapa corporal y análisis por sede,
-            área y turno — integrado con colaboradores de la clínica veterinaria.
+            área y turno — sincronizado con Colaboradores (Buk.pe).
           </p>
+          {collaboratorsLoading ? (
+            <p className="text-xs text-muted-foreground">Cargando catálogo de colaboradores…</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {staffOptions.length} colaborador{staffOptions.length === 1 ? '' : 'es'} disponible
+              {staffOptions.length === 1 ? '' : 's'} para el formulario.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
-          {canEdit ? (
+          {canAdd ? (
             <Button onClick={openNew}>
               <Plus className="mr-1 h-4 w-4" />
               Nuevo registro
             </Button>
           ) : null}
-          <Button variant="outline" onClick={() => setConfigOpen((v) => !v)}>
-            <Settings2 className="mr-1 h-4 w-4" />
-            Config KPI
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => exportAccidentesExcel(filteredRecords, filters.dateFrom, filters.dateTo)}
-            disabled={filteredRecords.length === 0}
-          >
-            <Download className="mr-1 h-4 w-4" />
-            Exportar Excel
-          </Button>
+          {canConfigure ? (
+            <Button variant="outline" onClick={() => setConfigOpen((v) => !v)}>
+              <Settings2 className="mr-1 h-4 w-4" />
+              Config KPI
+            </Button>
+          ) : null}
+          {canExport ? (
+            <Button
+              variant="outline"
+              onClick={() => exportAccidentesExcel(filteredRecords, filters.dateFrom, filters.dateTo)}
+              disabled={filteredRecords.length === 0}
+            >
+              <Download className="mr-1 h-4 w-4" />
+              Exportar Excel
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {configOpen ? (
+      {configOpen && canConfigure ? (
         <div className="grid gap-3 rounded-xl border border-border bg-muted/20 p-4 sm:grid-cols-3 lg:grid-cols-5 dark:border-slate-700">
           <div className="space-y-1">
             <Label className="text-xs">Horas hombre / trabajador / mes</Label>
@@ -171,7 +216,7 @@ export function AccidentesModule({
               type="number"
               min={1}
               value={settings.config.hoursPerWorkerMonth}
-              disabled={!canEdit}
+              disabled={!canEdit && !canConfigure}
               onChange={(e) =>
                 updateSettings((prev) => ({
                   ...prev,
@@ -190,7 +235,7 @@ export function AccidentesModule({
               min={0}
               step="0.01"
               value={settings.config.dailyLostDayCost}
-              disabled={!canEdit}
+              disabled={!canEdit && !canConfigure}
               onChange={(e) =>
                 updateSettings((prev) => ({
                   ...prev,
@@ -208,7 +253,7 @@ export function AccidentesModule({
               type="number"
               min={0}
               value={settings.config.manualHeadcount ?? ''}
-              disabled={!canEdit}
+              disabled={!canEdit && !canConfigure}
               onChange={(e) =>
                 updateSettings((prev) => ({
                   ...prev,
@@ -228,7 +273,7 @@ export function AccidentesModule({
               step="0.1"
               placeholder="Ej. 25"
               value={settings.config.alertMaxFrequencyIndex ?? ''}
-              disabled={!canEdit}
+              disabled={!canEdit && !canConfigure}
               onChange={(e) =>
                 updateSettings((prev) => ({
                   ...prev,
@@ -248,7 +293,7 @@ export function AccidentesModule({
               step="0.1"
               placeholder="Ej. 5"
               value={settings.config.alertMaxGravityIndex ?? ''}
-              disabled={!canEdit}
+              disabled={!canEdit && !canConfigure}
               onChange={(e) =>
                 updateSettings((prev) => ({
                   ...prev,
@@ -264,7 +309,12 @@ export function AccidentesModule({
         </div>
       ) : null}
 
-      <AccidentesFiltersBar filters={filters} sedeOptions={sedeOptions} onChange={setFilters} />
+      <AccidentesFiltersBar
+        filters={filters}
+        sedeOptions={sedeOptions}
+        workAreaOptions={areaFilterOptions}
+        onChange={setFilters}
+      />
 
       <AccidentesAlertBanner kpis={kpis} config={settings.config} />
 
@@ -280,6 +330,7 @@ export function AccidentesModule({
           <AccidentesTable
             records={filteredRecords}
             canEdit={canEdit}
+            canDelete={canDelete}
             onView={setDetailRecord}
             onEdit={openEdit}
             onDelete={handleDelete}
@@ -303,7 +354,7 @@ export function AccidentesModule({
         record={editing}
         staffOptions={staffOptions}
         sedeOptions={formSedeOptions}
-        canEdit={canEdit}
+        canEdit={formCanWrite}
         reportedBy={reportedBy}
         onSave={handleSave}
       />

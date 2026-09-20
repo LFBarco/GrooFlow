@@ -35,12 +35,20 @@ const WORKFLOW_VARIANT: Record<string, string> = {
 type Props = {
   records: WorkplaceAccidentRecord[];
   canEdit: boolean;
+  canDelete?: boolean;
   onView: (record: WorkplaceAccidentRecord) => void;
   onEdit: (record: WorkplaceAccidentRecord) => void;
   onDelete: (id: string) => void;
 };
 
-export function AccidentesTable({ records, canEdit, onView, onEdit, onDelete }: Props) {
+export function AccidentesTable({
+  records,
+  canEdit,
+  canDelete = false,
+  onView,
+  onEdit,
+  onDelete,
+}: Props) {
   if (records.length === 0) {
     return (
       <Card className="border-dashed border-border dark:border-slate-700">
@@ -109,20 +117,20 @@ export function AccidentesTable({ records, canEdit, onView, onEdit, onDelete }: 
                       <Eye className="h-4 w-4" />
                     </Button>
                     {canEdit ? (
-                      <>
-                        <Button type="button" size="icon" variant="ghost" onClick={() => onEdit(r)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          size="icon"
-                          variant="ghost"
-                          className="text-rose-600"
-                          onClick={() => onDelete(r.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </>
+                      <Button type="button" size="icon" variant="ghost" onClick={() => onEdit(r)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    ) : null}
+                    {canDelete ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="text-rose-600"
+                        onClick={() => onDelete(r.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     ) : null}
                   </div>
                 </TableCell>

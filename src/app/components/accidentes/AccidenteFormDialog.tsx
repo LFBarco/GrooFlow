@@ -20,7 +20,6 @@ import {
   BODY_PART_OPTIONS,
   CAUSING_AGENT_OPTIONS,
   INJURY_NATURE_OPTIONS,
-  VET_WORK_AREAS,
 } from '../../types/accidentes';
 import type { StaffOption } from '../../utils/accidentesData';
 import {
@@ -66,7 +65,7 @@ const emptyForm = (): Omit<WorkplaceAccidentRecord, 'id' | 'createdAt' | 'update
   sede: 'Principal',
   affectedName: '',
   jobTitle: '',
-  workArea: VET_WORK_AREAS[0],
+  workArea: '',
   seniorityMonths: 0,
   contractType: 'No registrado',
   eventDate: format(new Date(), 'yyyy-MM-dd'),
@@ -140,6 +139,21 @@ export function AccidenteFormDialog({
 
   const applyStaff = (key: string) => {
     setStaffKey(key);
+    if (key === 'manual') {
+      setForm((prev) => ({
+        ...prev,
+        userId: undefined,
+        asistenciaStaffId: undefined,
+        bukEmployeeId: undefined,
+        documentNumber: undefined,
+        affectedName: '',
+        jobTitle: '',
+        workArea: '',
+        contractType: 'No registrado',
+        seniorityMonths: 0,
+      }));
+      return;
+    }
     const staff = staffOptions.find((s) => s.id === key);
     if (!staff) return;
     setForm((prev) => ({
@@ -255,7 +269,7 @@ export function AccidenteFormDialog({
             </p>
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <div className="space-y-1 sm:col-span-2">
-                <Label>Colaborador</Label>
+                <Label>Colaborador *</Label>
                 <Select value={staffKey} onValueChange={applyStaff} disabled={!canEdit}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar colaborador" />
@@ -263,47 +277,46 @@ export function AccidenteFormDialog({
                   <SelectContent>
                     {staffOptions.map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.name} · {s.jobTitle} · {s.sedesLabel || s.homeSede}
+                        {s.name}
+                        {s.jobTitle ? ` · ${s.jobTitle}` : ''}
+                        {s.workArea ? ` · ${s.workArea}` : ''}
                       </SelectItem>
                     ))}
                     <SelectItem value="manual">Otro / manual</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Nombre *</Label>
-                <Input
-                  value={form.affectedName}
-                  onChange={(e) => patch({ affectedName: e.target.value })}
-                  disabled={!canEdit}
-                />
+                {staffKey === 'manual' ? (
+                  <div className="mt-2 space-y-1">
+                    <Label>Nombre completo *</Label>
+                    <Input
+                      value={form.affectedName}
+                      onChange={(e) => patch({ affectedName: e.target.value })}
+                      disabled={!canEdit}
+                      placeholder="Solo si no está en colaboradores"
+                    />
+                  </div>
+                ) : null}
               </div>
               <div className="space-y-1">
                 <Label>Puesto</Label>
                 <Input
                   value={form.jobTitle}
+                  readOnly={staffKey !== 'manual'}
                   onChange={(e) => patch({ jobTitle: e.target.value })}
-                  disabled={!canEdit}
+                  disabled={!canEdit || staffKey !== 'manual'}
+                  className={staffKey !== 'manual' ? 'bg-muted/40' : undefined}
                 />
               </div>
               <div className="space-y-1">
                 <Label>Área</Label>
-                <Select
+                <Input
                   value={form.workArea}
-                  onValueChange={(v) => patch({ workArea: v })}
-                  disabled={!canEdit}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VET_WORK_AREAS.map((a) => (
-                      <SelectItem key={a} value={a}>
-                        {a}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  readOnly={staffKey !== 'manual'}
+                  onChange={(e) => patch({ workArea: e.target.value })}
+                  disabled={!canEdit || staffKey !== 'manual'}
+                  className={staffKey !== 'manual' ? 'bg-muted/40' : undefined}
+                  placeholder="Área padre (colaboradores)"
+                />
               </div>
               <div className="space-y-1">
                 <Label>Antigüedad</Label>
@@ -313,12 +326,14 @@ export function AccidenteFormDialog({
                   className="bg-muted/40"
                 />
               </div>
-              <div className="space-y-1 sm:col-span-2">
+              <div className="space-y-1">
                 <Label>Tipo de contrato</Label>
                 <Input
                   value={form.contractType}
+                  readOnly={staffKey !== 'manual'}
                   onChange={(e) => patch({ contractType: e.target.value })}
-                  disabled={!canEdit}
+                  disabled={!canEdit || staffKey !== 'manual'}
+                  className={staffKey !== 'manual' ? 'bg-muted/40' : undefined}
                 />
               </div>
             </div>

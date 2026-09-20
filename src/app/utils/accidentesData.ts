@@ -193,6 +193,20 @@ export function formatSeniorityLabel(months: number): string {
   return `${years}a ${rem}m`;
 }
 
+/** Fila liviana de GET /hr/colaboradores (espejo Buk.pe / Colaboradores). */
+export type HrCollaboratorRow = {
+  bukId: number;
+  fullName: string;
+  documentNumber?: string | null;
+  email?: string | null;
+  cargo?: string | null;
+  orgAreaParentName?: string | null;
+  contractType?: string | null;
+  startDate?: string | null;
+  sede?: string | null;
+  linkedUsuarioId?: string | null;
+};
+
 export interface StaffOption {
   id: string;
   label: string;
@@ -216,6 +230,8 @@ export interface StaffOption {
   seniorityMonths: number;
   hireDate?: string;
   uniformSizes?: Partial<Record<string, string>>;
+  /** Origen: colaboradores Buk vs Gestión/Asistencia. */
+  source?: 'rrhh' | 'user' | 'asistencia';
 }
 
 const CONTRACT_LABELS: Record<string, string> = {
@@ -323,9 +339,8 @@ export function resolveStaffOptionKey(
 }
 
 /**
- * Lista de colaboradores: Gestión = maestro de persona/cargo.
- * Organigrama Asistencia solo aporta ids de cruce (asistenciaStaffId / bukEmployeeId).
- * Buk no define el cargo mostrado en Uniformes / Accidentes.
+ * Lista de colaboradores para Accidentes / Uniformes.
+ * Preferencia: Colaboradores Buk (`employees`) → Gestión + Asistencia (fallback).
  */
 export function buildStaffOptions(input: {
   users: User[];
@@ -333,6 +348,8 @@ export function buildStaffOptions(input: {
   visibleSedes?: string[];
   /** Si false, ignora organigrama (solo Gestión). Default true = enriquece con ids Asistencia. */
   includeAsistencia?: boolean;
+  /** Activos desde módulo Colaboradores (Buk.pe). */
+  employees?: HrCollaboratorRow[];
 }): StaffOption[] {
   const map = new Map<string, StaffOption>();
   const identityKeys = new Set<string>();
@@ -340,6 +357,7 @@ export function buildStaffOptions(input: {
   const sedeNames = input.visibleSedes ?? [];
   const includeAsistencia = input.includeAsistencia !== false;
   const staffList = includeAsistencia ? (asistencia.staff ?? []) : [];
+  const employees = input.employees ?? [];
 
   const register = (opt: StaffOption, identityKey: string) => {
     if (identityKeys.has(identityKey)) return;
@@ -354,14 +372,24 @@ export function buildStaffOptions(input: {
     email?: string;
     name: string;
   }): string => {
+    if (parts.bukEmployeeId) return `buk:${parts.bukEmployeeId}`;
     if (parts.userId) return `user:${parts.userId}`;
     const doc = docKey(parts.documentNumber);
     if (doc) return `doc:${doc}`;
-    if (parts.bukEmployeeId) return `buk:${parts.bukEmployeeId}`;
     const email = parts.email?.trim().toLowerCase();
     if (email) return `email:${email}`;
     return `name:${normalizePersonName(parts.name)}`;
   };
+
+  const usersById = new Map(input.users.map((u) => [String(u.id), u]));
+  const usersByDoc = new Map<string, User>();
+  const usersByEmail = new Map<string, User>();
+  for (const u of input.users) {
+    const d = docKey(u.documentNumber);
+    if (d) usersByDoc.set(d, u);
+    const em = u.email?.trim().toLowerCase();
+    if (em) usersByEmail.set(em, u);
+  }
 
   const staffByUserId = new Map<string, (typeof staffList)[number]>();
   const staffByEmail = new Map<string, (typeof staffList)[number]>();
@@ -376,9 +404,85 @@ export function buildStaffOptions(input: {
   }
 
   const coveredStaffIds = new Set<string>();
+  const coveredUserIds = new Set<string>();
 
+  // 1) Colaboradores Buk = fuente canónica (nombre, cargo, área padre, ingreso, contrato).
+  for (const emp of employees) {
+    const name = (emp.fullName || '').trim();
+    if (!name) continue;
+    const doc = docKey(emp.documentNumber);
+    const email = (emp.email ?? '').trim().toLowerCase();
+    const linked = emp.linkedUsuarioId ? String(emp.linkedUsuarioId) : '';
+    const matchedUser =
+      (linked ? usersById.get(linked) : undefined) ||
+      (doc ? usersByDoc.get(doc) : undefined) ||
+      (email ? usersByEmail.get(email) : undefined);
+    if (matchedUser) coveredUserIds.add(String(matchedUser.id));
+
+    const matchedStaff =
+      (matchedUser?.id ? staffByUserId.get(String(matchedUser.id)) : undefined) ||
+      (email ? staffByEmail.get(email) : undefined) ||
+      (doc ? staffByDoc.get(doc) : undefined);
+    if (matchedStaff) coveredStaffIds.add(matchedStaff.id);
+
+    const hireDate = (emp.startDate || matchedUser?.hireDate || '').trim() || undefined;
+    const rawSede = emp.sede || matchedUser?.sedes?.[0] || matchedUser?.location || matchedStaff?.sedeName;
+    const homeSede =
+      sedeNames.length > 0 && rawSede
+        ? resolveCanonicalSedeName(String(rawSede), sedeNames)
+        : String(rawSede || 'Principal').trim() || 'Principal';
+    const sedesInfo = matchedUser
+      ? resolveUserSedes(matchedUser, homeSede, sedeNames)
+      : {
+          primary: homeSede,
+          label: homeSede || 'Sin sede',
+          keys: homeSede ? [normalizeSedeKey(homeSede)] : [],
+        };
+
+    const areaPadre =
+      (emp.orgAreaParentName || '').trim() ||
+      matchedUser?.workArea?.trim() ||
+      (matchedStaff?.area ? mapAreaFromAsistencia(matchedStaff.area) : '') ||
+      'Sin área';
+
+    const opt: StaffOption = {
+      id: `buk:${emp.bukId}`,
+      userId: matchedUser?.id,
+      asistenciaStaffId: matchedStaff?.id,
+      bukEmployeeId: emp.bukId,
+      documentNumber: doc || undefined,
+      email: email || matchedUser?.email || undefined,
+      label: name,
+      name,
+      jobTitle: (emp.cargo || '').trim() || resolveGestionJobTitle(matchedUser ?? {}) || 'Sin cargo',
+      workArea: areaPadre,
+      contractType: (emp.contractType || '').trim()
+        ? contractTypeLabel(emp.contractType || undefined)
+        : contractTypeLabel(matchedUser?.contractType),
+      homeSede: sedesInfo.primary,
+      sedesLabel: sedesInfo.label,
+      sedeKeys: sedesInfo.keys,
+      seniorityMonths: computeSeniorityMonths(hireDate),
+      hireDate,
+      uniformSizes: matchedUser?.uniformSizes,
+      source: 'rrhh',
+    };
+    register(
+      opt,
+      identityKeyFor({
+        bukEmployeeId: opt.bukEmployeeId,
+        userId: opt.userId,
+        documentNumber: opt.documentNumber,
+        email: opt.email,
+        name: opt.name,
+      })
+    );
+  }
+
+  // 2) Fallback Gestión + Asistencia (cuando no hay Buk o faltan personas).
   for (const u of input.users) {
     if (u.status === 'inactive') continue;
+    if (coveredUserIds.has(String(u.id))) continue;
     const doc = docKey(u.documentNumber);
     const email = u.email?.trim().toLowerCase();
     const matched =
@@ -406,6 +510,7 @@ export function buildStaffOptions(input: {
       seniorityMonths: computeSeniorityMonths(u.hireDate),
       hireDate: u.hireDate,
       uniformSizes: u.uniformSizes,
+      source: 'user',
     };
     register(
       opt,
@@ -442,6 +547,7 @@ export function buildStaffOptions(input: {
       sedesLabel: homeSede || 'Sin sede',
       sedeKeys: homeSede ? [normalizeSedeKey(homeSede)] : [],
       seniorityMonths: 0,
+      source: 'asistencia',
     };
     register(
       opt,
@@ -467,13 +573,16 @@ export function buildStaffOptions(input: {
 
   if (input.visibleSedes?.length) {
     const visibleKeys = new Set(input.visibleSedes.map((v) => normalizeSedeKey(v)));
-    list = list.filter((s) => {
-      const keys =
-        s.sedeKeys && s.sedeKeys.length > 0
-          ? s.sedeKeys
-          : [normalizeSedeKey(s.homeSede)];
-      return keys.some((k) => visibleKeys.has(k));
-    });
+    // No filtrar por sede si la fuente es RRHH global (muchos sin sede mapeada).
+    if (employees.length === 0) {
+      list = list.filter((s) => {
+        const keys =
+          s.sedeKeys && s.sedeKeys.length > 0
+            ? s.sedeKeys
+            : [normalizeSedeKey(s.homeSede)];
+        return keys.some((k) => visibleKeys.has(k));
+      });
+    }
   }
   return list;
 }
@@ -495,11 +604,12 @@ export function daysWithoutAccident(records: WorkplaceAccidentRecord[]): number 
   const withLostTime = records
     .filter(hasLostTime)
     .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
-  if (withLostTime.length === 0) {
-    return differenceInCalendarDays(new Date(), parseISO('2020-01-01'));
+  const pool = withLostTime.length > 0 ? withLostTime : [...records].sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+  if (pool.length === 0) {
+    return 0;
   }
-  const last = withLostTime[0]!;
-  return differenceInCalendarDays(new Date(), parseISO(`${last.eventDate}T12:00:00`));
+  const last = pool[0]!;
+  return Math.max(0, differenceInCalendarDays(new Date(), parseISO(`${last.eventDate}T12:00:00`)));
 }
 
 export function estimateManHours(

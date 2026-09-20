@@ -117,8 +117,12 @@ export interface FleetModuleProps {
   visibleSedes?: string[];
   /** Sede predeterminada al registrar un vehículo nuevo. */
   defaultHomeBase?: string;
-  /** Alta / editar / eliminar vehículos, mant. y combustible. */
+  /** Alta de vehículos, mant. y combustible. */
+  canAdd?: boolean;
+  /** Editar registros existentes. */
   canEdit?: boolean;
+  /** Eliminar registros. */
+  canDelete?: boolean;
   /** Plantilla checklist + historial global de inspecciones. */
   canConfigure?: boolean;
   /** Usuarios app (fallback choferes por cargo). */
@@ -144,7 +148,9 @@ export function FleetModule({
   persistenceReady,
   visibleSedes,
   defaultHomeBase,
+  canAdd = false,
   canEdit = false,
+  canDelete = false,
   canConfigure = false,
   users = [],
   providers = [],
@@ -372,7 +378,9 @@ export function FleetModule({
             onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
+            canAdd={canAdd}
             canEdit={canEdit}
+            canDelete={canDelete}
             canConfigure={canConfigure}
             choferes={choferes}
             choferesLoading={choferesLoading}
@@ -386,7 +394,9 @@ export function FleetModule({
             onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
+            canAdd={canAdd}
             canEdit={canEdit}
+            canDelete={canDelete}
             workshopProviders={workshopProviders}
           />
         </TabsContent>
@@ -398,7 +408,9 @@ export function FleetModule({
             onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
+            canAdd={canAdd}
             canEdit={canEdit}
+            canDelete={canDelete}
           />
         </TabsContent>
 
@@ -506,7 +518,9 @@ function FleetVehiclesSection({
   onPersistDataset,
   visibleSedes,
   defaultHomeBase,
+  canAdd = false,
   canEdit = false,
+  canDelete = false,
   canConfigure = false,
   choferes = [],
   choferesLoading = false,
@@ -516,7 +530,9 @@ function FleetVehiclesSection({
   onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
+  canAdd?: boolean;
   canEdit?: boolean;
+  canDelete?: boolean;
   canConfigure?: boolean;
   choferes?: FleetChoferOption[];
   choferesLoading?: boolean;
@@ -632,7 +648,7 @@ function FleetVehiclesSection({
   return (
     <>
       <div className="flex justify-end mb-3">
-        {canEdit ? (
+        {canAdd ? (
           <Button onClick={openNew} data-testid="fleet-add-vehicle" className="gap-2 bg-teal-600 hover:bg-teal-500">
             <Plus className="h-4 w-4" />
             Alta de vehículo
@@ -684,15 +700,15 @@ function FleetVehiclesSection({
               )}
               <div className="flex gap-2 pt-2 flex-wrap">
                 {canEdit ? (
-                  <>
-                    <Button variant="outline" size="sm" className="h-8" onClick={() => openEdit(v)}>
-                      <Pencil className="h-3.5 w-3.5 mr-1" />
-                      Detalle / editar
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => removeVehicle(v)}>
-                      Eliminar
-                    </Button>
-                  </>
+                  <Button variant="outline" size="sm" className="h-8" onClick={() => openEdit(v)}>
+                    <Pencil className="h-3.5 w-3.5 mr-1" />
+                    Detalle / editar
+                  </Button>
+                ) : null}
+                {canDelete ? (
+                  <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => removeVehicle(v)}>
+                    Eliminar
+                  </Button>
                 ) : null}
               </div>
               <FleetVehicleInspectionBar
@@ -700,7 +716,7 @@ function FleetVehiclesSection({
                 dataset={dataset}
                 setDataset={setDataset}
                 onPersistDataset={onPersistDataset}
-                canEdit={canEdit}
+                canEdit={canAdd || canEdit}
                 canViewHistory={canConfigure}
                 choferes={choferes}
                 choferesLoading={choferesLoading}
@@ -832,7 +848,9 @@ function FleetMaintenanceSection({
   onPersistDataset,
   visibleSedes,
   defaultHomeBase,
+  canAdd = false,
   canEdit = false,
+  canDelete = false,
   workshopProviders = [],
 }: {
   dataset: FleetDataset;
@@ -840,7 +858,9 @@ function FleetMaintenanceSection({
   onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
+  canAdd?: boolean;
   canEdit?: boolean;
+  canDelete?: boolean;
   workshopProviders?: Provider[];
 }) {
   const [open, setOpen] = useState(false);
@@ -960,7 +980,7 @@ function FleetMaintenanceSection({
   return (
     <>
       <div className="flex justify-end mb-3">
-        {canEdit ? (
+        {canAdd ? (
           <Button onClick={openDialog} className="gap-2" disabled={!dataset.vehicles.length}>
             <Plus className="h-4 w-4" />
             Registrar mantenimiento
@@ -997,7 +1017,7 @@ function FleetMaintenanceSection({
                   <TableCell className="max-w-[240px] truncate text-muted-foreground">{r.description}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoneyStr(tot)}</TableCell>
                   <TableCell className="text-right">
-                    {canEdit ? (
+                    {canDelete ? (
                       <Button
                         type="button"
                         variant="ghost"
@@ -1151,14 +1171,18 @@ function FleetFuelSection({
   onPersistDataset,
   visibleSedes,
   defaultHomeBase,
+  canAdd = false,
   canEdit = false,
+  canDelete = false,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
   onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
+  canAdd?: boolean;
   canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
@@ -1291,7 +1315,7 @@ function FleetFuelSection({
           </Badge>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canEdit ? (
+          {canAdd ? (
             <>
               <FleetFuelBulkImport
                 dataset={dataset}
@@ -1354,7 +1378,7 @@ function FleetFuelSection({
                   <TableCell>{r.odometerKm.toLocaleString('es-PE')}</TableCell>
                   <TableCell className="text-right">{formatCurrencyEs(r.totalCost)}</TableCell>
                   <TableCell className="text-right">
-                    {canEdit ? (
+                    {canDelete ? (
                       <Button
                         type="button"
                         variant="ghost"

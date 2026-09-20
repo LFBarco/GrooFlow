@@ -121,6 +121,17 @@ export type MenuReorderPayload = Array<{
 
 export type MenuPermissionsMap = Record<string, boolean>;
 
+export type MenuModuleActions = {
+  ver?: boolean;
+  agregar?: boolean;
+  editar?: boolean;
+  eliminar?: boolean;
+  exportar?: boolean;
+  configurar?: boolean;
+};
+
+export type MenuActionsMap = Record<string, MenuModuleActions>;
+
 export type GrooflowAuthMenuSection = {
   section: string;
   items: Array<{
@@ -135,6 +146,8 @@ export type GrooflowAuthMenuSection = {
 
 export type GrooflowAuthMenuPayload = {
   menu_permissions: MenuPermissionsMap;
+  /** null = backend sin menu_actions (compat); {} = sin acciones concedidas */
+  menu_actions: MenuActionsMap | null;
   menu_sections: GrooflowAuthMenuSection[];
   profile?: User | null;
 };
@@ -316,11 +329,13 @@ export async function applyNivelMenuToUsers(
 export async function fetchAuthMenuPayload(): Promise<GrooflowAuthMenuPayload> {
   const data = await menuFetch<{
     menu_permissions?: MenuPermissionsMap;
+    menu_actions?: MenuActionsMap;
     menu_sections?: GrooflowAuthMenuSection[];
     profile?: User;
   }>('/auth/me');
   return {
     menu_permissions: data.menu_permissions ?? {},
+    menu_actions: data.menu_actions !== undefined ? (data.menu_actions ?? {}) : null,
     menu_sections: data.menu_sections ?? [],
     profile: data.profile ?? null,
   };
