@@ -212,7 +212,10 @@ export function AsistenciaModule({
 
   const [selectedSede, setSelectedSede] = useState(() => sedeOptions[0] ?? 'Principal');
 
-  const activeSede = sedeOptions.includes(selectedSede) ? selectedSede : sedeOptions[0];
+  const activeSede =
+    (sedeOptions.includes(selectedSede) ? selectedSede : sedeOptions[0]) ??
+    selectedSede ??
+    'Principal';
 
   const dateObj = useMemo(() => new Date(`${selectedDate}T12:00:00`), [selectedDate]);
   const trendDays = useMemo(
@@ -701,9 +704,12 @@ export function AsistenciaModule({
           <div className="min-w-[140px] flex-1 sm:flex-none">
             <label className="mb-1 block text-xs text-muted-foreground">Sede</label>
             <Select
-              value={activeSede}
+              value={sedeOptions.length > 0 ? activeSede : undefined}
               onValueChange={setSelectedSede}
-              disabled={liveViewMode === 'consolidated' && mainTab === 'live'}
+              disabled={
+                sedeOptions.length === 0 ||
+                (liveViewMode === 'consolidated' && mainTab === 'live')
+              }
             >
               <SelectTrigger className="w-full border-border bg-background text-foreground sm:w-[180px]">
                 <SelectValue />

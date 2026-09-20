@@ -18,8 +18,12 @@ const SEDE_ALIASES: Record<string, string> = {
 };
 
 /** Clave normalizada para deduplicar variantes legacy ("10. Benavides" vs "Benavides"). */
-export function normalizeSedeKey(name: string): string {
-  let key = name.trim().toLowerCase().replace(/^\d+\.\s*/, '').replace(/\s+/g, ' ');
+export function normalizeSedeKey(name?: string | null): string {
+  let key = (name ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\d+\.\s*/, '')
+    .replace(/\s+/g, ' ');
   return SEDE_ALIASES[key] ?? key;
 }
 
@@ -56,13 +60,15 @@ export function buildFormSedeOptions(visibleSedes: string[]): string[] {
 
 /**
  * Filtros: mismas opciones que el catálogo visible.
- * Los `extra` (staff/histórico) no agregan sedes nuevas; solo sirven vía resolveCanonicalSedeName.
+ * Si el catálogo aún no cargó, usa `extra` (staff/perfiles) para evitar Select vacío.
  */
 export function buildFilterSedeOptions(input: {
   visibleSedes: string[];
   extra?: string[];
 }): string[] {
-  return buildFormSedeOptions(input.visibleSedes);
+  const fromVisible = buildFormSedeOptions(input.visibleSedes);
+  if (fromVisible.length > 0) return fromVisible;
+  return buildFormSedeOptions(input.extra ?? []);
 }
 
 /** Resuelve un nombre legacy al canónico del catálogo visible (tenants). */

@@ -34,6 +34,19 @@ describe('gestionSedes', () => {
     expect(filtered).toEqual(['10. Benavides', '50. La Molina']);
   });
 
+  it('si el catálogo está vacío, usa extras como fallback', () => {
+    const filtered = buildFilterSedeOptions({
+      visibleSedes: [],
+      extra: ['Benavides', '10. Benavides', 'Miraflores'],
+    });
+    expect(filtered).toEqual(['Benavides', 'Miraflores']);
+  });
+
+  it('normalizeSedeKey tolera null/undefined', () => {
+    expect(normalizeSedeKey(undefined)).toBe('');
+    expect(normalizeSedeKey(null)).toBe('');
+  });
+
   it('resuelve nombre legacy al canónico visible', () => {
     const visible = ['10. Benavides', '30. Pet Movil'];
     expect(resolveCanonicalSedeName('Benavides', visible)).toBe('10. Benavides');

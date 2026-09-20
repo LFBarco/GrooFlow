@@ -102,7 +102,7 @@ function recordMatchesSede(
   ).trim();
   const recintoCode = (r.codigo_recinto || '').trim().toLowerCase();
   const recintoName = (r.nombre_recinto || '').trim().toLowerCase();
-  const sedeLower = sedeName.trim().toLowerCase();
+  const sedeLower = (sedeName ?? '').trim().toLowerCase();
 
   if (code && matchesBukRecintoConfig(code, r)) return true;
   if (recintoName && (recintoName.includes(sedeLower) || sedeLower.includes(recintoName))) {
