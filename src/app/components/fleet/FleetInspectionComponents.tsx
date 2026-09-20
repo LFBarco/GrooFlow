@@ -33,6 +33,7 @@ import {
   getAllChecklistItemIds,
 } from '../../utils/fleetData';
 import { applyFleetDatasetChange, type FleetChecklistPersistFn, type FleetPersistFn } from '../../utils/fleetPersist';
+import { FleetDriverSelect } from './FleetDriverSelect';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -630,11 +631,20 @@ export function FleetVehicleInspectionBar({
   dataset,
   setDataset,
   onPersistDataset,
+  canEdit = true,
+  canViewHistory = false,
+  choferes = [],
+  choferesLoading = false,
 }: {
   vehicle: FleetVehicle;
   dataset: FleetDataset;
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
   onPersistDataset?: FleetPersistFn;
+  canEdit?: boolean;
+  /** Historial por vehículo: solo perfiles de configuración. */
+  canViewHistory?: boolean;
+  choferes?: import('../../utils/fleetChoferOptions').FleetChoferOption[];
+  choferesLoading?: boolean;
 }) {
   const [openNew, setOpenNew] = useState(false);
   const [openHist, setOpenHist] = useState(false);
@@ -813,14 +823,18 @@ export function FleetVehicleInspectionBar({
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="secondary" className="h-8 gap-1 bg-teal-600/90 hover:bg-teal-500 text-white" onClick={() => setOpenNew(true)}>
-            <ClipboardCheck className="h-3.5 w-3.5" />
-            Checklist inspección
-          </Button>
-          <Button type="button" size="sm" variant="outline" className="h-8 border-white/15" onClick={() => setOpenHist(true)}>
-            <History className="h-3.5 w-3.5 mr-1" />
-            Historial ({vehicleInspections.length})
-          </Button>
+          {canEdit ? (
+            <Button type="button" size="sm" variant="secondary" className="h-8 gap-1 bg-teal-600/90 hover:bg-teal-500 text-white" onClick={() => setOpenNew(true)}>
+              <ClipboardCheck className="h-3.5 w-3.5" />
+              Checklist inspección
+            </Button>
+          ) : null}
+          {canViewHistory ? (
+            <Button type="button" size="sm" variant="outline" className="h-8 border-white/15" onClick={() => setOpenHist(true)}>
+              <History className="h-3.5 w-3.5 mr-1" />
+              Historial ({vehicleInspections.length})
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -842,10 +856,14 @@ export function FleetVehicleInspectionBar({
               <Label>Odómetro (km)</Label>
               <Input type="number" value={odometerKm || ''} onChange={(e) => setOdometerKm(Number(e.target.value))} />
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Chofer *</Label>
-              <Input value={driverName} onChange={(e) => setDriverName(e.target.value)} placeholder="Nombre completo" />
-            </div>
+            <FleetDriverSelect
+              label="Chofer"
+              required
+              choferes={choferes}
+              loading={choferesLoading}
+              name={driverName}
+              onChange={({ fullName }) => setDriverName(fullName || '')}
+            />
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Supervisor / responsable</Label>
               <Input value={supervisorName} onChange={(e) => setSupervisorName(e.target.value)} />

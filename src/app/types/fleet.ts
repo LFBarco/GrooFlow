@@ -21,6 +21,8 @@ export interface FleetVehicle {
   currentOdometerKm: number;
   /** Conductor habitual o último conductor asignado */
   assignedDriverName?: string;
+  /** Id estable del colaborador chofer (`buk:…` / `user:…`) */
+  assignedDriverEmployeeId?: string;
   /** Número de licencia del conductor asignado */
   assignedDriverLicense?: string;
   /** Última ubicación conocida / sede habitual */

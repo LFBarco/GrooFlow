@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Gauge,
   Trash2,
+  Settings,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,7 +34,7 @@ import {
 } from 'recharts';
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-
+import type { User } from '../../types';
 import type {
   FleetDataset,
   FleetFuelEntry,
@@ -85,6 +86,8 @@ import {
 } from './FleetInspectionComponents';
 import { FleetSedeField, useFleetSedeOptions } from './FleetSedeField';
 import { FleetFuelBulkImport } from './FleetFuelBulkImport';
+import { FleetDriverSelect, useFleetChoferOptions } from './FleetDriverSelect';
+import type { FleetChoferOption } from '../../utils/fleetChoferOptions';
 import { applyFleetDatasetChange, type FleetPersistFn } from '../../utils/fleetPersist';
 import { useModuleSurfaces } from '../../utils/moduleSurfaces';
 import { ChartEmptyState, seriesHasValues } from '../ui/ChartEmptyState';
@@ -109,6 +112,12 @@ export interface FleetModuleProps {
   visibleSedes?: string[];
   /** Sede predeterminada al registrar un vehículo nuevo. */
   defaultHomeBase?: string;
+  /** Alta / editar / eliminar vehículos, mant. y combustible. */
+  canEdit?: boolean;
+  /** Plantilla checklist + historial global de inspecciones. */
+  canConfigure?: boolean;
+  /** Usuarios app (fallback choferes por cargo). */
+  users?: User[];
 }
 
 type FleetTab =
@@ -118,13 +127,31 @@ type FleetTab =
   | 'fuel'
   | 'alerts'
   | 'reports'
-  | 'inspections';
+  | 'config';
 
-export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistChecklist, persistenceReady, visibleSedes, defaultHomeBase }: FleetModuleProps) {
+export function FleetModule({
+  dataset,
+  setDataset,
+  onPersistDataset,
+  onPersistChecklist,
+  persistenceReady,
+  visibleSedes,
+  defaultHomeBase,
+  canEdit = false,
+  canConfigure = false,
+  users = [],
+}: FleetModuleProps) {
   const [fleetTab, setFleetTab] = useState<FleetTab>('dashboard');
+  const { choferes, loading: choferesLoading } = useFleetChoferOptions(users);
   const kpis = useMemo(() => computeFleetKpis(dataset), [dataset]);
   const alerts = useMemo(() => buildFleetAlerts(dataset), [dataset]);
   const costBars = useMemo(() => monthlyCostsSeries(dataset, 6), [dataset]);
+
+  useEffect(() => {
+    if (!canConfigure && fleetTab === 'config') {
+      setFleetTab('dashboard');
+    }
+  }, [canConfigure, fleetTab]);
 
   const statusPie = useMemo(() => {
     const c = { available: 0, in_use: 0, maintenance: 0, out_of_service: 0 } as Record<
@@ -145,7 +172,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
   const costBarsHaveData = seriesHasValues(costBars, ['fuel', 'maintenance']);
 
   return (
-    <div data-testid="fleet-module" className="space-y-4 animate-in fade-in duration-150 -mt-2">
+    <div data-testid="fleet-module" className="space-y-4 animate-in fade-in duration-150">
       <div
         className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-3 shadow-xl"
         style={{
@@ -182,7 +209,12 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
           <TabsTrigger value="fuel">Combustible</TabsTrigger>
           <TabsTrigger value="alerts">Alertas ({alerts.filter((a) => a.severity !== 'info').length})</TabsTrigger>
           <TabsTrigger value="reports">Reportes</TabsTrigger>
-          <TabsTrigger value="inspections">Inspecciones</TabsTrigger>
+          {canConfigure ? (
+            <TabsTrigger value="config" data-testid="fleet-tab-config">
+              <Settings className="h-3.5 w-3.5 mr-1" />
+              Configuración
+            </TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6 focus-visible:outline-none">
@@ -323,6 +355,10 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
             onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
+            canEdit={canEdit}
+            canConfigure={canConfigure}
+            choferes={choferes}
+            choferesLoading={choferesLoading}
           />
         </TabsContent>
 
@@ -333,6 +369,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
             onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
+            canEdit={canEdit}
           />
         </TabsContent>
 
@@ -343,6 +380,7 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
             onPersistDataset={onPersistDataset}
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
+            canEdit={canEdit}
           />
         </TabsContent>
 
@@ -354,40 +392,42 @@ export function FleetModule({ dataset, setDataset, onPersistDataset, onPersistCh
           <FleetReportsSection dataset={dataset} />
         </TabsContent>
 
-        <TabsContent value="inspections" className="focus-visible:outline-none space-y-6">
-          <Card className="border-border bg-card text-card-foreground">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <ClipboardCheck className="h-4 w-4 text-teal-500" />
-                Inspección vehicular — movilidad canina
-              </CardTitle>
-              <CardDescription>
-                Configure plantillas editables, revise el historial global y registre checklist desde cada tarjeta de vehículo.
-              </CardDescription>
-            </CardHeader>
-          </Card>
-          <Tabs defaultValue="checklist-config" className="space-y-4">
-            <TabsList className="flex-wrap h-auto gap-1 border border-border bg-muted/60 p-1 rounded-xl">
-              <TabsTrigger value="checklist-config">Plantilla del checklist</TabsTrigger>
-              <TabsTrigger value="inspection-global-hist">Historial global</TabsTrigger>
-            </TabsList>
-            <TabsContent value="checklist-config" className="focus-visible:outline-none">
-              <FleetChecklistConfigurator
-                dataset={dataset}
-                setDataset={setDataset}
-                onPersistChecklist={onPersistChecklist}
-                persistenceReady={persistenceReady}
-              />
-            </TabsContent>
-            <TabsContent value="inspection-global-hist" className="focus-visible:outline-none">
-              <FleetInspectionsGlobalTable
-                dataset={dataset}
-                setDataset={setDataset}
-                onPersistDataset={onPersistDataset}
-              />
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
+        {canConfigure ? (
+          <TabsContent value="config" className="focus-visible:outline-none space-y-6">
+            <Card className="border-border bg-card text-card-foreground">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4 text-teal-500" />
+                  Configuración — inspecciones y plantillas
+                </CardTitle>
+                <CardDescription>
+                  Solo perfiles autorizados. La inspección diaria se registra desde cada tarjeta de vehículo.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+            <Tabs defaultValue="checklist-config" className="space-y-4">
+              <TabsList className="flex-wrap h-auto gap-1 border border-border bg-muted/60 p-1 rounded-xl">
+                <TabsTrigger value="checklist-config">Plantilla del checklist</TabsTrigger>
+                <TabsTrigger value="inspection-global-hist">Historial global</TabsTrigger>
+              </TabsList>
+              <TabsContent value="checklist-config" className="focus-visible:outline-none">
+                <FleetChecklistConfigurator
+                  dataset={dataset}
+                  setDataset={setDataset}
+                  onPersistChecklist={onPersistChecklist}
+                  persistenceReady={persistenceReady}
+                />
+              </TabsContent>
+              <TabsContent value="inspection-global-hist" className="focus-visible:outline-none">
+                <FleetInspectionsGlobalTable
+                  dataset={dataset}
+                  setDataset={setDataset}
+                  onPersistDataset={onPersistDataset}
+                />
+              </TabsContent>
+            </Tabs>
+          </TabsContent>
+        ) : null}
       </Tabs>
         </div>
       </div>
@@ -448,12 +488,20 @@ function FleetVehiclesSection({
   onPersistDataset,
   visibleSedes,
   defaultHomeBase,
+  canEdit = false,
+  canConfigure = false,
+  choferes = [],
+  choferesLoading = false,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
   onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
+  canEdit?: boolean;
+  canConfigure?: boolean;
+  choferes?: FleetChoferOption[];
+  choferesLoading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<FleetVehicle | null>(null);
@@ -518,6 +566,7 @@ function FleetVehiclesSection({
       status: (form.status as FleetVehicleStatus) || 'available',
       currentOdometerKm: Number(form.currentOdometerKm) || 0,
       assignedDriverName: form.assignedDriverName?.trim() || undefined,
+      assignedDriverEmployeeId: form.assignedDriverEmployeeId?.trim() || undefined,
       assignedDriverLicense: form.assignedDriverLicense?.trim() || undefined,
       homeBase: form.homeBase?.trim() || undefined,
       notes: form.notes?.trim() || undefined,
@@ -565,10 +614,12 @@ function FleetVehiclesSection({
   return (
     <>
       <div className="flex justify-end mb-3">
-        <Button onClick={openNew} data-testid="fleet-add-vehicle" className="gap-2 bg-teal-600 hover:bg-teal-500">
-          <Plus className="h-4 w-4" />
-          Alta de vehículo
-        </Button>
+        {canEdit ? (
+          <Button onClick={openNew} data-testid="fleet-add-vehicle" className="gap-2 bg-teal-600 hover:bg-teal-500">
+            <Plus className="h-4 w-4" />
+            Alta de vehículo
+          </Button>
+        ) : null}
       </div>
       <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
         {dataset.vehicles.map((v) => (
@@ -614,19 +665,27 @@ function FleetVehiclesSection({
                 </div>
               )}
               <div className="flex gap-2 pt-2 flex-wrap">
-                <Button variant="outline" size="sm" className="h-8" onClick={() => openEdit(v)}>
-                  <Pencil className="h-3.5 w-3.5 mr-1" />
-                  Detalle / editar
-                </Button>
-                <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => removeVehicle(v)}>
-                  Eliminar
-                </Button>
+                {canEdit ? (
+                  <>
+                    <Button variant="outline" size="sm" className="h-8" onClick={() => openEdit(v)}>
+                      <Pencil className="h-3.5 w-3.5 mr-1" />
+                      Detalle / editar
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-8 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => removeVehicle(v)}>
+                      Eliminar
+                    </Button>
+                  </>
+                ) : null}
               </div>
               <FleetVehicleInspectionBar
                 vehicle={v}
                 dataset={dataset}
                 setDataset={setDataset}
                 onPersistDataset={onPersistDataset}
+                canEdit={canEdit}
+                canViewHistory={canConfigure}
+                choferes={choferes}
+                choferesLoading={choferesLoading}
               />
             </CardContent>
           </Card>
@@ -687,10 +746,19 @@ function FleetVehiclesSection({
               <Label className="text-slate-300">Km actual</Label>
               <Input type="number" value={form.currentOdometerKm ?? ''} onChange={(e) => setForm((f) => ({ ...f, currentOdometerKm: Number(e.target.value) }))} />
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label className="text-slate-300">Conductor / responsable</Label>
-              <Input value={form.assignedDriverName ?? ''} onChange={(e) => setForm((f) => ({ ...f, assignedDriverName: e.target.value }))} />
-            </div>
+            <FleetDriverSelect
+              choferes={choferes}
+              loading={choferesLoading}
+              employeeId={form.assignedDriverEmployeeId}
+              name={form.assignedDriverName}
+              onChange={({ employeeId, fullName }) =>
+                setForm((f) => ({
+                  ...f,
+                  assignedDriverEmployeeId: employeeId,
+                  assignedDriverName: fullName,
+                }))
+              }
+            />
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-slate-300">Nro de licencia del conductor</Label>
               <Input value={form.assignedDriverLicense ?? ''} onChange={(e) => setForm((f) => ({ ...f, assignedDriverLicense: e.target.value }))} />
@@ -746,12 +814,14 @@ function FleetMaintenanceSection({
   onPersistDataset,
   visibleSedes,
   defaultHomeBase,
+  canEdit = false,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
   onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
+  canEdit?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
@@ -865,10 +935,12 @@ function FleetMaintenanceSection({
   return (
     <>
       <div className="flex justify-end mb-3">
-        <Button onClick={openDialog} className="gap-2" disabled={!dataset.vehicles.length}>
-          <Plus className="h-4 w-4" />
-          Registrar mantenimiento
-        </Button>
+        {canEdit ? (
+          <Button onClick={openDialog} className="gap-2" disabled={!dataset.vehicles.length}>
+            <Plus className="h-4 w-4" />
+            Registrar mantenimiento
+          </Button>
+        ) : null}
       </div>
       <ScrollArea className="h-[min(520px,70vh)] rounded-xl border border-border bg-card">
         <Table>
@@ -900,16 +972,18 @@ function FleetMaintenanceSection({
                   <TableCell className="max-w-[240px] truncate text-muted-foreground">{r.description}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatMoneyStr(tot)}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                      onClick={() => void removeMaintenance(r)}
-                      title="Eliminar mantenimiento"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canEdit ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                        onClick={() => void removeMaintenance(r)}
+                        title="Eliminar mantenimiento"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               );
@@ -1015,12 +1089,14 @@ function FleetFuelSection({
   onPersistDataset,
   visibleSedes,
   defaultHomeBase,
+  canEdit = false,
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
   onPersistDataset?: FleetModuleProps['onPersistDataset'];
   visibleSedes?: string[];
   defaultHomeBase?: string;
+  canEdit?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
@@ -1147,17 +1223,21 @@ function FleetFuelSection({
           </Badge>
         </div>
         <div className="flex flex-wrap gap-2">
-          <FleetFuelBulkImport
-            dataset={dataset}
-            setDataset={setDataset}
-            onPersistDataset={onPersistDataset}
-            visibleSedes={visibleSedes}
-            defaultHomeBase={defaultHomeBase}
-          />
-          <Button onClick={openDialog} className="gap-2 bg-cyan-600 hover:bg-cyan-500">
-            <Fuel className="h-4 w-4" />
-            Registrar combustible
-          </Button>
+          {canEdit ? (
+            <>
+              <FleetFuelBulkImport
+                dataset={dataset}
+                setDataset={setDataset}
+                onPersistDataset={onPersistDataset}
+                visibleSedes={visibleSedes}
+                defaultHomeBase={defaultHomeBase}
+              />
+              <Button onClick={openDialog} className="gap-2 bg-cyan-600 hover:bg-cyan-500">
+                <Fuel className="h-4 w-4" />
+                Registrar combustible
+              </Button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -1194,16 +1274,18 @@ function FleetFuelSection({
                   <TableCell>{r.odometerKm.toLocaleString('es-PE')}</TableCell>
                   <TableCell className="text-right">{formatCurrencyEs(r.totalCost)}</TableCell>
                   <TableCell className="text-right">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                      onClick={() => void removeFuelEntry(r)}
-                      title="Eliminar repostaje"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canEdit ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                        onClick={() => void removeFuelEntry(r)}
+                        title="Eliminar repostaje"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               );

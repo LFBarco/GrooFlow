@@ -150,6 +150,7 @@ import { mergeTurnosSettings, TURNOS_SETTINGS_KV_KEY } from "./utils/turnosData"
 import { mergeRrhhSettings, RRHH_SETTINGS_KV_KEY } from "./utils/rrhhData";
 import type { RrhhSettings } from "./types/rrhh";
 import { canConfigureAsistencia } from "./utils/asistenciaAccess";
+import { canConfigureFleet } from "./utils/fleetAccess";
 import { resetAsistenciaUiLocks } from "./utils/asistenciaUiCleanup";
 import { Toaster } from "./components/ui/sonner";
 import { AppProvider } from "./context/AppContext";
@@ -3905,7 +3906,7 @@ export default function App() {
           ) : (
           <>
           {/* Header fuera de Suspense: no desaparece al cambiar de módulo */}
-          {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products', 'rrhhAreas', 'rrhhPuestos', 'rrhhTurnosCatalog', 'fees', 'providers', 'fleet', 'inventory', 'reconciliation', 'pnl', 'reports', 'audit', 'users', 'config', 'requests', 'alerts', 'menuConfig', 'menuAssignment'].includes(view) && (
+          {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products', 'rrhhAreas', 'rrhhPuestos', 'rrhhTurnosCatalog', 'fees', 'providers', 'inventory', 'reconciliation', 'pnl', 'reports', 'audit', 'users', 'config', 'requests', 'alerts', 'menuConfig', 'menuAssignment'].includes(view) && (
             <ModuleHeader
               icon={moduleIdentity.icon}
               title={moduleIdentity.title}
@@ -4430,6 +4431,9 @@ export default function App() {
                   enabledCatalog[0] ||
                   'Principal'
                 }
+                canEdit={canWriteAppKv('data:fleet')}
+                canConfigure={canConfigureFleet(currentUser, userRole)}
+                users={users}
               />
             </div>
           )}
