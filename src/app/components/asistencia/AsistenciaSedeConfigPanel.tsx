@@ -955,7 +955,13 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
               <Switch
                 id="hide-empty-areas"
                 checked={hideEmptyAreas}
-                onCheckedChange={setHideEmptyAreas}
+                onCheckedChange={(v) => {
+                  setHideEmptyAreas(v);
+                  void persistOrgLayout(
+                    { hideEmptyAreas: v },
+                    v ? 'Subáreas vacías ocultas.' : 'Subáreas vacías visibles.'
+                  );
+                }}
               />
               <Label htmlFor="hide-empty-areas" className="text-sm text-muted-foreground">
                 Ocultar subáreas vacías (las columnas raíz siempre se muestran)
@@ -1075,7 +1081,16 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         settings={settings}
         sedeOptions={sedeOptions.length ? sedeOptions : [sedeName]}
         onSave={(next) => {
-          void runSave(() => mergeAsistenciaSettings(next), 'Dotación Buk guardada.');
+          void runSave(
+            (prev) =>
+              mergeAsistenciaSettings({
+                ...prev,
+                requirements: next.requirements,
+                costCenterSedeMappings: next.costCenterSedeMappings,
+                sedeMappings: next.sedeMappings ?? prev.sedeMappings,
+              }),
+            'Dotación Buk y mapeos de sede guardados.'
+          );
         }}
       />
     </div>

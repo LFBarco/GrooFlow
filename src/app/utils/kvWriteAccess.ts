@@ -85,12 +85,8 @@ export function canWriteKvKey(
   if (!modules || modules.length === 0) return false;
   // Backend: users/roles nunca se escriben por menú; solo admin.
   if (kvKey === 'data:users' || kvKey === 'data:roles') return false;
-  if (
-    kvKey === 'settings:system' ||
-    kvKey === 'settings:asistencia' ||
-    kvKey === 'settings:rrhh' ||
-    kvKey === 'data:sedes'
-  ) {
+  // System/RRHH/sedes: solo admin (espejo backend). Asistencia sí es escribible por módulo.
+  if (kvKey === 'settings:system' || kvKey === 'settings:rrhh' || kvKey === 'data:sedes') {
     return false;
   }
   const allowedMods = modules.filter((mod) => roleHasModuleAccess(options.permissions!, mod));

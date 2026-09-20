@@ -56,6 +56,10 @@ import { buildAsistenciaOperationalAlerts } from '../../utils/asistenciaAlerts';
 import { autoRefreshIntervalMs, shouldRunAutoRefresh } from '../../utils/asistenciaAutoRefresh';
 import { saveAsistenciaOperationalContext } from '../../utils/asistenciaOperationalContext';
 import {
+  takeKvPermissionDenied,
+} from '../../utils/kvWriteAccess';
+import { ASISTENCIA_SETTINGS_KV_KEY } from '../../utils/asistenciaPersistence';
+import {
   captureAsistenciaDailySnapshots,
   hydrateAsistenciaSnapshotsFromCloud,
   listAsistenciaSnapshots,
@@ -530,12 +534,21 @@ export function AsistenciaModule({
   const saveAsistencia = useCallback(
     async (
       updater: (prev: AsistenciaSettings) => AsistenciaSettings,
-      successMessage?: string
+      successMessage?: string,
+      opts?: { silentFail?: boolean }
     ): Promise<boolean> => {
       if (onPersistAsistenciaSettings) {
         const ok = await onPersistAsistenciaSettings(updater, successMessage);
-        if (!ok) {
-          toast.error('No se pudo guardar en la nube. Revisa tu sesión e intenta de nuevo.');
+        if (!ok && !opts?.silentFail) {
+          if (takeKvPermissionDenied(ASISTENCIA_SETTINGS_KV_KEY)) {
+            toast.error(
+              'Sin permiso para guardar Asistencia. En Asignación de Menú, activa Editar o Configurar en Asistencia.'
+            );
+          } else {
+            toast.error(
+              'No se pudo guardar la configuración de Asistencia. Revisa la conexión e intenta de nuevo.'
+            );
+          }
         }
         return ok;
       }
@@ -547,8 +560,10 @@ export function AsistenciaModule({
           }),
           successMessage
         );
-        if (!ok) {
-          toast.error('No se pudo guardar en la nube. Revisa tu sesión e intenta de nuevo.');
+        if (!ok && !opts?.silentFail) {
+          toast.error(
+            'No se pudo guardar la configuración de Asistencia. Revisa la conexión e intenta de nuevo.'
+          );
         }
         return ok;
       }
@@ -595,7 +610,8 @@ export function AsistenciaModule({
                 lastAutoRefreshAt: new Date().toISOString(),
               },
             }),
-            undefined
+            undefined,
+            { silentFail: true }
           );
         }
       }
