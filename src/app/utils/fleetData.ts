@@ -810,3 +810,22 @@ export function fuelTypeLabel(ft: FleetVehicle['fuelType']): string {
   };
   return m[ft];
 }
+
+export function fuelProductLabel(fp?: import('../types/fleet').FleetFuelProduct | null): string {
+  if (!fp) return '—';
+  const m: Record<NonNullable<typeof fp>, string> = {
+    gasoline: 'Gasolina',
+    cng: 'Gas (GNV)',
+    diesel: 'Diésel',
+  };
+  return m[fp];
+}
+
+/** Mapea tipo de vehículo → producto de repostaje por defecto. */
+export function defaultFuelProductForVehicle(
+  ft?: FleetVehicle['fuelType'] | null
+): import('../types/fleet').FleetFuelProduct {
+  if (ft === 'cng') return 'cng';
+  if (ft === 'diesel') return 'diesel';
+  return 'gasoline';
+}

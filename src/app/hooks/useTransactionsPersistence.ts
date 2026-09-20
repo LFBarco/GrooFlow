@@ -32,6 +32,8 @@ function withKvSaveTimeout(promise: Promise<KvSaveResult>): Promise<KvSaveResult
 
 export type UseTransactionsPersistenceOptions = {
   isDataLoaded: boolean;
+  /** Si false, no intenta KV (evita toast falso en perfiles sin módulo Transacciones). */
+  canPersist?: boolean;
   transactions: Transaction[];
   setTransactions: Dispatch<SetStateAction<Transaction[]>>;
   cloudHydrationDoneRef: MutableRefObject<boolean>;
@@ -46,6 +48,7 @@ export type UseTransactionsPersistenceOptions = {
 export function useTransactionsPersistence(options: UseTransactionsPersistenceOptions) {
   const {
     isDataLoaded,
+    canPersist = true,
     transactions,
     setTransactions,
     cloudHydrationDoneRef,
@@ -61,6 +64,7 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
 
   useEffect(() => {
     if (!isDataLoaded || !cloudHydrationDoneRef.current) return;
+    if (!canPersist) return;
     if (skipExplicitAutosaveRef.current) return;
     if (transactions.length === 0 && !hydratedFromKvRef.current) return;
     void enqueueKvSerializedSave(
@@ -91,7 +95,7 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
         'Transacciones guardadas en este equipo. No se pudo sincronizar en la nube (revisa tu sesión).'
       );
     });
-  }, [transactions, isDataLoaded]);
+  }, [transactions, isDataLoaded, canPersist]);
 
   const persistTransactionsNow = useCallback(
     async (
@@ -103,6 +107,10 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
         toast.error(
           'Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.'
         );
+        return false;
+      }
+      if (!canPersist) {
+        toast.error('No tienes permiso para guardar transacciones en la nube.');
         return false;
       }
 
@@ -163,7 +171,7 @@ export function useTransactionsPersistence(options: UseTransactionsPersistenceOp
         skipExplicitAutosaveRef.current = false;
       }
     },
-    [isDataLoaded, setTransactions]
+    [isDataLoaded, canPersist, setTransactions]
   );
 
   return { persistTransactionsNow };

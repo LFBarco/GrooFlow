@@ -35,9 +35,11 @@ import {
 import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { User } from '../../types';
+import type { Provider } from '../../types';
 import type {
   FleetDataset,
   FleetFuelEntry,
+  FleetFuelProduct,
   FleetMaintenanceKind,
   FleetMaintenanceRecord,
   FleetVehicle,
@@ -47,11 +49,14 @@ import {
   avgFleetConsumptionLPer100,
   buildFleetAlerts,
   computeFleetKpis,
+  defaultFuelProductForVehicle,
+  fuelProductLabel,
   fuelTypeLabel,
   monthlyCostsSeries,
   statusLabelSpanish,
   vehicleConsumptionLPer100,
 } from '../../utils/fleetData';
+import { fleetWorkshopProviders } from '../../utils/fleetWorkshopProviders';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -118,6 +123,8 @@ export interface FleetModuleProps {
   canConfigure?: boolean;
   /** Usuarios app (fallback choferes por cargo). */
   users?: User[];
+  /** Catálogo de proveedores (talleres de mantenimiento). */
+  providers?: Provider[];
 }
 
 type FleetTab =
@@ -140,9 +147,11 @@ export function FleetModule({
   canEdit = false,
   canConfigure = false,
   users = [],
+  providers = [],
 }: FleetModuleProps) {
   const [fleetTab, setFleetTab] = useState<FleetTab>('dashboard');
   const { choferes, loading: choferesLoading } = useFleetChoferOptions(users);
+  const workshopProviders = useMemo(() => fleetWorkshopProviders(providers), [providers]);
   const kpis = useMemo(() => computeFleetKpis(dataset), [dataset]);
   const alerts = useMemo(() => buildFleetAlerts(dataset), [dataset]);
   const costBars = useMemo(() => monthlyCostsSeries(dataset, 6), [dataset]);
@@ -198,6 +207,14 @@ export function FleetModule({
           <FleetExportCsv dataset={dataset} />
         </div>
       </div>
+
+      {visibleSedes && visibleSedes.length > 0 ? (
+        <p className="text-xs text-muted-foreground -mt-2 px-1">
+          Vista filtrada por tus sedes autorizadas
+          {visibleSedes.length <= 6 ? `: ${visibleSedes.join(', ')}` : ` (${visibleSedes.length})`}.
+          Si no ves un vehículo creado por admin, revisa que su «Base / sede» coincida con tu perfil.
+        </p>
+      ) : null}
 
       <div className="min-w-0">
         <div className="space-y-4">
@@ -370,6 +387,7 @@ export function FleetModule({
             visibleSedes={visibleSedes}
             defaultHomeBase={defaultHomeBase}
             canEdit={canEdit}
+            workshopProviders={workshopProviders}
           />
         </TabsContent>
 
@@ -815,6 +833,7 @@ function FleetMaintenanceSection({
   visibleSedes,
   defaultHomeBase,
   canEdit = false,
+  workshopProviders = [],
 }: {
   dataset: FleetDataset;
   setDataset: FleetModuleProps['setDataset'];
@@ -822,6 +841,7 @@ function FleetMaintenanceSection({
   visibleSedes?: string[];
   defaultHomeBase?: string;
   canEdit?: boolean;
+  workshopProviders?: Provider[];
 }) {
   const [open, setOpen] = useState(false);
   const [vehicleId, setVehicleId] = useState('');
@@ -829,6 +849,7 @@ function FleetMaintenanceSection({
   const [kind, setKind] = useState<FleetMaintenanceKind>('preventive');
   const [dateStr, setDateStr] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [odometer, setOdometer] = useState<number>(0);
+  const [workshopProviderId, setWorkshopProviderId] = useState<string>('');
   const [workshop, setWorkshop] = useState('');
   const [description, setDescription] = useState('');
   const [labor, setLabor] = useState<number>(0);
@@ -891,6 +912,9 @@ function FleetMaintenanceSection({
       toast.error('Describe el trabajo.');
       return;
     }
+    const selectedWorkshop = workshopProviders.find((p) => p.id === workshopProviderId);
+    const workshopLabel =
+      selectedWorkshop?.name?.trim() || workshop.trim() || undefined;
     const now = new Date().toISOString();
     const rec: FleetMaintenanceRecord = {
       id: newId('fm'),
@@ -898,7 +922,8 @@ function FleetMaintenanceSection({
       kind,
       date: dateStr,
       odometerKm: odometer,
-      workshopName: workshop.trim() || undefined,
+      workshopName: workshopLabel,
+      workshopProviderId: selectedWorkshop?.id,
       location: location.trim() || resolvedDefault,
       description: description.trim(),
       laborCost: labor,
@@ -1045,8 +1070,45 @@ function FleetMaintenanceSection({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Taller</Label>
-              <Input value={workshop} onChange={(e) => setWorkshop(e.target.value)} />
+              <Label>Taller (proveedores de mant. vehicular)</Label>
+              {workshopProviders.length > 0 ? (
+                <Select
+                  value={workshopProviderId || '__none__'}
+                  onValueChange={(id) => {
+                    if (id === '__none__') {
+                      setWorkshopProviderId('');
+                      setWorkshop('');
+                      return;
+                    }
+                    setWorkshopProviderId(id);
+                    const p = workshopProviders.find((x) => x.id === id);
+                    setWorkshop(p?.name ?? '');
+                  }}
+                >
+                  <SelectTrigger data-testid="fleet-workshop-select">
+                    <SelectValue placeholder="Seleccionar taller / proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin taller</SelectItem>
+                    {workshopProviders.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                        {p.accountingAccount ? ` · cta ${p.accountingAccount}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={workshop}
+                  onChange={(e) => setWorkshop(e.target.value)}
+                  placeholder="No hay talleres filtrados — escribe el nombre"
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Lista: proveedores con cuenta de mantenimiento (p. ej. 634…) o categoría/nombre de
+                taller · flota · mecánico.
+              </p>
             </div>
             <div className="space-y-1.5">
               <Label>Descripción *</Label>
@@ -1106,6 +1168,7 @@ function FleetFuelSection({
   const [liters, setLiters] = useState<number>(0);
   const [cost, setCost] = useState<number>(0);
   const [station, setStation] = useState('');
+  const [fuelProduct, setFuelProduct] = useState<FleetFuelProduct>('gasoline');
 
   const { resolvedDefault } = useFleetSedeOptions(visibleSedes, defaultHomeBase, location);
 
@@ -1120,9 +1183,11 @@ function FleetFuelSection({
     const sede = resolvedDefault;
     setLocation(sede);
     const candidates = dataset.vehicles.filter((v) => (v.homeBase || '').trim() === sede);
-    const first = (candidates[0] ?? dataset.vehicles[0])?.id ?? '';
+    const firstVeh = candidates[0] ?? dataset.vehicles[0];
+    const first = firstVeh?.id ?? '';
     setVehicleId(first);
-    setOdometer(dataset.vehicles.find((v) => v.id === first)?.currentOdometerKm ?? 0);
+    setOdometer(firstVeh?.currentOdometerKm ?? 0);
+    setFuelProduct(defaultFuelProductForVehicle(firstVeh?.fuelType));
     setOpen(true);
   };
 
@@ -1131,9 +1196,11 @@ function FleetFuelSection({
     if (!vehicleId && vehiclesForSede[0]) {
       setVehicleId(vehiclesForSede[0].id);
       setOdometer(vehiclesForSede[0].currentOdometerKm);
+      setFuelProduct(defaultFuelProductForVehicle(vehiclesForSede[0].fuelType));
     } else if (vehicleId && !vehiclesForSede.some((v) => v.id === vehicleId) && vehiclesForSede[0]) {
       setVehicleId(vehiclesForSede[0].id);
       setOdometer(vehiclesForSede[0].currentOdometerKm);
+      setFuelProduct(defaultFuelProductForVehicle(vehiclesForSede[0].fuelType));
     }
   }, [open, vehicleId, vehiclesForSede]);
 
@@ -1151,6 +1218,7 @@ function FleetFuelSection({
       odometerKm: odometer,
       liters,
       totalCost: cost,
+      fuelProduct,
       station: station.trim() || undefined,
       location: location.trim() || resolvedDefault,
       createdAt: now,
@@ -1260,7 +1328,18 @@ function FleetFuelSection({
 
       <ScrollArea className="h-[260px] rounded-xl border border-border bg-card">
         <Table>
-          <TableHeader><TableRow><TableHead>Fecha</TableHead><TableHead>Placa</TableHead><TableHead>Sede</TableHead><TableHead>L</TableHead><TableHead>Km</TableHead><TableHead className="text-right">S/</TableHead><TableHead className="w-10" /></TableRow></TableHeader>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Placa</TableHead>
+              <TableHead>Sede</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>L</TableHead>
+              <TableHead>Km</TableHead>
+              <TableHead className="text-right">S/</TableHead>
+              <TableHead className="w-10" />
+            </TableRow>
+          </TableHeader>
           <TableBody>
             {[...dataset.fuelEntries].sort((a,b)=>parseISO(b.date).getTime()-parseISO(a.date).getTime()).map((r) => {
               const v = dataset.vehicles.find((x)=>x.id===r.vehicleId);
@@ -1270,6 +1349,7 @@ function FleetFuelSection({
                   <TableCell>{r.date}</TableCell>
                   <TableCell className="font-mono">{pl}</TableCell>
                   <TableCell className="text-muted-foreground">{r.location || v?.homeBase || '—'}</TableCell>
+                  <TableCell>{fuelProductLabel(r.fuelProduct)}</TableCell>
                   <TableCell>{r.liters}</TableCell>
                   <TableCell>{r.odometerKm.toLocaleString('es-PE')}</TableCell>
                   <TableCell className="text-right">{formatCurrencyEs(r.totalCost)}</TableCell>
@@ -1313,7 +1393,10 @@ function FleetFuelSection({
               onValueChange={(id) => {
                 setVehicleId(id);
                 const v = dataset.vehicles.find((x) => x.id === id);
-                if (v) setOdometer(v.currentOdometerKm);
+                if (v) {
+                  setOdometer(v.currentOdometerKm);
+                  setFuelProduct(defaultFuelProductForVehicle(v.fuelType));
+                }
               }}
             >
               <SelectTrigger><SelectValue placeholder="Vehículo" /></SelectTrigger>
@@ -1323,6 +1406,19 @@ function FleetFuelSection({
                 ))}
               </SelectContent>
             </Select>
+            <div className="space-y-1.5">
+              <Label>Tipo de combustible</Label>
+              <Select value={fuelProduct} onValueChange={(v) => setFuelProduct(v as FleetFuelProduct)}>
+                <SelectTrigger data-testid="fleet-fuel-product">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="gasoline">Gasolina</SelectItem>
+                  <SelectItem value="cng">Gas (GNV)</SelectItem>
+                  <SelectItem value="diesel">Diésel</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Input type="date" value={dateStr} onChange={(e)=>setDateStr(e.target.value)} />
             <Input type="number" placeholder="Odómetro" value={odometer||''} onChange={(e)=>setOdometer(Number(e.target.value))} />
             <Input type="number" placeholder="Litros" value={liters||''} onChange={(e)=>setLiters(Number(e.target.value))} />

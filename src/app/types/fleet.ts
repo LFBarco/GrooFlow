@@ -64,6 +64,8 @@ export interface FleetMaintenanceRecord {
   date: string;
   odometerKm: number;
   workshopName?: string;
+  /** Proveedor catálogo usado como taller (si se eligió de la lista). */
+  workshopProviderId?: string;
   /** Sede donde se realizó el servicio */
   location?: string;
   description: string;
@@ -77,6 +79,9 @@ export interface FleetMaintenanceRecord {
   createdAt: string;
 }
 
+/** Producto cargado en el repostaje (gas = GNV). */
+export type FleetFuelProduct = 'gasoline' | 'cng' | 'diesel';
+
 export interface FleetFuelEntry {
   id: string;
   vehicleId: string;
@@ -85,6 +90,8 @@ export interface FleetFuelEntry {
   liters: number;
   /** Costo total soles */
   totalCost: number;
+  /** Gasolina / Gas (GNV) / Diésel */
+  fuelProduct?: FleetFuelProduct;
   station?: string;
   /** Sede / base del repostaje */
   location?: string;

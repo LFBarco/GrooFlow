@@ -958,6 +958,7 @@ export default function App() {
 
   const { persistTransactionsNow } = useTransactionsPersistence({
     isDataLoaded,
+    canPersist: canWriteAppKv('data:transactions'),
     transactions,
     setTransactions,
     cloudHydrationDoneRef: transactionsCloudHydrationDoneRef,
@@ -4434,6 +4435,7 @@ export default function App() {
                 canEdit={canWriteAppKv('data:fleet')}
                 canConfigure={canConfigureFleet(currentUser, userRole)}
                 users={users}
+                providers={providers}
               />
             </div>
           )}
