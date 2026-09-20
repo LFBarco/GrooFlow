@@ -568,9 +568,17 @@ export function buildStaffOptions(input: {
 
   let list = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'es'));
 
+  // Deduplicar por identidad Buk/doc; no ocultar homónimos en distinta ficha.
   const displaySeen = new Set<string>();
   list = list.filter((s) => {
-    const key = `${normalizePersonName(s.name)}::${normalizeSedeKey(s.homeSede)}`;
+    const key =
+      s.bukEmployeeId != null
+        ? `buk:${s.bukEmployeeId}`
+        : s.userId
+          ? `user:${s.userId}`
+          : s.documentNumber
+            ? `doc:${docKey(s.documentNumber)}`
+            : `${normalizePersonName(s.name)}::${normalizeSedeKey(s.homeSede)}`;
     if (displaySeen.has(key)) return false;
     displaySeen.add(key);
     return true;

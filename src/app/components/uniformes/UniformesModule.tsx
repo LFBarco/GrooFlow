@@ -15,6 +15,7 @@ import {
   upsertUniformDelivery,
 } from '../../utils/uniformesData';
 import { useUniformesModuleState } from '../../hooks/useUniformesModuleState';
+import { useHrCollaborators } from '../../hooks/useHrCollaborators';
 import { useHrStaffRecords } from '../../hooks/useHrStaffRecords';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -49,6 +50,7 @@ export function UniformesModule({
 }: UniformesModuleProps) {
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
   const { settings, loading, saving, updateSettings } = useUniformesModuleState(canEdit);
+  const { employees: collaborators, loading: collaboratorsLoading } = useHrCollaborators();
   const { accidents: accidentRecords } = useHrStaffRecords();
   const [filters, setFilters] = useState(defaultFilters);
   const [formOpen, setFormOpen] = useState(false);
@@ -62,9 +64,10 @@ export function UniformesModule({
     const extras = [
       ...settings.records.map((r) => r.sede),
       ...(asistencia.staff ?? []).map((s) => s.sedeName),
+      ...collaborators.map((c) => c.sede || ''),
     ];
     return buildFilterSedeOptions({ visibleSedes, extra: extras });
-  }, [visibleSedes, settings.records, asistencia]);
+  }, [visibleSedes, settings.records, asistencia, collaborators]);
 
   const formSedeOptions = useMemo(
     () => buildFormSedeOptions(visibleSedes),
@@ -77,8 +80,9 @@ export function UniformesModule({
         users,
         asistencia,
         visibleSedes: formSedeOptions,
+        employees: collaborators,
       }),
-    [users, asistencia, formSedeOptions]
+    [users, asistencia, formSedeOptions, collaborators]
   );
 
   const filteredRecords = useMemo(
@@ -140,8 +144,17 @@ export function UniformesModule({
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Entrega de uniformes</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
             Registro de entregas de indumentaria al personal: polo, bata, delantal, zapatos y más.
-            Control por sede, talla, motivo y estado de confirmación.
+            Control por sede, talla, motivo y estado de confirmación — sincronizado con Colaboradores activos (Buk.pe).
           </p>
+          {collaboratorsLoading ? (
+            <p className="text-xs text-muted-foreground">Cargando catálogo de colaboradores…</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {staffOptions.length} colaborador{staffOptions.length === 1 ? '' : 'es'} activo
+              {staffOptions.length === 1 ? '' : 's'} disponible
+              {staffOptions.length === 1 ? '' : 's'} para el formulario.
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {canEdit ? (
