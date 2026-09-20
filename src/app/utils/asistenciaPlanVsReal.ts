@@ -12,11 +12,11 @@ export function findRosterForAsistenciaStaff(
   if (byId) return byId;
   const byAsistId = roster.find((r) => r.id === `asist-${staff.id}`);
   if (byAsistId) return byAsistId;
-  const nameKey = staff.fullName.trim().toLowerCase();
+  const nameKey = (staff.fullName ?? '').trim().toLowerCase();
   return roster.find(
     (r) =>
-      r.fullName.trim().toLowerCase() === nameKey &&
-      r.homeSede.trim().toLowerCase() === staff.sedeName.trim().toLowerCase()
+      (r.fullName ?? '').trim().toLowerCase() === nameKey &&
+      (r.homeSede ?? '').trim().toLowerCase() === (staff.sedeName ?? '').trim().toLowerCase()
   );
 }
 

@@ -85,6 +85,25 @@ function rutsMatch(a?: string, b?: string): boolean {
   return Boolean(x && y && x === y);
 }
 
+/** Índice RUT → marcaciones del día (evita O(staff × records) en el vivo). */
+export type BukRecordsByRut = Map<string, BukAsistenciaRecord[]>;
+
+export function indexBukRecordsForDate(
+  records: BukAsistenciaRecord[],
+  date: Date
+): BukRecordsByRut {
+  const map: BukRecordsByRut = new Map();
+  for (const r of records) {
+    if (!isRecordOnDate(r, date)) continue;
+    const key = rutMatchKey(r.rut_trabajador);
+    if (!key) continue;
+    const list = map.get(key);
+    if (list) list.push(r);
+    else map.set(key, [r]);
+  }
+  return map;
+}
+
 /**
  * Resuelve sede GrooFlow desde el recinto/huellero de una marcación Buk Asistencia.
  */
@@ -145,14 +164,17 @@ export function resolveSedeNameFromBukRecinto(
 export function findBukRecordForStaffAnySede(
   staff: AsistenciaStaffMember,
   records: BukAsistenciaRecord[],
-  date: Date
+  date: Date,
+  recordsByRut?: BukRecordsByRut
 ): BukAsistenciaRecord | undefined {
-  const onDate = records.filter(
-    (r) =>
-      isRecordOnDate(r, date) &&
-      rutsMatch(staff.rut, r.rut_trabajador) &&
-      recordMatchesStaffShift(r, staff, date)
-  );
+  const key = rutMatchKey(staff.rut);
+  const candidates =
+    recordsByRut && key
+      ? recordsByRut.get(key) ?? []
+      : records.filter(
+          (r) => isRecordOnDate(r, date) && rutsMatch(staff.rut, r.rut_trabajador)
+        );
+  const onDate = candidates.filter((r) => recordMatchesStaffShift(r, staff, date));
   if (onDate.length === 0) return undefined;
   const withEntrada = onDate.filter((r) => hasBukEntradaMarcada(r));
   const pool = withEntrada.length > 0 ? withEntrada : onDate;
@@ -179,10 +201,11 @@ export function resolveEffectiveSedeForLive(
   records: BukAsistenciaRecord[],
   date: Date,
   settings: AsistenciaSettings,
-  visibleSedes?: string[]
+  visibleSedes?: string[],
+  recordsByRut?: BukRecordsByRut
 ): EffectiveSedeResolution {
   const sedeBase = staffSedeBase(staff, settings, visibleSedes);
-  const record = findBukRecordForStaffAnySede(staff, records, date);
+  const record = findBukRecordForStaffAnySede(staff, records, date, recordsByRut);
   if (!record || !hasBukEntradaMarcada(record)) {
     return {
       sedeBase,
@@ -192,7 +215,7 @@ export function resolveEffectiveSedeForLive(
   }
   const sedeOperativaHoy =
     resolveSedeNameFromBukRecinto(record, settings, visibleSedes) || undefined;
-  const effectiveSede = (sedeOperativaHoy || sedeBase).trim() || sedeBase;
+  const effectiveSede = (sedeOperativaHoy || sedeBase || '').trim() || sedeBase || '';
   const coveringFromBase = Boolean(
     sedeOperativaHoy &&
       sedeBase &&

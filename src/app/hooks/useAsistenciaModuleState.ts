@@ -80,6 +80,9 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
 
   useEffect(() => {
     let cancelled = false;
+    const failSafe = window.setTimeout(() => {
+      if (!cancelled) setTurnosLoading(false);
+    }, 8000);
     (async () => {
       try {
         const raw = await repository.kv.get<TurnosSettings>(TURNOS_SETTINGS_KV_KEY);
@@ -92,6 +95,7 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
     })();
     return () => {
       cancelled = true;
+      window.clearTimeout(failSafe);
     };
   }, []);
 

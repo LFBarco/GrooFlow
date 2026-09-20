@@ -20,7 +20,7 @@ export function findAsistenciaStaffForRoster(
   }
   const byName = staff.find(
     (s) =>
-      s.fullName.trim().toLowerCase() === roster.fullName.trim().toLowerCase() &&
+      (s.fullName ?? '').trim().toLowerCase() === (roster.fullName ?? '').trim().toLowerCase() &&
       s.sedeName === roster.homeSede
   );
   if (byName) return byName;
@@ -44,7 +44,7 @@ function findBukRecordForRoster(
     const byRut = onSede.find((r) => normalizeRut(r.rut_trabajador) === staffRut);
     if (byRut) return byRut;
   }
-  const nameKey = roster.fullName.trim().toLowerCase();
+  const nameKey = (roster.fullName ?? '').trim().toLowerCase();
   return onSede.find((r) => {
     const full = `${r.nombre ?? ''} ${r.apellido_paterno ?? ''} ${r.apellido_materno ?? ''}`
       .trim()

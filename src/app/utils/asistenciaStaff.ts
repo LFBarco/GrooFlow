@@ -34,8 +34,10 @@ import {
 } from './asistenciaData';
 import {
   findBukRecordForStaffAnySede,
+  indexBukRecordsForDate,
   resolveEffectiveSedeForLive,
   staffSedeBase,
+  type BukRecordsByRut,
 } from './asistenciaSedeOperativa';
 import { normalizeSedeKey } from './gestionSedes';
 
@@ -310,14 +312,16 @@ export function staffForSedeLive(
   records: BukAsistenciaRecord[],
   date: Date,
   shiftFilter: AsistenciaShiftFilter = 'all',
-  visibleSedes?: string[]
+  visibleSedes?: string[],
+  recordsByRut?: BukRecordsByRut
 ): AsistenciaStaffMember[] {
   const merged = mergeAsistenciaSettings(settings);
   const sedeKey = normalizeSedeKey(sedeName);
+  const byRut = recordsByRut ?? indexBukRecordsForDate(records, date);
   return (merged.staff ?? [])
     .filter((s) => staffMatchesShiftFilter(s, shiftFilter, date))
     .filter((s) => {
-      const eff = resolveEffectiveSedeForLive(s, records, date, merged, visibleSedes);
+      const eff = resolveEffectiveSedeForLive(s, records, date, merged, visibleSedes, byRut);
       return normalizeSedeKey(eff.effectiveSede) === sedeKey;
     })
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.fullName.localeCompare(b.fullName));
@@ -354,17 +358,20 @@ export function buildLiveSedeSummary(input: {
   date: Date;
   shiftFilter?: AsistenciaShiftFilter;
   visibleSedes?: string[];
+  recordsByRut?: BukRecordsByRut;
 }): AsistenciaLiveSedeSummary {
   const shiftFilter = input.shiftFilter ?? 'all';
   const settings = mergeAsistenciaSettings(input.settings);
   const profile = getSedeProfile(settings, input.sedeName);
+  const recordsByRut = input.recordsByRut ?? indexBukRecordsForDate(input.records, input.date);
   const staffList = staffForSedeLive(
     settings,
     input.sedeName,
     input.records,
     input.date,
     shiftFilter,
-    input.visibleSedes
+    input.visibleSedes,
+    recordsByRut
   );
 
   const liveStates: AsistenciaStaffLiveState[] = staffList.map((staff) => {
@@ -373,18 +380,23 @@ export function buildLiveSedeSummary(input: {
       input.records,
       input.date,
       settings,
-      input.visibleSedes
+      input.visibleSedes,
+      recordsByRut
     );
     // Status según marcación real (cualquier recinto); ya filtramos por sede efectiva.
-    const buk = eff.record ?? findBukRecordForStaffAnySede(staff, input.records, input.date);
+    const buk = eff.record ?? findBukRecordForStaffAnySede(staff, input.records, input.date, recordsByRut);
     const live = resolveLiveStatus(staff, buk, input.date);
     let statusNote = live.statusNote;
     if (eff.coveringFromBase && eff.sedeBase) {
       const coverNote = `Cubre desde ${eff.sedeBase}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
       statusNote = statusNote ? `${coverNote}. ${statusNote}` : coverNote;
     }
+    // Diagnóstico completo es O(records); solo con caché chica para no congelar el módulo.
     const matchHint =
-      live.status === 'ausente' && !statusNote && input.records.length > 0
+      live.status === 'ausente' &&
+      !statusNote &&
+      input.records.length > 0 &&
+      input.records.length <= 2500
         ? diagnoseStaffBukMatch({
             staff,
             records: input.records,
@@ -405,7 +417,7 @@ export function buildLiveSedeSummary(input: {
     };
   });
 
-  const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
+  const onDate = [...recordsByRut.values()].flat();
   const bukRecintosOnDate = [
     ...new Set(onDate.map((r) => formatBukRecintoLabel(r)).filter(Boolean)),
   ];
@@ -530,6 +542,7 @@ export function buildLiveConsolidatedSummary(input: {
   shiftFilter?: AsistenciaShiftFilter;
   visibleSedes?: string[];
 }): AsistenciaLiveConsolidatedSummary {
+  const recordsByRut = indexBukRecordsForDate(input.records, input.date);
   const sedes = input.sedeNames.map((sedeName) =>
     buildLiveSedeSummary({
       sedeName,
@@ -538,6 +551,7 @@ export function buildLiveConsolidatedSummary(input: {
       date: input.date,
       shiftFilter: input.shiftFilter,
       visibleSedes: input.visibleSedes ?? input.sedeNames,
+      recordsByRut,
     })
   );
   return {

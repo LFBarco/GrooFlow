@@ -132,7 +132,6 @@ export function AsistenciaModule({
     fetchProgress,
     moduleReady,
     turnosSettings,
-    turnosLoading,
     refreshBuk,
     hydrateHistoryRange,
     historyStats,
@@ -233,31 +232,37 @@ export function AsistenciaModule({
   const dashboardUsesMulti =
     dashboardMultiSede || (liveViewMode === 'consolidated' && mainTab === 'dashboard');
 
-  const liveSummary = useMemo(
-    () =>
-      buildLiveSedeSummary({
-        sedeName: activeSede,
-        settings: asistencia,
-        records,
-        date: dateObj,
-        shiftFilter,
-        visibleSedes: sedeOptions,
-      }),
-    [activeSede, asistencia, records, dateObj, shiftFilter, sedeOptions]
-  );
+  const liveSummary = useMemo(() => {
+    if (mainTab !== 'live' || liveViewMode !== 'single') return undefined;
+    return buildLiveSedeSummary({
+      sedeName: activeSede,
+      settings: asistencia,
+      records,
+      date: dateObj,
+      shiftFilter,
+      visibleSedes: sedeOptions,
+    });
+  }, [mainTab, liveViewMode, activeSede, asistencia, records, dateObj, shiftFilter, sedeOptions]);
 
-  const consolidatedSummary = useMemo(
-    () =>
-      buildLiveConsolidatedSummary({
-        sedeNames: sedeOptions,
-        settings: asistencia,
-        records,
-        date: dateObj,
-        shiftFilter,
-        visibleSedes: sedeOptions,
-      }),
-    [sedeOptions, asistencia, records, dateObj, shiftFilter]
-  );
+  const consolidatedSummary = useMemo(() => {
+    if (mainTab !== 'live' || liveViewMode !== 'consolidated') {
+      return {
+        workingCount: 0,
+        absentCount: 0,
+        lateCount: 0,
+        isFullyOperational: true,
+        sedes: [] as ReturnType<typeof buildLiveConsolidatedSummary>['sedes'],
+      };
+    }
+    return buildLiveConsolidatedSummary({
+      sedeNames: sedeOptions,
+      settings: asistencia,
+      records,
+      date: dateObj,
+      shiftFilter,
+      visibleSedes: sedeOptions,
+    });
+  }, [mainTab, liveViewMode, sedeOptions, asistencia, records, dateObj, shiftFilter]);
 
   const filteredLiveSummary = useMemo(
     () => (liveSummary ? filterLiveSedeSummary(liveSummary, filters) : undefined),
@@ -280,17 +285,31 @@ export function AsistenciaModule({
     [dateObj, records, asistencia, liveViewMode, mainTab, sedeOptions, activeSede]
   );
 
-  const bukDashboardSummary = useMemo(
-    () =>
-      buildBukDashboardSummary({
-        records,
-        sedeName: activeSede,
-        settings: asistencia,
-        date: dateObj,
-        orgByRut,
-      }),
-    [records, activeSede, asistencia, dateObj, orgByRut]
-  );
+  const bukDashboardSummary = useMemo(() => {
+    if (mainTab !== 'dashboard' || dashboardUsesMulti) {
+      return {
+        total: 0,
+        arrived: 0,
+        absent: 0,
+        leftSameDay: 0,
+        onTime: 0,
+        late: 0,
+        rows: [],
+        familyGroups: [],
+        parentAreaGroups: [],
+        orgAreaGroups: [],
+        specialtyGroups: [],
+        areaGroups: [],
+      };
+    }
+    return buildBukDashboardSummary({
+      records,
+      sedeName: activeSede,
+      settings: asistencia,
+      date: dateObj,
+      orgByRut,
+    });
+  }, [mainTab, dashboardUsesMulti, records, activeSede, asistencia, dateObj, orgByRut]);
 
   const bukAreaOptions = useMemo(
     () =>
@@ -310,49 +329,53 @@ export function AsistenciaModule({
     [bukDashboardSummary.rows]
   );
 
-  const bukMultiDashboardSummary = useMemo(
-    () =>
-      buildBukMultiSedeDashboard({
-        records,
-        sedeNames: sedeOptions,
-        settings: asistencia,
-        date: dateObj,
-        orgByRut,
-      }),
-    [records, sedeOptions, asistencia, dateObj, orgByRut]
-  );
-
-  const weekTrend = useMemo(
-    () =>
-      dashboardUsesMulti || liveViewMode === 'consolidated'
-        ? buildAsistenciaMultiSedeTrendDays({
-            records,
-            settings: asistencia,
-            sedeNames: sedeOptions,
-            days: trendDays,
-          })
-        : buildAsistenciaTrendDays({
-            records,
-            settings: asistencia,
-            sedeName: activeSede,
-            days: trendDays,
-          }),
-    [
+  const bukMultiDashboardSummary = useMemo(() => {
+    if (mainTab !== 'dashboard' || !dashboardUsesMulti) {
+      return {
+        sedes: [],
+        totals: { total: 0, arrived: 0, absent: 0, leftSameDay: 0, onTime: 0, late: 0 },
+      };
+    }
+    return buildBukMultiSedeDashboard({
       records,
-      asistencia,
-      sedeOptions,
-      trendDays,
-      activeSede,
-      dashboardUsesMulti,
-      liveViewMode,
-    ]
-  );
+      sedeNames: sedeOptions,
+      settings: asistencia,
+      date: dateObj,
+      orgByRut,
+    });
+  }, [mainTab, dashboardUsesMulti, records, sedeOptions, asistencia, dateObj, orgByRut]);
+
+  const weekTrend = useMemo(() => {
+    if (mainTab !== 'dashboard') return [];
+    return dashboardUsesMulti || liveViewMode === 'consolidated'
+      ? buildAsistenciaMultiSedeTrendDays({
+          records,
+          settings: asistencia,
+          sedeNames: sedeOptions,
+          days: trendDays,
+        })
+      : buildAsistenciaTrendDays({
+          records,
+          settings: asistencia,
+          sedeName: activeSede,
+          days: trendDays,
+        });
+  }, [
+    mainTab,
+    records,
+    asistencia,
+    sedeOptions,
+    trendDays,
+    activeSede,
+    dashboardUsesMulti,
+    liveViewMode,
+  ]);
 
   const criticalMissing = useMemo(() => {
     if (liveViewMode === 'consolidated') {
       return consolidatedSummary.sedes.flatMap((s) => s.criticalMissing);
     }
-    return liveSummary.criticalMissing;
+    return liveSummary?.criticalMissing ?? [];
   }, [liveViewMode, consolidatedSummary, liveSummary]);
 
   const operationalAlerts = useMemo(() => {
@@ -676,7 +699,7 @@ export function AsistenciaModule({
     refresh,
   ]);
 
-  if (!moduleReady || turnosLoading) {
+  if (!moduleReady) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
@@ -966,7 +989,7 @@ export function AsistenciaModule({
           {records.length > 0 &&
           (liveViewMode === 'consolidated'
             ? consolidatedSummary.absentCount > 0
-            : liveSummary.absentCount > 0) ? (
+            : (liveSummary?.absentCount ?? 0) > 0) ? (
             <Card className="border-amber-200 bg-amber-50/80 dark:border-amber-500/30 dark:bg-amber-950/10">
               <CardContent className="pt-6 space-y-3">
                 <p className="text-sm font-medium text-amber-800 dark:text-amber-200 flex items-center gap-2">
@@ -977,7 +1000,9 @@ export function AsistenciaModule({
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   {(liveViewMode === 'consolidated'
                     ? flattenLiveSedesStaff(consolidatedSummary.sedes)
-                    : flattenLiveSedeStaff(liveSummary)
+                    : liveSummary
+                      ? flattenLiveSedeStaff(liveSummary)
+                      : []
                   )
                     .filter((s) => s.status === 'ausente' && s.matchHint)
                     .map((s) => (
@@ -993,7 +1018,7 @@ export function AsistenciaModule({
                 </ul>
                 {(liveViewMode === 'consolidated'
                   ? consolidatedSummary.sedes.some((s) => s.bukRecintosOnDate.length > 0)
-                  : liveSummary.bukRecintosOnDate.length > 0) ? (
+                  : (liveSummary?.bukRecintosOnDate.length ?? 0) > 0) ? (
                   <p className="text-xs text-muted-foreground">
                     Revisa códigos recinto Buk en Configuración sede si el cruce falla.
                   </p>
