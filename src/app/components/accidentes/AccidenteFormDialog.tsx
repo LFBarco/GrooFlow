@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Paperclip, Plus, Trash2, X } from 'lucide-react';
 
@@ -132,11 +132,6 @@ export function AccidenteFormDialog({
     });
   }, [open, record, staffOptions]);
 
-  const selectedStaff = useMemo(
-    () => staffOptions.find((s) => s.id === staffKey),
-    [staffOptions, staffKey]
-  );
-
   const applyStaff = (key: string) => {
     setStaffKey(key);
     if (key === 'manual') {
@@ -166,19 +161,13 @@ export function AccidenteFormDialog({
       jobTitle: staff.jobTitle,
       workArea: staff.workArea,
       contractType: staff.contractType,
-      seniorityMonths: computeSeniorityMonths(staff.hireDate, prev.eventDate),
+      seniorityMonths: computeSeniorityMonths(staff.hireDate),
       sede: staff.homeSede || prev.sede,
     }));
   };
 
   const patch = (p: Partial<typeof form>) => {
-    setForm((prev) => {
-      const next = { ...prev, ...p };
-      if (p.eventDate && selectedStaff?.hireDate) {
-        next.seniorityMonths = computeSeniorityMonths(selectedStaff.hireDate, p.eventDate);
-      }
-      return next;
-    });
+    setForm((prev) => ({ ...prev, ...p }));
   };
 
   const handleSubmit = () => {

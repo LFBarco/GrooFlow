@@ -173,12 +173,14 @@ export function countAccidentesActiveFilters(filters: AccidentesFilters): number
   return n;
 }
 
-export function computeSeniorityMonths(hireDate?: string, eventDate?: string): number {
+export function computeSeniorityMonths(hireDate?: string, _asOfDate?: string): number {
   if (!hireDate) return 0;
   try {
-    const hire = parseISO(`${hireDate}T12:00:00`);
-    const event = eventDate ? parseISO(`${eventDate}T12:00:00`) : new Date();
-    return Math.max(0, differenceInMonths(event, hire));
+    const hire = parseISO(`${hireDate.slice(0, 10)}T12:00:00`);
+    // Antigüedad siempre contra la fecha calendario de hoy.
+    const today = new Date();
+    const asOf = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0);
+    return Math.max(0, differenceInMonths(asOf, hire));
   } catch {
     return 0;
   }
@@ -202,6 +204,8 @@ export type HrCollaboratorRow = {
   cargo?: string | null;
   orgAreaParentName?: string | null;
   contractType?: string | null;
+  /** Columna «Activo desde» en Colaboradores. */
+  activeSince?: string | null;
   startDate?: string | null;
   sede?: string | null;
   linkedUsuarioId?: string | null;
@@ -425,7 +429,8 @@ export function buildStaffOptions(input: {
       (doc ? staffByDoc.get(doc) : undefined);
     if (matchedStaff) coveredStaffIds.add(matchedStaff.id);
 
-    const hireDate = (emp.startDate || matchedUser?.hireDate || '').trim() || undefined;
+    const hireDate =
+      (emp.activeSince || emp.startDate || matchedUser?.hireDate || '').trim() || undefined;
     const rawSede = emp.sede || matchedUser?.sedes?.[0] || matchedUser?.location || matchedStaff?.sedeName;
     const homeSede =
       sedeNames.length > 0 && rawSede

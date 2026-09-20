@@ -160,7 +160,7 @@ describe('buildStaffOptions', () => {
     expect(options[0]?.homeSede).toBe('Benavides');
     expect(options[0]?.sedesLabel).toBe('Benavides, Jorge Chavez, San Borja +4');
   });
-  it('Buk colaboradores: nombre, cargo, área padre, ingreso y contrato', () => {
+  it('Buk colaboradores: nombre, cargo, área padre, activo desde y contrato', () => {
     const options = buildStaffOptions({
       users: [],
       visibleSedes: ['Benavides'],
@@ -171,7 +171,8 @@ describe('buildStaffOptions', () => {
           cargo: 'Auxiliar veterinario',
           orgAreaParentName: 'Clínica',
           contractType: 'Indeterminado',
-          startDate: '2024-01-15',
+          activeSince: '2024-01-15',
+          startDate: '2023-06-01',
           sede: 'Benavides',
         },
       ],
