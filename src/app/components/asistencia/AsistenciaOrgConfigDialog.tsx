@@ -11,6 +11,7 @@ import type {
 import { ASISTENCIA_AREA_GROUP_LABELS } from '../../types/asistencia';
 import { buildDefaultRequirementsForSede } from '../../utils/asistenciaData';
 import { DEFAULT_BUK_PE_COST_CENTER_SEDES } from '../../utils/asistenciaSedeOperativa';
+import { syncBukRecintoCodeInSettings } from '../../utils/asistenciaStaffSync';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -128,6 +129,11 @@ export function AsistenciaOrgConfigDialog({
     toast.success(`Plantilla aplicada para ${sedeName}.`);
   };
 
+  const groupedSedes = useMemo(() => {
+    const fromReqs = [...new Set(draft.requirements.map((r) => r.sedeName))];
+    return [...new Set([...sedeOptions, ...fromReqs])];
+  }, [draft.requirements, sedeOptions]);
+
   const handleSave = () => {
     const clean = draft.requirements.filter((r) => r.cargoLabel.trim() && r.sedeName.trim());
     if (clean.length === 0) {
@@ -137,15 +143,29 @@ export function AsistenciaOrgConfigDialog({
     const cleanCc = (draft.costCenterSedeMappings ?? []).filter(
       (r) => r.costCenterCode.trim() && r.sedeName.trim()
     );
-    onSave({ ...draft, requirements: clean, costCenterSedeMappings: cleanCc });
+    let next: AsistenciaSettings = {
+      ...draft,
+      requirements: clean,
+      costCenterSedeMappings: cleanCc,
+    };
+    // Alinear perfil de sede ↔ mapeo Buk (una sola fuente de verdad por sede).
+    for (const m of next.sedeMappings ?? []) {
+      next = syncBukRecintoCodeInSettings(next, m.sedeName, m.bukRecintoCode);
+    }
+    // Si se borró un mapeo, también limpiar el código en el perfil.
+    for (const sede of groupedSedes) {
+      const stillMapped = (next.sedeMappings ?? []).some((m) => m.sedeName === sede);
+      if (!stillMapped) {
+        const profileCode = next.sedeProfiles?.find((p) => p.sedeName === sede)?.bukRecintoCode;
+        if (profileCode) {
+          next = syncBukRecintoCodeInSettings(next, sede, undefined);
+        }
+      }
+    }
+    onSave(next);
     onOpenChange(false);
     toast.success('Estructura organizacional guardada.');
   };
-
-  const groupedSedes = useMemo(() => {
-    const fromReqs = [...new Set(draft.requirements.map((r) => r.sedeName))];
-    return [...new Set([...sedeOptions, ...fromReqs])];
-  }, [draft.requirements, sedeOptions]);
 
   return (
     <Dialog
@@ -163,6 +183,10 @@ export function AsistenciaOrgConfigDialog({
         <div className="space-y-4">
           <div className="rounded-lg border p-4 space-y-3">
             <Label className="text-sm font-medium">Mapeo sede GooFlow → recinto Buk</Label>
+            <p className="text-xs text-muted-foreground">
+              Un código por sede base. No crees otra sede solo por el nombre del huellero: vincula el
+              recinto aquí.
+            </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {groupedSedes.map((sede) => {
                 const map = draft.sedeMappings?.find((m) => m.sedeName === sede);

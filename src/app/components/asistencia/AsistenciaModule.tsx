@@ -662,7 +662,9 @@ export function AsistenciaModule({
     });
     const ok = await saveAsistencia(
       () => result.settings,
-      `Personal sincronizado: ${result.added} nuevo(s), ${result.updated} actualizado(s).`
+      `Personal sincronizado: ${result.added} nuevo(s), ${result.updated} actualizado(s)${
+        result.linked > 0 ? ` (${result.linked} por RUT/usuario)` : ''
+      }.`
     );
     if (ok && result.skipped > 0) {
       toast.message(`${result.skipped} usuario(s) fuera de las sedes objetivo.`);

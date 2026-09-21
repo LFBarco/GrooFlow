@@ -13,6 +13,11 @@ import { formatWeeklyShiftSummary } from '../../utils/asistenciaShift';
 import { getSedeProfile, staffForSede } from '../../utils/asistenciaStaff';
 import { mergeAsistenciaSettings } from '../../utils/asistenciaData';
 import {
+  diagnoseSedeStaff,
+  normalizeStaffDocKey,
+  syncBukRecintoCodeInSettings,
+} from '../../utils/asistenciaStaffSync';
+import {
   applyAddOrgColumn,
   applyAddOrgSubColumn,
   applyOrgColumnLabels,
@@ -70,6 +75,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   const profile = useMemo(() => getSedeProfile(settings, sedeName), [settings, sedeName]);
   const orgColumns = useMemo(() => resolveOrgColumns(profile), [profile]);
   const staff = useMemo(() => staffForSede(settings, sedeName), [settings, sedeName]);
+  const diagnosis = useMemo(() => diagnoseSedeStaff(staff), [staff]);
   const [editSede, setEditSede] = useState(false);
   const [scheduleStart, setScheduleStart] = useState(profile.scheduleStart ?? '08:00');
   const [scheduleEnd, setScheduleEnd] = useState(profile.scheduleEnd ?? '18:00');
@@ -291,8 +297,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     const tolerance = Math.max(0, Math.min(120, Number(scheduleTolerance) || 10));
     const ok = await runSave((prev) => {
       const rest = (prev.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
-      const mappings = (prev.sedeMappings ?? []).filter((m) => m.sedeName !== sedeName);
-      return mergeAsistenciaSettings({
+      const withProfile = mergeAsistenciaSettings({
         ...prev,
         sedeProfiles: [
           ...rest,
@@ -307,10 +312,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
             bukRecintoCode: bukCode.trim() || undefined,
           },
         ],
-        sedeMappings: bukCode.trim()
-          ? [...mappings, { sedeName, bukRecintoCode: bukCode.trim() }]
-          : mappings,
       });
+      return syncBukRecintoCodeInSettings(withProfile, sedeName, bukCode.trim());
     }, 'Configuración de sede guardada.');
     if (ok) setEditSede(false);
   };
@@ -601,6 +604,64 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
               </p>
             </div>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card className="border-border bg-card dark:border-slate-800 dark:bg-slate-950/80">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base text-foreground">Cómo evitar duplicados</CardTitle>
+          <CardDescription className="text-slate-400">
+            Esta sede es la base de control de calidad. El huellero se vincula con el código Buk, no creando otra sede.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm text-muted-foreground">
+          <ol className="list-decimal list-inside space-y-1.5">
+            <li>
+              Guarda un único <span className="text-foreground font-medium">código recinto Buk</span> en esta sede
+              (arriba, al editar).
+            </li>
+            <li>
+              Importa o sincroniza personal con <span className="text-foreground font-medium">RUT</span>: si ya
+              existe, se actualiza el mismo registro (no se crea otro).
+            </li>
+            <li>
+              No crees una sede nueva solo porque el huellero tiene otro nombre: usa el mapeo Buk en esta misma sede.
+            </li>
+          </ol>
+          {(diagnosis.withoutRut.length > 0 || diagnosis.duplicateNameGroups.length > 0) && (
+            <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+              <p className="text-xs font-semibold text-amber-200 uppercase tracking-wide">Diagnóstico</p>
+              {diagnosis.withoutRut.length > 0 && (
+                <p className="text-amber-100/90 text-xs">
+                  {diagnosis.withoutRut.length} persona(s) sin RUT — al sincronizar por nombre pueden
+                  duplicarse. Completa el RUT en la ficha o vuelve a importar desde usuarios/Buk.
+                </p>
+              )}
+              {diagnosis.duplicateNameGroups.length > 0 && (
+                <div className="text-amber-100/90 text-xs space-y-1">
+                  <p>
+                    {diagnosis.duplicateNameGroups.length} nombre(s) repetido(s) en esta sede:
+                  </p>
+                  <ul className="list-disc list-inside">
+                    {diagnosis.duplicateNameGroups.slice(0, 8).map((g) => (
+                      <li key={g.name}>
+                        {g.name} ({g.members.length})
+                        {g.members.some((m) => !normalizeStaffDocKey(m.rut))
+                          ? ' — revisar RUT'
+                          : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {diagnosis.duplicateRutGroups.length > 0 && (
+                <p className="text-amber-100/90 text-xs">
+                  {diagnosis.duplicateRutGroups.length} RUT(s) compartido(s) por más de una ficha —
+                  fusiona o corrige manualmente.
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
