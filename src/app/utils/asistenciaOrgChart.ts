@@ -4,6 +4,7 @@ import type {
   AsistenciaOrgNodeStyle,
   AsistenciaOrgSubColumn,
   AsistenciaSedeProfile,
+  AsistenciaStaffLiveState,
 } from '../types/asistencia';
 
 export const ORG_CHART_COLOR_OPTIONS: { value: AsistenciaOrgChartColor; label: string }[] = [
@@ -108,7 +109,26 @@ export function resolveOrgNodeStyle(
     'default';
   const childrenLayout =
     fromStyles?.childrenLayout ?? custom?.childrenLayout ?? sub?.childrenLayout ?? 'horizontal';
-  return { color, childrenLayout };
+  const childrenPerRow =
+    fromStyles?.childrenPerRow ?? custom?.childrenPerRow ?? sub?.childrenPerRow ?? 3;
+  return { color, childrenLayout, childrenPerRow };
+}
+
+/** Clases CSS para hijos: vertical o grilla de N columnas. */
+export function orgChildrenLayoutClass(
+  layout: 'horizontal' | 'vertical' = 'horizontal',
+  perRow: 2 | 3 | 4 = 3
+): string {
+  if (layout === 'vertical') {
+    return 'flex w-full flex-col items-stretch gap-2';
+  }
+  if (perRow === 2) {
+    return 'grid w-full grid-cols-1 gap-3 sm:grid-cols-2';
+  }
+  if (perRow === 4) {
+    return 'grid w-full grid-cols-2 gap-3 lg:grid-cols-4';
+  }
+  return 'grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3';
 }
 
 export function patchOrgNodeStyle(
@@ -124,6 +144,7 @@ export function patchOrgNodeStyle(
   const nextStyle: AsistenciaOrgNodeStyle = {
     color: patch.color ?? current.color,
     childrenLayout: patch.childrenLayout ?? current.childrenLayout,
+    childrenPerRow: patch.childrenPerRow ?? current.childrenPerRow,
   };
 
   const customOrgColumns = (profile.customOrgColumns ?? []).map((c) =>
@@ -137,4 +158,49 @@ export function patchOrgNodeStyle(
     [nodeId]: nextStyle,
   };
   return { orgNodeStyles, customOrgColumns, subOrgColumns };
+}
+
+/**
+ * Agrupa personal por cargo respetando el orden configurado (Familia → Área → Cargo).
+ * Cargos no listados van al final, ordenados alfabéticamente.
+ */
+export function groupStaffByCargoHierarchy(
+  staff: AsistenciaStaffLiveState[],
+  cargoOrder: string[] = []
+): { cargo: string; staff: AsistenciaStaffLiveState[] }[] {
+  const byCargo = new Map<string, AsistenciaStaffLiveState[]>();
+  for (const s of staff) {
+    const cargo = String(s.staff.cargoLabel ?? '').trim() || 'Sin cargo';
+    const list = byCargo.get(cargo) ?? [];
+    list.push(s);
+    byCargo.set(cargo, list);
+  }
+
+  const groups: { cargo: string; staff: AsistenciaStaffLiveState[] }[] = [];
+  const used = new Set<string>();
+  const findKey = (wanted: string): string | undefined => {
+    const w = wanted.trim().toLowerCase();
+    if (!w) return undefined;
+    for (const k of byCargo.keys()) {
+      if (k.toLowerCase() === w) return k;
+    }
+    return undefined;
+  };
+
+  for (const ordered of cargoOrder) {
+    const key = findKey(ordered);
+    if (!key || used.has(key)) continue;
+    const list = byCargo.get(key);
+    if (!list?.length) continue;
+    groups.push({ cargo: key, staff: list });
+    used.add(key);
+  }
+
+  const rest = [...byCargo.keys()]
+    .filter((k) => !used.has(k))
+    .sort((a, b) => a.localeCompare(b, 'es'));
+  for (const key of rest) {
+    groups.push({ cargo: key, staff: byCargo.get(key)! });
+  }
+  return groups;
 }

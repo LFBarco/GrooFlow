@@ -165,6 +165,7 @@ export function projectOrgTreeFromCollaborators(input: {
       label: fam.label,
       color: prev?.color,
       childrenLayout: prev?.childrenLayout ?? 'horizontal',
+      childrenPerRow: prev?.childrenPerRow ?? 3,
     });
     areaLabels[famId] = fam.label;
     areaOrder.push(famId);
@@ -180,6 +181,7 @@ export function projectOrgTreeFromCollaborators(input: {
         parentColumnId: famId,
         color: prevSub?.color,
         childrenLayout: prevSub?.childrenLayout ?? 'horizontal',
+        childrenPerRow: prevSub?.childrenPerRow ?? 3,
       });
       areaLabels[subId] = sub.label;
       cargoByColumn[subId] = [...sub.cargos].sort((a, b) => a.localeCompare(b, 'es'));
@@ -192,6 +194,7 @@ export function projectOrgTreeFromCollaborators(input: {
       ...(orgNodeStyles[c.id] ?? {}),
       color: orgNodeStyles[c.id]?.color ?? c.color,
       childrenLayout: orgNodeStyles[c.id]?.childrenLayout ?? c.childrenLayout ?? 'horizontal',
+      childrenPerRow: orgNodeStyles[c.id]?.childrenPerRow ?? c.childrenPerRow ?? 3,
     };
   }
   for (const s of subOrgColumns) {
@@ -199,6 +202,7 @@ export function projectOrgTreeFromCollaborators(input: {
       ...(orgNodeStyles[s.id] ?? {}),
       color: orgNodeStyles[s.id]?.color ?? s.color,
       childrenLayout: orgNodeStyles[s.id]?.childrenLayout ?? s.childrenLayout ?? 'horizontal',
+      childrenPerRow: orgNodeStyles[s.id]?.childrenPerRow ?? s.childrenPerRow ?? 3,
     };
   }
 
@@ -238,6 +242,7 @@ export function projectOrgTreeFromCollaborators(input: {
     hideBuiltinColumns: true,
     hideEmptyAreas: profile.hideEmptyAreas ?? false,
     rootChildrenLayout: profile.rootChildrenLayout ?? 'horizontal',
+    rootChildrenPerRow: profile.rootChildrenPerRow ?? 3,
   });
 
   return {

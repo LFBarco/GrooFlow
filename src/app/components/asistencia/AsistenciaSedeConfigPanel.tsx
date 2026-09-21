@@ -117,6 +117,9 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   const [rootChildrenLayout, setRootChildrenLayout] = useState<'horizontal' | 'vertical'>(
     () => profile.rootChildrenLayout ?? 'horizontal'
   );
+  const [rootChildrenPerRow, setRootChildrenPerRow] = useState<2 | 3 | 4>(
+    () => profile.rootChildrenPerRow ?? 3
+  );
   const [nodeStyles, setNodeStyles] = useState<Record<string, AsistenciaOrgNodeStyle>>(() => {
     const styles: Record<string, AsistenciaOrgNodeStyle> = { ...(profile.orgNodeStyles ?? {}) };
     for (const col of resolveOrgColumns(profile)) {
@@ -139,6 +142,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     setAreaLabels(labels);
     setHideEmptyAreas(p.hideEmptyAreas ?? false);
     setRootChildrenLayout(p.rootChildrenLayout ?? 'horizontal');
+    setRootChildrenPerRow(p.rootChildrenPerRow ?? 3);
     const styles: Record<string, AsistenciaOrgNodeStyle> = { ...(p.orgNodeStyles ?? {}) };
     for (const col of cols) styles[col.id] = resolveOrgNodeStyle(p, col.id);
     for (const sub of p.subOrgColumns ?? []) styles[sub.id] = resolveOrgNodeStyle(p, sub.id);
@@ -327,6 +331,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     (overrides?: {
       nodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
       rootChildrenLayout?: 'horizontal' | 'vertical';
+      rootChildrenPerRow?: 2 | 3 | 4;
       cargoByColumnText?: Record<string, string>;
       areaLabels?: Record<string, string>;
       areaOrder?: string[];
@@ -334,6 +339,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     }) => {
       const styles = overrides?.nodeStyles ?? nodeStyles;
       const rootLayout = overrides?.rootChildrenLayout ?? rootChildrenLayout;
+      const rootPerRow = overrides?.rootChildrenPerRow ?? rootChildrenPerRow;
       const cargoText = overrides?.cargoByColumnText ?? cargoByColumnText;
       const labels = overrides?.areaLabels ?? areaLabels;
       const order = overrides?.areaOrder ?? areaOrder;
@@ -356,11 +362,13 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         label: labels[sub.id]?.trim() || sub.label,
         color: styles[sub.id]?.color ?? sub.color,
         childrenLayout: styles[sub.id]?.childrenLayout ?? sub.childrenLayout ?? 'horizontal',
+        childrenPerRow: styles[sub.id]?.childrenPerRow ?? sub.childrenPerRow ?? 3,
       }));
       const customOrgColumns = (profile.customOrgColumns ?? []).map((c) => ({
         ...c,
         color: styles[c.id]?.color ?? c.color,
         childrenLayout: styles[c.id]?.childrenLayout ?? c.childrenLayout ?? 'horizontal',
+        childrenPerRow: styles[c.id]?.childrenPerRow ?? c.childrenPerRow ?? 3,
       }));
       const orgNodeStyles: Record<string, AsistenciaOrgNodeStyle> = {};
       for (const id of allAreaIds) {
@@ -371,6 +379,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           orgNodeStyles,
           customOrgColumns,
           rootChildrenLayout: rootLayout,
+          rootChildrenPerRow: rootPerRow,
           hideBuiltinColumns: profile.hideBuiltinColumns,
         });
     },
@@ -382,6 +391,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
       nodeStyles,
       profile,
       rootChildrenLayout,
+      rootChildrenPerRow,
       sedeName,
     ]
   );
@@ -472,11 +482,13 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         const withLayout = buildOrgLayoutUpdater()(prev);
         return applyAddOrgSubColumn(withLayout, sedeName, parentColumnId, label, {
           childrenLayout: 'horizontal',
+          childrenPerRow: parentStyle.childrenPerRow ?? 3,
           color: parentStyle.color,
           orgNodeStyles: {
             [parentColumnId]: {
               color: parentStyle.color,
               childrenLayout: parentStyle.childrenLayout ?? 'horizontal',
+              childrenPerRow: parentStyle.childrenPerRow ?? 3,
             },
           },
         });
@@ -768,14 +780,39 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="horizontal">Horizontal (lado a lado)</SelectItem>
+                    <SelectItem value="horizontal">Horizontal (grilla)</SelectItem>
                     <SelectItem value="vertical">Vertical (apiladas)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              {rootChildrenLayout === 'horizontal' ? (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Familias por fila</Label>
+                  <Select
+                    value={String(rootChildrenPerRow)}
+                    onValueChange={(v) => {
+                      const next = Number(v) as 2 | 3 | 4;
+                      setRootChildrenPerRow(next);
+                      void persistOrgLayout(
+                        { rootChildrenPerRow: next },
+                        'Columnas por fila actualizadas.'
+                      );
+                    }}
+                  >
+                    <SelectTrigger className="h-8 w-[120px] bg-background border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">2 por fila</SelectItem>
+                      <SelectItem value="3">3 por fila</SelectItem>
+                      <SelectItem value="4">4 por fila</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <p className="text-[11px] text-muted-foreground max-w-sm pb-1">
-                Cómo se muestran las áreas principales bajo el encargado. Los cambios se guardan al
-                instante y se ven en Operativa en vivo.
+                Jerarquía: Familia → área organizacional → cargo. Divide filas largas en 2, 3 o 4
+                columnas. Se ve en Operativa en vivo.
               </p>
             </div>
 
@@ -839,6 +876,25 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                               <SelectItem value="vertical">Hijos vertical</SelectItem>
                             </SelectContent>
                           </Select>
+                          {(subStyle.childrenLayout ?? 'horizontal') === 'horizontal' ? (
+                            <Select
+                              value={String(subStyle.childrenPerRow ?? 3)}
+                              onValueChange={(v) =>
+                                patchNodeStyle(sub.id, {
+                                  childrenPerRow: Number(v) as 2 | 3 | 4,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="h-8 w-[110px] bg-background border-border">
+                                <SelectValue placeholder="Por fila" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="2">2 / fila</SelectItem>
+                                <SelectItem value="3">3 / fila</SelectItem>
+                                <SelectItem value="4">4 / fila</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : null}
                           <Button
                             type="button"
                             variant="ghost"
@@ -949,6 +1005,25 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                           <SelectItem value="vertical">Hijos vertical</SelectItem>
                         </SelectContent>
                       </Select>
+                      {(style.childrenLayout ?? 'horizontal') === 'horizontal' ? (
+                        <Select
+                          value={String(style.childrenPerRow ?? 3)}
+                          onValueChange={(v) =>
+                            patchNodeStyle(columnId, {
+                              childrenPerRow: Number(v) as 2 | 3 | 4,
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-[110px] bg-background border-border">
+                            <SelectValue placeholder="Por fila" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="2">2 / fila</SelectItem>
+                            <SelectItem value="3">3 / fila</SelectItem>
+                            <SelectItem value="4">4 / fila</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : null}
                       <span className="text-[10px] text-muted-foreground max-w-[140px]">
                         Afecta subáreas bajo este nodo (agrega hijos para verlo)
                       </span>

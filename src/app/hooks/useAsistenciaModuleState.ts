@@ -155,7 +155,9 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
       const bukCfg = asistencia.buk;
       const resolvedBase = sanitizeBukBaseUrl(bukCfg?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
       if (!bukCfg?.enabled || !bukCfg.apiToken?.trim()) {
-        toast.error('Activa Buk Asistencia y configura el token en Configuración → Integraciones.');
+        if (!input.silent) {
+          toast.error('Activa Buk Asistencia y configura el token en Configuración → Integraciones.');
+        }
         return { ok: false };
       }
 
@@ -253,14 +255,16 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
         if (!mountedRef.current || gen !== refreshGenRef.current) {
           return { ok: false };
         }
-        if (cached?.records.length) {
-          toast.error(
-            err instanceof Error
-              ? `${err.message} — mostrando caché ${cacheAgeLabel(cached.fetchedAt)}.`
-              : 'Error Buk — mostrando caché local.'
-          );
-        } else {
-          toast.error(err instanceof Error ? err.message : 'No se pudo cargar asistencia.');
+        if (!input.silent) {
+          if (cached?.records.length) {
+            toast.error(
+              err instanceof Error
+                ? `${err.message} — mostrando caché ${cacheAgeLabel(cached.fetchedAt)}.`
+                : 'Error Buk — mostrando caché local.'
+            );
+          } else {
+            toast.error(err instanceof Error ? err.message : 'No se pudo cargar asistencia.');
+          }
         }
         input.onMissingStaff?.();
         return { ok: false };

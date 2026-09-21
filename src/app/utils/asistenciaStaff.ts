@@ -10,7 +10,7 @@ import type {
   AsistenciaStaffMember,
   BukAsistenciaRecord,
 } from '../types/asistencia';
-import { resolveOrgColumns, resolveOrgSubColumns, resolveOrgColumnLabel } from './asistenciaOrgColumns';
+import { resolveOrgColumns, resolveOrgSubColumns, resolveOrgColumnLabel, cargosForOrgColumn } from './asistenciaOrgColumns';
 import { resolveOrgNodeStyle } from './asistenciaOrgChart';
 import {
   isNightBukRecord,
@@ -284,6 +284,7 @@ export function getSedeProfile(
     hideBuiltinColumns: found?.hideBuiltinColumns,
     orgNodeStyles: found?.orgNodeStyles,
     rootChildrenLayout: found?.rootChildrenLayout,
+    rootChildrenPerRow: found?.rootChildrenPerRow,
   };
 }
 
@@ -455,6 +456,8 @@ export function buildLiveSedeSummary(input: {
             totalCount: all.length,
             color: style.color,
             childrenLayout: style.childrenLayout,
+            childrenPerRow: style.childrenPerRow,
+            cargoOrder: cargosForOrgColumn(profile, sub.id),
           };
         });
       };
@@ -481,6 +484,8 @@ export function buildLiveSedeSummary(input: {
         totalCount: allInColumn.length,
         color: style.color,
         childrenLayout: style.childrenLayout,
+        childrenPerRow: style.childrenPerRow,
+        cargoOrder: cargosForOrgColumn(profile, columnId),
       };
     })
     // Raíces del organigrama siempre visibles. hideEmptyAreas solo poda subáreas vacías.
@@ -524,6 +529,7 @@ export function buildLiveSedeSummary(input: {
     bukRecintosOnDate,
     recordsOnDateCount: onDate.length,
     rootChildrenLayout: profile.rootChildrenLayout ?? 'horizontal',
+    rootChildrenPerRow: profile.rootChildrenPerRow ?? 3,
   };
 }
 

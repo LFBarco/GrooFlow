@@ -156,6 +156,8 @@ export interface AsistenciaCustomOrgColumn {
   color?: AsistenciaOrgChartColor;
   /** Cómo se disponen subcolumnas/hijos bajo esta columna. */
   childrenLayout?: 'horizontal' | 'vertical';
+  /** Hijos por fila si layout horizontal (2 / 3 / 4). */
+  childrenPerRow?: 2 | 3 | 4;
 }
 
 /** Subcolumna / hijo del organigrama (bajo columna o bajo otra subcolumna). */
@@ -166,12 +168,18 @@ export interface AsistenciaOrgSubColumn {
   parentColumnId: string;
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
+  childrenPerRow?: 2 | 3 | 4;
 }
 
 /** Estilo visual de un nodo (útil para columnas built-in). */
 export interface AsistenciaOrgNodeStyle {
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
+  /**
+   * Cuántos hijos por fila cuando layout es horizontal (2 / 3 / 4).
+   * Divide la fila larga en una grilla (como en organigramas clásicos).
+   */
+  childrenPerRow?: 2 | 3 | 4;
 }
 
 /** Configuración operativa de una sede. */
@@ -206,6 +214,8 @@ export interface AsistenciaSedeProfile {
   orgNodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
   /** Disposición de las columnas raíz bajo la sede. */
   rootChildrenLayout?: 'horizontal' | 'vertical';
+  /** Hijos por fila en la raíz (si horizontal). */
+  rootChildrenPerRow?: 2 | 3 | 4;
 }
 
 
@@ -236,6 +246,9 @@ export interface AsistenciaLiveSubAreaBlock {
   totalCount: number;
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
+  childrenPerRow?: 2 | 3 | 4;
+  /** Orden de cargos para jerarquía visual (Familia → Área → Cargo). */
+  cargoOrder?: string[];
   /** Subdivisiones anidadas bajo esta subárea. */
   children?: AsistenciaLiveSubAreaBlock[];
 }
@@ -252,6 +265,8 @@ export interface AsistenciaLiveAreaBlock {
   totalCount: number;
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
+  childrenPerRow?: 2 | 3 | 4;
+  cargoOrder?: string[];
 }
 
 export interface AsistenciaLiveSedeSummary {
@@ -269,6 +284,7 @@ export interface AsistenciaLiveSedeSummary {
   recordsOnDateCount: number;
   /** Cómo se disponen las columnas raíz bajo la sede. */
   rootChildrenLayout?: 'horizontal' | 'vertical';
+  rootChildrenPerRow?: 2 | 3 | 4;
 }
 
 /** Consolidado multi-sede para organigrama en vivo. */

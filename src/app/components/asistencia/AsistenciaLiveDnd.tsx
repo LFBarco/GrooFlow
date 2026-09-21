@@ -12,7 +12,7 @@ import type {
 import type { TurnosPlanVsReal } from '../../types/turnos';
 import { shiftLabelForStaff } from '../../utils/asistenciaShift';
 import { applyAreaLayoutReorder, applyStaffLayoutMove } from '../../utils/asistenciaLayoutUtils';
-import { ORG_CHART_COLOR_STYLES } from '../../utils/asistenciaOrgChart';
+import { ORG_CHART_COLOR_STYLES, groupStaffByCargoHierarchy, orgChildrenLayoutClass } from '../../utils/asistenciaOrgChart';
 import { ManagerPlaceholder, StaffLiveCard, themeForColumnId } from './asistenciaLiveUi';
 
 export const DND_STAFF = 'asistencia-live-staff';
@@ -168,6 +168,7 @@ function StaffAreaList({
   viewDate,
   onStaffClick,
   getPlanVsReal,
+  cargoOrder,
 }: {
   sedeName: string;
   areaId: string;
@@ -177,12 +178,16 @@ function StaffAreaList({
   viewDate?: Date;
   onStaffClick?: (live: AsistenciaStaffLiveState) => void;
   getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
+  cargoOrder?: string[];
 }) {
   const visibleStaff = staffList.filter((s) => !s.staff.isManager);
+  const groups = groupStaffByCargoHierarchy(visibleStaff, cargoOrder);
+  const flat = groups.flatMap((g) => g.staff);
+  const showCargoHeaders = groups.length > 1 || (groups.length === 1 && groups[0].cargo !== 'Sin cargo');
 
   return (
-    <div className="flex flex-col gap-1 w-full items-center pt-1">
-      {visibleStaff.length === 0 ? (
+    <div className="flex w-full flex-col items-stretch gap-2 pt-1">
+      {flat.length === 0 ? (
         <AreaStaffDropZone
           sedeName={sedeName}
           area={areaId}
@@ -194,9 +199,46 @@ function StaffAreaList({
             {editLayout ? 'Soltar aquí' : 'Sin personal'}
           </div>
         </AreaStaffDropZone>
+      ) : showCargoHeaders ? (
+        groups.map((group) => (
+          <div
+            key={group.cargo}
+            className="w-full rounded-md border border-border/80 bg-background/70 px-2 py-1.5 dark:border-slate-700 dark:bg-slate-950/40"
+          >
+            <p className="mb-1.5 text-center text-[10px] font-semibold uppercase tracking-wide text-foreground">
+              {group.cargo}
+            </p>
+            <div className="flex flex-col items-center gap-1">
+              {group.staff.map((s) => {
+                const idx = flat.indexOf(s);
+                return (
+                  <div key={s.staff.id} className="flex w-full flex-col items-center gap-1">
+                    <AreaStaffDropZone
+                      sedeName={sedeName}
+                      area={areaId}
+                      index={idx}
+                      editLayout={editLayout}
+                      onDropStaff={onStaffDrop}
+                    />
+                    <DraggableStaffCard
+                      live={s}
+                      sedeName={sedeName}
+                      area={areaId}
+                      index={idx}
+                      editLayout={editLayout}
+                      viewDate={viewDate}
+                      onStaffClick={onStaffClick}
+                      getPlanVsReal={getPlanVsReal}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))
       ) : (
-        visibleStaff.map((s, idx) => (
-          <div key={s.staff.id} className="w-full flex flex-col items-center gap-1">
+        flat.map((s, idx) => (
+          <div key={s.staff.id} className="flex w-full flex-col items-center gap-1">
             <AreaStaffDropZone
               sedeName={sedeName}
               area={areaId}
@@ -217,11 +259,11 @@ function StaffAreaList({
           </div>
         ))
       )}
-      {visibleStaff.length > 0 ? (
+      {flat.length > 0 ? (
         <AreaStaffDropZone
           sedeName={sedeName}
           area={areaId}
-          index={visibleStaff.length}
+          index={flat.length}
           editLayout={editLayout}
           onDropStaff={onStaffDrop}
         />
@@ -249,6 +291,7 @@ function SubAreaColumn({
 }) {
   const color = ORG_CHART_COLOR_STYLES[sub.color ?? 'default'];
   const layout = sub.childrenLayout ?? 'horizontal';
+  const perRow = sub.childrenPerRow ?? 3;
   const hasChildren = (sub.children?.length ?? 0) > 0;
 
   return (
@@ -268,26 +311,14 @@ function SubAreaColumn({
         viewDate={viewDate}
         onStaffClick={onStaffClick}
         getPlanVsReal={getPlanVsReal}
+        cargoOrder={sub.cargoOrder}
       />
       {hasChildren ? (
         <>
           <div className={`mx-auto my-2 h-3 w-px ${color.line}`} />
-          <div
-            className={
-              layout === 'horizontal'
-                ? 'flex w-full flex-row flex-wrap items-start justify-center gap-3'
-                : 'flex w-full flex-col items-stretch gap-2'
-            }
-          >
+          <div className={orgChildrenLayoutClass(layout, perRow)}>
             {(sub.children ?? []).map((child) => (
-              <div
-                key={child.area}
-                className={
-                  layout === 'horizontal'
-                    ? 'min-w-[148px] max-w-[240px] flex-1 basis-[148px]'
-                    : 'w-full'
-                }
-              >
+              <div key={child.area} className="min-w-0">
                 <SubAreaColumn
                   sub={child}
                   sedeName={sedeName}
@@ -332,6 +363,7 @@ function DraggableAreaColumn({
   const pct = block.totalCount > 0 ? Math.round((block.activeCount / block.totalCount) * 100) : 0;
   const hasSubAreas = (block.subAreas?.length ?? 0) > 0;
   const childrenLayout = block.childrenLayout ?? 'horizontal';
+  const childrenPerRow = block.childrenPerRow ?? 3;
 
   const [{ isDraggingArea }, dragArea] = useDrag(
     () => ({
@@ -380,22 +412,9 @@ function DraggableAreaColumn({
       <div className={`h-4 w-px ${color.line}`} />
 
       {hasSubAreas ? (
-        <div
-          className={
-            childrenLayout === 'horizontal'
-              ? 'flex w-full flex-row flex-wrap items-start justify-center gap-3 px-1'
-              : 'flex w-full flex-col gap-2 px-1'
-          }
-        >
+        <div className={`${orgChildrenLayoutClass(childrenLayout, childrenPerRow)} px-1`}>
           {(block.subAreas ?? []).map((sub) => (
-            <div
-              key={sub.area}
-              className={
-                childrenLayout === 'horizontal'
-                  ? 'min-w-[150px] max-w-[240px] flex-1 basis-[150px]'
-                  : 'w-full'
-              }
-            >
+            <div key={sub.area} className="min-w-0">
               <SubAreaColumn
                 sub={sub}
                 sedeName={sedeName}
@@ -408,7 +427,7 @@ function DraggableAreaColumn({
             </div>
           ))}
           {block.staff.length > 0 ? (
-            <div className="w-full">
+            <div className="w-full min-w-0">
               <p className="mb-1 text-center text-[10px] text-muted-foreground">General</p>
               <StaffAreaList
                 sedeName={sedeName}
@@ -419,6 +438,7 @@ function DraggableAreaColumn({
                 viewDate={viewDate}
                 onStaffClick={onStaffClick}
                 getPlanVsReal={getPlanVsReal}
+                cargoOrder={block.cargoOrder}
               />
             </div>
           ) : null}
@@ -433,6 +453,7 @@ function DraggableAreaColumn({
           viewDate={viewDate}
           onStaffClick={onStaffClick}
           getPlanVsReal={getPlanVsReal}
+          cargoOrder={block.cargoOrder}
         />
       )}
     </div>
@@ -459,6 +480,7 @@ export function AsistenciaLiveSedeBlock({
   getPlanVsReal,
 }: SedeBlockProps) {
   const rootLayout = summary.rootChildrenLayout ?? 'horizontal';
+  const rootPerRow = summary.rootChildrenPerRow ?? 3;
   const handleStaffDrop = useCallback(
     (item: StaffDragItem, toIndex: number, toArea: string) => {
       if (item.sedeName !== summary.sedeName) return;
@@ -533,21 +555,12 @@ export function AsistenciaLiveSedeBlock({
         <div className="h-px w-full max-w-4xl bg-border dark:bg-slate-700" />
 
         <div
-          className={
-            rootLayout === 'vertical'
-              ? 'mt-4 flex w-full max-w-2xl flex-col items-stretch gap-6'
-              : 'mt-4 flex w-full max-w-none flex-wrap justify-center gap-6'
-          }
+          className={`mt-4 w-full ${
+            rootLayout === 'vertical' ? 'max-w-2xl' : 'max-w-none'
+          } ${orgChildrenLayoutClass(rootLayout, rootPerRow)}`}
         >
           {summary.areas.map((block) => (
-            <div
-              key={`${summary.sedeName}-${block.area}`}
-              className={
-                rootLayout === 'vertical'
-                  ? 'w-full'
-                  : 'min-w-[160px] max-w-[280px] flex-1 basis-[160px]'
-              }
-            >
+            <div key={`${summary.sedeName}-${block.area}`} className="min-w-0">
               <DraggableAreaColumn
                 block={block}
                 sedeName={summary.sedeName}

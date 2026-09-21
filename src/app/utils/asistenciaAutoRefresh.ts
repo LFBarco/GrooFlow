@@ -32,10 +32,12 @@ export function shouldRunAutoRefresh(input: {
   buk?: BukAsistenciaIntegrationSettings;
   loading: boolean;
   documentVisible?: boolean;
+  now?: Date;
 }): boolean {
   if (!input.buk?.enabled || !input.buk.apiToken?.trim()) return false;
-  if (input.buk.autoRefreshEnabled === false) return false;
+  // Opt-in explícito (alineado con el Switch de Integraciones).
+  if (input.buk.autoRefreshEnabled !== true) return false;
   if (input.loading) return false;
   if (input.documentVisible === false) return false;
-  return isWithinAutoRefreshWindow(input.buk);
+  return isWithinAutoRefreshWindow(input.buk, input.now);
 }

@@ -217,6 +217,7 @@ export function applyAddOrgSubColumn(
   label: string,
   extras?: {
     childrenLayout?: 'horizontal' | 'vertical';
+    childrenPerRow?: 2 | 3 | 4;
     color?: AsistenciaOrgChartColor;
     orgNodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
   }
@@ -235,6 +236,7 @@ export function applyAddOrgSubColumn(
       label: label.trim() || 'Nueva subcolumna',
       parentColumnId,
       childrenLayout: extras?.childrenLayout ?? 'horizontal',
+      childrenPerRow: extras?.childrenPerRow ?? 3,
       color: extras?.color,
     },
   ];
@@ -246,10 +248,12 @@ export function applyAddOrgSubColumn(
       ...(profile.orgNodeStyles?.[parentColumnId] ?? {}),
       color: parentStyle.color,
       childrenLayout: parentStyle.childrenLayout,
+      childrenPerRow: parentStyle.childrenPerRow,
     },
     [id]: {
+      color: extras?.color ?? 'default',
       childrenLayout: extras?.childrenLayout ?? 'horizontal',
-      color: extras?.color,
+      childrenPerRow: extras?.childrenPerRow ?? 3,
     },
   };
   return upsertSedeProfile(merged, sedeName, { subOrgColumns, orgNodeStyles });
@@ -370,6 +374,7 @@ export function applyOrgColumnLabels(
     orgNodeStyles?: AsistenciaSedeProfile['orgNodeStyles'];
     customOrgColumns?: AsistenciaSedeProfile['customOrgColumns'];
     rootChildrenLayout?: AsistenciaSedeProfile['rootChildrenLayout'];
+    rootChildrenPerRow?: AsistenciaSedeProfile['rootChildrenPerRow'];
     hideBuiltinColumns?: boolean;
   }
 ): AsistenciaSettings {
@@ -398,6 +403,7 @@ export function applyOrgColumnLabels(
     subOrgColumns: nextSub,
     orgNodeStyles: extras?.orgNodeStyles ?? profile.orgNodeStyles,
     rootChildrenLayout: extras?.rootChildrenLayout ?? profile.rootChildrenLayout,
+    rootChildrenPerRow: extras?.rootChildrenPerRow ?? profile.rootChildrenPerRow,
     hideBuiltinColumns:
       extras?.hideBuiltinColumns !== undefined
         ? extras.hideBuiltinColumns
