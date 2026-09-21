@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Download, Loader2, Plus, Settings2, Shirt } from 'lucide-react';
+import { toast } from 'sonner';
 
 import type { SystemSettings, User } from '../../types';
 import type { UniformDeliveryRecord } from '../../types/uniformes';
@@ -14,6 +15,7 @@ import {
   removeUniformDelivery,
   upsertUniformDelivery,
 } from '../../utils/uniformesData';
+import { printUniformDeliveryActa } from '../../utils/uniformesPrint';
 import { useUniformesModuleState } from '../../hooks/useUniformesModuleState';
 import { useHrCollaborators } from '../../hooks/useHrCollaborators';
 import { useHrStaffRecords } from '../../hooks/useHrStaffRecords';
@@ -21,13 +23,14 @@ import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { UniformeEntregaFormDialog } from './UniformeEntregaFormDialog';
 import { UniformeDetailDialog } from './UniformeDetailDialog';
+import { UniformesActasPanel } from './UniformesActasPanel';
 import { UniformesDashboard } from './UniformesDashboard';
 import { UniformesFiltersBar } from './UniformesFilters';
 import { UniformesKitsDialog } from './UniformesKitsDialog';
 import { UniformesRenewalPanel } from './UniformesRenewalPanel';
 import { UniformesTable } from './UniformesTable';
 import { listUniformRenewals } from '../../utils/uniformesRenewal';
-import { appAlert, appConfirm } from '../ui/app-dialog';
+import { appConfirm } from '../ui/app-dialog';
 
 export interface UniformesModuleProps {
   users: User[];
@@ -35,6 +38,8 @@ export interface UniformesModuleProps {
   visibleSedes?: string[];
   canEdit?: boolean;
   deliveredBy?: string;
+  currentUserId?: string;
+  currentUserName?: string;
 }
 
 function defaultFilters() {
@@ -47,6 +52,8 @@ export function UniformesModule({
   visibleSedes = [],
   canEdit = false,
   deliveredBy,
+  currentUserId,
+  currentUserName,
 }: UniformesModuleProps) {
   const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
   const { settings, loading, saving, updateSettings } = useUniformesModuleState(canEdit);
@@ -74,16 +81,19 @@ export function UniformesModule({
     [visibleSedes]
   );
 
-  const staffOptions = useMemo(
-    () =>
-      buildStaffOptions({
-        users,
-        asistencia,
-        visibleSedes: formSedeOptions,
-        employees: collaborators,
-      }),
-    [users, asistencia, formSedeOptions, collaborators]
-  );
+  const staffOptions = useMemo(() => {
+    const all = buildStaffOptions({
+      users,
+      asistencia,
+      visibleSedes: formSedeOptions,
+      employees: collaborators,
+    });
+    // Preferir solo tabla Colaboradores cuando hay datos Buk.
+    if (collaborators.length > 0) {
+      return all.filter((s) => s.source === 'rrhh');
+    }
+    return all;
+  }, [users, asistencia, formSedeOptions, collaborators]);
 
   const filteredRecords = useMemo(
     () => filterUniformDeliveries(settings.records, filters),
@@ -113,9 +123,56 @@ export function UniformesModule({
   const handleSave = (
     record: Omit<UniformDeliveryRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
   ) => {
+    const isNew = !record.id;
     updateSettings(
       (prev) => upsertUniformDelivery(prev, record),
-      editing ? 'Entrega actualizada.' : 'Entrega registrada correctamente.'
+      editing ? 'Entrega actualizada.' : 'Entrega registrada. Acta lista y notificación enviada.'
+    );
+    if (isNew) {
+      // Abrir acta imprimible tras registrar.
+      window.setTimeout(() => {
+        const latest = record;
+        printUniformDeliveryActa({
+          ...latest,
+          id: latest.id || 'tmp',
+          createdAt: new Date().toISOString(),
+        } as UniformDeliveryRecord);
+      }, 400);
+      if (record.userId) {
+        toast.message('Se notificó al colaborador para confirmar la recepción.');
+      } else {
+        toast.message('Sin usuario vinculado: confirma la recepción desde Actas (RRHH).');
+      }
+    }
+  };
+
+  const handleConfirmReception = async (record: UniformDeliveryRecord) => {
+    if (
+      !(await appConfirm(
+        `¿Confirmas que ${record.staffName} recibió el uniforme según el acta?`
+      ))
+    ) {
+      return;
+    }
+    updateSettings(
+      (prev) =>
+        upsertUniformDelivery(prev, {
+          ...record,
+          status: 'entregado',
+          receptionConfirmedAt: new Date().toISOString(),
+          receptionConfirmedBy: currentUserName || deliveredBy || 'Usuario',
+        }),
+      'Recepción confirmada. Entrega cerrada.'
+    );
+    setDetailRecord((prev) =>
+      prev?.id === record.id
+        ? {
+            ...prev,
+            status: 'entregado',
+            receptionConfirmedAt: new Date().toISOString(),
+            receptionConfirmedBy: currentUserName || deliveredBy || 'Usuario',
+          }
+        : prev
     );
   };
 
@@ -143,8 +200,8 @@ export function UniformesModule({
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-foreground">Entrega de uniformes</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Registro de entregas de indumentaria al personal: polo, bata, delantal, zapatos y más.
-            Control por sede, talla, motivo y estado de confirmación — sincronizado con Colaboradores activos (Buk.pe).
+            Registro de entregas desde Colaboradores (Buk.pe): área padre y sede base automáticos,
+            acta de entrega y confirmación de recepción por el colaborador.
           </p>
           {collaboratorsLoading ? (
             <p className="text-xs text-muted-foreground">Cargando catálogo de colaboradores…</p>
@@ -190,6 +247,7 @@ export function UniformesModule({
         <TabsList>
           <TabsTrigger value="dashboard">Resumen</TabsTrigger>
           <TabsTrigger value="registros">Entregas ({filteredRecords.length})</TabsTrigger>
+          <TabsTrigger value="actas">Actas ({settings.records.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="dashboard" className="mt-4">
           <UniformesDashboard kpis={kpis} />
@@ -203,6 +261,16 @@ export function UniformesModule({
             onDelete={handleDelete}
           />
         </TabsContent>
+        <TabsContent value="actas" className="mt-4">
+          <UniformesActasPanel
+            records={settings.records}
+            currentUserId={currentUserId}
+            currentUserName={currentUserName}
+            canEdit={canEdit}
+            onConfirmReception={handleConfirmReception}
+            onOpenDetail={setDetailRecord}
+          />
+        </TabsContent>
       </Tabs>
 
       <UniformeDetailDialog
@@ -211,6 +279,9 @@ export function UniformesModule({
         onOpenChange={(open) => !open && setDetailRecord(null)}
         allRecords={settings.records}
         accidentRecords={accidentRecords}
+        currentUserId={currentUserId}
+        canEdit={canEdit}
+        onConfirmReception={handleConfirmReception}
       />
 
       <UniformesKitsDialog

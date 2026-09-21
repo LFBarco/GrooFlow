@@ -149,6 +149,8 @@ import type { TurnosSettings } from "./types/turnos";
 import { mergeTurnosSettings, TURNOS_SETTINGS_KV_KEY } from "./utils/turnosData";
 import { mergeRrhhSettings, RRHH_SETTINGS_KV_KEY } from "./utils/rrhhData";
 import type { RrhhSettings } from "./types/rrhh";
+import type { UniformesSettings } from "./types/uniformes";
+import { mergeUniformesSettings, UNIFORMES_SETTINGS_KV_KEY } from "./utils/uniformesData";
 import { canConfigureAsistencia } from "./utils/asistenciaAccess";
 import { canConfigureFleet } from "./utils/fleetAccess";
 import { hasMenuAction } from "./utils/menuActions";
@@ -678,6 +680,7 @@ export default function App() {
   const [alerts, setAlerts] = useState<SystemAlert[]>([]);
   const [turnosSettingsForAlerts, setTurnosSettingsForAlerts] = useState<TurnosSettings | null>(null);
   const [rrhhSettingsForAlerts, setRrhhSettingsForAlerts] = useState<RrhhSettings | null>(null);
+  const [uniformesSettingsForAlerts, setUniformesSettingsForAlerts] = useState<UniformesSettings | null>(null);
   const [alertThresholds, setAlertThresholds] = useState<AlertThresholds>({
     liquidityMinDays: 3,
     invoiceDueDays: 7,
@@ -2173,10 +2176,13 @@ export default function App() {
     void repository.kv.get<RrhhSettings>(RRHH_SETTINGS_KV_KEY).then((raw) => {
       if (!cancelled) setRrhhSettingsForAlerts(mergeRrhhSettings(raw));
     });
+    void repository.kv.get<UniformesSettings>(UNIFORMES_SETTINGS_KV_KEY).then((raw) => {
+      if (!cancelled) setUniformesSettingsForAlerts(mergeUniformesSettings(raw));
+    });
     return () => {
       cancelled = true;
     };
-  }, [isDataLoaded]);
+  }, [isDataLoaded, view]);
 
   useEffect(() => {
     if (!isDataLoaded) return;
@@ -2214,6 +2220,7 @@ export default function App() {
         asistenciaSettings: systemSettings.asistencia,
         turnosSettings: turnosSettingsForAlerts,
         rrhhSettings: rrhhSettingsForAlerts,
+        uniformesSettings: uniformesSettingsForAlerts,
       });
       setAlerts(applyReadState(filterAlertsForUser(newAlerts, currentUser?.id)));
     };
@@ -2242,6 +2249,7 @@ export default function App() {
     systemSettings.asistencia,
     turnosSettingsForAlerts,
     rrhhSettingsForAlerts,
+    uniformesSettingsForAlerts,
     currentUser?.id,
   ]);
 
@@ -4537,6 +4545,8 @@ export default function App() {
                   visibleSedes={visibleSedes}
                   canEdit={hasPermission('Entrega de Uniformes')}
                   deliveredBy={currentUser.name}
+                  currentUserId={currentUser.id}
+                  currentUserName={currentUser.name}
                 />
               </Suspense>
             </div>

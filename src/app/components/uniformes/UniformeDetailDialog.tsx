@@ -1,3 +1,5 @@
+import { FileText, Printer } from 'lucide-react';
+
 import type { WorkplaceAccidentRecord } from '../../types/accidentes';
 import {
   UNIFORM_ITEM_LABELS,
@@ -6,8 +8,10 @@ import {
   type UniformDeliveryRecord,
 } from '../../types/uniformes';
 import { countItemsInRecord } from '../../utils/uniformesData';
+import { printUniformDeliveryActa } from '../../utils/uniformesPrint';
 import { StaffHrHistoryPanel } from '../hr/StaffHrHistoryPanel';
 import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
 import {
   Dialog,
   DialogContent,
@@ -27,6 +31,9 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   allRecords?: UniformDeliveryRecord[];
   accidentRecords?: WorkplaceAccidentRecord[];
+  currentUserId?: string;
+  canEdit?: boolean;
+  onConfirmReception?: (record: UniformDeliveryRecord) => void;
 };
 
 export function UniformeDetailDialog({
@@ -35,8 +42,16 @@ export function UniformeDetailDialog({
   onOpenChange,
   allRecords = [],
   accidentRecords = [],
+  currentUserId,
+  canEdit = false,
+  onConfirmReception,
 }: Props) {
   if (!record) return null;
+
+  const canConfirm =
+    record.status === 'pendiente_firma' &&
+    Boolean(onConfirmReception) &&
+    ((currentUserId && record.userId === currentUserId) || canEdit);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -50,6 +65,23 @@ export function UniformeDetailDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 text-sm">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => printUniformDeliveryActa(record)}
+            >
+              <Printer className="mr-1 h-3.5 w-3.5" />
+              Acta PDF / Imprimir
+            </Button>
+            {canConfirm ? (
+              <Button type="button" size="sm" onClick={() => onConfirmReception?.(record)}>
+                <FileText className="mr-1 h-3.5 w-3.5" />
+                Confirmar recepción
+              </Button>
+            ) : null}
+          </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <p>
               <span className="text-xs text-muted-foreground">Fecha</span>
@@ -62,12 +94,12 @@ export function UniformeDetailDialog({
               {UNIFORM_REASON_LABELS[record.reason]}
             </p>
             <p>
-              <span className="text-xs text-muted-foreground">Sede</span>
+              <span className="text-xs text-muted-foreground">Sede base</span>
               <br />
               {record.sede}
             </p>
             <p>
-              <span className="text-xs text-muted-foreground">Área</span>
+              <span className="text-xs text-muted-foreground">Área padre</span>
               <br />
               {record.workArea}
             </p>
@@ -110,9 +142,16 @@ export function UniformeDetailDialog({
           {record.deliveredBy ? (
             <p className="text-xs text-muted-foreground">Entregado por: {record.deliveredBy}</p>
           ) : null}
+          {record.receptionConfirmedAt ? (
+            <p className="text-xs text-emerald-700 dark:text-emerald-300">
+              Recepción confirmada
+              {record.receptionConfirmedBy ? ` por ${record.receptionConfirmedBy}` : ''} el{' '}
+              {new Date(record.receptionConfirmedAt).toLocaleString('es-PE')}
+            </p>
+          ) : null}
           {record.signatureActDataUrl ? (
             <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Acta firmada</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Acta firmada (adjunto)</p>
               <a
                 href={record.signatureActDataUrl}
                 target="_blank"

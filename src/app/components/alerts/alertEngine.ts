@@ -15,7 +15,9 @@ import { buildFleetSystemAlerts } from "../../utils/fleetData";
 import { buildAsistenciaSystemAlerts } from "../../utils/asistenciaAlerts";
 import { buildTurnosSystemAlerts } from "../../utils/turnosAlerts";
 import { buildRrhhSystemAlerts } from "../../utils/rrhhAlerts";
+import { buildUniformesSystemAlerts } from "../../utils/uniformesAlerts";
 import type { RrhhSettings } from "../../types/rrhh";
+import type { UniformesSettings } from "../../types/uniformes";
 import { formatNumberEs } from '../../utils/numberFormat';
 import { 
     addDays, 
@@ -62,6 +64,8 @@ interface AlertContext {
     turnosSettings?: TurnosSettings | null;
     /** RRHH / identidad — sync pipelines y pendientes de acceso. */
     rrhhSettings?: RrhhSettings | null;
+    /** Entrega de uniformes — actas pendientes de confirmación. */
+    uniformesSettings?: UniformesSettings | null;
 }
 
 export function generateAlerts(context: AlertContext): SystemAlert[] {
@@ -298,6 +302,7 @@ export function generateAlerts(context: AlertContext): SystemAlert[] {
     }
 
     alerts.push(...buildRrhhSystemAlerts(context.rrhhSettings));
+    alerts.push(...buildUniformesSystemAlerts(context.uniformesSettings));
 
     return alerts.sort((a, b) => {
         // Ordenar primero por severidad, luego por fecha

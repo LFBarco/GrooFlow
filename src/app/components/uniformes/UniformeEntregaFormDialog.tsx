@@ -66,10 +66,10 @@ const emptyForm = (): Omit<UniformDeliveryRecord, 'id' | 'createdAt' | 'updatedA
   sede: 'Principal',
   staffName: '',
   jobTitle: '',
-  workArea: VET_WORK_AREAS[0],
+  workArea: '',
   deliveryDate: format(new Date(), 'yyyy-MM-dd'),
   reason: 'ingreso',
-  status: 'entregado',
+  status: 'pendiente_firma',
   items: [defaultItem()],
   notes: '',
 });
@@ -101,12 +101,40 @@ export function UniformeEntregaFormDialog({
     if (record) {
       setForm({ ...record });
       setStaffKey(resolveStaffOptionKey(record, staffOptions));
-    } else {
-      setForm(emptyForm());
-      setStaffKey(staffOptions[0]?.id ?? 'manual');
       setSelectedKitId('');
+      return;
     }
-  }, [open, record, staffOptions]);
+    setForm(emptyForm());
+    setSelectedKitId('');
+    const first = staffOptions[0];
+    if (first) {
+      setStaffKey(first.id);
+      setForm({
+        ...emptyForm(),
+        userId: first.userId,
+        asistenciaStaffId: first.asistenciaStaffId,
+        bukEmployeeId: first.bukEmployeeId,
+        documentNumber: first.documentNumber,
+        staffName: first.name,
+        jobTitle: first.jobTitle,
+        workArea: first.workArea,
+        sede: first.homeSede || 'Principal',
+      });
+      const matchedKit = findMatchingKit(kits, {
+        jobTitle: first.jobTitle,
+        workArea: first.workArea,
+      });
+      if (matchedKit) {
+        setSelectedKitId(matchedKit.id);
+        setForm((prev) => ({
+          ...prev,
+          items: buildItemsFromKit(matchedKit, first.uniformSizes),
+        }));
+      }
+    } else {
+      setStaffKey('manual');
+    }
+  }, [open, record, staffOptions, kits]);
 
   const applyKit = (kitId: string) => {
     setSelectedKitId(kitId);
@@ -120,6 +148,19 @@ export function UniformeEntregaFormDialog({
 
   const applyStaff = (key: string) => {
     setStaffKey(key);
+    if (key === 'manual') {
+      setForm((prev) => ({
+        ...prev,
+        userId: undefined,
+        asistenciaStaffId: undefined,
+        bukEmployeeId: undefined,
+        documentNumber: undefined,
+        staffName: '',
+        jobTitle: '',
+        workArea: '',
+      }));
+      return;
+    }
     const staff = staffOptions.find((s) => s.id === key);
     if (!staff) return;
     setForm((prev) => {
@@ -175,6 +216,9 @@ export function UniformeEntregaFormDialog({
     }));
   };
 
+  const isManual = staffKey === 'manual';
+  const fromCollaborator = Boolean(selectedStaff) && !isManual;
+
   const handleSubmit = () => {
     if (!form.staffName.trim() || form.items.length === 0) return;
     const validItems = form.items.filter((i) => i.quantity > 0);
@@ -184,6 +228,8 @@ export function UniformeEntregaFormDialog({
       items: validItems,
       id: record?.id,
       deliveredBy: form.deliveredBy ?? deliveredBy,
+      actaGeneratedAt: form.actaGeneratedAt ?? new Date().toISOString(),
+      status: form.status || 'pendiente_firma',
     });
     onOpenChange(false);
   };
@@ -210,7 +256,8 @@ export function UniformeEntregaFormDialog({
         <DialogHeader>
           <DialogTitle>{record ? 'Editar entrega' : 'Registrar entrega de uniformes'}</DialogTitle>
           <DialogDescription>
-            Registre las prendas entregadas al colaborador, talla, cantidad y motivo de la entrega.
+            Elija el colaborador (Buk.pe). Área padre y sede base se completan solos. Al guardar se
+            genera el acta y se notifica al usuario vinculado para confirmar la recepción.
           </DialogDescription>
         </DialogHeader>
 
@@ -221,7 +268,7 @@ export function UniformeEntregaFormDialog({
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1 sm:col-span-2">
-                <Label>Colaborador</Label>
+                <Label>Colaborador *</Label>
                 <Select value={staffKey} onValueChange={applyStaff} disabled={!canEdit}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar colaborador" />
@@ -236,59 +283,70 @@ export function UniformeEntregaFormDialog({
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label>Nombre *</Label>
-                <Input
-                  value={form.staffName}
-                  onChange={(e) => patch({ staffName: e.target.value })}
-                  disabled={!canEdit}
-                />
-              </div>
+              {isManual ? (
+                <div className="space-y-1 sm:col-span-2">
+                  <Label>Nombre *</Label>
+                  <Input
+                    value={form.staffName}
+                    onChange={(e) => patch({ staffName: e.target.value })}
+                    disabled={!canEdit}
+                  />
+                </div>
+              ) : null}
               <div className="space-y-1">
                 <Label>Puesto</Label>
                 <Input
                   value={form.jobTitle}
                   onChange={(e) => patch({ jobTitle: e.target.value })}
-                  disabled={!canEdit}
+                  disabled={!canEdit || fromCollaborator}
+                  readOnly={fromCollaborator}
                 />
               </div>
               <div className="space-y-1">
-                <Label>Área</Label>
-                <Select
-                  value={form.workArea}
-                  onValueChange={(v) => patch({ workArea: v })}
-                  disabled={!canEdit}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VET_WORK_AREAS.map((a) => (
-                      <SelectItem key={a} value={a}>
-                        {a}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label>Área padre</Label>
+                {fromCollaborator ? (
+                  <Input value={form.workArea || '—'} readOnly disabled className="bg-muted/40" />
+                ) : (
+                  <Select
+                    value={form.workArea || VET_WORK_AREAS[0]}
+                    onValueChange={(v) => patch({ workArea: v })}
+                    disabled={!canEdit}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VET_WORK_AREAS.map((a) => (
+                        <SelectItem key={a} value={a}>
+                          {a}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
-              <div className="space-y-1">
-                <Label>Sede *</Label>
-                <Select
-                  value={form.sede}
-                  onValueChange={(v) => patch({ sede: v })}
-                  disabled={!canEdit}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sedeOptions.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-1 sm:col-span-2">
+                <Label>Sede base *</Label>
+                {fromCollaborator ? (
+                  <Input value={form.sede || '—'} readOnly disabled className="bg-muted/40" />
+                ) : (
+                  <Select
+                    value={form.sede}
+                    onValueChange={(v) => patch({ sede: v })}
+                    disabled={!canEdit}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sedeOptions.map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
             </div>
           </div>

@@ -46,8 +46,8 @@ export const UNIFORM_REASON_LABELS: Record<UniformDeliveryReason, string> = {
 };
 
 export const UNIFORM_STATUS_LABELS: Record<UniformDeliveryStatus, string> = {
-  entregado: 'Entregado',
-  pendiente_firma: 'Pendiente de firma',
+  entregado: 'Entregado / confirmado',
+  pendiente_firma: 'Pendiente de confirmación',
   devuelto: 'Devuelto',
 };
 
@@ -99,9 +99,14 @@ export interface UniformDeliveryRecord {
   items: UniformDeliveryItem[];
   notes?: string;
   deliveredBy?: string;
-  /** Acta de entrega firmada (data URL imagen/PDF). */
+  /** Acta de entrega firmada (data URL imagen/PDF subida). */
   signatureActDataUrl?: string;
   signatureActName?: string;
+  /** ISO: cuándo se generó/imprimió el acta automática. */
+  actaGeneratedAt?: string;
+  /** ISO: colaborador confirmó recepción del uniforme. */
+  receptionConfirmedAt?: string;
+  receptionConfirmedBy?: string;
   createdAt: string;
   updatedAt?: string;
 }

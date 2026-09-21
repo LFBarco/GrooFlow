@@ -12,6 +12,7 @@ import type {
 } from '../types/accidentes';
 import { mergeAsistenciaSettings } from './asistenciaData';
 import { normalizeSedeKey, resolveCanonicalSedeName } from './gestionSedes';
+import { resolveSedeFromCostCenterCode } from './asistenciaSedeOperativa';
 
 export const ACCIDENTES_SETTINGS_KV_KEY = 'settings:accidentes-trabajo';
 
@@ -436,7 +437,17 @@ export function buildStaffOptions(input: {
 
     const hireDate =
       (emp.activeSince || emp.startDate || matchedUser?.hireDate || '').trim() || undefined;
-    const rawSede = emp.sede || matchedUser?.sedes?.[0] || matchedUser?.location || matchedStaff?.sedeName;
+    const fromCc = resolveSedeFromCostCenterCode(
+      emp.costCenter,
+      input.asistencia,
+      sedeNames.length ? sedeNames : undefined
+    );
+    const rawSede =
+      fromCc ||
+      emp.sede ||
+      matchedUser?.sedes?.[0] ||
+      matchedUser?.location ||
+      matchedStaff?.sedeName;
     const homeSede =
       sedeNames.length > 0 && rawSede
         ? resolveCanonicalSedeName(String(rawSede), sedeNames)
@@ -451,6 +462,7 @@ export function buildStaffOptions(input: {
 
     const areaPadre =
       (emp.orgAreaParentName || '').trim() ||
+      (emp.orgAreaName || '').trim() ||
       matchedUser?.workArea?.trim() ||
       (matchedStaff?.area ? mapAreaFromAsistencia(matchedStaff.area) : '') ||
       'Sin área';
