@@ -43,7 +43,8 @@ import {
 import { exportAsistenciaBukExcel, exportAsistenciaLiveExcel, exportAsistenciaMonthlyHrExcel } from '../../utils/asistenciaExport';
 import { printAsistenciaLive } from '../../utils/asistenciaPrint';
 import { planVsRealForStaffMember } from '../../utils/asistenciaPlanVsReal';
-import { syncStaffFromUsers, enrichStaffDisplayFromUsers } from '../../utils/asistenciaStaffSync';
+import { syncStaffFromCollaborators, enrichStaffDisplayFromUsers } from '../../utils/asistenciaStaffSync';
+import { useHrCollaborators } from '../../hooks/useHrCollaborators';
 import { resetAsistenciaUiLocks } from '../../utils/asistenciaUiCleanup';
 import {
   buildAsistenciaMultiSedeTrendDays,
@@ -116,6 +117,7 @@ export function AsistenciaModule({
   canConfigure = false,
   users = [],
 }: AsistenciaModuleProps) {
+  const { employees: hrCollaborators, loading: hrCollaboratorsLoading } = useHrCollaborators();
   const asistenciaRaw = useMemo(
     () => mergeAsistenciaSettings(systemSettings.asistencia),
     [systemSettings.asistencia]
@@ -649,27 +651,43 @@ export function AsistenciaModule({
     setSelectedDate(format(addDays(dateObj, delta * 7), 'yyyy-MM-dd'));
   }, [dateObj]);
 
-  const handleSyncUsers = useCallback(async () => {
-    if (users.length === 0) {
-      toast.error('No hay usuarios activos para importar.');
+  const handleSyncCollaborators = useCallback(async () => {
+    if (hrCollaboratorsLoading) {
+      toast.message('Cargando colaboradores Buk.pe…');
+      return;
+    }
+    if (hrCollaborators.length === 0) {
+      toast.error(
+        'No hay colaboradores activos. Sincroniza primero en RRHH → Colaboradores (Buk.pe).'
+      );
       return;
     }
     const targets = mainTab === 'config' ? [activeSede] : sedeOptions;
-    const result = syncStaffFromUsers({
-      users,
-      settings: asistencia,
+    const result = syncStaffFromCollaborators({
+      employees: hrCollaborators,
+      settings: asistenciaRaw,
       sedeNames: targets,
+      visibleSedes: sedeOptions.length ? sedeOptions : visibleSedes,
     });
     const ok = await saveAsistencia(
       () => result.settings,
-      `Personal sincronizado: ${result.added} nuevo(s), ${result.updated} actualizado(s)${
-        result.linked > 0 ? ` (${result.linked} por RUT/usuario)` : ''
+      `Colaboradores importados: ${result.added} nuevo(s), ${result.updated} actualizado(s)${
+        result.linked > 0 ? ` (${result.linked} por RUT/Buk)` : ''
       }.`
     );
     if (ok && result.skipped > 0) {
-      toast.message(`${result.skipped} usuario(s) fuera de las sedes objetivo.`);
+      toast.message(`${result.skipped} colaborador(es) fuera de las sedes objetivo.`);
     }
-  }, [users, mainTab, activeSede, sedeOptions, asistencia, saveAsistencia]);
+  }, [
+    hrCollaborators,
+    hrCollaboratorsLoading,
+    mainTab,
+    activeSede,
+    sedeOptions,
+    visibleSedes,
+    asistenciaRaw,
+    saveAsistencia,
+  ]);
 
   const handleExportMonthly = useCallback(() => {
     const monthSnapshots = snapshots.filter((s) => s.dateYmd.startsWith(monthPrefix));
@@ -794,10 +812,16 @@ export function AsistenciaModule({
               Plan vs real
             </Button>
           ) : null}
-          {canConfigure && users.length > 0 ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => void handleSyncUsers()}>
+          {canConfigure ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={hrCollaboratorsLoading}
+              onClick={() => void handleSyncCollaborators()}
+            >
               <UserPlus className="h-4 w-4 mr-1" />
-              Sync usuarios
+              Sync colaboradores
             </Button>
           ) : null}
           <Button
@@ -1131,10 +1155,16 @@ export function AsistenciaModule({
                 <Building2 className="h-4 w-4" />
                 Configurando: <strong className="text-foreground">{activeSede}</strong>
               </div>
-              {canConfigure && users.length > 0 ? (
-                <Button type="button" size="sm" variant="outline" onClick={() => void handleSyncUsers()}>
-                  <UserPlus className="h-4 w-4 mr-1" />
-                  Importar usuarios a esta sede
+              {canConfigure ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={hrCollaboratorsLoading}
+                  onClick={() => void handleSyncCollaborators()}
+                >
+                  <UserPlus className="h-3.5 w-3.5 mr-1" />
+                  Importar colaboradores a esta sede
                 </Button>
               ) : null}
             </div>

@@ -208,6 +208,8 @@ export type HrCollaboratorRow = {
   activeSince?: string | null;
   startDate?: string | null;
   sede?: string | null;
+  /** Centro de costo Buk.pe (6 dígitos) para sede base. */
+  costCenter?: string | null;
   linkedUsuarioId?: string | null;
 };
 

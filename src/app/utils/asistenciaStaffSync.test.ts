@@ -8,6 +8,7 @@ import {
   findStaffMatch,
   normalizeStaffDocKey,
   syncBukRecintoCodeInSettings,
+  syncStaffFromCollaborators,
   syncStaffFromUsers,
 } from './asistenciaStaffSync';
 
@@ -85,6 +86,79 @@ describe('findStaffMatch', () => {
         sedeName: 'Petmax',
       })?.id
     ).toBe('c');
+  });
+});
+
+describe('syncStaffFromCollaborators', () => {
+  it('importa por centro de costo a la sede objetivo sin duplicar RUT', () => {
+    const settings = mergeAsistenciaSettings({
+      staff: [
+        {
+          id: 'old',
+          sedeName: 'Benavides',
+          fullName: 'Luis Antiguo',
+          cargoLabel: 'Recepción',
+          area: 'administracion',
+          expectedTime: '08:00',
+          isCritical: false,
+          rut: '12345678',
+        },
+      ],
+      costCenterSedeMappings: [{ costCenterCode: '101010', sedeName: 'Benavides' }],
+    });
+    const employees = [
+      {
+        bukId: 99,
+        fullName: 'Luis Nuevo',
+        documentNumber: '12.345.678',
+        cargo: 'Recepcionista',
+        costCenter: '101010',
+        orgAreaParentName: 'Administración',
+      },
+      {
+        bukId: 100,
+        fullName: 'Otra Sede',
+        documentNumber: '999',
+        costCenter: '505050',
+        sede: 'La Molina',
+      },
+    ];
+    const result = syncStaffFromCollaborators({
+      employees,
+      settings,
+      sedeNames: ['Benavides'],
+      visibleSedes: ['Benavides', 'La Molina'],
+    });
+    expect(result.added).toBe(0);
+    expect(result.updated).toBe(1);
+    expect(result.skipped).toBe(1);
+    expect(result.settings.staff).toHaveLength(1);
+    expect(result.settings.staff[0]?.fullName).toBe('Luis Nuevo');
+    expect(result.settings.staff[0]?.bukEmployeeId).toBe(99);
+    expect(result.settings.staff[0]?.source).toBe('buk_pe');
+    expect(result.settings.staff[0]?.homeCostCenterCode).toBe('101010');
+  });
+
+  it('agrega colaborador nuevo con id buk_', () => {
+    const settings = mergeAsistenciaSettings({ staff: [] });
+    const result = syncStaffFromCollaborators({
+      employees: [
+        {
+          bukId: 42,
+          fullName: 'Ana Pérez',
+          documentNumber: '87654321',
+          cargo: 'Veterinaria',
+          costCenter: '101010',
+          orgAreaParentName: 'Médica',
+        },
+      ],
+      sedeNames: ['Benavides'],
+      settings,
+      visibleSedes: ['Benavides'],
+    });
+    expect(result.added).toBe(1);
+    expect(result.settings.staff[0]?.id).toBe('buk_42');
+    expect(result.settings.staff[0]?.area).toBe('medica');
   });
 });
 

@@ -621,8 +621,8 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
               (arriba, al editar).
             </li>
             <li>
-              Importa o sincroniza personal con <span className="text-foreground font-medium">RUT</span>: si ya
-              existe, se actualiza el mismo registro (no se crea otro).
+              Importa o sincroniza personal desde <span className="text-foreground font-medium">Colaboradores (Buk.pe)</span> con{' '}
+              <span className="text-foreground font-medium">RUT</span>: si ya existe, se actualiza el mismo registro (no se crea otro).
             </li>
             <li>
               No crees una sede nueva solo porque el huellero tiene otro nombre: usa el mapeo Buk en esta misma sede.
@@ -634,7 +634,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
               {diagnosis.withoutRut.length > 0 && (
                 <p className="text-amber-100/90 text-xs">
                   {diagnosis.withoutRut.length} persona(s) sin RUT — al sincronizar por nombre pueden
-                  duplicarse. Completa el RUT en la ficha o vuelve a importar desde usuarios/Buk.
+                  duplicarse. Completa el RUT en la ficha o vuelve a importar desde Colaboradores (Buk.pe).
                 </p>
               )}
               {diagnosis.duplicateNameGroups.length > 0 && (

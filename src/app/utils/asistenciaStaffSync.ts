@@ -1,7 +1,10 @@
 import type { User } from '../types';
 import type { AsistenciaSettings, AsistenciaStaffMember } from '../types/asistencia';
 import { ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME } from '../types/asistencia';
+import type { HrCollaboratorRow } from './accidentesData';
 import { mergeAsistenciaSettings } from './asistenciaData';
+import { normalizeSedeKey, resolveCanonicalSedeName } from './gestionSedes';
+import { resolveSedeFromCostCenterCode } from './asistenciaSedeOperativa';
 
 function newStaffId() {
   return `staff_${Math.random().toString(36).slice(2, 9)}`;
@@ -33,13 +36,14 @@ export function mapUserWorkAreaToAsistenciaColumn(workArea?: string, jobTitle?: 
 }
 
 function staffNameSedeKey(name: string, sede: string): string {
-  return `${normalizePersonName(name)}::${sede.trim().toLowerCase()}`;
+  return `${normalizePersonName(name)}::${normalizeSedeKey(sede)}`;
 }
 
-/** Busca ficha existente por identidad estable (usuario → RUT → email → nombre+sede). */
+/** Busca ficha existente por identidad estable (buk → usuario → RUT → email → nombre+sede). */
 export function findStaffMatch(
   staff: AsistenciaStaffMember[],
   candidate: {
+    bukEmployeeId?: number;
     usuarioId?: string;
     documentNumber?: string;
     email?: string;
@@ -47,6 +51,13 @@ export function findStaffMatch(
     sedeName: string;
   }
 ): AsistenciaStaffMember | undefined {
+  const bukId = Number(candidate.bukEmployeeId ?? 0);
+  if (bukId > 0) {
+    const byBuk = staff.find((s) => Number(s.bukEmployeeId ?? 0) === bukId);
+    if (byBuk) return byBuk;
+    const byBukId = staff.find((s) => s.id === `buk_${bukId}`);
+    if (byBukId) return byBukId;
+  }
   const uid = String(candidate.usuarioId ?? '').trim();
   if (uid) {
     const byUser = staff.find((s) => String(s.usuarioId ?? '').trim() === uid);
@@ -62,7 +73,7 @@ export function findStaffMatch(
     const byEmail = staff.find(
       (s) =>
         s.email?.trim().toLowerCase() === email &&
-        s.sedeName.trim().toLowerCase() === candidate.sedeName.trim().toLowerCase()
+        normalizeSedeKey(s.sedeName) === normalizeSedeKey(candidate.sedeName)
     );
     if (byEmail) return byEmail;
   }
@@ -75,7 +86,7 @@ export type StaffSyncResult = {
   added: number;
   updated: number;
   skipped: number;
-  /** Usuarios que ya estaban (mismo RUT/usuario) y solo se vincularon/actualizaron. */
+  /** Usuarios/colaboradores que ya estaban (mismo RUT/usuario) y solo se vincularon/actualizaron. */
   linked: number;
 };
 
@@ -87,11 +98,11 @@ export function syncStaffFromUsers(input: {
   replaceTargetSedes?: boolean;
 }): StaffSyncResult {
   const merged = mergeAsistenciaSettings(input.settings);
-  const targetSet = new Set(input.sedeNames);
+  const targetSet = new Set(input.sedeNames.map((s) => normalizeSedeKey(s)));
   let staff = [...(merged.staff ?? [])];
 
   if (input.replaceTargetSedes) {
-    staff = staff.filter((s) => !targetSet.has(s.sedeName));
+    staff = staff.filter((s) => !targetSet.has(normalizeSedeKey(s.sedeName)));
   }
 
   let added = 0;
@@ -102,7 +113,7 @@ export function syncStaffFromUsers(input: {
   for (const u of input.users) {
     if (u.status === 'inactive') continue;
     const sede = u.sedes?.[0] ?? u.location ?? 'Principal';
-    if (!targetSet.has(sede)) {
+    if (!targetSet.has(normalizeSedeKey(sede))) {
       skipped += 1;
       continue;
     }
@@ -127,7 +138,6 @@ export function syncStaffFromUsers(input: {
     if (doc && !existing?.rut) {
       patch.rut = u.documentNumber?.trim() || doc;
     } else if (doc && existing?.rut && normalizeStaffDocKey(existing.rut) !== doc) {
-      // Preferir DNI de Gestión si la ficha no tenía RUT usable.
       if (!normalizeStaffDocKey(existing.rut)) patch.rut = u.documentNumber?.trim() || doc;
     } else if (doc && !existing) {
       patch.rut = u.documentNumber?.trim() || doc;
@@ -137,10 +147,8 @@ export function syncStaffFromUsers(input: {
     }
 
     if (existing) {
-      // No pisar overrides operativos (área / crítico / manager / turnos / sede plantilla).
       Object.assign(existing, patch);
       if (!existing.usuarioId && u.id) existing.usuarioId = u.id;
-      // Si estaba en otra sede por nombre raro pero mismo RUT, no mover sedeName automáticamente.
       updated += 1;
       linked += 1;
     } else {
@@ -159,6 +167,124 @@ export function syncStaffFromUsers(input: {
         usuarioId: u.id,
         rut: patch.rut,
         source: 'users',
+      };
+      staff.push(member);
+      added += 1;
+    }
+  }
+
+  return {
+    settings: { ...merged, staff },
+    added,
+    updated,
+    skipped,
+    linked,
+  };
+}
+
+/**
+ * Importa/actualiza personal de Asistencia desde Colaboradores (Buk.pe).
+ * Sede base = centro de costo → mapeo; no usa el huellero del día.
+ */
+export function syncStaffFromCollaborators(input: {
+  employees: HrCollaboratorRow[];
+  settings: AsistenciaSettings;
+  sedeNames: string[];
+  /** Catálogo visible para canonicar nombres de sede. */
+  visibleSedes?: string[];
+  replaceTargetSedes?: boolean;
+}): StaffSyncResult {
+  const merged = mergeAsistenciaSettings(input.settings);
+  const visible = input.visibleSedes?.length ? input.visibleSedes : input.sedeNames;
+  const targetKeys = new Set(input.sedeNames.map((s) => normalizeSedeKey(s)));
+  let staff = [...(merged.staff ?? [])];
+
+  if (input.replaceTargetSedes) {
+    staff = staff.filter((s) => !targetKeys.has(normalizeSedeKey(s.sedeName)));
+  }
+
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+  let linked = 0;
+
+  for (const emp of input.employees) {
+    if (!emp.bukId && !emp.documentNumber && !emp.fullName?.trim()) {
+      skipped += 1;
+      continue;
+    }
+
+    const fromCc = resolveSedeFromCostCenterCode(emp.costCenter, merged, visible);
+    let sedeRaw = fromCc || emp.sede?.trim() || '';
+    if (!sedeRaw) {
+      skipped += 1;
+      continue;
+    }
+    const sedeName = visible.length
+      ? resolveCanonicalSedeName(sedeRaw, visible)
+      : sedeRaw;
+    if (!targetKeys.has(normalizeSedeKey(sedeName))) {
+      skipped += 1;
+      continue;
+    }
+
+    const doc = normalizeStaffDocKey(emp.documentNumber);
+    const existing = findStaffMatch(staff, {
+      bukEmployeeId: emp.bukId,
+      usuarioId: emp.linkedUsuarioId ?? undefined,
+      documentNumber: emp.documentNumber ?? undefined,
+      email: emp.email ?? undefined,
+      fullName: emp.fullName,
+      sedeName,
+    });
+
+    const cargo = emp.cargo?.trim() || 'Colaborador';
+    const patch: Partial<AsistenciaStaffMember> = {
+      fullName: emp.fullName.trim() || existing?.fullName || 'Colaborador',
+      sedeName,
+      sedeBase: sedeName,
+      email: emp.email?.trim() || existing?.email,
+      bukEmployeeId: emp.bukId > 0 ? emp.bukId : existing?.bukEmployeeId,
+      source: 'buk_pe',
+    };
+    if (emp.costCenter) {
+      patch.homeCostCenterCode = String(emp.costCenter).replace(/\D+/g, '').slice(0, 6) || undefined;
+    }
+    if (emp.linkedUsuarioId) {
+      patch.usuarioId = emp.linkedUsuarioId;
+    }
+    if (doc) {
+      patch.rut = emp.documentNumber?.trim() || doc;
+    }
+    // Cargo: no pisar si ya venía de Gestión/users; Buk rellena si vacío o fuente buk/manual.
+    const hasGestionLink =
+      Boolean(existing?.usuarioId) || existing?.source === 'users';
+    if (!hasGestionLink || !existing?.cargoLabel?.trim()) {
+      patch.cargoLabel = cargo;
+    }
+
+    if (existing) {
+      Object.assign(existing, patch);
+      updated += 1;
+      linked += 1;
+    } else {
+      const bukId = emp.bukId > 0 ? emp.bukId : 0;
+      const member: AsistenciaStaffMember = {
+        id: bukId > 0 ? `buk_${bukId}` : newStaffId(),
+        sedeName,
+        sedeBase: sedeName,
+        fullName: patch.fullName!,
+        cargoLabel: cargo,
+        area: mapUserWorkAreaToAsistenciaColumn(emp.orgAreaParentName ?? undefined, emp.cargo ?? undefined),
+        expectedTime: ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
+        shift: 'day',
+        isCritical: false,
+        email: patch.email,
+        usuarioId: patch.usuarioId,
+        rut: patch.rut,
+        bukEmployeeId: bukId > 0 ? bukId : undefined,
+        homeCostCenterCode: patch.homeCostCenterCode,
+        source: 'buk_pe',
       };
       staff.push(member);
       added += 1;
@@ -211,7 +337,6 @@ export function enrichStaffDisplayFromUsers(
       usuarioId: linked.id,
       rut: s.rut || linked.documentNumber || s.rut,
       sedeBase: s.sedeBase || gestionSede || s.sedeName,
-      // sedeName = plantilla del organigrama; no sobrescribir con Gestión.
     };
   });
 }
@@ -238,7 +363,7 @@ export function diagnoseSedeStaff(staff: AsistenciaStaffMember[]): SedeStaffDiag
   }
   const duplicateNameGroups = [...byName.entries()]
     .filter(([, members]) => members.length > 1)
-    .map(([name, members]) => ({ name: members[0]!.fullName, members }));
+    .map(([, members]) => ({ name: members[0]!.fullName, members }));
 
   const byRut = new Map<string, AsistenciaStaffMember[]>();
   for (const s of staff) {
