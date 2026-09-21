@@ -30,7 +30,10 @@ import {
   resolveOrgColumns,
   resolveOrgSubColumns,
 } from '../../utils/asistenciaOrgColumns';
+import { projectOrgTreeFromCollaborators } from '../../utils/asistenciaOrgFromCollaborators';
 import { ORG_CHART_COLOR_OPTIONS, resolveOrgNodeStyle } from '../../utils/asistenciaOrgChart';
+import { useHrCollaborators } from '../../hooks/useHrCollaborators';
+import { toast } from 'sonner';
 import { Textarea } from '../ui/textarea';
 import { AsistenciaOrgConfigDialog } from './AsistenciaOrgConfigDialog';
 import { AsistenciaStaffDialog } from './AsistenciaStaffDialog';
@@ -72,10 +75,12 @@ type Props = {
 };
 
 export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = [], canConfigure, onSave }: Props) {
+  const { employees: hrCollaborators, loading: hrLoading } = useHrCollaborators();
   const profile = useMemo(() => getSedeProfile(settings, sedeName), [settings, sedeName]);
   const orgColumns = useMemo(() => resolveOrgColumns(profile), [profile]);
   const staff = useMemo(() => staffForSede(settings, sedeName), [settings, sedeName]);
   const diagnosis = useMemo(() => diagnoseSedeStaff(staff), [staff]);
+  const [projectingOrg, setProjectingOrg] = useState(false);
   const [editSede, setEditSede] = useState(false);
   const [scheduleStart, setScheduleStart] = useState(profile.scheduleStart ?? '08:00');
   const [scheduleEnd, setScheduleEnd] = useState(profile.scheduleEnd ?? '18:00');
@@ -366,6 +371,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           orgNodeStyles,
           customOrgColumns,
           rootChildrenLayout: rootLayout,
+          hideBuiltinColumns: profile.hideBuiltinColumns,
         });
     },
     [
@@ -407,6 +413,42 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
 
   const saveOrgLayout = async () => {
     return persistOrgLayout(undefined, 'Estructura del organigrama guardada.');
+  };
+
+  const syncOrgFromCollaborators = async () => {
+    if (hrLoading) {
+      toast.message('Cargando colaboradores Buk.pe…');
+      return;
+    }
+    if (hrCollaborators.length === 0) {
+      toast.error('No hay colaboradores. Sincroniza primero en RRHH → Colaboradores.');
+      return;
+    }
+    setProjectingOrg(true);
+    try {
+      const result = projectOrgTreeFromCollaborators({
+        employees: hrCollaborators,
+        settings,
+        sedeName,
+        visibleSedes: sedeOptions.length ? sedeOptions : [sedeName],
+        reassignStaffAreas: true,
+      });
+      if (result.employeesUsed === 0) {
+        toast.error(
+          `Ningún colaborador tiene sede base «${sedeName}». Revisa centros de costo → sede.`
+        );
+        return;
+      }
+      const ok = await onSave(
+        () => result.settings,
+        `Estructura Buk: ${result.families} familia(s), ${result.subareas} subárea(s), ${result.staffReassigned} persona(s) ubicadas.`
+      );
+      if (ok) {
+        syncOrgFormFromProfile(getSedeProfile(result.settings, sedeName));
+      }
+    } finally {
+      setProjectingOrg(false);
+    }
   };
 
   const addColumn = async () => {
@@ -674,11 +716,24 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 Estructura del organigrama
               </CardTitle>
               <CardDescription className="text-slate-400">
-                Define raíz, hijos anidados, disposición (horizontal/vertical) y color. Todo se refleja en
-                Operativa en vivo.
+                Raíz = familia del cargo (Buk.pe), hijos = áreas, cargos visibles por subárea. Usa
+                «Desde Colaboradores» para armar el árbol automáticamente.
               </CardDescription>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-border text-foreground dark:border-slate-600 dark:text-slate-200"
+                disabled={saving || projectingOrg || hrLoading}
+                onClick={() => void syncOrgFromCollaborators()}
+              >
+                {projectingOrg || hrLoading ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : null}
+                Desde Colaboradores
+              </Button>
               <Button
                 type="button"
                 size="sm"
@@ -852,7 +907,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs text-muted-foreground w-24 shrink-0">
-                        Raíz {index + 1}
+                        Familia {index + 1}
                       </span>
                       <Input
                         value={areaLabels[columnId] ?? defaultLabel}
@@ -932,7 +987,12 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                       </div>
                     </div>
                     <div className="space-y-1.5 pl-0 sm:pl-24">
-                      <Label className="text-xs text-muted-foreground">Cargos visibles en esta área</Label>
+                      <Label className="text-xs text-muted-foreground">
+                        Cargos visibles en esta{' '}
+                        {resolveOrgSubColumns(profile, columnId).length > 0
+                          ? 'familia (sin subárea)'
+                          : 'familia'}
+                      </Label>
                       <Textarea
                         value={
                           cargoByColumnText[columnId] ??
@@ -953,7 +1013,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                     <div className="space-y-2 pl-0 sm:pl-24 border-t border-border/60 pt-3 dark:border-slate-800">
                       <Label className="text-xs text-muted-foreground flex items-center gap-1">
                         <CornerDownRight className="h-3 w-3" />
-                        Hijos / subáreas (se ven en Operativa en vivo)
+                        Hijos / subáreas (área padre Buk)
                       </Label>
                       {renderSubTree(columnId, 0)}
                       <div className="flex flex-wrap items-end gap-2">

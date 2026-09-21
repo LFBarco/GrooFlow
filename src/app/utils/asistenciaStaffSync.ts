@@ -5,6 +5,11 @@ import type { HrCollaboratorRow } from './accidentesData';
 import { mergeAsistenciaSettings } from './asistenciaData';
 import { normalizeSedeKey, resolveCanonicalSedeName } from './gestionSedes';
 import { resolveSedeFromCostCenterCode } from './asistenciaSedeOperativa';
+import {
+  assignStaffAreaFromCollaborator,
+  resolveOrgAreaIdForCollaborator,
+} from './asistenciaOrgFromCollaborators';
+import { getSedeProfile } from './asistenciaStaff';
 
 function newStaffId() {
   return `staff_${Math.random().toString(36).slice(2, 9)}`;
@@ -239,6 +244,13 @@ export function syncStaffFromCollaborators(input: {
     });
 
     const cargo = emp.cargo?.trim() || 'Colaborador';
+    const sedeProfile = getSedeProfile(merged, sedeName);
+    const useBukTree =
+      sedeProfile.hideBuiltinColumns === true || (sedeProfile.customOrgColumns?.length ?? 0) > 0;
+    const areaId = useBukTree
+      ? resolveOrgAreaIdForCollaborator(emp, sedeProfile)
+      : mapUserWorkAreaToAsistenciaColumn(emp.orgAreaParentName ?? undefined, emp.cargo ?? undefined);
+
     const patch: Partial<AsistenciaStaffMember> = {
       fullName: emp.fullName.trim() || existing?.fullName || 'Colaborador',
       sedeName,
@@ -262,9 +274,17 @@ export function syncStaffFromCollaborators(input: {
     if (!hasGestionLink || !existing?.cargoLabel?.trim()) {
       patch.cargoLabel = cargo;
     }
+    // Área: en árbol Buk siempre alinear; si no, solo en alta.
+    if (useBukTree) {
+      patch.area = areaId;
+    }
 
     if (existing) {
       Object.assign(existing, patch);
+      if (useBukTree) {
+        const aligned = assignStaffAreaFromCollaborator(existing, emp, { ...merged, staff });
+        existing.area = aligned.area;
+      }
       updated += 1;
       linked += 1;
     } else {
@@ -275,7 +295,7 @@ export function syncStaffFromCollaborators(input: {
         sedeBase: sedeName,
         fullName: patch.fullName!,
         cargoLabel: cargo,
-        area: mapUserWorkAreaToAsistenciaColumn(emp.orgAreaParentName ?? undefined, emp.cargo ?? undefined),
+        area: areaId,
         expectedTime: ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
         shift: 'day',
         isCritical: false,

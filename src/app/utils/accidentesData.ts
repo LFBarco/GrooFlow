@@ -202,7 +202,10 @@ export type HrCollaboratorRow = {
   documentNumber?: string | null;
   email?: string | null;
   cargo?: string | null;
+  /** Familia del cargo Buk.pe (raíz del organigrama). */
+  roleFamilyName?: string | null;
   orgAreaParentName?: string | null;
+  orgAreaName?: string | null;
   contractType?: string | null;
   /** Columna «Activo desde» en Colaboradores. */
   activeSince?: string | null;

@@ -46,11 +46,14 @@ export function isSubOrgColumnId(profile: AsistenciaSedeProfile, id: string): bo
 
 export function resolveOrgColumns(profile: AsistenciaSedeProfile): AsistenciaOrgColumn[] {
   const custom = profile.customOrgColumns ?? [];
-  const builtins: AsistenciaOrgColumn[] = ASISTENCIA_STAFF_AREAS.map((id) => ({
-    id,
-    label: profile.areaLabels?.[id]?.trim() || ASISTENCIA_STAFF_AREA_LABELS[id],
-    builtin: true,
-  }));
+  const includeBuiltins = profile.hideBuiltinColumns !== true;
+  const builtins: AsistenciaOrgColumn[] = includeBuiltins
+    ? ASISTENCIA_STAFF_AREAS.map((id) => ({
+        id,
+        label: profile.areaLabels?.[id]?.trim() || ASISTENCIA_STAFF_AREA_LABELS[id],
+        builtin: true,
+      }))
+    : [];
   const customCols: AsistenciaOrgColumn[] = custom.map((c) => ({
     id: c.id,
     label: profile.areaLabels?.[c.id]?.trim() || c.label,
@@ -367,30 +370,37 @@ export function applyOrgColumnLabels(
     orgNodeStyles?: AsistenciaSedeProfile['orgNodeStyles'];
     customOrgColumns?: AsistenciaSedeProfile['customOrgColumns'];
     rootChildrenLayout?: AsistenciaSedeProfile['rootChildrenLayout'];
+    hideBuiltinColumns?: boolean;
   }
 ): AsistenciaSettings {
   const merged = mergeAsistenciaSettings(settings);
   const profile = getSedeProfile(merged, sedeName);
-  const cleanedLabels = Object.fromEntries(
-    Object.entries(labels).map(([k, v]) => [k, v.trim()]).filter(([, v]) => v)
-  );
+  const nextLabels: Record<string, string> = { ...(profile.areaLabels ?? {}) };
+  for (const [k, v] of Object.entries(labels)) {
+    const t = String(v ?? '').trim();
+    if (t) nextLabels[k] = t;
+  }
   const nextCustom = (extras?.customOrgColumns ?? profile.customOrgColumns ?? []).map((c) => ({
     ...c,
-    label: cleanedLabels[c.id]?.trim() || c.label,
+    label: nextLabels[c.id]?.trim() || c.label,
   }));
   const nextSub = (subOrgColumns ?? profile.subOrgColumns ?? []).map((s) => ({
     ...s,
-    label: cleanedLabels[s.id]?.trim() || s.label,
+    label: nextLabels[s.id]?.trim() || s.label,
   }));
   return upsertSedeProfile(merged, sedeName, {
     areaOrder,
-    areaLabels: Object.keys(cleanedLabels).length ? cleanedLabels : profile.areaLabels,
+    areaLabels: nextLabels,
     hideEmptyAreas,
-    cargoByColumn:
-      cargoByColumn && Object.keys(cargoByColumn).length ? cargoByColumn : profile.cargoByColumn,
+    // Si viene el mapa (aunque vacío), es la fuente de verdad del formulario.
+    cargoByColumn: cargoByColumn !== undefined ? cargoByColumn : profile.cargoByColumn,
     customOrgColumns: nextCustom,
     subOrgColumns: nextSub,
     orgNodeStyles: extras?.orgNodeStyles ?? profile.orgNodeStyles,
     rootChildrenLayout: extras?.rootChildrenLayout ?? profile.rootChildrenLayout,
+    hideBuiltinColumns:
+      extras?.hideBuiltinColumns !== undefined
+        ? extras.hideBuiltinColumns
+        : profile.hideBuiltinColumns,
   });
 }

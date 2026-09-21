@@ -197,6 +197,11 @@ export interface AsistenciaSedeProfile {
   cargoByColumn?: Record<string, string[]>;
   /** Ocultar columnas sin personal asignado. */
   hideEmptyAreas?: boolean;
+  /**
+   * Si true, el organigrama de la sede usa solo columnas personalizadas
+   * (p. ej. Familias Buk.pe) y oculta las 3 built-in.
+   */
+  hideBuiltinColumns?: boolean;
   /** Estilos de nodos (color / layout), p. ej. columnas built-in. */
   orgNodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
   /** Disposición de las columnas raíz bajo la sede. */
