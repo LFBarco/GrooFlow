@@ -5,6 +5,10 @@ import type { BukAsistenciaRecord, BukAsistenciaResponse } from '../types/asiste
 import { getEdgeFunctionAccessTokenLazy, getSupabaseFunctionsUrlLazy } from '../services/repository/supabaseLazy';
 import { getGrooflowApiBase, getGrooflowToken } from '../services/repository/apiBase';
 import { getGrooflowBackend } from '../config/backend';
+import {
+  incrementalAsistenciaDateRange,
+  normalizeBukAsistenciaRecords,
+} from './bukAsistenciaRegistro';
 
 export const DEFAULT_BUK_ASISTENCIA_BASE_URL =
   'https://app.ctrlit.cl/ctrl/api/v2';
@@ -35,21 +39,20 @@ async function readJsonSafe(res: Response): Promise<Record<string, unknown>> {
 /** Extrae registros Buk del JSON del proxy (soporta respuesta plana o anidada legacy). */
 function extractBukRecordsFromProxyJson(json: Record<string, unknown>): BukAsistenciaRecord[] {
   const raw = json.data;
+  let list: unknown[] = [];
   if (Array.isArray(raw)) {
     if (raw.length === 0) return [];
     const first = raw[0];
     if (first && typeof first === 'object' && first !== null) {
-      return raw as BukAsistenciaRecord[];
+      list = raw;
     }
-    return [];
-  }
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+  } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     const nested = (raw as { data?: unknown }).data;
     if (Array.isArray(nested) && nested.length > 0) {
-      return nested as BukAsistenciaRecord[];
+      list = nested;
     }
   }
-  return [];
+  return normalizeBukAsistenciaRecords(list as Record<string, unknown>[]);
 }
 
 function extractBukTotalPages(json: Record<string, unknown>, fallback = 1): number {
@@ -115,11 +118,19 @@ export function normalizeBukToken(raw: string): string {
   return t;
 }
 
-export function buildBukAsistenciaUrl(baseUrl: string, page = 1, pageSize = BUK_PAGE_SIZE): string {
+export function buildBukAsistenciaUrl(
+  baseUrl: string,
+  page = 1,
+  pageSize = BUK_PAGE_SIZE,
+  range?: { desde: string; hasta: string }
+): string {
   const base = sanitizeBukBaseUrl(baseUrl);
   const url = new URL(`${base}/asistencia-empresa`);
   url.searchParams.set('page', String(page));
   url.searchParams.set('page_size', String(pageSize));
+  const win = range ?? incrementalAsistenciaDateRange(new Date(), 2);
+  url.searchParams.set('desde', win.desde);
+  url.searchParams.set('hasta', win.hasta);
   return url.toString();
 }
 
@@ -293,9 +304,10 @@ export async function validateBukAsistenciaConnection(input: {
 async function fetchPageDirect(
   baseUrl: string,
   apiToken: string,
-  page: number
+  page: number,
+  range?: { desde: string; hasta: string }
 ): Promise<{ data: BukAsistenciaRecord[]; totalPages: number }> {
-  const triedUrl = buildBukAsistenciaUrl(baseUrl, page, BUK_PAGE_SIZE);
+  const triedUrl = buildBukAsistenciaUrl(baseUrl, page, BUK_PAGE_SIZE, range);
   const res = await fetch(triedUrl, {
     headers: { token: apiToken, accept: 'application/json' },
   });
@@ -305,7 +317,7 @@ async function fetchPageDirect(
   }
   const json = (await res.json()) as BukAsistenciaResponse;
   return {
-    data: json.data ?? [],
+    data: normalizeBukAsistenciaRecords(json.data ?? []),
     totalPages: json.pagination?.totalPages ?? page,
   };
 }
@@ -314,17 +326,22 @@ async function fetchAllViaProxy(input: {
   baseUrl: string;
   apiToken: string;
   maxPages: number;
+  desde?: string;
+  hasta?: string;
 }): Promise<{
   records: BukAsistenciaRecord[];
   fetchedPages: number;
   reportedTotalPages: number;
   truncated: boolean;
 }> {
+  const win = incrementalAsistenciaDateRange(new Date(), 2);
   const res = await postBukProxy('fetch-all', {
     baseUrl: sanitizeBukBaseUrl(input.baseUrl),
     apiToken: input.apiToken,
     maxPages: input.maxPages,
     pageSize: BUK_PAGE_SIZE,
+    desde: input.desde ?? win.desde,
+    hasta: input.hasta ?? win.hasta,
   });
   const json = await readJsonSafe(res);
   if (!res.ok) throw new Error(proxyErrorMessage(res, json));
@@ -354,6 +371,8 @@ async function fetchAllViaProxyPages(input: {
   apiToken: string;
   maxPages: number;
   onProgress?: (loaded: number, totalPages: number) => void;
+  desde?: string;
+  hasta?: string;
 }): Promise<{
   records: BukAsistenciaRecord[];
   fetchedPages: number;
@@ -361,6 +380,9 @@ async function fetchAllViaProxyPages(input: {
   truncated: boolean;
 }> {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
+  const win = incrementalAsistenciaDateRange(new Date(), 2);
+  const desde = input.desde ?? win.desde;
+  const hasta = input.hasta ?? win.hasta;
 
   async function fetchPage(page: number): Promise<{
     data: BukAsistenciaRecord[];
@@ -371,6 +393,8 @@ async function fetchAllViaProxyPages(input: {
       apiToken: input.apiToken,
       page,
       pageSize: BUK_PAGE_SIZE,
+      desde,
+      hasta,
     });
     const json = await readJsonSafe(res);
     if (!res.ok) throw new Error(proxyErrorMessage(res, json));
@@ -406,6 +430,8 @@ async function fetchAllDirect(input: {
   apiToken: string;
   maxPages: number;
   onProgress?: (loaded: number, totalPages: number) => void;
+  desde?: string;
+  hasta?: string;
 }): Promise<{
   records: BukAsistenciaRecord[];
   fetchedPages: number;
@@ -413,14 +439,19 @@ async function fetchAllDirect(input: {
   truncated: boolean;
 }> {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
-  const first = await fetchPageDirect(baseUrl, input.apiToken, 1);
+  const win = incrementalAsistenciaDateRange(new Date(), 2);
+  const range = {
+    desde: input.desde ?? win.desde,
+    hasta: input.hasta ?? win.hasta,
+  };
+  const first = await fetchPageDirect(baseUrl, input.apiToken, 1, range);
   const all: BukAsistenciaRecord[] = [...first.data];
   const reportedTotalPages = first.totalPages;
   const totalPages = Math.min(first.totalPages, input.maxPages);
   input.onProgress?.(1, totalPages);
 
   for (let page = 2; page <= totalPages; page++) {
-    const next = await fetchPageDirect(baseUrl, input.apiToken, page);
+    const next = await fetchPageDirect(baseUrl, input.apiToken, page, range);
     all.push(...next.data);
     input.onProgress?.(page, totalPages);
   }

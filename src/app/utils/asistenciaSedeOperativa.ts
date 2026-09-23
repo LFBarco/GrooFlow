@@ -106,6 +106,7 @@ export function indexBukRecordsForDate(
 
 /**
  * Resuelve sede GrooFlow desde el recinto/huellero de una marcación Buk Asistencia.
+ * Prioridad: obra_id / id_recinto configurado en la sede → código/nombre recinto → fuzzy.
  */
 export function resolveSedeNameFromBukRecinto(
   record: BukAsistenciaRecord,

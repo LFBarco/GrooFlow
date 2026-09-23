@@ -182,10 +182,10 @@ export function AsistenciaOrgConfigDialog({
 
         <div className="space-y-4">
           <div className="rounded-lg border p-4 space-y-3">
-            <Label className="text-sm font-medium">Mapeo sede GooFlow → recinto Buk</Label>
+            <Label className="text-sm font-medium">Mapeo sede GooFlow → ID huellero (obra_id)</Label>
             <p className="text-xs text-muted-foreground">
-              Un código por sede base. No crees otra sede solo por el nombre del huellero: vincula el
-              recinto aquí.
+              Un <span className="font-medium text-foreground">obra_id</span> (ID huellero) por sede. Quien marca
+              en ese huellero aparece ahí en el organigrama del día.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {groupedSedes.map((sede) => {
@@ -194,7 +194,7 @@ export function AsistenciaOrgConfigDialog({
                   <div key={sede} className="flex gap-2 items-center">
                     <span className="text-sm w-28 shrink-0 truncate" title={sede}>{sede}</span>
                     <Input
-                      placeholder="Código Buk (ej. Petmax)"
+                      placeholder="obra_id (ej. 24734)"
                       value={map?.bukRecintoCode ?? ''}
                       onChange={(e) => {
                         const code = e.target.value;

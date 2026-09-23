@@ -1,6 +1,7 @@
 import type { BukAsistenciaRecord } from '../types/asistencia';
 import { sanitizeBukBaseUrl, normalizeBukToken } from './bukAsistenciaApi';
 import { formatDayKey } from './asistenciaData';
+import { normalizeBukAsistenciaRecords } from './bukAsistenciaRegistro';
 
 /** @deprecated Ya no se usa para invalidar; se mantiene por compatibilidad de imports. */
 export const BUK_ASISTENCIA_CACHE_TTL_MS = Number.POSITIVE_INFINITY;
@@ -42,8 +43,12 @@ export function mergeBukAsistenciaRecords(
   incoming: BukAsistenciaRecord[]
 ): BukAsistenciaRecord[] {
   const map = new Map<string, BukAsistenciaRecord>();
-  for (const r of existing) map.set(bukRecordMergeKey(r), r);
-  for (const r of incoming) map.set(bukRecordMergeKey(r), r);
+  for (const r of normalizeBukAsistenciaRecords(existing)) {
+    map.set(bukRecordMergeKey(r), r);
+  }
+  for (const r of normalizeBukAsistenciaRecords(incoming)) {
+    map.set(bukRecordMergeKey(r), r);
+  }
   return [...map.values()];
 }
 
@@ -86,7 +91,10 @@ export function loadBukAsistenciaCache(input: {
     const parsed = JSON.parse(raw) as BukAsistenciaCachePayload;
     if (!parsed?.fetchedAt || !Array.isArray(parsed.records)) return null;
     // Sin TTL: el historial completo vive en MySQL; local es working set.
-    return parsed;
+    return {
+      ...parsed,
+      records: normalizeBukAsistenciaRecords(parsed.records),
+    };
   } catch {
     return null;
   }

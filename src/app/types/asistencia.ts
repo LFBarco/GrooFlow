@@ -334,6 +334,11 @@ export interface BukAsistenciaRecord {
   apellido_materno?: string;
   apellido_paterno?: string;
   id_recinto?: number;
+  /**
+   * ID único del recinto/huellero en Ctrlit (`obra_id` en obtenerRegistroAsistencia).
+   * Es la clave para ubicar a la persona en el organigrama del día.
+   */
+  obra_id?: number;
   nombre_recinto?: string;
   codigo_recinto?: string;
   rut_empleador?: string;
@@ -352,6 +357,8 @@ export interface BukAsistenciaRecord {
   art22?: boolean;
   turno?: string;
   codigo_turno?: string;
+  /** Dispositivo/origen de la marca (si viene de registro de asistencia). */
+  dispositivo?: string;
 }
 
 export interface BukAsistenciaPagination {

@@ -646,15 +646,16 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           </div>
           {editSede ? (
             <div className="mt-4 space-y-2">
-              <Label className="text-slate-400 text-xs">Código recinto Buk</Label>
+              <Label className="text-slate-400 text-xs">ID huellero Buk (obra_id)</Label>
               <Input
                 value={bukCode}
                 onChange={(e) => setBukCode(e.target.value)}
-                placeholder="Ej. Petmax o Petmax · Petmax Principal"
+                placeholder="Ej. 24734"
                 className="max-w-md bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               />
               <p className="text-[11px] text-slate-500">
-                Puedes pegar el código solo (Petmax) o la etiqueta completa del diagnóstico.
+                Es el <span className="text-foreground font-medium">obra_id</span> del huellero en Ctrlit
+                (obtenerRegistroAsistencia / id_recinto). Quien marca ahí aparece en esta sede del organigrama.
               </p>
             </div>
           ) : null}
@@ -665,21 +666,23 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
         <CardHeader className="pb-2">
           <CardTitle className="text-base text-foreground">Cómo evitar duplicados</CardTitle>
           <CardDescription className="text-slate-400">
-            Esta sede es la base de control de calidad. El huellero se vincula con el código Buk, no creando otra sede.
+            Esta sede es la base de control de calidad. El huellero se vincula con el{' '}
+            <span className="text-foreground font-medium">obra_id</span>, no creando otra sede.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <ol className="list-decimal list-inside space-y-1.5">
             <li>
-              Guarda un único <span className="text-foreground font-medium">código recinto Buk</span> en esta sede
-              (arriba, al editar).
+              Guarda el <span className="text-foreground font-medium">ID huellero (obra_id)</span> en esta sede
+              (arriba, al editar), p. ej. <code className="text-xs">24734</code>.
             </li>
             <li>
               Importa o sincroniza personal desde <span className="text-foreground font-medium">Colaboradores (Buk.pe)</span> con{' '}
-              <span className="text-foreground font-medium">RUT</span>: si ya existe, se actualiza el mismo registro (no se crea otro).
+              <span className="text-foreground font-medium">RUT/DNI</span>: si ya existe, se actualiza el mismo registro (no se crea otro).
             </li>
             <li>
-              No crees una sede nueva solo porque el huellero tiene otro nombre: usa el mapeo Buk en esta misma sede.
+              En el organigrama en vivo, la persona aparece donde <span className="text-foreground font-medium">marcó hoy</span>{' '}
+              (huellero), aunque su sede base sea otra (centro de costo).
             </li>
           </ol>
           {(diagnosis.withoutRut.length > 0 || diagnosis.duplicateNameGroups.length > 0) && (

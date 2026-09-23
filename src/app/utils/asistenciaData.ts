@@ -112,9 +112,14 @@ export function personFullName(r: BukAsistenciaRecord): string {
   return [r.nombre, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ').trim();
 }
 
-/** Etiqueta legible del recinto Buk (código · nombre), como en el diagnóstico. */
+/** Etiqueta legible del recinto Buk (código · nombre · obra_id), como en el diagnóstico. */
 export function formatBukRecintoLabel(r: BukAsistenciaRecord): string {
-  return [r.codigo_recinto, r.nombre_recinto].filter(Boolean).join(' · ').trim();
+  const obra = r.obra_id ?? r.id_recinto;
+  const parts = [r.codigo_recinto, r.nombre_recinto];
+  if (obra != null && String(obra) !== String(r.codigo_recinto ?? '').trim()) {
+    parts.push(`obra:${obra}`);
+  }
+  return parts.filter(Boolean).join(' · ').trim();
 }
 
 function normalizeRecintoKey(raw: string): string {
@@ -126,10 +131,24 @@ function normalizeRecintoKey(raw: string): string {
     .trim();
 }
 
-/** Cruza código configurado con codigo_recinto, nombre_recinto o etiqueta combinada. */
+/**
+ * Cruza código configurado con:
+ * - obra_id / id_recinto (ID único del huellero — preferido)
+ * - codigo_recinto, nombre_recinto o etiqueta combinada
+ */
 export function matchesBukRecintoConfig(configuredCode: string, r: BukAsistenciaRecord): boolean {
   const config = configuredCode.trim();
   if (!config) return false;
+
+  const obraId = r.obra_id ?? r.id_recinto;
+  if (obraId != null && String(obraId) === config.replace(/\s+/g, '')) {
+    return true;
+  }
+  // Acepta "obra:24734" pegado desde diagnóstico.
+  const obraMatch = /^obra\s*[:=]?\s*(\d+)$/i.exec(config);
+  if (obraMatch && obraId != null && String(obraId) === obraMatch[1]) {
+    return true;
+  }
 
   const recintoCode = (r.codigo_recinto || '').trim();
   const recintoName = (r.nombre_recinto || '').trim();
