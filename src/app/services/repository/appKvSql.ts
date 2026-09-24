@@ -41,6 +41,16 @@ export function mergeSystemSettingsSqlAndKv(
     fromSql.asistencia?.sedeMappings,
     (m) => m.sedeName
   );
+  const costCenterSedeMappings = mergeByKey(
+    fromKv.asistencia?.costCenterSedeMappings,
+    fromSql.asistencia?.costCenterSedeMappings,
+    (m) => m.costCenterCode
+  );
+  const dispositivoSedeMappings = mergeByKey(
+    fromKv.asistencia?.dispositivoSedeMappings,
+    fromSql.asistencia?.dispositivoSedeMappings,
+    (m) => String(m.dispositivoId ?? '').trim().toUpperCase()
+  );
   const requirements = mergeByKey(
     fromKv.asistencia?.requirements,
     fromSql.asistencia?.requirements,
@@ -53,6 +63,8 @@ export function mergeSystemSettingsSqlAndKv(
     staff,
     sedeProfiles,
     sedeMappings,
+    costCenterSedeMappings,
+    dispositivoSedeMappings,
     requirements,
     buk: { ...fromKv.asistencia?.buk, ...fromSql.asistencia?.buk },
   });

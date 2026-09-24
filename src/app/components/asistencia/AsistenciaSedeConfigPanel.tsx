@@ -646,17 +646,20 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           </div>
           {editSede ? (
             <div className="mt-4 space-y-2">
-              <Label className="text-slate-400 text-xs">ID huellero Buk (obra_id)</Label>
+              <Label className="text-slate-400 text-xs">
+                ID dispositivo UDP/SPK (o obra_id)
+              </Label>
               <Input
                 value={bukCode}
                 onChange={(e) => setBukCode(e.target.value)}
-                placeholder="Ej. 24734"
+                placeholder="Ej. UDP3244900226 o 24734"
                 className="max-w-md bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               />
               <p className="text-[11px] text-slate-500">
                 Preferible el <span className="text-foreground font-medium">ID dispositivo</span> del
                 huellero (UDP…/SPK…, campo <code className="text-[10px]">dispositivo</code> en la API).
                 También acepta obra_id numérico. Quien marca ahí aparece en esta sede del organigrama.
+                Misma fuente que en «Estructura organizacional».
               </p>
             </div>
           ) : null}
@@ -668,14 +671,14 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           <CardTitle className="text-base text-foreground">Cómo evitar duplicados</CardTitle>
           <CardDescription className="text-slate-400">
             Esta sede es la base de control de calidad. El huellero se vincula con el{' '}
-            <span className="text-foreground font-medium">obra_id</span>, no creando otra sede.
+            <span className="text-foreground font-medium">ID dispositivo UDP/SPK (o obra_id)</span>, no creando otra sede.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <ol className="list-decimal list-inside space-y-1.5">
             <li>
-              Guarda el <span className="text-foreground font-medium">ID huellero (obra_id)</span> en esta sede
-              (arriba, al editar), p. ej. <code className="text-xs">24734</code>.
+              Guarda el <span className="text-foreground font-medium">ID dispositivo UDP/SPK (o obra_id)</span> en esta sede
+              (arriba, al editar), p. ej. <code className="text-xs">UDP3244900226</code> o <code className="text-xs">24734</code>.
             </li>
             <li>
               Importa o sincroniza personal desde <span className="text-foreground font-medium">Colaboradores (Buk.pe)</span> con{' '}
@@ -1287,9 +1290,11 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 ...prev,
                 requirements: next.requirements,
                 costCenterSedeMappings: next.costCenterSedeMappings,
+                dispositivoSedeMappings: next.dispositivoSedeMappings,
                 sedeMappings: next.sedeMappings ?? prev.sedeMappings,
+                sedeProfiles: next.sedeProfiles ?? prev.sedeProfiles,
               }),
-            'Dotación Buk y mapeos de sede guardados.'
+            'Plantilla y mapeos de sede guardados.'
           );
         }}
       />

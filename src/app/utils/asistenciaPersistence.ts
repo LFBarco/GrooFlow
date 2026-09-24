@@ -24,6 +24,7 @@ export function asistenciaSettingsHasContent(
     (partial.sedeProfiles?.length ?? 0) > 0 ||
     (partial.sedeMappings?.length ?? 0) > 0 ||
     (partial.costCenterSedeMappings?.length ?? 0) > 0 ||
+    (partial.dispositivoSedeMappings?.length ?? 0) > 0 ||
     (partial.requirements?.length ?? 0) > 0 ||
     partial.buk?.enabled === true ||
     !!(partial.buk?.apiToken?.trim())
@@ -50,6 +51,11 @@ export function resolveAsistenciaSettings(
     fromDedicated.costCenterSedeMappings,
     (m) => m.costCenterCode
   );
+  const dispositivoSedeMappings = mergeByKey(
+    fromLegacy.dispositivoSedeMappings,
+    fromDedicated.dispositivoSedeMappings,
+    (m) => String(m.dispositivoId ?? '').trim().toUpperCase()
+  );
   const requirements = mergeByKey(fromLegacy.requirements, fromDedicated.requirements, (r) => r.id);
 
   return mergeAsistenciaSettings({
@@ -59,6 +65,7 @@ export function resolveAsistenciaSettings(
     sedeProfiles,
     sedeMappings,
     costCenterSedeMappings,
+    dispositivoSedeMappings,
     requirements,
     buk: { ...fromLegacy.buk, ...fromDedicated.buk },
   });
@@ -101,6 +108,9 @@ export function patchAsistenciaSettings(
     costCenterSedeMappings: Array.isArray(patch.costCenterSedeMappings)
       ? next.costCenterSedeMappings
       : base.costCenterSedeMappings,
+    dispositivoSedeMappings: Array.isArray(patch.dispositivoSedeMappings)
+      ? next.dispositivoSedeMappings
+      : base.dispositivoSedeMappings,
     requirements:
       Array.isArray(patch.requirements) && patch.requirements.length > 0
         ? next.requirements

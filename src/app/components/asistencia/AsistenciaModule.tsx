@@ -164,6 +164,9 @@ export function AsistenciaModule({
   const [documentVisible, setDocumentVisible] = useState(
     () => typeof document === 'undefined' || !document.hidden
   );
+  const [lastAutoRefreshAtLocal, setLastAutoRefreshAtLocal] = useState<string | null>(
+    () => asistencia.buk?.lastAutoRefreshAt ?? null
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -235,8 +238,7 @@ export function AsistenciaModule({
   }, [selectedDate, trendDaysCount, moduleReady, bukEnabled, hydrateHistoryRange]);
   const weekLabel = useMemo(() => weekRangeLabel(dateObj), [dateObj]);
 
-  const dashboardUsesMulti =
-    dashboardMultiSede || (liveViewMode === 'consolidated' && mainTab === 'dashboard');
+  const dashboardUsesMulti = dashboardMultiSede;
 
   const liveSummary = useMemo(() => {
     if (mainTab !== 'live' || liveViewMode !== 'single') return undefined;
@@ -580,14 +582,9 @@ export function AsistenciaModule({
   const refresh = useCallback(
     async (opts?: { silent?: boolean; source?: 'manual' | 'auto'; skipStaffCheck?: boolean }) => {
       const source = opts?.source ?? 'manual';
-      if (!opts?.skipStaffCheck) {
-        if (mainTab === 'live' && !hasAnyStaff) {
-          toast.error('Registra personal en al menos una sede para el organigrama en vivo.');
-          setMainTab('config');
-          return;
-        }
-        // No bloquear por sede activa vacía: quien cubre desde otra base
-        // solo aparece tras cargar marcaciones (staffForSedeLive).
+      // Siempre permite actualizar marcaciones; solo avisa si el organigrama no tiene plantilla.
+      if (!opts?.skipStaffCheck && mainTab === 'live' && !hasAnyStaff) {
+        toast.message('Marcaciones OK, pero el organigrama necesita personal en Configuración de sede.');
       }
       const result = await refreshBuk({
         activeSede,
@@ -604,17 +601,8 @@ export function AsistenciaModule({
         });
         setSnapshots(listAsistenciaSnapshots());
         if (source === 'auto') {
-          void saveAsistencia(
-            (prev) => ({
-              ...prev,
-              buk: {
-                ...prev.buk,
-                lastAutoRefreshAt: new Date().toISOString(),
-              },
-            }),
-            undefined,
-            { silentFail: true }
-          );
+          // Solo memoria de sesión: evita PUT settings (403) en cada tick.
+          setLastAutoRefreshAtLocal(new Date().toISOString());
         }
       }
     },
@@ -625,7 +613,7 @@ export function AsistenciaModule({
       dateObj,
       refreshBuk,
       sedeOptions,
-      saveAsistencia,
+      asistencia,
     ]
   );
 
@@ -799,7 +787,7 @@ export function AsistenciaModule({
           </div>
           <Button variant="secondary" onClick={() => void refresh()} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-            {loading && fetchProgress ? fetchProgress : 'Actualizar Buk'}
+            {loading && fetchProgress ? fetchProgress : 'Actualizar marcaciones'}
           </Button>
           {bukEnabled ? (
             <Button
@@ -897,7 +885,13 @@ export function AsistenciaModule({
               <span className="text-amber-600"> · última descarga Buk truncada</span>
             ) : null}
             {asistencia.buk?.autoRefreshEnabled ? (
-              <> · auto-refresh cada {asistencia.buk.autoRefreshIntervalMinutes ?? 30} min</>
+              <>
+                {' '}
+                · auto-refresh cada {asistencia.buk.autoRefreshIntervalMinutes ?? 30} min
+                {lastAutoRefreshAtLocal ? (
+                  <> · último {cacheAgeLabel(new Date(lastAutoRefreshAtLocal).getTime())}</>
+                ) : null}
+              </>
             ) : null}
           </p>
         ) : null}
@@ -957,14 +951,14 @@ export function AsistenciaModule({
       <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as 'live' | 'dashboard' | 'config')}>
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/60 border border-border p-1 dark:bg-slate-900/80 dark:border-slate-800 sm:w-auto">
           <TabsTrigger value="live" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
-            <Users className="h-4 w-4 mr-1" /> Operativa en vivo
+            <Users className="h-4 w-4 mr-1" /> Hoy
           </TabsTrigger>
           <TabsTrigger value="dashboard" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
-            <LayoutDashboard className="h-4 w-4 mr-1" /> Dashboard Buk
+            <LayoutDashboard className="h-4 w-4 mr-1" /> Marcaciones
           </TabsTrigger>
           {canConfigure ? (
             <TabsTrigger value="config" data-testid="asistencia-tab-config" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">
-              <Settings2 className="h-4 w-4 mr-1" /> Configuración sede
+              <Settings2 className="h-4 w-4 mr-1" /> Plantilla
             </TabsTrigger>
           ) : null}
         </TabsList>
@@ -986,7 +980,7 @@ export function AsistenciaModule({
           {records.length === 0 && !loading ? (
             <Card className="border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-950/50">
               <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                Pulsa «Actualizar Buk» para cargar marcaciones de{' '}
+                Pulsa «Actualizar marcaciones» para cargar datos de{' '}
                 {format(dateObj, "d 'de' MMMM", { locale: es })}. El organigrama mostrará ausentes en rojo.
               </CardContent>
             </Card>
@@ -1062,7 +1056,7 @@ export function AsistenciaModule({
                   ? consolidatedSummary.sedes.some((s) => s.bukRecintosOnDate.length > 0)
                   : (liveSummary?.bukRecintosOnDate.length ?? 0) > 0) ? (
                   <p className="text-xs text-muted-foreground">
-                    Revisa códigos recinto Buk en Configuración sede si el cruce falla.
+                    Revisa el ID dispositivo UDP/SPK (o obra_id) en Plantilla si el cruce falla.
                   </p>
                 ) : null}
               </CardContent>

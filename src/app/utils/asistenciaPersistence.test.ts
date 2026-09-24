@@ -83,4 +83,22 @@ describe('resolveAsistenciaSettings', () => {
       'Petmax · Petmax Principal'
     );
   });
+
+  it('fusiona dispositivoSedeMappings dedicados sobre legacy', () => {
+    const legacy = {
+      dispositivoSedeMappings: [{ dispositivoId: 'UDP111', sedeName: 'Vieja' }],
+      requirements: [],
+    };
+    const dedicated = {
+      dispositivoSedeMappings: [{ dispositivoId: 'UDP3244900226', sedeName: 'La Molina' }],
+      requirements: [],
+    };
+    const resolved = resolveAsistenciaSettings(dedicated, legacy);
+    expect(resolved.dispositivoSedeMappings).toEqual(
+      expect.arrayContaining([
+        { dispositivoId: 'UDP111', sedeName: 'Vieja' },
+        { dispositivoId: 'UDP3244900226', sedeName: 'La Molina' },
+      ])
+    );
+  });
 });
