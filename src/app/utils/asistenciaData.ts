@@ -15,7 +15,8 @@ import type {
   BukPunctualityStatus,
 } from '../types/asistencia';
 import { normalizeStaffShift } from './asistenciaShift';
-import { DEFAULT_DISPOSITIVO_SEDES } from './bukAsistenciaRegistro';
+import { DEFAULT_DISPOSITIVO_SEDES, normalizeDispositivoId } from './bukAsistenciaRegistro';
+import { normalizeSedeKey } from './gestionSedes';
 
 export const DEFAULT_ASISTENCIA_AREA_KEYWORDS: AsistenciaAreaKeywords = {
   medica: [
@@ -416,14 +417,33 @@ function recordMatchesSede(
   req: AsistenciaOrgRequirement,
   settings: AsistenciaSettings
 ): boolean {
-  const code = (req.bukRecintoCode || resolveBukCodeForSede(sedeName, settings) || '').trim();
-  const recintoName = (r.nombre_recinto || '').trim().toLowerCase();
-  const sedeLower = sedeName.trim().toLowerCase();
-  if (code && matchesBukRecintoConfig(code, r)) return true;
-  if (recintoName && (recintoName.includes(sedeLower) || sedeLower.includes(recintoName))) {
-    return true;
+  const sedeKey = normalizeSedeKey(sedeName);
+  if (!sedeKey) return false;
+
+  // Prioridad 1: ID dispositivo (misma fuente que el organigrama operativo).
+  const device = normalizeDispositivoId(r.dispositivo);
+  if (device) {
+    let deviceSede: string | undefined;
+    for (const row of settings.dispositivoSedeMappings ?? []) {
+      if (normalizeDispositivoId(row.dispositivoId) === device && row.sedeName?.trim()) {
+        deviceSede = row.sedeName.trim();
+        break;
+      }
+    }
+    if (!deviceSede) deviceSede = DEFAULT_DISPOSITIVO_SEDES[device];
+    // Dispositivo compartido San Borja/Memorial: sin sede base del staff, acepta ambas.
+    if (device === 'UDP3244800556') {
+      if (sedeKey === normalizeSedeKey('San Borja') || sedeKey === normalizeSedeKey('Memorial')) {
+        return true;
+      }
+    } else if (deviceSede && normalizeSedeKey(deviceSede) === sedeKey) {
+      return true;
+    }
   }
-  if (!code && !recintoName) return true;
+
+  // Prioridad 2: obra_id / código configurado en requisito o mapeo de sede.
+  const code = (req.bukRecintoCode || resolveBukCodeForSede(sedeName, settings) || '').trim();
+  if (code && matchesBukRecintoConfig(code, r)) return true;
   return false;
 }
 

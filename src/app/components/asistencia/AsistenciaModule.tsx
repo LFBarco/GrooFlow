@@ -32,6 +32,7 @@ import {
   cacheAgeLabel,
 } from '../../utils/bukAsistenciaCache';
 import { buildLiveConsolidatedSummary, buildLiveSedeSummary } from '../../utils/asistenciaStaff';
+import type { LiveOrgMode } from '../../utils/asistenciaSedeOperativa';
 import { buildBukDashboardSummary, buildBukMultiSedeDashboard, type BukDashboardRow } from '../../utils/asistenciaBukDashboard';
 import { fetchBukPeOrgLookupByRut, type BukPeOrgLookupEntry } from '../../utils/asistenciaBukOrgLookup';
 import {
@@ -147,6 +148,7 @@ export function AsistenciaModule({
   } = useAsistenciaModuleState(asistenciaRaw);
   const [mainTab, setMainTab] = useState<'live' | 'dashboard' | 'config'>('live');
   const [liveViewMode, setLiveViewMode] = useState<'single' | 'consolidated'>('single');
+  const [liveOrgMode, setLiveOrgMode] = useState<LiveOrgMode>('operativo');
   const [dashboardMultiSede, setDashboardMultiSede] = useState(false);
   const [showPlanVsReal, setShowPlanVsReal] = useState(false);
   const [filters, setFilters] = useState(defaultAsistenciaFilters);
@@ -249,8 +251,9 @@ export function AsistenciaModule({
       date: dateObj,
       shiftFilter,
       visibleSedes: sedeOptions,
+      orgMode: liveOrgMode,
     });
-  }, [mainTab, liveViewMode, activeSede, asistencia, records, dateObj, shiftFilter, sedeOptions]);
+  }, [mainTab, liveViewMode, activeSede, asistencia, records, dateObj, shiftFilter, sedeOptions, liveOrgMode]);
 
   const consolidatedSummary = useMemo(() => {
     if (mainTab !== 'live' || liveViewMode !== 'consolidated') {
@@ -269,8 +272,9 @@ export function AsistenciaModule({
       date: dateObj,
       shiftFilter,
       visibleSedes: sedeOptions,
+      orgMode: liveOrgMode,
     });
-  }, [mainTab, liveViewMode, sedeOptions, asistencia, records, dateObj, shiftFilter]);
+  }, [mainTab, liveViewMode, sedeOptions, asistencia, records, dateObj, shiftFilter, liveOrgMode]);
 
   const filteredLiveSummary = useMemo(
     () => (liveSummary ? filterLiveSedeSummary(liveSummary, filters) : undefined),
@@ -850,6 +854,34 @@ export function AsistenciaModule({
                   </Button>
                 ))}
               </div>
+              <Button
+              type="button"
+              variant={liveOrgMode === 'operativo' ? 'default' : 'outline'}
+              size="sm"
+              className={
+                liveOrgMode === 'operativo'
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-0'
+                  : 'border-border text-foreground bg-background dark:border-slate-600 dark:text-slate-200 dark:bg-slate-900/60'
+              }
+              onClick={() => setLiveOrgMode('operativo')}
+              title="Organigrama según huellero del día"
+            >
+              Operativo
+            </Button>
+            <Button
+              type="button"
+              variant={liveOrgMode === 'base' ? 'default' : 'outline'}
+              size="sm"
+              className={
+                liveOrgMode === 'base'
+                  ? 'bg-slate-700 hover:bg-slate-600 text-white border-0'
+                  : 'border-border text-foreground bg-background dark:border-slate-600 dark:text-slate-200 dark:bg-slate-900/60'
+              }
+              onClick={() => setLiveOrgMode('base')}
+              title="Organigrama por sede base Buk.pe"
+            >
+              Organigrama base
+            </Button>
               <Button
               type="button"
               variant={liveViewMode === 'consolidated' ? 'default' : 'outline'}

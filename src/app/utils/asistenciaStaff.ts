@@ -36,8 +36,10 @@ import {
   findBukRecordForStaffAnySede,
   indexBukRecordsForDate,
   resolveEffectiveSedeForLive,
+  resolveSedeNameFromBukRecinto,
   staffSedeBase,
   type BukRecordsByRut,
+  type LiveOrgMode,
 } from './asistenciaSedeOperativa';
 import { normalizeSedeKey } from './gestionSedes';
 
@@ -74,50 +76,25 @@ function entradaMinutes(record?: BukAsistenciaRecord): number | null {
   return null;
 }
 
-const SEDE_STOPWORDS = new Set(['la', 'el', 'los', 'las', 'de', 'del', 'y', 'san', 'santa']);
-
-function sedeMatchTokens(sedeName: string): string[] {
-  return sedeName
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .split(/[\s\-_./]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 3 && !SEDE_STOPWORDS.has(t));
-}
-
-function haystackIncludesToken(haystack: string, token: string): boolean {
-  const h = haystack.toLowerCase();
-  return h.includes(token) || token.includes(h);
-}
-
 function recordMatchesSede(
   r: BukAsistenciaRecord,
   sedeName: string,
   profile: AsistenciaSedeProfile | undefined,
   settings: AsistenciaSettings
 ): boolean {
+  const sedeKey = normalizeSedeKey(sedeName);
+  if (!sedeKey) return false;
+
+  const fromPunch = resolveSedeNameFromBukRecinto(r, settings, undefined, undefined);
+  if (fromPunch && normalizeSedeKey(fromPunch) === sedeKey) return true;
+
   const code = (
     profile?.bukRecintoCode ??
     settings.sedeMappings?.find((m) => m.sedeName === sedeName)?.bukRecintoCode ??
     ''
   ).trim();
-  const recintoCode = (r.codigo_recinto || '').trim().toLowerCase();
-  const recintoName = (r.nombre_recinto || '').trim().toLowerCase();
-  const sedeLower = (sedeName ?? '').trim().toLowerCase();
-
   if (code && matchesBukRecintoConfig(code, r)) return true;
-  if (recintoName && (recintoName.includes(sedeLower) || sedeLower.includes(recintoName))) {
-    return true;
-  }
-
-  const tokens = sedeMatchTokens(sedeName);
-  if (tokens.length > 0) {
-    const hay = `${recintoCode} ${recintoName}`;
-    if (tokens.some((t) => haystackIncludesToken(hay, t))) return true;
-  }
-
-  return !code && !recintoName;
+  return false;
 }
 
 function recordMatchesStaff(r: BukAsistenciaRecord, staff: AsistenciaStaffMember): boolean {
@@ -305,8 +282,8 @@ export function staffForSede(
 }
 
 /**
- * Personal que debe verse en el organigrama en vivo de esta sede:
- * sede efectiva = huellero del día (si marcó) o sede base (centro de costo).
+ * Personal en el organigrama en vivo de esta sede.
+ * @param orgMode `operativo` = donde marcó; `base` = sede Buk.pe.
  */
 export function staffForSedeLive(
   settings: AsistenciaSettings,
@@ -315,7 +292,8 @@ export function staffForSedeLive(
   date: Date,
   shiftFilter: AsistenciaShiftFilter = 'all',
   visibleSedes?: string[],
-  recordsByRut?: BukRecordsByRut
+  recordsByRut?: BukRecordsByRut,
+  orgMode: LiveOrgMode = 'operativo'
 ): AsistenciaStaffMember[] {
   const merged = mergeAsistenciaSettings(settings);
   const sedeKey = normalizeSedeKey(sedeName);
@@ -323,7 +301,15 @@ export function staffForSedeLive(
   return (merged.staff ?? [])
     .filter((s) => staffMatchesShiftFilter(s, shiftFilter, date))
     .filter((s) => {
-      const eff = resolveEffectiveSedeForLive(s, records, date, merged, visibleSedes, byRut);
+      const eff = resolveEffectiveSedeForLive(
+        s,
+        records,
+        date,
+        merged,
+        visibleSedes,
+        byRut,
+        orgMode
+      );
       return normalizeSedeKey(eff.effectiveSede) === sedeKey;
     })
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.fullName.localeCompare(b.fullName));
@@ -361,8 +347,10 @@ export function buildLiveSedeSummary(input: {
   shiftFilter?: AsistenciaShiftFilter;
   visibleSedes?: string[];
   recordsByRut?: BukRecordsByRut;
+  orgMode?: LiveOrgMode;
 }): AsistenciaLiveSedeSummary {
   const shiftFilter = input.shiftFilter ?? 'all';
+  const orgMode = input.orgMode ?? 'operativo';
   const settings = mergeAsistenciaSettings(input.settings);
   const profile = getSedeProfile(settings, input.sedeName);
   const recordsByRut = input.recordsByRut ?? indexBukRecordsForDate(input.records, input.date);
@@ -373,7 +361,8 @@ export function buildLiveSedeSummary(input: {
     input.date,
     shiftFilter,
     input.visibleSedes,
-    recordsByRut
+    recordsByRut,
+    orgMode
   );
 
   const liveStates: AsistenciaStaffLiveState[] = staffList.map((staff) => {
@@ -383,17 +372,33 @@ export function buildLiveSedeSummary(input: {
       input.date,
       settings,
       input.visibleSedes,
-      recordsByRut
+      recordsByRut,
+      orgMode
     );
-    // Status según marcación real (cualquier recinto); ya filtramos por sede efectiva.
     const buk = eff.record ?? findBukRecordForStaffAnySede(staff, input.records, input.date, recordsByRut);
     const live = resolveLiveStatus(staff, buk, input.date);
     let statusNote = live.statusNote;
-    if (eff.coveringFromBase && eff.sedeBase) {
-      const coverNote = `Cubre desde ${eff.sedeBase}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
+    if (orgMode === 'operativo' && eff.coveringFromBase && eff.sedeBase) {
+      const coverNote = `Base: ${eff.sedeBase}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
       statusNote = statusNote ? `${coverNote}. ${statusNote}` : coverNote;
+    } else if (
+      orgMode === 'base' &&
+      eff.punchedAwayFromBase &&
+      eff.sedeOperativaHoy
+    ) {
+      const hoyNote = `Hoy en ${eff.sedeOperativaHoy}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
+      statusNote = statusNote ? `${hoyNote}. ${statusNote}` : hoyNote;
+    } else if (
+      orgMode === 'operativo' &&
+      !eff.coveringFromBase &&
+      eff.punchedAwayFromBase &&
+      eff.sedeOperativaHoy &&
+      normalizeSedeKey(eff.sedeOperativaHoy) !== normalizeSedeKey(eff.sedeBase)
+    ) {
+      // Petmovil/Central: permanece en base pero marcó en otro lado.
+      const hoyNote = `Marcó en ${eff.sedeOperativaHoy}`;
+      statusNote = statusNote ? `${hoyNote}. ${statusNote}` : hoyNote;
     }
-    // Diagnóstico completo es O(records); solo con caché chica para no congelar el módulo.
     const matchHint =
       live.status === 'ausente' &&
       !statusNote &&
@@ -548,6 +553,7 @@ export function buildLiveConsolidatedSummary(input: {
   date: Date;
   shiftFilter?: AsistenciaShiftFilter;
   visibleSedes?: string[];
+  orgMode?: LiveOrgMode;
 }): AsistenciaLiveConsolidatedSummary {
   const recordsByRut = indexBukRecordsForDate(input.records, input.date);
   const sedes = input.sedeNames.map((sedeName) =>
@@ -559,6 +565,7 @@ export function buildLiveConsolidatedSummary(input: {
       shiftFilter: input.shiftFilter,
       visibleSedes: input.visibleSedes ?? input.sedeNames,
       recordsByRut,
+      orgMode: input.orgMode ?? 'operativo',
     })
   );
   return {

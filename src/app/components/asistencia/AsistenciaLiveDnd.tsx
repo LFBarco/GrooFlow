@@ -107,7 +107,12 @@ function DraggableStaffCard({
       coveringLabel={
         live.coveringFromBase && live.sedeBase
           ? `Base: ${live.sedeBase}`
-          : undefined
+          : live.sedeOperativaHoy &&
+              live.sedeBase &&
+              live.sedeOperativaHoy !== live.sedeBase &&
+              !live.coveringFromBase
+            ? `Hoy: ${live.sedeOperativaHoy}`
+            : undefined
       }
       shiftLabel={shiftLabelForStaff(live.staff, viewDate)}
       editLayout={editLayout}
@@ -540,7 +545,12 @@ export function AsistenciaLiveSedeBlock({
               coveringLabel={
                 summary.manager.coveringFromBase && summary.manager.sedeBase
                   ? `Base: ${summary.manager.sedeBase}`
-                  : undefined
+                  : summary.manager.sedeOperativaHoy &&
+                      summary.manager.sedeBase &&
+                      summary.manager.sedeOperativaHoy !== summary.manager.sedeBase &&
+                      !summary.manager.coveringFromBase
+                    ? `Hoy: ${summary.manager.sedeOperativaHoy}`
+                    : undefined
               }
               shiftLabel={shiftLabelForStaff(summary.manager.staff, viewDate)}
               onClick={!editLayout && onStaffClick ? () => onStaffClick(summary.manager!) : undefined}
