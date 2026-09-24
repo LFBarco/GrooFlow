@@ -104,15 +104,42 @@ export function staffSedeBase(
 function rutMatchKey(raw?: string): string {
   const n = (raw ?? '').replace(/[.\-\s]/g, '').toUpperCase();
   if (!n) return '';
-  if (/^\d{7,8}$/.test(n)) return n;
-  if (/^\d{7,8}[0-9K]$/.test(n)) return n.slice(0, -1);
-  return n;
+  let body = n;
+  if (/^\d{7,8}[0-9K]$/.test(n)) body = n.slice(0, -1);
+  else if (!/^\d+$/.test(n)) return n;
+  const stripped = body.replace(/^0+/, '');
+  return stripped.length >= 6 ? stripped : body;
 }
 
 function rutsMatch(a?: string, b?: string): boolean {
   const x = rutMatchKey(a);
   const y = rutMatchKey(b);
   return Boolean(x && y && x === y);
+}
+
+function normalizePersonName(raw?: string | null): string {
+  return String(raw ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function staffNameMatchesRecord(staff: AsistenciaStaffMember, r: BukAsistenciaRecord): boolean {
+  const staffName = normalizePersonName(staff.fullName);
+  if (staffName.length < 5) return false;
+  const bukName = normalizePersonName(
+    [r.nombre, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ')
+  );
+  if (!bukName) return false;
+  if (staffName === bukName) return true;
+  if (bukName.includes(staffName) || staffName.includes(bukName)) return true;
+  const staffParts = staffName.split(' ').filter((p) => p.length >= 3);
+  const bukParts = new Set(bukName.split(' ').filter((p) => p.length >= 3));
+  if (staffParts.length < 2) return false;
+  return staffParts.filter((p) => bukParts.has(p)).length >= 2;
 }
 
 /** Índice RUT → marcaciones del día (evita O(staff × records) en el vivo). */
@@ -219,7 +246,7 @@ export function resolveSedeNameFromBukRecinto(
   return undefined;
 }
 
-/** Marcación del día por RUT (sin filtrar sede); prioriza con entrada marcada. */
+/** Marcación del día por RUT (o nombre si falta RUT); prioriza con entrada marcada. */
 export function findBukRecordForStaffAnySede(
   staff: AsistenciaStaffMember,
   records: BukAsistenciaRecord[],
@@ -227,16 +254,27 @@ export function findBukRecordForStaffAnySede(
   recordsByRut?: BukRecordsByRut
 ): BukAsistenciaRecord | undefined {
   const key = rutMatchKey(staff.rut);
-  const candidates =
-    recordsByRut && key
-      ? recordsByRut.get(key) ?? []
-      : records.filter(
-          (r) => isRecordOnDate(r, date) && rutsMatch(staff.rut, r.rut_trabajador)
-        );
-  const onDate = candidates.filter((r) => recordMatchesStaffShift(r, staff, date));
-  if (onDate.length === 0) return undefined;
-  const withEntrada = onDate.filter((r) => hasBukEntradaMarcada(r));
-  const pool = withEntrada.length > 0 ? withEntrada : onDate;
+  let candidates: BukAsistenciaRecord[] = [];
+  if (key && recordsByRut) {
+    candidates = recordsByRut.get(key) ?? [];
+  } else if (key) {
+    candidates = records.filter(
+      (r) => isRecordOnDate(r, date) && rutsMatch(staff.rut, r.rut_trabajador)
+    );
+  }
+  // Sin RUT en ficha o sin hit: intenta por nombre (Iris Quintero, etc.).
+  if (candidates.length === 0) {
+    candidates = records.filter(
+      (r) => isRecordOnDate(r, date) && staffNameMatchesRecord(staff, r)
+    );
+  }
+
+  // Preferir mismo turno; si no hay, usar cualquier marcación del día (asistencia operativa).
+  const shiftMatched = candidates.filter((r) => recordMatchesStaffShift(r, staff, date));
+  const pool0 = shiftMatched.length > 0 ? shiftMatched : candidates;
+  if (pool0.length === 0) return undefined;
+  const withEntrada = pool0.filter((r) => hasBukEntradaMarcada(r));
+  const pool = withEntrada.length > 0 ? withEntrada : pool0;
   return [...pool].sort((a, b) => {
     const ta = a.entrada_format || a.entrada || '';
     const tb = b.entrada_format || b.entrada || '';

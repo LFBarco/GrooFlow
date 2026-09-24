@@ -84,6 +84,17 @@ export function normalizeBukAsistenciaRecord(
   const dispositivo = normalizeDispositivoId(
     String(r.dispositivo ?? (r as { dispositivoId?: string }).dispositivoId ?? '')
   );
+  const diaRaw = r.dia_entrada != null ? String(r.dia_entrada) : '';
+  const diaNorm =
+    (() => {
+      // Inline light normalize to avoid circular import issues at module init.
+      const s = diaRaw.trim();
+      const dmy = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(s);
+      if (dmy) return `${dmy[1]!.padStart(2, '0')}/${dmy[2]!.padStart(2, '0')}/${dmy[3]}`;
+      const ymd = /^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/.exec(s);
+      if (ymd) return `${ymd[3]!.padStart(2, '0')}/${ymd[2]!.padStart(2, '0')}/${ymd[1]}`;
+      return diaRaw || undefined;
+    })();
 
   return {
     ...(r as BukAsistenciaRecord),
@@ -96,6 +107,7 @@ export function normalizeBukAsistenciaRecord(
     codigo_recinto: codigo,
     nombre_recinto: r.nombre_recinto ? String(r.nombre_recinto) : r.nombre_recinto,
     dispositivo: dispositivo || undefined,
+    dia_entrada: diaNorm,
   };
 }
 
@@ -182,12 +194,14 @@ export function aggregateRegistroAsistenciaPunches(
       }
     } else if (sentido === 'salida') {
       if (!acc.salidaIso || iso > acc.salidaIso) acc.salidaIso = iso;
-    } else if (!acc.entradaIso) {
-      acc.entradaIso = iso;
-      if (device) acc.dispositivo = device;
-      acc.obra_id = obra;
-    } else if (!acc.salidaIso || iso > acc.salidaIso) {
-      acc.salidaIso = iso;
+    } else {
+      // Sin sentido: primera marca = entrada. No inventar salida (evita “todos ausentes”).
+      if (!acc.entradaIso || iso < acc.entradaIso) {
+        acc.entradaIso = iso;
+        if (device) acc.dispositivo = device;
+        acc.obra_id = obra;
+      }
+      // Marcas posteriores sin sentido se ignoran para salida.
     }
     if (!acc.dispositivo && device) acc.dispositivo = device;
   }

@@ -49,20 +49,50 @@ function normalizeRut(raw?: string): string {
   return (raw ?? '').replace(/[.\-\s]/g, '').toUpperCase();
 }
 
-/** Cuerpo numérico del RUT (sin dígito verificador) para cruzar con Buk. */
+/** Cuerpo numérico del RUT/DNI (sin DV) para cruzar con Buk. */
 function rutMatchKey(raw?: string): string {
   const n = normalizeRut(raw);
   if (!n) return '';
-  // Buk suele enviar solo el cuerpo (7-8 dígitos), sin DV.
-  if (/^\d{7,8}$/.test(n)) return n;
-  if (/^\d{7,8}[0-9K]$/.test(n)) return n.slice(0, -1);
-  return n;
+  let body = n;
+  if (/^\d{7,8}[0-9K]$/.test(n)) body = n.slice(0, -1);
+  else if (!/^\d+$/.test(n)) return n;
+  // Quita ceros a la izquierda (Buk a veces manda DNI con padding).
+  const stripped = body.replace(/^0+/, '');
+  return stripped.length >= 6 ? stripped : body;
 }
 
 function rutsMatch(staffRut?: string, recordRut?: string): boolean {
   const a = rutMatchKey(staffRut);
   const b = rutMatchKey(recordRut);
-  return Boolean(a && b && a === b);
+  if (a && b && a === b) return true;
+  return false;
+}
+
+function normalizePersonName(raw?: string | null): string {
+  return String(raw ?? '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function staffNameMatchesRecord(staff: AsistenciaStaffMember, r: BukAsistenciaRecord): boolean {
+  const staffName = normalizePersonName(staff.fullName);
+  if (staffName.length < 5) return false;
+  const bukName = normalizePersonName(
+    [r.nombre, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ')
+  );
+  if (!bukName) return false;
+  if (staffName === bukName) return true;
+  // "iris quintero" ⊆ "iris maria quintero" o al revés
+  if (bukName.includes(staffName) || staffName.includes(bukName)) return true;
+  const staffParts = staffName.split(' ').filter((p) => p.length >= 3);
+  const bukParts = new Set(bukName.split(' ').filter((p) => p.length >= 3));
+  if (staffParts.length < 2) return false;
+  const hits = staffParts.filter((p) => bukParts.has(p));
+  return hits.length >= 2;
 }
 
 function entradaMinutes(record?: BukAsistenciaRecord): number | null {
@@ -212,17 +242,18 @@ function resolveLiveStatus(
   const entradaFormat =
     formatBukEntradaDisplay(record.entrada_format, record.entrada) ?? staff.expectedTime;
 
+  // Si ya marcó salida: sigue contando como asistencia del día (presente), no ausente.
   if (hasBukSalidaMarcadaOnDate(record, date)) {
     const salidaDisplay =
       formatBukSalidaDisplay(record.salida_format, record.salida) ??
       record.salida_format?.trim();
     return {
-      status: 'ausente',
+      status: 'presente',
       entradaFormat,
       stillOnSite: false,
       statusNote: salidaDisplay
-        ? `Marcó salida ${salidaDisplay} (mismo día)`
-        : 'Marcó salida el mismo día',
+        ? `Asistió · salida ${salidaDisplay}`
+        : 'Asistió · ya marcó salida',
     };
   }
 

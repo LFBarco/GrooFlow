@@ -176,8 +176,21 @@ export function mergeEmpresaWithRegistroDispositivo(
   registro: BukAsistenciaRecord[]
 ): BukAsistenciaRecord[] {
   const byKey = new Map<string, BukAsistenciaRecord>();
-  const keyOf = (r: BukAsistenciaRecord) =>
-    `${String(r.rut_trabajador ?? '').replace(/\D+/g, '')}|${r.dia_entrada ?? ''}`;
+  const keyOf = (r: BukAsistenciaRecord) => {
+    const rut = String(r.rut_trabajador ?? '').replace(/\D+/g, '').replace(/^0+/, '') || '';
+    const dia =
+      r.dia_entrada?.includes('/')
+        ? r.dia_entrada
+        : (() => {
+            const s = String(r.dia_entrada ?? '').trim();
+            const dmy = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(s);
+            if (dmy) return `${dmy[1]!.padStart(2, '0')}/${dmy[2]!.padStart(2, '0')}/${dmy[3]}`;
+            const ymd = /^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/.exec(s);
+            if (ymd) return `${ymd[3]!.padStart(2, '0')}/${ymd[2]!.padStart(2, '0')}/${ymd[1]}`;
+            return s;
+          })();
+    return `${rut}|${dia}`;
+  };
 
   for (const r of normalizeBukAsistenciaRecords(empresa)) {
     byKey.set(keyOf(r), r);

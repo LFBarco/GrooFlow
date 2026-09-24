@@ -8,6 +8,7 @@ import {
   formatBukEntradaDisplay,
   hasBukEntradaMarcada,
   hasBukSalidaMarcadaOnDate,
+  isRecordOnDate,
   mergeAsistenciaSettings,
   parseBukEntradaFormatMinutes,
 } from './asistenciaData';
@@ -92,15 +93,54 @@ describe('asistenciaData', () => {
       nombre: 'X',
       dia_entrada: '15/06/2026',
       entrada_format: '2026/06/15 08:00:00',
+      entrada: '2026-06-15T08:00:00',
       salida_format: '2026/06/15 17:00:00',
+      salida: '2026-06-15T17:00:00',
     };
     const date = new Date('2026-06-15T12:00:00');
     expect(hasBukSalidaMarcadaOnDate(record, date)).toBe(true);
     expect(
       hasBukSalidaMarcadaOnDate(
-        { ...record, salida_format: '-' },
+        { ...record, salida_format: '-', salida: null },
         date
       )
     ).toBe(false);
+    // Solo HH:mm sin timestamp de salida no cuenta (evita falsos ausentes).
+    expect(
+      hasBukSalidaMarcadaOnDate(
+        { ...record, salida_format: '17:30', salida: null },
+        date
+      )
+    ).toBe(false);
+  });
+
+  it('acepta dia_entrada con guiones o ISO', () => {
+    const date = new Date('2026-09-24T12:00:00');
+    expect(
+      isRecordOnDate(
+        {
+          id: 1,
+          trab_id: 1,
+          rut_trabajador: '1',
+          nombre: 'X',
+          dia_entrada: '24-09-2026',
+          entrada_format: '08:00',
+        },
+        date
+      )
+    ).toBe(true);
+    expect(
+      isRecordOnDate(
+        {
+          id: 1,
+          trab_id: 1,
+          rut_trabajador: '1',
+          nombre: 'X',
+          dia_entrada: '2026-09-24',
+          entrada: '2026-09-24T08:00:00',
+        },
+        date
+      )
+    ).toBe(true);
   });
 });

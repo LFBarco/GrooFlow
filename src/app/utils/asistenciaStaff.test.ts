@@ -361,7 +361,7 @@ describe('asistenciaStaff', () => {
     expect(live.areas[0]?.staff[0]?.status).toBe('trabajando');
   });
 
-  it('marca ausente si salida_format indica salida el mismo día', () => {
+  it('marca presente (asistió) si ya tiene salida el mismo día', () => {
     const staff: AsistenciaStaffMember = {
       id: 's1',
       sedeName: '50.- La Molina',
@@ -386,7 +386,9 @@ describe('asistenciaStaff', () => {
         codigo_recinto: 'Petmax',
         nombre_recinto: 'Petmax Principal',
         dia_entrada: '15/06/2026',
+        entrada: '2026-06-15T08:02:00',
         entrada_format: '2026/06/15 08:02:00',
+        salida: '2026-06-15T17:30:00',
         salida_format: '2026/06/15 17:30:00',
       },
     ];
@@ -397,8 +399,8 @@ describe('asistenciaStaff', () => {
       date: new Date('2026-06-15T12:00:00'),
     });
     expect(live.workingCount).toBe(0);
-    expect(live.absentCount).toBe(1);
-    expect(live.areas[0]?.staff[0]?.status).toBe('ausente');
+    expect(live.absentCount).toBe(0);
+    expect(live.areas[0]?.staff[0]?.status).toBe('presente');
     expect(live.areas[0]?.staff[0]?.statusNote).toMatch(/17:30/);
   });
 
@@ -573,5 +575,47 @@ describe('asistenciaStaff', () => {
     expect(atBase.areas.flatMap((a) => a.staff).map((s) => s.staff.id)).toContain('s-cover');
     const live = atBase.areas.flatMap((a) => a.staff).find((s) => s.staff.id === 's-cover');
     expect(live?.statusNote).toMatch(/Hoy en Benavides/i);
+  });
+
+  it('cruza Iris Quintero por nombre si el RUT de ficha falta', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 'iris',
+      sedeName: 'La Molina',
+      sedeBase: 'Magdalena',
+      fullName: 'Iris Quintero',
+      cargoLabel: 'Encargado de sede',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: true,
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      dispositivoSedeMappings: [{ dispositivoId: 'UDP3244900226', sedeName: 'La Molina' }],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '74619638',
+        nombre: 'IRIS',
+        apellido_paterno: 'QUINTERO',
+        dispositivo: 'UDP3244900226',
+        dia_entrada: '24/09/2026',
+        entrada: '2026-09-24T08:10:00',
+        entrada_format: '08:10',
+        salida: null,
+      },
+    ];
+    const liveSummary = buildLiveSedeSummary({
+      sedeName: 'La Molina',
+      settings,
+      records,
+      date: new Date(2026, 8, 24, 12, 0, 0),
+      visibleSedes: ['La Molina', 'Magdalena'],
+      orgMode: 'operativo',
+    });
+    const iris = liveSummary.areas.flatMap((a) => a.staff).find((s) => s.staff.id === 'iris');
+    expect(iris?.status).toBe('trabajando');
+    expect(iris?.entradaFormat).toBe('08:10');
   });
 });

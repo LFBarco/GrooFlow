@@ -217,7 +217,9 @@ export function matchesBukRecintoConfig(configuredCode: string, r: BukAsistencia
 
 export function parseBukDayEntrada(raw?: string): Date | null {
   if (!raw) return null;
-  const d = parse(raw.trim(), 'dd/MM/yyyy', new Date());
+  const key = normalizeDiaEntradaKey(raw);
+  if (!key) return null;
+  const d = parse(key, 'dd/MM/yyyy', new Date());
   return isValid(d) ? d : null;
 }
 
@@ -225,13 +227,35 @@ export function formatDayKey(date: Date): string {
   return format(date, 'dd/MM/yyyy');
 }
 
+/**
+ * Normaliza dia_entrada Buk a dd/MM/yyyy.
+ * Acepta 24/09/2026, 24-09-2026, 2026-09-24, etc.
+ */
+export function normalizeDiaEntradaKey(raw?: string | null): string | null {
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const dmy = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/.exec(s);
+  if (dmy) {
+    return `${dmy[1]!.padStart(2, '0')}/${dmy[2]!.padStart(2, '0')}/${dmy[3]}`;
+  }
+  const ymd = /^(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})$/.exec(s);
+  if (ymd) {
+    return `${ymd[3]!.padStart(2, '0')}/${ymd[2]!.padStart(2, '0')}/${ymd[1]}`;
+  }
+  return null;
+}
+
 export function isRecordOnDate(r: BukAsistenciaRecord, date: Date): boolean {
   const key = formatDayKey(date);
-  if (r.dia_entrada === key) return true;
+  const dia = normalizeDiaEntradaKey(r.dia_entrada);
+  if (dia && dia === key) return true;
   if (r.entrada) {
     const d = new Date(r.entrada);
     if (isValid(d) && formatDayKey(d) === key) return true;
   }
+  // entrada_format con fecha completa (yyyy/MM/dd HH:mm:ss)
+  const fromFmt = parseBukFormatDayKey(r.entrada_format);
+  if (fromFmt && fromFmt === key) return true;
   return false;
 }
 
@@ -366,21 +390,21 @@ export function isValidBukSalidaFormat(raw?: string | null): boolean {
   return parseBukEntradaFormatMinutes(fmt) != null;
 }
 
-/** Salida marcada el mismo día consultado (prioriza salida_format). */
+/** Salida marcada el mismo día consultado (prioriza evidencia con fecha). */
 export function hasBukSalidaMarcadaOnDate(r: BukAsistenciaRecord, date: Date): boolean {
   if (!isRecordOnDate(r, date)) return false;
   const dateKey = formatDayKey(date);
 
-  const fmt = r.salida_format?.trim();
-  if (fmt && !BUK_ENTRADA_FORMAT_EMPTY.has(fmt.toLowerCase())) {
-    const fmtDay = parseBukFormatDayKey(fmt);
-    if (fmtDay) return fmtDay === dateKey;
-    if (parseBukEntradaFormatMinutes(fmt) != null) return true;
-  }
-
   if (r.salida) {
     const d = new Date(r.salida);
     if (!Number.isNaN(d.getTime()) && formatDayKey(d) === dateKey) return true;
+  }
+
+  const fmt = r.salida_format?.trim();
+  if (fmt && !BUK_ENTRADA_FORMAT_EMPTY.has(fmt.toLowerCase())) {
+    const fmtDay = parseBukFormatDayKey(fmt);
+    // Solo HH:mm sin fecha: no basta (agregador siempre escribe HH:mm junto a salida ISO).
+    if (fmtDay) return fmtDay === dateKey;
   }
   return false;
 }
