@@ -143,4 +143,40 @@ describe('asistenciaData', () => {
       )
     ).toBe(true);
   });
+
+  it('dispositivo compartido SB/Memorial no cuenta presente dos veces en cobertura', () => {
+    const settings = mergeAsistenciaSettings({
+      requirements: [
+        ...buildDefaultRequirementsForSede('San Borja', '4040'),
+        ...buildDefaultRequirementsForSede('Memorial', '7070'),
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '111',
+        nombre: 'Ana',
+        apellido_paterno: 'Vet',
+        dispositivo: 'UDP3244800556',
+        area: 'MEDICOS VETERINARIOS',
+        especialidad: 'MEDICO VETERINARIO',
+        dia_entrada: '14/06/2026',
+        entrada: '2026-06-14T12:00:00',
+        entrada_format: '12:00',
+        salida: null,
+      },
+    ];
+    const summary = buildAsistenciaDaySummary({
+      date: new Date('2026-06-14T12:00:00'),
+      records,
+      settings,
+    });
+    const sb = summary.sedes.find((s) => s.sedeName === 'San Borja');
+    const mem = summary.sedes.find((s) => s.sedeName === 'Memorial');
+    const sbMedico = sb?.byArea.medica.find((c) => c.requirement.cargoLabel.includes('Médico'));
+    const memMedico = mem?.byArea.medica.find((c) => c.requirement.cargoLabel.includes('Médico'));
+    expect(sbMedico?.presentCount).toBe(1);
+    expect(memMedico?.presentCount ?? 0).toBe(0);
+  });
 });

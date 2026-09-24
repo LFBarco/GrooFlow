@@ -1,6 +1,7 @@
 import type { BukAsistenciaRecord } from '../types/asistencia';
 import { sanitizeBukBaseUrl, normalizeBukToken } from './bukAsistenciaApi';
 import { formatDayKey, hasBukEntradaMarcada, normalizeDiaEntradaKey } from './asistenciaData';
+import { asistenciaRutMatchKey } from './asistenciaRut';
 import { normalizeBukAsistenciaRecords } from './bukAsistenciaRegistro';
 
 /** @deprecated Ya no se usa para invalidar; se mantiene por compatibilidad de imports. */
@@ -32,24 +33,9 @@ function storageKey(baseUrl: string, apiToken: string): string {
   return `${STORAGE_PREFIX}${base}|${Math.abs(fp).toString(36)}`;
 }
 
-function rutBody(raw?: string | null): string {
-  const n = String(raw ?? '')
-    .replace(/[.\-\s]/g, '')
-    .toUpperCase();
-  if (!n) return '';
-  // DV explícito (termina en K) o cuerpo+DV de 9 chars (8 dígitos + DV numérico).
-  // No tratar DNI Perú de 8 dígitos como “7+DV”.
-  let body = n;
-  if (/^\d{7,8}K$/.test(n)) body = n.slice(0, -1);
-  else if (/^\d{8}[0-9]$/.test(n) && n.length === 9) body = n.slice(0, -1);
-  else if (!/^\d+$/.test(n)) return n;
-  const stripped = body.replace(/^0+/, '');
-  return stripped.length >= 6 ? stripped : body;
-}
-
 /** Clave estable persona+día (evita duplicar empresa vs registro por id distinto). */
 export function bukRecordRutDiaKey(r: BukAsistenciaRecord): string | null {
-  const rut = rutBody(r.rut_trabajador);
+  const rut = asistenciaRutMatchKey(r.rut_trabajador);
   const dia = normalizeDiaEntradaKey(r.dia_entrada) ?? (r.dia_entrada ?? '').trim();
   if (!rut || !dia) return null;
   return `rd:${rut}|${dia}`;

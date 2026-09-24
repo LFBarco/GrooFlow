@@ -201,11 +201,9 @@ export function matchesBukRecintoConfig(configuredCode: string, r: BukAsistencia
   if (parts.length >= 2) {
     const [codePart, ...nameParts] = parts;
     const namePart = nameParts.join(' ');
-    if (normCode === codePart && (normName === namePart || normName.includes(namePart))) {
+    if (normCode === codePart && (normName === namePart || normCombined === normConfig)) {
       return true;
     }
-    const hay = `${normCode} ${normName}`;
-    if (parts.every((p) => hay.includes(p))) return true;
   }
 
   if (parts.length === 1 && (normCode === parts[0] || normName === parts[0])) {
@@ -447,6 +445,10 @@ function recordMatchesSede(
   // Prioridad 1: ID dispositivo (misma fuente que el organigrama operativo).
   const device = normalizeDispositivoId(r.dispositivo);
   if (device) {
+    // Dispositivo compartido SB/Memorial: cobertura sin sedeBase solo cuenta en primaria (San Borja).
+    if (device === 'UDP3244800556') {
+      return sedeKey === normalizeSedeKey('San Borja');
+    }
     let deviceSede: string | undefined;
     for (const row of settings.dispositivoSedeMappings ?? []) {
       if (normalizeDispositivoId(row.dispositivoId) === device && row.sedeName?.trim()) {
@@ -455,12 +457,7 @@ function recordMatchesSede(
       }
     }
     if (!deviceSede) deviceSede = DEFAULT_DISPOSITIVO_SEDES[device];
-    // Dispositivo compartido San Borja/Memorial: sin sede base del staff, acepta ambas.
-    if (device === 'UDP3244800556') {
-      if (sedeKey === normalizeSedeKey('San Borja') || sedeKey === normalizeSedeKey('Memorial')) {
-        return true;
-      }
-    } else if (deviceSede && normalizeSedeKey(deviceSede) === sedeKey) {
+    if (deviceSede && normalizeSedeKey(deviceSede) === sedeKey) {
       return true;
     }
   }

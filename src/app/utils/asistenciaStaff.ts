@@ -31,7 +31,9 @@ import {
   matchesBukRecintoConfig,
   mergeAsistenciaSettings,
   parseBukEntradaFormatMinutes,
+  resolveBukEntryPunctuality,
 } from './asistenciaData';
+import { asistenciaRutMatchKey, asistenciaRutsMatch } from './asistenciaRut';
 import {
   findBukRecordForStaffAnySede,
   indexBukRecordsForDate,
@@ -45,29 +47,8 @@ import { normalizeSedeKey } from './gestionSedes';
 
 const DEFAULT_SCHEDULE = { start: '08:00', end: '18:00' };
 
-function normalizeRut(raw?: string): string {
-  return (raw ?? '').replace(/[.\-\s]/g, '').toUpperCase();
-}
-
-/** Cuerpo numérico del RUT/DNI (sin DV) para cruzar con Buk. */
-function rutMatchKey(raw?: string): string {
-  const n = normalizeRut(raw);
-  if (!n) return '';
-  let body = n;
-  // No tratar DNI Perú (8 dígitos) como RUT 7+DV.
-  if (/^\d{7,8}K$/.test(n)) body = n.slice(0, -1);
-  else if (/^\d{8}[0-9]$/.test(n) && n.length === 9) body = n.slice(0, -1);
-  else if (!/^\d+$/.test(n)) return n;
-  const stripped = body.replace(/^0+/, '');
-  return stripped.length >= 6 ? stripped : body;
-}
-
-function rutsMatch(staffRut?: string, recordRut?: string): boolean {
-  const a = rutMatchKey(staffRut);
-  const b = rutMatchKey(recordRut);
-  if (a && b && a === b) return true;
-  return false;
-}
+const rutMatchKey = asistenciaRutMatchKey;
+const rutsMatch = asistenciaRutsMatch;
 
 function normalizePersonName(raw?: string | null): string {
   return String(raw ?? '')
@@ -111,12 +92,13 @@ function recordMatchesSede(
   r: BukAsistenciaRecord,
   sedeName: string,
   profile: AsistenciaSedeProfile | undefined,
-  settings: AsistenciaSettings
+  settings: AsistenciaSettings,
+  sedeBase?: string | null
 ): boolean {
   const sedeKey = normalizeSedeKey(sedeName);
   if (!sedeKey) return false;
 
-  const fromPunch = resolveSedeNameFromBukRecinto(r, settings, undefined, undefined);
+  const fromPunch = resolveSedeNameFromBukRecinto(r, settings, undefined, sedeBase);
   if (fromPunch && normalizeSedeKey(fromPunch) === sedeKey) return true;
 
   const code = (
@@ -194,7 +176,7 @@ export function diagnoseStaffBukMatch(input: {
   }
 
   const atSede = shiftMatches.filter((r) =>
-    recordMatchesSede(r, input.sedeName, profile, settings)
+    recordMatchesSede(r, input.sedeName, profile, settings, staffSedeBase(input.staff, settings))
   );
   const bukCode = profile.bukRecintoCode?.trim();
   if (atSede.length === 0) {
@@ -222,10 +204,11 @@ function findBukRecordForStaff(
   settings: AsistenciaSettings,
   date: Date
 ): BukAsistenciaRecord | undefined {
+  const base = staffSedeBase(staff, settings);
   return records.find(
     (r) =>
       isRecordOnDate(r, date) &&
-      recordMatchesSede(r, sedeName, profile, settings) &&
+      recordMatchesSede(r, sedeName, profile, settings, base) &&
       recordMatchesStaff(r, staff) &&
       recordMatchesStaffShift(r, staff, date)
   );
@@ -234,7 +217,8 @@ function findBukRecordForStaff(
 function resolveLiveStatus(
   staff: AsistenciaStaffMember,
   record: BukAsistenciaRecord | undefined,
-  date: Date
+  date: Date,
+  profile: AsistenciaSedeProfile
 ): Pick<AsistenciaStaffLiveState, 'status' | 'entradaFormat' | 'stillOnSite' | 'statusNote'> {
   if (!record || !hasEntradaMarcada(record)) {
     return { status: 'ausente', stillOnSite: false };
@@ -248,13 +232,24 @@ function resolveLiveStatus(
     const salidaDisplay =
       formatBukSalidaDisplay(record.salida_format, record.salida) ??
       record.salida_format?.trim();
+    const punctuality = resolveBukEntryPunctuality(record, profile);
+    const lateNote = punctuality === 'late' ? ' · llegó tarde' : '';
     return {
       status: 'presente',
       entradaFormat,
       stillOnSite: false,
       statusNote: salidaDisplay
-        ? `Asistió · salida ${salidaDisplay}`
-        : 'Asistió · ya marcó salida',
+        ? `Asistió · salida ${salidaDisplay}${lateNote}`
+        : `Asistió · ya marcó salida${lateNote}`,
+    };
+  }
+
+  if (resolveBukEntryPunctuality(record, profile) === 'late') {
+    return {
+      status: 'tarde',
+      entradaFormat,
+      stillOnSite: true,
+      statusNote: 'En sede · llegó después de la tolerancia',
     };
   }
 
@@ -408,7 +403,7 @@ export function buildLiveSedeSummary(input: {
       orgMode
     );
     const buk = eff.record ?? findBukRecordForStaffAnySede(staff, input.records, input.date, recordsByRut);
-    const live = resolveLiveStatus(staff, buk, input.date);
+    const live = resolveLiveStatus(staff, buk, input.date, profile);
     let statusNote = live.statusNote;
     if (orgMode === 'operativo' && eff.coveringFromBase && eff.sedeBase) {
       const coverNote = `Base: ${eff.sedeBase}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
@@ -482,7 +477,7 @@ export function buildLiveSedeSummary(input: {
           const all = [...subStaff, ...nestedStaff];
           const style = resolveOrgNodeStyle(profile, sub.id);
           const activeCount = all.filter(
-            (s) => s.status === 'trabajando' || s.status === 'presente'
+            (s) => s.status === 'trabajando' || s.status === 'presente' || s.status === 'tarde'
           ).length;
           return {
             area: sub.id,
@@ -509,7 +504,7 @@ export function buildLiveSedeSummary(input: {
         }),
       ];
       const activeCount = allInColumn.filter(
-        (s) => s.status === 'trabajando' || s.status === 'presente'
+        (s) => s.status === 'trabajando' || s.status === 'presente' || s.status === 'tarde'
       ).length;
       const style = resolveOrgNodeStyle(profile, columnId);
       return {
@@ -571,7 +566,7 @@ export function buildLiveSedeSummary(input: {
 }
 
 export function isActiveStatus(status: AsistenciaLiveStatus): boolean {
-  return status === 'trabajando' || status === 'presente';
+  return status === 'trabajando' || status === 'presente' || status === 'tarde';
 }
 
 export function formatSedeDateLabel(date: Date): string {

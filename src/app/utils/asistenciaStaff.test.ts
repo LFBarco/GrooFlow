@@ -83,8 +83,8 @@ describe('asistenciaStaff', () => {
         codigo_recinto: 'MOLINA01',
         nombre_recinto: 'Clínica La Molina',
         dia_entrada: '10/06/2026',
-        entrada_format: '08:15',
-        entrada: '2026-06-10T08:15:00Z',
+        entrada_format: '08:05',
+        entrada: '2026-06-10T08:05:00Z',
         salida: null,
       },
     ];
@@ -659,5 +659,52 @@ describe('asistenciaStaff', () => {
     expect(liveSummary.areas.flatMap((a) => a.staff).find((s) => s.staff.id === 'iris2')?.status).toBe(
       'trabajando'
     );
+  });
+
+  it('marca tarde cuando la entrada supera horario + tolerancia', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 's-late',
+      sedeName: 'SAN ISIDRO',
+      fullName: 'Pedro Tarde',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: false,
+      rut: '222',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      sedeProfiles: [
+        {
+          sedeName: 'SAN ISIDRO',
+          bukRecintoCode: 'SANISIDRO',
+          scheduleStart: '08:00',
+          scheduleToleranceMinutes: 10,
+        },
+      ],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '222',
+        nombre: 'Pedro',
+        apellido_paterno: 'Tarde',
+        codigo_recinto: 'SANISIDRO',
+        dia_entrada: '10/06/2026',
+        entrada: '2026-06-10T09:00:00',
+        entrada_format: '09:00',
+        salida: null,
+      },
+    ];
+    const live = buildLiveSedeSummary({
+      sedeName: 'SAN ISIDRO',
+      settings,
+      records,
+      date: new Date('2026-06-10T12:00:00'),
+    });
+    expect(live.lateCount).toBe(1);
+    expect(live.workingCount).toBe(0);
+    expect(live.areas[0].staff[0]?.status).toBe('tarde');
   });
 });

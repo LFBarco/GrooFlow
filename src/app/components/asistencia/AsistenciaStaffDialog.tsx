@@ -453,7 +453,9 @@ export function AsistenciaStaffDialog({
               required
             />
             <p className="text-[11px] text-slate-500">
-              Debe coincidir con rut_trabajador en Buk. Presencia por entrada_format; si marca salida el mismo día (salida_format), aparece como ausente.
+              Debe coincidir con rut_trabajador en Buk. Presencia por entrada_format; si marca
+              salida el mismo día (salida_format), sigue como presente (asistió). Llegada fuera de
+              tolerancia = tarde.
             </p>
           </div>
 

@@ -11,8 +11,9 @@ test.describe('Asistencia E2E', () => {
     await page.goto('/asistencia');
     await expect(page.getByTestId('asistencia-module')).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole('heading', { name: /Panel de dotación operativa/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Operativa en vivo/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /Dashboard Buk/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Hoy/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Marcaciones/i })).toBeVisible();
+    await expect(page.getByRole('tab', { name: /Plantilla/i })).toBeVisible();
   });
 
   test('agregar personal en configuración persiste tras recarga', async ({ page }) => {
@@ -42,15 +43,15 @@ test.describe('Asistencia E2E', () => {
     await expect(page.getByText(staffName)).toBeVisible({ timeout: 20_000 });
   });
 
-  test('vista en vivo muestra organigrama o vacío sin forzar config por sede sin base', async ({
+  test('vista Hoy muestra organigrama o vacío sin forzar config por sede sin base', async ({
     page,
   }) => {
     await page.goto('/asistencia');
     await expect(page.getByTestId('asistencia-module')).toBeVisible({ timeout: 30_000 });
-    await page.getByRole('tab', { name: /Operativa en vivo/i }).click();
+    await page.getByRole('tab', { name: /Hoy/i }).click();
     // El refresh no debe redirigir a Config solo porque la sede activa no tiene plantilla base.
     await expect(page.getByTestId('asistencia-tab-config')).toBeVisible();
-    const liveTab = page.getByRole('tab', { name: /Operativa en vivo/i });
+    const liveTab = page.getByRole('tab', { name: /Hoy/i });
     await expect(liveTab).toHaveAttribute('data-state', 'active');
   });
 });
