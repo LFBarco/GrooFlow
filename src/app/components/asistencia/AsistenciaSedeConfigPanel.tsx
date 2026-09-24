@@ -654,8 +654,9 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                 className="max-w-md bg-background border-border text-foreground dark:bg-slate-800 dark:border-slate-700 dark:text-white"
               />
               <p className="text-[11px] text-slate-500">
-                Es el <span className="text-foreground font-medium">obra_id</span> del huellero en Ctrlit
-                (obtenerRegistroAsistencia / id_recinto). Quien marca ahí aparece en esta sede del organigrama.
+                Preferible el <span className="text-foreground font-medium">ID dispositivo</span> del
+                huellero (UDP…/SPK…, campo <code className="text-[10px]">dispositivo</code> en la API).
+                También acepta obra_id numérico. Quien marca ahí aparece en esta sede del organigrama.
               </p>
             </div>
           ) : null}

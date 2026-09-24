@@ -15,6 +15,7 @@ import type {
   BukPunctualityStatus,
 } from '../types/asistencia';
 import { normalizeStaffShift } from './asistenciaShift';
+import { DEFAULT_DISPOSITIVO_SEDES } from './bukAsistenciaRegistro';
 
 export const DEFAULT_ASISTENCIA_AREA_KEYWORDS: AsistenciaAreaKeywords = {
   medica: [
@@ -46,7 +47,16 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
           id: 'buk-asistencia-empresa',
           name: 'Asistencia empresa',
           pathOrUrl: 'asistencia-empresa?page=1&page_size=5',
-          description: 'Marcaciones de personal (módulo Asistencia).',
+          description: 'Jornadas por trabajador (rango desde/hasta).',
+          enabled: true,
+        },
+        {
+          id: 'buk-obtener-registro-asistencia',
+          name: 'Registro asistencia (huellero)',
+          pathOrUrl:
+            'https://app.ctrlit.cl/ctrl/api/obtenerRegistroAsistencia?obra_id=1&from=01-01-2026&to=07-01-2026&page=1&page_size=5',
+          description:
+            'Marcas por dispositivo (campo dispositivo). Ventana incremental ≤7 días; ubica organigrama.',
           enabled: true,
         },
       ],
@@ -57,6 +67,9 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
     areaKeywords: { ...DEFAULT_ASISTENCIA_AREA_KEYWORDS },
     sedeMappings: [],
     costCenterSedeMappings: [],
+    dispositivoSedeMappings: Object.entries(DEFAULT_DISPOSITIVO_SEDES).map(
+      ([dispositivoId, sedeName]) => ({ dispositivoId, sedeName })
+    ),
   };
 }
 
@@ -94,6 +107,9 @@ export function mergeAsistenciaSettings(
     costCenterSedeMappings: Array.isArray(partial.costCenterSedeMappings)
       ? partial.costCenterSedeMappings
       : spread.costCenterSedeMappings ?? [],
+    dispositivoSedeMappings: Array.isArray(partial.dispositivoSedeMappings)
+      ? partial.dispositivoSedeMappings
+      : spread.dispositivoSedeMappings ?? [],
   };
 }
 
@@ -112,11 +128,15 @@ export function personFullName(r: BukAsistenciaRecord): string {
   return [r.nombre, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ').trim();
 }
 
-/** Etiqueta legible del recinto Buk (código · nombre · obra_id), como en el diagnóstico. */
+/** Etiqueta legible del recinto Buk (código · nombre · dispositivo · obra). */
 export function formatBukRecintoLabel(r: BukAsistenciaRecord): string {
   const obra = r.obra_id ?? r.id_recinto;
-  const parts = [r.codigo_recinto, r.nombre_recinto];
-  if (obra != null && String(obra) !== String(r.codigo_recinto ?? '').trim()) {
+  const parts = [r.dispositivo, r.codigo_recinto, r.nombre_recinto];
+  if (
+    obra != null &&
+    String(obra) !== String(r.codigo_recinto ?? '').trim() &&
+    String(obra) !== String(r.dispositivo ?? '').trim()
+  ) {
     parts.push(`obra:${obra}`);
   }
   return parts.filter(Boolean).join(' · ').trim();
@@ -147,6 +167,15 @@ export function matchesBukRecintoConfig(configuredCode: string, r: BukAsistencia
   // Acepta "obra:24734" pegado desde diagnóstico.
   const obraMatch = /^obra\s*[:=]?\s*(\d+)$/i.exec(config);
   if (obraMatch && obraId != null && String(obraId) === obraMatch[1]) {
+    return true;
+  }
+
+  const device = String(r.dispositivo ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+  const configDevice = config.toUpperCase().replace(/\s+/g, '');
+  if (device && configDevice && device === configDevice) {
     return true;
   }
 

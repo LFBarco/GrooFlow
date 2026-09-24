@@ -8,6 +8,8 @@ import { getGrooflowBackend } from '../config/backend';
 import {
   incrementalAsistenciaDateRange,
   normalizeBukAsistenciaRecords,
+  aggregateRegistroAsistenciaPunches,
+  type BukRegistroAsistenciaPunch,
 } from './bukAsistenciaRegistro';
 
 export const DEFAULT_BUK_ASISTENCIA_BASE_URL =
@@ -128,10 +130,87 @@ export function buildBukAsistenciaUrl(
   const url = new URL(`${base}/asistencia-empresa`);
   url.searchParams.set('page', String(page));
   url.searchParams.set('page_size', String(pageSize));
-  const win = range ?? incrementalAsistenciaDateRange(new Date(), 2);
+  const win = range ?? incrementalAsistenciaDateRange(new Date(), 7);
   url.searchParams.set('desde', win.desde);
   url.searchParams.set('hasta', win.hasta);
   return url.toString();
+}
+
+/** Base Ctrlit sin /v2 (obtenerRegistroAsistencia vive en /ctrl/api). */
+export function ctrlitApiRootFromV2Base(baseUrl: string): string {
+  const base = sanitizeBukBaseUrl(baseUrl);
+  const root = base.replace(/\/api\/v2\/?$/i, '/api').replace(/\/+$/, '');
+  return root || 'https://app.ctrlit.cl/ctrl/api';
+}
+
+export function buildObtenerRegistroAsistenciaUrl(
+  apiRoot: string,
+  obraId: number,
+  fromDdMmYyyy: string,
+  toDdMmYyyy: string,
+  page = 1,
+  pageSize = 100
+): string {
+  const root = apiRoot.replace(/\/+$/, '');
+  const url = new URL(`${root}/obtenerRegistroAsistencia`);
+  url.searchParams.set('obra_id', String(obraId));
+  url.searchParams.set('from', fromDdMmYyyy);
+  url.searchParams.set('to', toDdMmYyyy);
+  url.searchParams.set('page', String(page));
+  url.searchParams.set('page_size', String(Math.min(100, Math.max(1, pageSize))));
+  return url.toString();
+}
+
+function collectObraIdsFromRecords(records: BukAsistenciaRecord[]): number[] {
+  const ids = new Set<number>();
+  for (const r of records) {
+    const n = Number(r.obra_id ?? r.id_recinto ?? 0);
+    if (Number.isFinite(n) && n > 0) ids.add(n);
+  }
+  return [...ids];
+}
+
+/** Fusiona jornadas empresa + registro: el dispositivo del punch gana para ubicar sede. */
+export function mergeEmpresaWithRegistroDispositivo(
+  empresa: BukAsistenciaRecord[],
+  registro: BukAsistenciaRecord[]
+): BukAsistenciaRecord[] {
+  const byKey = new Map<string, BukAsistenciaRecord>();
+  const keyOf = (r: BukAsistenciaRecord) =>
+    `${String(r.rut_trabajador ?? '').replace(/\D+/g, '')}|${r.dia_entrada ?? ''}`;
+
+  for (const r of normalizeBukAsistenciaRecords(empresa)) {
+    byKey.set(keyOf(r), r);
+  }
+  for (const r of normalizeBukAsistenciaRecords(registro)) {
+    const k = keyOf(r);
+    const prev = byKey.get(k);
+    if (!prev) {
+      byKey.set(k, r);
+      continue;
+    }
+    byKey.set(k, {
+      ...prev,
+      ...r,
+      nombre: prev.nombre || r.nombre,
+      apellido_paterno: prev.apellido_paterno || r.apellido_paterno,
+      apellido_materno: prev.apellido_materno || r.apellido_materno,
+      area: prev.area || r.area,
+      especialidad: prev.especialidad || r.especialidad,
+      turno: prev.turno || r.turno,
+      codigo_turno: prev.codigo_turno || r.codigo_turno,
+      nombre_recinto: prev.nombre_recinto || r.nombre_recinto,
+      dispositivo: r.dispositivo || prev.dispositivo,
+      obra_id: r.obra_id ?? prev.obra_id,
+      id_recinto: r.id_recinto ?? prev.id_recinto,
+      codigo_recinto: r.dispositivo || r.codigo_recinto || prev.codigo_recinto,
+      entrada: r.entrada || prev.entrada,
+      salida: r.salida || prev.salida,
+      entrada_format: r.entrada_format || prev.entrada_format,
+      salida_format: r.salida_format || prev.salida_format,
+    });
+  }
+  return [...byKey.values()];
 }
 
 function bukHttpErrorMessage(status: number, triedUrl: string, bodyPreview?: string): string {
@@ -334,7 +413,7 @@ async function fetchAllViaProxy(input: {
   reportedTotalPages: number;
   truncated: boolean;
 }> {
-  const win = incrementalAsistenciaDateRange(new Date(), 2);
+  const win = incrementalAsistenciaDateRange(new Date(), 7);
   const res = await postBukProxy('fetch-all', {
     baseUrl: sanitizeBukBaseUrl(input.baseUrl),
     apiToken: input.apiToken,
@@ -380,7 +459,7 @@ async function fetchAllViaProxyPages(input: {
   truncated: boolean;
 }> {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
-  const win = incrementalAsistenciaDateRange(new Date(), 2);
+  const win = incrementalAsistenciaDateRange(new Date(), 7);
   const desde = input.desde ?? win.desde;
   const hasta = input.hasta ?? win.hasta;
 
@@ -439,7 +518,7 @@ async function fetchAllDirect(input: {
   truncated: boolean;
 }> {
   const baseUrl = sanitizeBukBaseUrl(input.baseUrl);
-  const win = incrementalAsistenciaDateRange(new Date(), 2);
+  const win = incrementalAsistenciaDateRange(new Date(), 7);
   const range = {
     desde: input.desde ?? win.desde,
     hasta: input.hasta ?? win.hasta,

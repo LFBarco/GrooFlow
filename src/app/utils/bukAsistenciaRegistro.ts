@@ -9,12 +9,12 @@ export function formatCtrlitDate(date: Date): string {
 }
 
 /**
- * Ventana incremental diaria (máx. 35 días en la API).
- * Por defecto: hoy − lookbackDays … hoy.
+ * Ventana incremental (máx. 35 días en la API).
+ * Por defecto: **1 semana** (hoy − 7 … hoy).
  */
 export function incrementalAsistenciaDateRange(
   now = new Date(),
-  lookbackDays = 2
+  lookbackDays = 7
 ): { desde: string; hasta: string; fromYmd: string; toYmd: string } {
   const days = Math.max(0, Math.min(34, lookbackDays));
   const hasta = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -37,6 +37,26 @@ export function incrementalAsistenciaDateRange(
     toYmd,
   };
 }
+
+/** Normaliza ID de dispositivo huellero (UDP… / SPK…). */
+export function normalizeDispositivoId(raw?: string | null): string {
+  return String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '');
+}
+
+/**
+ * Mapa por defecto: código dispositivo Ctrlit → sede GrooFlow.
+ * Fuente operativa del organigrama del día (dónde marcó).
+ */
+export const DEFAULT_DISPOSITIVO_SEDES: Record<string, string> = {
+  UDP3244900226: 'La Molina',
+  UDP3244800879: 'Jorge Chavez',
+  UDP3244800556: 'San Borja',
+  UDP3244800459: 'Magdalena',
+  SPK7245000121: 'Benavides',
+};
 
 /** ID huellero/recinto: obra_id o id_recinto. */
 export function bukHuelleroId(r: Pick<BukAsistenciaRecord, 'obra_id' | 'id_recinto'>): number | undefined {
@@ -61,6 +81,9 @@ export function normalizeBukAsistenciaRecord(
   const rut =
     String(r.rut_trabajador ?? r.DNI ?? r.dni ?? '').trim() ||
     String(r.rut_trabajador ?? '');
+  const dispositivo = normalizeDispositivoId(
+    String(r.dispositivo ?? (r as { dispositivoId?: string }).dispositivoId ?? '')
+  );
 
   return {
     ...(r as BukAsistenciaRecord),
@@ -72,6 +95,7 @@ export function normalizeBukAsistenciaRecord(
     id_recinto: r.id_recinto != null ? Number(r.id_recinto) || obraId : obraId,
     codigo_recinto: codigo,
     nombre_recinto: r.nombre_recinto ? String(r.nombre_recinto) : r.nombre_recinto,
+    dispositivo: dispositivo || undefined,
   };
 }
 
@@ -134,7 +158,9 @@ export function aggregateRegistroAsistenciaPunches(
     const ss = Number(p.segundos ?? 0);
     const iso = `${ymd}T${pad2(hh)}:${pad2(mm)}:${pad2(ss)}`;
     const sentido = String(p.sentido ?? '').toLowerCase();
-    const key = `${obra}|${dni}|${ymd}`;
+    const device = normalizeDispositivoId(p.dispositivo ? String(p.dispositivo) : '');
+    // Una jornada por persona/día; el dispositivo de la entrada define la sede.
+    const key = `${dni}|${ymd}`;
 
     let acc = byKey.get(key);
     if (!acc) {
@@ -143,22 +169,27 @@ export function aggregateRegistroAsistenciaPunches(
         dni,
         ymd,
         dia_entrada: diaEntrada,
-        dispositivo: p.dispositivo ? String(p.dispositivo) : undefined,
+        dispositivo: device || undefined,
       };
       byKey.set(key, acc);
     }
 
     if (sentido === 'entrada') {
-      if (!acc.entradaIso || iso < acc.entradaIso) acc.entradaIso = iso;
+      if (!acc.entradaIso || iso < acc.entradaIso) {
+        acc.entradaIso = iso;
+        if (device) acc.dispositivo = device;
+        acc.obra_id = obra;
+      }
     } else if (sentido === 'salida') {
       if (!acc.salidaIso || iso > acc.salidaIso) acc.salidaIso = iso;
     } else if (!acc.entradaIso) {
-      // Marca sin sentido: primera como entrada, posteriores como posible salida.
       acc.entradaIso = iso;
+      if (device) acc.dispositivo = device;
+      acc.obra_id = obra;
     } else if (!acc.salidaIso || iso > acc.salidaIso) {
       acc.salidaIso = iso;
     }
-    if (p.dispositivo) acc.dispositivo = String(p.dispositivo);
+    if (!acc.dispositivo && device) acc.dispositivo = device;
   }
 
   const out: BukAsistenciaRecord[] = [];

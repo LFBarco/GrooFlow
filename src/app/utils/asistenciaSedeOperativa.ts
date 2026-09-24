@@ -12,6 +12,10 @@ import {
   mergeAsistenciaSettings,
 } from './asistenciaData';
 import { recordMatchesStaffShift } from './asistenciaShift';
+import {
+  DEFAULT_DISPOSITIVO_SEDES,
+  normalizeDispositivoId,
+} from './bukAsistenciaRegistro';
 
 /** Mapa por defecto: centro de costo Buk.pe → sede operativa GrooFlow. */
 export const DEFAULT_BUK_PE_COST_CENTER_SEDES: Record<string, string> = {
@@ -105,14 +109,39 @@ export function indexBukRecordsForDate(
 }
 
 /**
- * Resuelve sede GrooFlow desde el recinto/huellero de una marcación Buk Asistencia.
- * Prioridad: obra_id / id_recinto configurado en la sede → código/nombre recinto → fuzzy.
+ * Resuelve sede desde el ID de dispositivo huellero (`dispositivo` en Ctrlit).
+ */
+export function resolveSedeFromDispositivo(
+  dispositivoRaw: string | undefined | null,
+  settings?: AsistenciaSettings | null,
+  visibleSedes?: string[]
+): string | undefined {
+  const device = normalizeDispositivoId(dispositivoRaw);
+  if (!device) return undefined;
+  const merged = settings ? mergeAsistenciaSettings(settings) : null;
+  for (const row of merged?.dispositivoSedeMappings ?? []) {
+    if (normalizeDispositivoId(row.dispositivoId) === device && row.sedeName?.trim()) {
+      const name = row.sedeName.trim();
+      return visibleSedes?.length ? resolveCanonicalSedeName(name, visibleSedes) : name;
+    }
+  }
+  const fallback = DEFAULT_DISPOSITIVO_SEDES[device];
+  if (!fallback) return undefined;
+  return visibleSedes?.length ? resolveCanonicalSedeName(fallback, visibleSedes) : fallback;
+}
+
+/**
+ * Resuelve sede GrooFlow desde la marcación Buk Asistencia.
+ * Prioridad: dispositivo huellero → obra_id/id_recinto configurado → código/nombre → fuzzy.
  */
 export function resolveSedeNameFromBukRecinto(
   record: BukAsistenciaRecord,
   settings: AsistenciaSettings,
   visibleSedes?: string[]
 ): string | undefined {
+  const fromDevice = resolveSedeFromDispositivo(record.dispositivo, settings, visibleSedes);
+  if (fromDevice) return fromDevice;
+
   const merged = mergeAsistenciaSettings(settings);
   const profiles = merged.sedeProfiles ?? [];
   const mappings = merged.sedeMappings ?? [];

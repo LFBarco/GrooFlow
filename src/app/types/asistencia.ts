@@ -494,6 +494,13 @@ export interface AsistenciaCostCenterSedeMapping {
   label?: string;
 }
 
+/** Mapeo ID dispositivo huellero Ctrlit (`dispositivo`) → sede GrooFlow. */
+export interface AsistenciaDispositivoSedeMapping {
+  dispositivoId: string;
+  sedeName: string;
+  label?: string;
+}
+
 export interface AsistenciaSettings {
   buk?: BukAsistenciaIntegrationSettings;
   requirements: AsistenciaOrgRequirement[];
@@ -505,6 +512,8 @@ export interface AsistenciaSettings {
   sedeMappings?: AsistenciaSedeMapping[];
   /** Override: código CC Buk.pe → sede (pertenencia / proyección). */
   costCenterSedeMappings?: AsistenciaCostCenterSedeMapping[];
+  /** Override: ID dispositivo huellero → sede (marcación del día / organigrama). */
+  dispositivoSedeMappings?: AsistenciaDispositivoSedeMapping[];
 }
 
 export type AsistenciaCoverageStatus = 'complete' | 'partial' | 'missing' | 'over';
