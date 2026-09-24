@@ -1,6 +1,6 @@
 import type { BukAsistenciaRecord } from '../types/asistencia';
 import { sanitizeBukBaseUrl, normalizeBukToken } from './bukAsistenciaApi';
-import { formatDayKey } from './asistenciaData';
+import { formatDayKey, hasBukEntradaMarcada, normalizeDiaEntradaKey } from './asistenciaData';
 import { normalizeBukAsistenciaRecords } from './bukAsistenciaRegistro';
 
 /** @deprecated Ya no se usa para invalidar; se mantiene por compatibilidad de imports. */
@@ -32,29 +32,103 @@ function storageKey(baseUrl: string, apiToken: string): string {
   return `${STORAGE_PREFIX}${base}|${Math.abs(fp).toString(36)}`;
 }
 
+function rutBody(raw?: string | null): string {
+  const n = String(raw ?? '')
+    .replace(/[.\-\s]/g, '')
+    .toUpperCase();
+  if (!n) return '';
+  // DV explícito (termina en K) o cuerpo+DV de 9 chars (8 dígitos + DV numérico).
+  // No tratar DNI Perú de 8 dígitos como “7+DV”.
+  let body = n;
+  if (/^\d{7,8}K$/.test(n)) body = n.slice(0, -1);
+  else if (/^\d{8}[0-9]$/.test(n) && n.length === 9) body = n.slice(0, -1);
+  else if (!/^\d+$/.test(n)) return n;
+  const stripped = body.replace(/^0+/, '');
+  return stripped.length >= 6 ? stripped : body;
+}
+
+/** Clave estable persona+día (evita duplicar empresa vs registro por id distinto). */
+export function bukRecordRutDiaKey(r: BukAsistenciaRecord): string | null {
+  const rut = rutBody(r.rut_trabajador);
+  const dia = normalizeDiaEntradaKey(r.dia_entrada) ?? (r.dia_entrada ?? '').trim();
+  if (!rut || !dia) return null;
+  return `rd:${rut}|${dia}`;
+}
+
 export function bukRecordMergeKey(r: BukAsistenciaRecord): string {
+  const rd = bukRecordRutDiaKey(r);
+  if (rd) return rd;
   if (r.id != null) return `id:${r.id}`;
   return `r:${r.trab_id}:${r.dia_entrada ?? ''}:${r.rut_trabajador ?? ''}`;
 }
 
-/** Une registros Buk; los más recientes en `incoming` sobrescriben por id. */
+function recordRichness(r: BukAsistenciaRecord): number {
+  let score = 0;
+  if (hasBukEntradaMarcada(r)) score += 8;
+  if (r.dispositivo) score += 4;
+  if (r.nombre?.trim()) score += 2;
+  if (r.salida || r.salida_format) score += 1;
+  if (r.obra_id || r.codigo_recinto) score += 1;
+  return score;
+}
+
+/** Conserva el registro más completo al fusionar (no pisar sync fresca con historial pobre). */
+export function preferRicherBukRecord(
+  a: BukAsistenciaRecord,
+  b: BukAsistenciaRecord
+): BukAsistenciaRecord {
+  const sa = recordRichness(a);
+  const sb = recordRichness(b);
+  if (sb > sa) return { ...a, ...b, ...pickFilled(a, b) };
+  if (sa > sb) return { ...b, ...a, ...pickFilled(b, a) };
+  // Empate: incoming (b) gana campos, pero rellena huecos desde a.
+  return { ...a, ...b, ...pickFilled(a, b) };
+}
+
+function pickFilled(
+  older: BukAsistenciaRecord,
+  newer: BukAsistenciaRecord
+): Partial<BukAsistenciaRecord> {
+  return {
+    nombre: newer.nombre?.trim() ? newer.nombre : older.nombre,
+    apellido_paterno: newer.apellido_paterno || older.apellido_paterno,
+    apellido_materno: newer.apellido_materno || older.apellido_materno,
+    dispositivo: newer.dispositivo || older.dispositivo,
+    entrada: newer.entrada || older.entrada,
+    salida: newer.salida || older.salida,
+    entrada_format: newer.entrada_format || older.entrada_format,
+    salida_format: newer.salida_format || older.salida_format,
+    obra_id: newer.obra_id ?? older.obra_id,
+    codigo_recinto: newer.codigo_recinto || older.codigo_recinto,
+    nombre_recinto: newer.nombre_recinto || older.nombre_recinto,
+    area: newer.area || older.area,
+    especialidad: newer.especialidad || older.especialidad,
+  };
+}
+
+/**
+ * Une registros Buk por RUT+día (y id como respaldo).
+ * Si hay choque, conserva el más completo (entrada/dispositivo/nombre).
+ */
 export function mergeBukAsistenciaRecords(
   existing: BukAsistenciaRecord[],
   incoming: BukAsistenciaRecord[]
 ): BukAsistenciaRecord[] {
   const map = new Map<string, BukAsistenciaRecord>();
-  for (const r of normalizeBukAsistenciaRecords(existing)) {
-    map.set(bukRecordMergeKey(r), r);
-  }
-  for (const r of normalizeBukAsistenciaRecords(incoming)) {
-    map.set(bukRecordMergeKey(r), r);
-  }
+  const put = (r: BukAsistenciaRecord) => {
+    const key = bukRecordMergeKey(r);
+    const prev = map.get(key);
+    map.set(key, prev ? preferRicherBukRecord(prev, r) : r);
+  };
+  for (const r of normalizeBukAsistenciaRecords(existing)) put(r);
+  for (const r of normalizeBukAsistenciaRecords(incoming)) put(r);
   return [...map.values()];
 }
 
 function recordDayTime(r: BukAsistenciaRecord): number {
-  if (r.dia_entrada) {
-    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(r.dia_entrada.trim());
+  const dia = normalizeDiaEntradaKey(r.dia_entrada);
+  if (dia) {
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(dia);
     if (m) return new Date(+m[3], +m[2] - 1, +m[1], 12).getTime();
   }
   if (r.entrada) {
@@ -81,16 +155,13 @@ export function pruneBukRecordsToHotWindow(
 export function loadBukAsistenciaCache(input: {
   baseUrl: string;
   apiToken: string;
-  now?: number;
 }): BukAsistenciaCachePayload | null {
   if (typeof localStorage === 'undefined') return null;
-  const key = storageKey(input.baseUrl, input.apiToken);
   try {
-    const raw = localStorage.getItem(key);
+    const raw = localStorage.getItem(storageKey(input.baseUrl, input.apiToken));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as BukAsistenciaCachePayload;
     if (!parsed?.fetchedAt || !Array.isArray(parsed.records)) return null;
-    // Sin TTL: el historial completo vive en MySQL; local es working set.
     return {
       ...parsed,
       records: normalizeBukAsistenciaRecords(parsed.records),
@@ -135,10 +206,9 @@ export function saveBukAsistenciaCache(input: {
     return { ok: true, pruned: true, savedCount: pruned.length };
   }
 
-  // Último intento: solo últimos 30 días
   const tight = pruneBukRecordsToHotWindow(input.records, 30);
   if (tryWrite(tight)) {
-    return { ok: true, pruned: true, quotaExceeded: false, savedCount: tight.length };
+    return { ok: true, pruned: true, savedCount: tight.length };
   }
 
   return { ok: false, quotaExceeded: true, savedCount: 0 };
@@ -157,7 +227,8 @@ export function cacheAgeLabel(fetchedAt: number, now = Date.now()): string {
 export function countDistinctLocalBukDays(records: BukAsistenciaRecord[]): number {
   const set = new Set<string>();
   for (const r of records) {
-    if (r.dia_entrada) set.add(r.dia_entrada);
+    const dia = normalizeDiaEntradaKey(r.dia_entrada);
+    if (dia) set.add(dia);
     else if (r.entrada) {
       const d = new Date(r.entrada);
       if (!Number.isNaN(d.getTime())) set.add(formatDayKey(d));

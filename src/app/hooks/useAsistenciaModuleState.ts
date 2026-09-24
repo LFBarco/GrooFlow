@@ -17,8 +17,7 @@ import {
   fetchBukAsistenciaHistoryStats,
   upsertBukAsistenciaHistory,
 } from '../utils/asistenciaBukHistoryApi';
-import { mergeAsistenciaSettings } from '../utils/asistenciaData';
-import { formatSedeDateLabel } from '../utils/asistenciaStaff';
+import { mergeAsistenciaSettings, isRecordOnDate } from '../utils/asistenciaData';
 import { repository } from '../services/repository';
 import { TURNOS_SETTINGS_KV_KEY, mergeTurnosSettings } from '../utils/turnosData';
 
@@ -117,7 +116,8 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
           return;
         }
         setRecords((prev) => {
-          const merged = mergeBukAsistenciaRecords(prev, remote);
+          // prev (caché/sync fresca) debe ganar sobre historial pobre de MySQL.
+          const merged = mergeBukAsistenciaRecords(remote, prev);
           if (bukToken) {
             const save = saveBukAsistenciaCache({
               baseUrl: bukBaseUrl,
@@ -203,7 +203,10 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
         setRecords(merged);
         setCacheFetchedAt(now);
         setLastTruncated(result.truncated);
-        hydratedRangeRef.current = '';
+        // Marca el rango actual como hidratado para no re-pisar con MySQL al instante.
+        const ymd = format(input.date, 'yyyy-MM-dd');
+        const fromYmd = format(subDays(input.date, 30), 'yyyy-MM-dd');
+        hydratedRangeRef.current = `${fromYmd}|${ymd}`;
 
         try {
           await upsertBukAsistenciaHistory(merged, now);
@@ -234,10 +237,7 @@ export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | 
           );
         }
 
-        const onDate = merged.filter((r) => {
-          const key = formatSedeDateLabel(input.date);
-          return r.dia_entrada === key || (r.entrada && formatSedeDateLabel(new Date(r.entrada)) === key);
-        });
+        const onDate = merged.filter((r) => isRecordOnDate(r, input.date));
         const delta = Math.max(0, merged.length - priorCount);
         if (!input.silent) {
           if (merged.length === 0) {

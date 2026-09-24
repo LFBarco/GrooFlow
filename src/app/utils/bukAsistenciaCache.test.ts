@@ -8,7 +8,7 @@ import {
 } from './bukAsistenciaCache';
 
 describe('bukAsistenciaCache', () => {
-  it('fusiona por id y actualiza marcaciones', () => {
+  it('fusiona por RUT+día y conserva el más completo', () => {
     const a: BukAsistenciaRecord[] = [
       {
         id: 1,
@@ -17,16 +17,19 @@ describe('bukAsistenciaCache', () => {
         nombre: 'Ana',
         dia_entrada: '15/06/2026',
         entrada_format: '08:00',
+        entrada: '2026-06-15T08:00:00',
       },
     ];
     const b: BukAsistenciaRecord[] = [
       {
-        id: 1,
+        id: 99,
         trab_id: 1,
         rut_trabajador: '111',
-        nombre: 'Ana',
-        dia_entrada: '15/06/2026',
-        entrada_format: '2026/06/15 08:10:00',
+        nombre: '',
+        dia_entrada: '15-06-2026',
+        entrada_format: '08:10',
+        entrada: '2026-06-15T08:10:00',
+        dispositivo: 'UDP3244900226',
       },
       {
         id: 2,
@@ -35,15 +38,27 @@ describe('bukAsistenciaCache', () => {
         nombre: 'Luis',
         dia_entrada: '15/06/2026',
         entrada_format: '08:15',
+        entrada: '2026-06-15T08:15:00',
       },
     ];
     const merged = mergeBukAsistenciaRecords(a, b);
     expect(merged).toHaveLength(2);
-    expect(merged.find((r) => r.id === 1)?.entrada_format).toBe('2026/06/15 08:10:00');
+    const ana = merged.find((r) => String(r.rut_trabajador).includes('111'));
+    expect(ana?.dispositivo).toBe('UDP3244900226');
+    expect(ana?.nombre).toBe('Ana');
+    expect(ana?.entrada_format).toBeTruthy();
   });
 
-  it('usa clave estable por id', () => {
-    expect(bukRecordMergeKey({ id: 99, trab_id: 1, rut_trabajador: '1', nombre: 'X' })).toBe('id:99');
+  it('clave estable por RUT+día', () => {
+    expect(
+      bukRecordMergeKey({
+        id: 99,
+        trab_id: 1,
+        rut_trabajador: '74619638',
+        nombre: 'X',
+        dia_entrada: '24/09/2026',
+      })
+    ).toBe('rd:74619638|24/09/2026');
   });
 
   it('no expira por TTL: poda solo working set caliente', () => {

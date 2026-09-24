@@ -17,13 +17,18 @@ const SEDE_ALIASES: Record<string, string> = {
   'groomers memorial': 'memorial',
 };
 
-/** Clave normalizada para deduplicar variantes legacy ("10. Benavides" vs "Benavides"). */
+/** Clave normalizada para deduplicar variantes legacy ("10. Benavides" / "50.- La Molina"). */
 export function normalizeSedeKey(name?: string | null): string {
   let key = (name ?? '')
     .trim()
     .toLowerCase()
-    .replace(/^\d+\.\s*/, '')
-    .replace(/\s+/g, ' ');
+    // "10. Benavides", "50.- La Molina", "50- La Molina"
+    .replace(/^\d+[.\-]+\s*/, '')
+    .replace(/^\d+\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  // Por si quedó un guion suelto tras el prefijo
+  key = key.replace(/^[\-.]+\s*/, '');
   return SEDE_ALIASES[key] ?? key;
 }
 
@@ -33,8 +38,8 @@ export function preferSedeLabel(existing: string, candidate: string): string {
   const b = candidate.trim();
   if (!a) return b;
   if (!b) return a;
-  const aCoded = /^\d+\.\s*/.test(a);
-  const bCoded = /^\d+\.\s*/.test(b);
+  const aCoded = /^\d+[.\-]/.test(a);
+  const bCoded = /^\d+[.\-]/.test(b);
   // Preferir nombre de BD sin código numérico.
   if (aCoded && !bCoded) return b;
   if (bCoded && !aCoded) return a;

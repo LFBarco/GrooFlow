@@ -618,4 +618,46 @@ describe('asistenciaStaff', () => {
     expect(iris?.status).toBe('trabajando');
     expect(iris?.entradaFormat).toBe('08:10');
   });
+
+  it('cruza DNI con dígito verificador en ficha vs cuerpo en Buk', () => {
+    const staff: AsistenciaStaffMember = {
+      id: 'iris2',
+      sedeName: 'La Molina',
+      sedeBase: 'La Molina',
+      fullName: 'Iris Quintero',
+      cargoLabel: 'Encargado',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: true,
+      rut: '74619638-5',
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [staff],
+      dispositivoSedeMappings: [{ dispositivoId: 'UDP3244900226', sedeName: 'La Molina' }],
+    });
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 1,
+        trab_id: 1,
+        rut_trabajador: '74619638',
+        nombre: 'IRIS',
+        apellido_paterno: 'QUINTERO',
+        dispositivo: 'UDP3244900226',
+        dia_entrada: '24/09/2026',
+        entrada: '2026-09-24T08:10:00',
+        entrada_format: '08:10',
+      },
+    ];
+    const liveSummary = buildLiveSedeSummary({
+      sedeName: 'La Molina',
+      settings,
+      records,
+      date: new Date(2026, 8, 24, 12, 0, 0),
+      visibleSedes: ['La Molina'],
+      orgMode: 'operativo',
+    });
+    expect(liveSummary.areas.flatMap((a) => a.staff).find((s) => s.staff.id === 'iris2')?.status).toBe(
+      'trabajando'
+    );
+  });
 });

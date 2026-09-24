@@ -105,7 +105,9 @@ function rutMatchKey(raw?: string): string {
   const n = (raw ?? '').replace(/[.\-\s]/g, '').toUpperCase();
   if (!n) return '';
   let body = n;
-  if (/^\d{7,8}[0-9K]$/.test(n)) body = n.slice(0, -1);
+  // No tratar DNI Perú (8 dígitos) como RUT 7+DV.
+  if (/^\d{7,8}K$/.test(n)) body = n.slice(0, -1);
+  else if (/^\d{8}[0-9]$/.test(n) && n.length === 9) body = n.slice(0, -1);
   else if (!/^\d+$/.test(n)) return n;
   const stripped = body.replace(/^0+/, '');
   return stripped.length >= 6 ? stripped : body;
