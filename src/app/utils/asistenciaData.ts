@@ -359,6 +359,39 @@ export function resolveBukEntryPunctuality(
   return entradaMin <= deadline ? 'on_time' : 'late';
 }
 
+/**
+ * Minutos de tardanza tras horario + tolerancia.
+ * 0 si a tiempo, pendiente o sin entrada válida.
+ */
+export function resolveBukEntryLateMinutes(
+  record: BukAsistenciaRecord,
+  profile: Pick<
+    AsistenciaSedeProfile,
+    'scheduleStart' | 'scheduleNightStart' | 'scheduleToleranceMinutes'
+  >
+): number {
+  if (!hasBukEntradaMarcada(record)) return 0;
+
+  let entradaMin = parseBukEntradaFormatMinutes(record.entrada_format);
+  if (entradaMin == null && record.entrada) {
+    const d = new Date(record.entrada);
+    if (!Number.isNaN(d.getTime())) entradaMin = d.getHours() * 60 + d.getMinutes();
+  }
+  if (entradaMin == null) return 0;
+
+  const isNight = record.turno_noche === true;
+  const expectedStart =
+    parseScheduleTimeMinutes(
+      isNight
+        ? profile.scheduleNightStart ?? '20:00'
+        : profile.scheduleStart ?? '08:00'
+    ) ?? (isNight ? 20 * 60 : 8 * 60);
+  const tolerance = profile.scheduleToleranceMinutes ?? 10;
+  const deadline = expectedStart + tolerance;
+  if (entradaMin <= deadline) return 0;
+  return entradaMin - deadline;
+}
+
 /** Marca de entrada en Buk: entrada_format (fecha+hora) o timestamp entrada. */
 export function hasBukEntradaMarcada(r: BukAsistenciaRecord): boolean {
   return isValidBukEntradaFormat(r.entrada_format) || hasBukEntradaTimestamp(r.entrada);

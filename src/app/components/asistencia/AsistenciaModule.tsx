@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { addDays, format, subDays } from 'date-fns';
+import { addDays, endOfMonth, format, startOfMonth, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   AlertTriangle,
@@ -238,9 +238,23 @@ export function AsistenciaModule({
 
   useEffect(() => {
     if (!moduleReady || !bukEnabled) return;
+    if (mainTab === 'dashboard') {
+      const from = format(startOfMonth(dateObj), 'yyyy-MM-dd');
+      const to = format(endOfMonth(dateObj), 'yyyy-MM-dd');
+      void hydrateHistoryRange(from, to, true);
+      return;
+    }
     const { from, to } = historyWindowAround(selectedDate, Math.max(30, trendDaysCount), 0);
     void hydrateHistoryRange(from, to, true);
-  }, [selectedDate, trendDaysCount, moduleReady, bukEnabled, hydrateHistoryRange]);
+  }, [
+    mainTab,
+    selectedDate,
+    dateObj,
+    trendDaysCount,
+    moduleReady,
+    bukEnabled,
+    hydrateHistoryRange,
+  ]);
   const weekLabel = useMemo(() => weekRangeLabel(dateObj), [dateObj]);
 
   const dashboardUsesMulti = dashboardMultiSede;

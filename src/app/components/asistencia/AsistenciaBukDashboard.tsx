@@ -2,6 +2,7 @@ import {
   Check,
   CheckCircle2,
   BarChart3,
+  CalendarRange,
   CircleHelp,
   Download,
   LayoutDashboard,
@@ -37,8 +38,9 @@ import {
 } from '../ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { AsistenciaBukCharts } from './AsistenciaBukCharts';
+import { AsistenciaBukMonthlyTrajectory } from './AsistenciaBukMonthlyTrajectory';
 
-type DashboardView = 'list' | 'charts' | 'family' | 'parent' | 'org';
+type DashboardView = 'list' | 'trajectory' | 'charts' | 'family' | 'parent' | 'org';
 
 type Props = {
   records: BukAsistenciaRecord[];
@@ -435,6 +437,12 @@ export function AsistenciaBukDashboard({
                 <List className="h-4 w-4 mr-1" /> Lista
               </TabsTrigger>
               <TabsTrigger
+                value="trajectory"
+                className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
+              >
+                <CalendarRange className="h-4 w-4 mr-1" /> Trayectoria
+              </TabsTrigger>
+              <TabsTrigger
                 value="charts"
                 className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white"
               >
@@ -490,6 +498,16 @@ export function AsistenciaBukDashboard({
                 Mostrando {filteredRows.length} de {summary.total} persona(s).
                 {onRowClick ? ' Clic en una fila para ver detalle.' : ''}
               </p>
+            </TabsContent>
+
+            <TabsContent value="trajectory" className="mt-4">
+              <AsistenciaBukMonthlyTrajectory
+                records={records}
+                settings={settings}
+                sedeName={sedeName}
+                date={date}
+                filters={filters}
+              />
             </TabsContent>
 
             <TabsContent value="family" className="mt-4">
