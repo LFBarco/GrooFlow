@@ -49,6 +49,8 @@ import {
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import { getProviderSuggestedExpenseCode } from '../../utils/providerAccounting';
+import { ingestExpenseQuiet } from '../../utils/mgrPnlBridge';
 import { Provider } from '../../types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, CartesianGrid, AreaChart, Area, LineChart, Line } from 'recharts';
@@ -276,6 +278,26 @@ export const ProfessionalFeesModule: React.FC<ProfessionalFeesModuleProps> = ({
       }
       return r;
     }));
+
+    if (action === 'approve') {
+      const approvedNow = receipts.filter(r => selectedReceipts.includes(r.id) && r.status !== 'paid' && r.status !== 'requested_payment');
+      for (const r of approvedNow) {
+        const prof = providers.find(p => p.id === r.professionalId);
+        const cuenta = prof
+          ? getProviderSuggestedExpenseCode(prof, 'professionalFee')
+          : undefined;
+        void ingestExpenseQuiet({
+          fecha: r.issueDate,
+          monto: r.amount,
+          concepto: r.description || `Honorario ${r.receiptNumber}`,
+          cuenta_codigo: cuenta,
+          sede_nombre: r.location,
+          origen_tipo: 'factura',
+          origen_id: `fee:${r.id}`,
+          auto_distribute: true,
+        });
+      }
+    }
 
     const actionText = action === 'approve' ? 'Aprobados' : 'Rechazados';
     toast.success(`${selectedReceipts.length} recibos ${actionText} exitosamente.`);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import type { AccountingLinkSettings, ChartOfAccountEntry, SystemSettings } from '../../types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -23,6 +24,8 @@ import {
   Link2,
   Download,
   Pencil,
+  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 import {
   CHART_OPERATIVE_LEVEL,
@@ -48,7 +51,9 @@ import {
   useClientDataTableState,
   type ClientDataTableColumn,
 } from '../data-table/ClientDataTable';
-
+import { viewToPath } from '../../routes';
+import { syncMappingsFromChart } from '../../utils/mgrPnlBridge';
+import { Alert, AlertDescription, AlertTitle } from '../ui/alert';
 interface ChartOfAccountsModuleProps {
   chartOfAccounts: ChartOfAccountEntry[];
   onUpdateChart: (rows: ChartOfAccountEntry[], successMessage?: string) => Promise<boolean>;
@@ -69,10 +74,12 @@ export function ChartOfAccountsModule({
   };
 
   const fileRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   const [editing, setEditing] = useState<ChartOfAccountEntry | null>(null);
   const [sedeConfigOpen, setSedeConfigOpen] = useState(false);
   const [importMode, setImportMode] = useState<ImportMode>('merge');
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const [syncingMap, setSyncingMap] = useState(false);
   const useServerPaging = getGrooflowBackend() === 'rest';
   const serverList = useServerPagedList<ChartOfAccountEntry>('chartOfAccounts', {
     initialPageSize: 25,
@@ -364,27 +371,46 @@ export function ChartOfAccountsModule({
     reader.readAsArrayBuffer(file);
   };
 
+  const runAutoMap = async (accounts: ChartOfAccountEntry[]) => {
+    if (accounts.length === 0) return;
+    setSyncingMap(true);
+    try {
+      const r = await syncMappingsFromChart(accounts, { apply: true });
+      toast.success('Mapping gerencial sincronizado', {
+        description: `Aplicados: ${r.applied} · Propuestos útiles: ${r.usable} · Ya existían: ${r.skipped_existing}`,
+      });
+    } catch (e) {
+      toast.message('Plan guardado; el auto-mapping gerencial no se completó', {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    } finally {
+      setSyncingMap(false);
+    }
+  };
+
   const applyPendingImport = async () => {
     if (!pendingImport) return;
     const s = pendingImport.summary;
+    const nextRows =
+      importMode === 'replace'
+        ? pendingImport.rows
+            .filter((r) => r.active)
+            .map((r) => ({
+              ...r,
+              id: `coa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            }))
+        : pendingImport.rows;
     const ok =
       importMode === 'replace'
-        ? await onUpdateChart(
-            pendingImport.rows
-              .filter((r) => r.active)
-              .map((r) => ({
-                ...r,
-                id: `coa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-              })),
-            'Plan de cuentas reemplazado por archivo.'
-          )
+        ? await onUpdateChart(nextRows, 'Plan de cuentas reemplazado por archivo.')
         : await onUpdateChart(
-            pendingImport.rows,
+            nextRows,
             `Merge aplicado. Nuevas: ${s.created}, actualizadas: ${s.updated}, inactivadas: ${s.inactivated}.`
           );
     if (ok) {
       setPendingImport(null);
       if (useServerPaging) await serverList.reload();
+      void runAutoMap(nextRows.filter((r) => r.active));
     }
   };
 
@@ -462,11 +488,44 @@ export function ChartOfAccountsModule({
           Contabilidad — Plan de cuentas
         </h2>
         <p className="text-sm text-muted-foreground mt-1 max-w-3xl">
-          Importa tu plan contable (Excel). Configura cuentas de IGV y salida de caja para que los
-          asientos de caja chica se generen correctamente (la vista previa está en el módulo{' '}
-          <strong>Caja chica</strong>).
+          Importa tu plan contable Starsoft (Excel). Configura cuentas de IGV y salida de caja para
+          asientos. La clasificación gerencial (naturaleza → P&amp;L → área → CC) se gestiona en{' '}
+          <strong>P&amp;L Gerencial</strong>, no aquí.
         </p>
       </div>
+
+      <Alert className="border-teal-500/30 bg-teal-950/10">
+        <Sparkles className="h-4 w-4 text-teal-600" />
+        <AlertTitle>Fuente de verdad gerencial</AlertTitle>
+        <AlertDescription className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <span>
+            CENTRO DE COSTO / PL FUNCION en el plan son metadatos Starsoft. El mapping operativo vive
+            en P&amp;L Gerencial y se sincroniza al importar (y con el botón de abajo).
+          </span>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => navigate(viewToPath('mgrPnl'))}
+            >
+              <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+              Abrir P&amp;L Gerencial
+            </Button>
+            {chartOfAccounts.length > 0 ? (
+              <Button
+                type="button"
+                size="sm"
+                disabled={syncingMap}
+                onClick={() => void runAutoMap(chartOfAccounts.filter((a) => a.active))}
+              >
+                <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                {syncingMap ? 'Sincronizando…' : 'Sincronizar mapping'}
+              </Button>
+            ) : null}
+          </div>
+        </AlertDescription>
+      </Alert>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -477,8 +536,8 @@ export function ChartOfAccountsModule({
             </CardTitle>
             <CardDescription>
               Columnas obligatorias: <strong>CUENTA</strong>, <strong>DESCRIPCION</strong>. El resto
-              sigue la plantilla Starsoft (incluye <strong>PORCENTAJE</strong>,{' '}
-              <strong>PL FUNCION GROO</strong> y <strong>PLPL FUNCION GOO</strong>).
+              sigue la plantilla Starsoft. Tras confirmar, se proponen mappings gerenciales
+              automáticamente.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -739,7 +798,8 @@ export function ChartOfAccountsModule({
           <DialogHeader>
             <DialogTitle>Editar cuenta del plan</DialogTitle>
             <DialogDescription>
-              Puedes ajustar cualquier columna de tu plantilla Starsoft.
+              Metadatos Starsoft para exportación/asientos. La clasificación gerencial se edita en
+              P&amp;L Gerencial (mapping por cuenta).
             </DialogDescription>
           </DialogHeader>
           {editing && (
@@ -773,7 +833,7 @@ export function ChartOfAccountsModule({
                 <Input value={editing.tipoAnexo ?? ''} onChange={(e) => setEditing({ ...editing, tipoAnexo: e.target.value || undefined })} />
               </div>
               <div className="space-y-1">
-                <Label>CENTRO DE COSTO</Label>
+                <Label>CENTRO DE COSTO <span className="text-muted-foreground font-normal">(Starsoft)</span></Label>
                 <Input value={editing.centroCosto ?? ''} onChange={(e) => setEditing({ ...editing, centroCosto: e.target.value || undefined })} />
               </div>
               <div className="space-y-1">
@@ -820,13 +880,21 @@ export function ChartOfAccountsModule({
                 <Label>PORCENTAJE</Label>
                 <Input value={editing.porcentaje ?? ''} onChange={(e) => setEditing({ ...editing, porcentaje: e.target.value || undefined })} />
               </div>
-              <div className="space-y-1">
-                <Label>PL FUNCION GROO</Label>
-                <Input value={editing.plFuncionGroo ?? ''} onChange={(e) => setEditing({ ...editing, plFuncionGroo: e.target.value || undefined })} />
-              </div>
-              <div className="space-y-1">
-                <Label>PLPL FUNCION GOO</Label>
-                <Input value={editing.plplFuncionGoo ?? ''} onChange={(e) => setEditing({ ...editing, plplFuncionGoo: e.target.value || undefined })} />
+              <div className="md:col-span-3 rounded-md border border-dashed border-border/80 bg-muted/30 p-3 space-y-3">
+                <p className="text-xs text-muted-foreground">
+                  Campos PL del Excel Starsoft (referencia). La línea P&amp;L gerencial se define en el
+                  mapping de <button type="button" className="underline text-primary" onClick={() => navigate(viewToPath('mgrPnl'))}>P&amp;L Gerencial</button>.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label>PL FUNCION GROO</Label>
+                    <Input value={editing.plFuncionGroo ?? ''} onChange={(e) => setEditing({ ...editing, plFuncionGroo: e.target.value || undefined })} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>PLPL FUNCION GOO</Label>
+                    <Input value={editing.plplFuncionGoo ?? ''} onChange={(e) => setEditing({ ...editing, plplFuncionGoo: e.target.value || undefined })} />
+                  </div>
+                </div>
               </div>
             </div>
           )}

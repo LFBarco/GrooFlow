@@ -88,6 +88,7 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
     colaborador_id: '',
   });
   const [proposal, setProposal] = useState<string>('');
+  const [autoMapping, setAutoMapping] = useState(false);
 
   const [sharedOpen, setSharedOpen] = useState(false);
   const [sharedForm, setSharedForm] = useState({
@@ -142,6 +143,29 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
   useEffect(() => {
     if (tab === 'statement') void loadStatement();
   }, [tab, loadStatement]);
+
+  const runAutoMap = async (apply = true) => {
+    if (!canEdit && apply) return;
+    if (chartOfAccounts.length === 0) {
+      toast.error('No hay plan de cuentas cargado en Contabilidad');
+      return;
+    }
+    setAutoMapping(true);
+    try {
+      const r = await mgrPnlApi.autoMapFromChart(chartOfAccounts, {
+        apply,
+        min_confianza: 'media',
+      });
+      toast.success(apply ? 'Mappings aplicados desde el plan' : 'Propuestas generadas', {
+        description: `Útiles: ${r.usable} · Aplicados: ${r.applied} · Ya existían: ${r.skipped_existing}`,
+      });
+      if (apply) await loadAll();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo auto-mapear');
+    } finally {
+      setAutoMapping(false);
+    }
+  };
 
   const runQa = async () => {
     try {
@@ -396,15 +420,27 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
         </TabsContent>
 
         <TabsContent value="mappings" className="space-y-3">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {canEdit ? (
               <Button type="button" onClick={openMapCreate}>
                 <Plus className="mr-2 h-4 w-4" />
                 Nuevo mapping
               </Button>
             ) : null}
+            {canEdit ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={autoMapping || chartOfAccounts.length === 0}
+                onClick={() => void runAutoMap(true)}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {autoMapping ? 'Sincronizando…' : 'Auto-mapear desde plan'}
+              </Button>
+            ) : null}
             <span className="text-sm text-muted-foreground self-center ml-auto">
               {mappings.length} mappings
+              {chartOfAccounts.length === 0 ? ' · sin plan en sesión' : ` · ${chartOfAccounts.length} ctas plan`}
             </span>
           </div>
           <div className="rounded-xl border overflow-x-auto">

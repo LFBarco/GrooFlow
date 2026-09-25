@@ -511,12 +511,17 @@ export interface ChartOfAccountEntry {
   porcentaje?: string;
   plFuncionGroo?: string;
   plplFuncionGoo?: string;
-  /** Clasificación gerencial (P&L Gerencial) — no modifica el plan Starsoft. */
+  /** @deprecated La verdad gerencial vive en grooflow_mgr_cuenta_mapping (P&L Gerencial), no en el plan Starsoft. */
   mgrNaturalezaCodigo?: string;
+  /** @deprecated Usar mapping en /pnl-gerencial */
   mgrPnlCodigo?: string;
+  /** @deprecated Usar mapping en /pnl-gerencial */
   mgrAreaCodigo?: string;
+  /** @deprecated Usar mapping en /pnl-gerencial */
   mgrCentroCodigo?: string;
+  /** @deprecated Usar mapping en /pnl-gerencial */
   mgrTipoCosto?: 'DIRECTO' | 'INDIRECTO' | 'NA';
+  /** @deprecated Usar mapping en /pnl-gerencial */
   mgrDriverCodigo?: string;
   /** Ayuda para filtros y reglas futuras. */
   kind?: 'expense' | 'tax_igv' | 'cash_bank' | 'other';

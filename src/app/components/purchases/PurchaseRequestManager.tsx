@@ -25,6 +25,8 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { formatCurrencyEs } from '../../utils/numberFormat';
+import { getProviderSuggestedExpenseCode } from '../../utils/providerAccounting';
+import { ingestExpenseQuiet } from '../../utils/mgrPnlBridge';
 import { Checkbox } from '../ui/checkbox';
 import { useSupplierProductsState } from '../../hooks/useSupplierProductsState';
 import { getGrooflowBackend } from '../../config/backend';
@@ -438,6 +440,25 @@ export function PurchaseRequestManager({
             actionDialog.type === 'approve' ? 'approved' : 'rejected',
             actionComment
         );
+        if (actionDialog.type === 'approve') {
+            const req = requests.find((r) => r.id === actionDialog.requestId);
+            if (req) {
+                const provider = providers.find((p) => p.id === req.providerId);
+                const cuenta = provider
+                    ? getProviderSuggestedExpenseCode(provider, 'purchase')
+                    : undefined;
+                void ingestExpenseQuiet({
+                    fecha: req.requestDate,
+                    monto: req.amount,
+                    concepto: req.description || `Compra ${req.providerName}`,
+                    cuenta_codigo: cuenta,
+                    sede_nombre: req.location,
+                    origen_tipo: 'factura',
+                    origen_id: `purchase:${req.id}`,
+                    auto_distribute: true,
+                });
+            }
+        }
         setActionDialog(prev => ({ ...prev, isOpen: false }));
         setActionComment('');
         toast.success(`Solicitud ${actionDialog.type === 'approve' ? 'aprobada' : 'rechazada'} correctamente`);

@@ -183,6 +183,7 @@ export type CostExpense = {
   tipo_asignacion: TipoAsignacionGasto;
   regla_id?: number | null;
   colaborador_id?: string | null;
+  cuenta_codigo?: string | null;
   periodo: string;
   estado: GastoCcEstado;
   notas?: string | null;

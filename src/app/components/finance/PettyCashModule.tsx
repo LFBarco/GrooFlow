@@ -28,6 +28,7 @@ import {
     Printer,
 } from 'lucide-react';
 import { canApprovePettyCashMovements } from '../../utils/pettyCashAudit';
+import { ingestExpenseQuiet } from '../../utils/mgrPnlBridge';
 import { mergeProviderUsageContexts } from '../../utils/providerAccounting';
 import { getPettyCashWeekKey } from '../../utils/pettyCashWeekKey';
 import { PettyCashAuditConsole } from './PettyCashAuditConsole';
@@ -671,6 +672,18 @@ export function PettyCashModule({
                     : '';
             toast.success('Gasto guardado correctamente', {
                 description: `Semana ${weekForEntry}${forWhom} · Total: ${formatCurrencyEs(totalVal)} (${classification}). Puede registrar otro gasto.`,
+            });
+            // Puente automático → gastos_cc + classify (no bloquea UX)
+            void ingestExpenseQuiet({
+                fecha: docDateParsed,
+                monto: totalVal,
+                concepto: newExpense.description,
+                cuenta_codigo: newExpense.accountingAccount,
+                sede_nombre: newExpense.location,
+                origen_tipo: 'caja',
+                origen_id: newExpense.id,
+                auto_distribute: true,
+                created_by: currentUser.name,
             });
         });
     };

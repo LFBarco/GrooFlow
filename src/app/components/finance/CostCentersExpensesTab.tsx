@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, RefreshCw, Split, Undo2 } from 'lucide-react';
+import { Plus, RefreshCw, Split, Undo2, Sparkles } from 'lucide-react';
 
 import type {
   CostCenter,
@@ -9,6 +9,7 @@ import type {
   TipoAsignacionGasto,
 } from '../../types/costCenters';
 import { costCentersApi } from '../../utils/costCentersApi';
+import { mgrPnlApi } from '../../utils/mgrPnlApi';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
@@ -35,7 +36,6 @@ import {
   TableHeader,
   TableRow,
 } from '../ui/table';
-
 type Props = {
   canEdit: boolean;
   centers: CostCenter[];
@@ -63,12 +63,14 @@ export function CostCentersExpensesTab({ canEdit, centers, rules, onChanged }: P
     monto: '',
     concepto: '',
     sede_nombre: '',
+    cuenta_codigo: '',
     tipo_asignacion: 'DIRECTO' as TipoAsignacionGasto,
     centro_costo_origen_id: '',
     regla_id: '',
     colaborador_id: '',
     notas: '',
   });
+  const [classifyHint, setClassifyHint] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,13 +102,49 @@ export function CostCentersExpensesTab({ canEdit, centers, rules, onChanged }: P
       monto: '',
       concepto: m === 'personal' ? 'Gasto de personal' : '',
       sede_nombre: '',
+      cuenta_codigo: '',
       tipo_asignacion: m === 'personal' ? 'PERSONAL' : 'DIRECTO',
       centro_costo_origen_id: '',
       regla_id: '',
       colaborador_id: '',
       notas: '',
     });
+    setClassifyHint('');
     setOpen(true);
+  };
+
+  const suggestFromAccount = async () => {
+    if (!form.cuenta_codigo.trim() && !form.concepto.trim()) {
+      toast.message('Indica cuenta o concepto para clasificar');
+      return;
+    }
+    try {
+      const p = await mgrPnlApi.classify({
+        cuenta_codigo: form.cuenta_codigo,
+        texto: form.concepto,
+        colaborador_id: form.colaborador_id || undefined,
+        fecha: form.fecha,
+      });
+      setClassifyHint(
+        [
+          p.naturaleza_codigo && `Nat ${p.naturaleza_codigo}`,
+          p.pnl_codigo && `P&L ${p.pnl_codigo}`,
+          p.centro_codigo && `CC ${p.centro_codigo}`,
+          p.confianza && `conf=${p.confianza}`,
+        ]
+          .filter(Boolean)
+          .join(' · ') || 'Sin propuesta'
+      );
+      if (mode !== 'personal' && p.centro_costo_id) {
+        setForm((f) => ({
+          ...f,
+          tipo_asignacion: 'DIRECTO',
+          centro_costo_origen_id: String(p.centro_costo_id),
+        }));
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo clasificar');
+    }
   };
 
   const save = async () => {
@@ -117,6 +155,7 @@ export function CostCentersExpensesTab({ canEdit, centers, rules, onChanged }: P
         monto: Number(form.monto),
         concepto: form.concepto,
         sede_nombre: form.sede_nombre || null,
+        cuenta_codigo: form.cuenta_codigo || null,
         tipo_asignacion: form.tipo_asignacion,
         centro_costo_origen_id: form.centro_costo_origen_id || null,
         regla_id: form.regla_id || null,
@@ -261,6 +300,7 @@ export function CostCentersExpensesTab({ canEdit, centers, rules, onChanged }: P
                   <TableCell>
                     <div className="font-medium">{g.concepto}</div>
                     <div className="text-xs text-muted-foreground">
+                      {g.cuenta_codigo ? `cta ${g.cuenta_codigo} · ` : ''}
                       {g.sede_nombre || g.origen_tipo}
                       {g.colaborador_id ? ` · ${g.colaborador_id}` : ''}
                     </div>
@@ -352,6 +392,27 @@ export function CostCentersExpensesTab({ canEdit, centers, rules, onChanged }: P
                 value={form.concepto}
                 onChange={(e) => setForm((f) => ({ ...f, concepto: e.target.value }))}
               />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Cuenta contable (opcional)</Label>
+              <div className="flex gap-2">
+                <Input
+                  className="font-mono"
+                  placeholder="ej. 659121"
+                  value={form.cuenta_codigo}
+                  onChange={(e) => setForm((f) => ({ ...f, cuenta_codigo: e.target.value }))}
+                />
+                <Button type="button" variant="secondary" size="icon" title="Clasificar" onClick={() => void suggestFromAccount()}>
+                  <Sparkles className="h-4 w-4" />
+                </Button>
+              </div>
+              {classifyHint ? (
+                <p className="text-xs text-muted-foreground">{classifyHint}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Usa el mapping gerencial / keywords para sugerir centro y P&amp;L.
+                </p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Sede (opcional)</Label>

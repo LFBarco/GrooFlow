@@ -131,4 +131,61 @@ export const mgrPnlApi = {
     if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
     return json.statement as MgrPnlStatement;
   },
+  autoMapFromChart: async (
+    chartAccounts: ChartOfAccountEntry[],
+    opts?: { apply?: boolean; overwrite?: boolean; min_confianza?: string; created_by?: string }
+  ): Promise<{
+    reviewed: number;
+    proposed: number;
+    usable: number;
+    applied: number;
+    skipped_existing: number;
+    apply: boolean;
+    items: Array<Record<string, unknown>>;
+  }> => {
+    const res = await grooflowFetch('/mgr-pnl/auto-map-from-chart', {
+      method: 'POST',
+      body: JSON.stringify({
+        chart_accounts: chartAccounts,
+        apply: opts?.apply !== false,
+        overwrite: Boolean(opts?.overwrite),
+        min_confianza: opts?.min_confianza ?? 'media',
+        created_by: opts?.created_by,
+      }),
+    });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return {
+      reviewed: Number(json.reviewed ?? 0),
+      proposed: Number(json.proposed ?? 0),
+      usable: Number(json.usable ?? 0),
+      applied: Number(json.applied ?? 0),
+      skipped_existing: Number(json.skipped_existing ?? 0),
+      apply: Boolean(json.apply),
+      items: (json.items as Array<Record<string, unknown>>) ?? [],
+    };
+  },
+  ingestExpense: async (data: Record<string, unknown>): Promise<{
+    ok: boolean;
+    duplicated?: boolean;
+    distributed?: boolean;
+    gasto?: Record<string, unknown>;
+    proposal?: MgrClassifyProposal;
+    dist_error?: string | null;
+  }> => {
+    const res = await grooflowFetch('/mgr-pnl/ingest-expense', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return json as {
+      ok: boolean;
+      duplicated?: boolean;
+      distributed?: boolean;
+      gasto?: Record<string, unknown>;
+      proposal?: MgrClassifyProposal;
+      dist_error?: string | null;
+    };
+  },
 };
