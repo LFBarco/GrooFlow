@@ -22,7 +22,18 @@ export const ASISTENCIA_STAFF_AREAS: AsistenciaStaffArea[] = [
   'peluqueria',
 ];
 
-export type AsistenciaLiveStatus = 'trabajando' | 'presente' | 'tarde' | 'ausente';
+export type AsistenciaLiveStatus =
+  | 'trabajando'
+  | 'presente'
+  | 'tarde'
+  | 'ausente'
+  | 'vacaciones';
+
+/** Disponibilidad operativa del colaborador (fuera de marcación Buk). */
+export type AsistenciaServiceStatus = 'active' | 'vacation' | 'not_in_service';
+
+/** Hijos por fila en layout horizontal del organigrama (2–7). */
+export type AsistenciaChildrenPerRow = 2 | 3 | 4 | 5 | 6 | 7;
 
 /** Turno operativo del personal y del organigrama en vivo. */
 export type AsistenciaWorkShift = 'day' | 'night';
@@ -91,6 +102,13 @@ export const ASISTENCIA_LIVE_STATUS_LABELS: Record<AsistenciaLiveStatus, string>
   presente: 'Presente',
   tarde: 'Tarde',
   ausente: 'Ausente',
+  vacaciones: 'Vacaciones',
+};
+
+export const ASISTENCIA_SERVICE_STATUS_LABELS: Record<AsistenciaServiceStatus, string> = {
+  active: 'En servicio',
+  vacation: 'Vacaciones',
+  not_in_service: 'No está en servicio',
 };
 
 /** Persona registrada en la estructura de la sede. */
@@ -135,6 +153,16 @@ export interface AsistenciaStaffMember {
   matchArea?: string;
   matchSpecialty?: string;
   sortOrder?: number;
+  /**
+   * Disponibilidad: vacaciones / no en servicio.
+   * Si falta, se asume `active`.
+   */
+  serviceStatus?: AsistenciaServiceStatus;
+  /**
+   * Si false, no aparece en el organigrama en vivo (útil en vacaciones).
+   * Default: true.
+   */
+  showOnOrgChart?: boolean;
 }
 
 /** Paleta de color del organigrama operativo. */
@@ -156,8 +184,8 @@ export interface AsistenciaCustomOrgColumn {
   color?: AsistenciaOrgChartColor;
   /** Cómo se disponen subcolumnas/hijos bajo esta columna. */
   childrenLayout?: 'horizontal' | 'vertical';
-  /** Hijos por fila si layout horizontal (2 / 3 / 4). */
-  childrenPerRow?: 2 | 3 | 4;
+  /** Hijos por fila si layout horizontal (2–7). */
+  childrenPerRow?: AsistenciaChildrenPerRow;
 }
 
 /** Subcolumna / hijo del organigrama (bajo columna o bajo otra subcolumna). */
@@ -168,7 +196,7 @@ export interface AsistenciaOrgSubColumn {
   parentColumnId: string;
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
-  childrenPerRow?: 2 | 3 | 4;
+  childrenPerRow?: AsistenciaChildrenPerRow;
 }
 
 /** Estilo visual de un nodo (útil para columnas built-in). */
@@ -176,10 +204,10 @@ export interface AsistenciaOrgNodeStyle {
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
   /**
-   * Cuántos hijos por fila cuando layout es horizontal (2 / 3 / 4).
+   * Cuántos hijos por fila cuando layout es horizontal (2–7).
    * Divide la fila larga en una grilla (como en organigramas clásicos).
    */
-  childrenPerRow?: 2 | 3 | 4;
+  childrenPerRow?: AsistenciaChildrenPerRow;
 }
 
 /** Configuración operativa de una sede. */
@@ -215,7 +243,7 @@ export interface AsistenciaSedeProfile {
   /** Disposición de las columnas raíz bajo la sede. */
   rootChildrenLayout?: 'horizontal' | 'vertical';
   /** Hijos por fila en la raíz (si horizontal). */
-  rootChildrenPerRow?: 2 | 3 | 4;
+  rootChildrenPerRow?: AsistenciaChildrenPerRow;
 }
 
 
@@ -246,7 +274,7 @@ export interface AsistenciaLiveSubAreaBlock {
   totalCount: number;
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
-  childrenPerRow?: 2 | 3 | 4;
+  childrenPerRow?: AsistenciaChildrenPerRow;
   /** Orden de cargos para jerarquía visual (Familia → Área → Cargo). */
   cargoOrder?: string[];
   /** Subdivisiones anidadas bajo esta subárea. */
@@ -265,7 +293,7 @@ export interface AsistenciaLiveAreaBlock {
   totalCount: number;
   color?: AsistenciaOrgChartColor;
   childrenLayout?: 'horizontal' | 'vertical';
-  childrenPerRow?: 2 | 3 | 4;
+  childrenPerRow?: AsistenciaChildrenPerRow;
   cargoOrder?: string[];
 }
 
@@ -284,7 +312,7 @@ export interface AsistenciaLiveSedeSummary {
   recordsOnDateCount: number;
   /** Cómo se disponen las columnas raíz bajo la sede. */
   rootChildrenLayout?: 'horizontal' | 'vertical';
-  rootChildrenPerRow?: 2 | 3 | 4;
+  rootChildrenPerRow?: AsistenciaChildrenPerRow;
 }
 
 /** Consolidado multi-sede para organigrama en vivo. */

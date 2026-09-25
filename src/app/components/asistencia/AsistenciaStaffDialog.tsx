@@ -14,6 +14,7 @@ import {
 
 import type {
   AsistenciaSedeProfile,
+  AsistenciaServiceStatus,
   AsistenciaShiftMode,
   AsistenciaStaffMember,
   AsistenciaWeekday,
@@ -23,6 +24,7 @@ import type {
 import {
   ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME,
   ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME,
+  ASISTENCIA_SERVICE_STATUS_LABELS,
   ASISTENCIA_WEEKDAY_LABELS,
   ASISTENCIA_WEEKDAYS,
   ASISTENCIA_WORK_SHIFT_LABELS,
@@ -385,20 +387,50 @@ export function AsistenciaStaffDialog({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label className="text-slate-300">Estado inicial</Label>
-              <Select value="ausente" disabled>
-                <SelectTrigger className="bg-muted text-muted-foreground border-border dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700">
-                  <SelectValue placeholder="Ausente" />
+              <Label className="text-slate-300">Disponibilidad</Label>
+              <Select
+                value={form.serviceStatus ?? 'active'}
+                onValueChange={(v) =>
+                  patch({ serviceStatus: v as AsistenciaServiceStatus })
+                }
+              >
+                <SelectTrigger className="bg-background text-foreground border-border">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ausente">Ausente</SelectItem>
+                  {(Object.keys(ASISTENCIA_SERVICE_STATUS_LABELS) as AsistenciaServiceStatus[]).map(
+                    (key) => (
+                      <SelectItem key={key} value={key}>
+                        {ASISTENCIA_SERVICE_STATUS_LABELS[key]}
+                      </SelectItem>
+                    )
+                  )}
                 </SelectContent>
               </Select>
-              <p className="text-[10px] text-slate-500">Se actualiza en vivo con Buk</p>
+              <p className="text-[10px] text-slate-500">
+                Vacaciones / no en servicio: el triángulo del organigrama lo indica. No cuenta como
+                falta crítica de cruce Buk.
+              </p>
             </div>
-            <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-2">
+            <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-slate-300">Ver en organigrama</Label>
+                <Switch
+                  checked={form.showOnOrgChart !== false}
+                  onCheckedChange={(checked) => patch({ showOnOrgChart: checked })}
+                />
+              </div>
+              <p className="text-[10px] text-slate-500 leading-snug">
+                Si lo desactivas (p. ej. en vacaciones largas), no aparece en Hoy. Sigue en la
+                plantilla.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-2 sm:col-span-2">
               <p className="text-[11px] text-slate-400 leading-snug">
                 {isWeekly ? (
                   <>

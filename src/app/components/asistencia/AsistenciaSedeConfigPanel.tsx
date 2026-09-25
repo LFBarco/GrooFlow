@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { ArrowDown, ArrowUp, Building2, CornerDownRight, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
 
 import type {
+  AsistenciaChildrenPerRow,
   AsistenciaOrgChartColor,
   AsistenciaOrgNodeStyle,
   AsistenciaOrgSubColumn,
@@ -117,7 +118,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   const [rootChildrenLayout, setRootChildrenLayout] = useState<'horizontal' | 'vertical'>(
     () => profile.rootChildrenLayout ?? 'horizontal'
   );
-  const [rootChildrenPerRow, setRootChildrenPerRow] = useState<2 | 3 | 4>(
+  const [rootChildrenPerRow, setRootChildrenPerRow] = useState<AsistenciaChildrenPerRow>(
     () => profile.rootChildrenPerRow ?? 3
   );
   const [nodeStyles, setNodeStyles] = useState<Record<string, AsistenciaOrgNodeStyle>>(() => {
@@ -331,7 +332,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
     (overrides?: {
       nodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
       rootChildrenLayout?: 'horizontal' | 'vertical';
-      rootChildrenPerRow?: 2 | 3 | 4;
+      rootChildrenPerRow?: AsistenciaChildrenPerRow;
       cargoByColumnText?: Record<string, string>;
       areaLabels?: Record<string, string>;
       areaOrder?: string[];
@@ -798,7 +799,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                   <Select
                     value={String(rootChildrenPerRow)}
                     onValueChange={(v) => {
-                      const next = Number(v) as 2 | 3 | 4;
+                      const next = Number(v) as AsistenciaChildrenPerRow;
                       setRootChildrenPerRow(next);
                       void persistOrgLayout(
                         { rootChildrenPerRow: next },
@@ -810,16 +811,18 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="2">2 por fila</SelectItem>
-                      <SelectItem value="3">3 por fila</SelectItem>
-                      <SelectItem value="4">4 por fila</SelectItem>
+                      {([2, 3, 4, 5, 6, 7] as AsistenciaChildrenPerRow[]).map((n) => (
+                        <SelectItem key={n} value={String(n)}>
+                          {n} por fila
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
               ) : null}
               <p className="text-[11px] text-muted-foreground max-w-sm pb-1">
-                Jerarquía: Familia → área organizacional → cargo. Divide filas largas en 2, 3 o 4
-                columnas. Se ve en Operativa en vivo.
+                Jerarquía: Familia → área organizacional → cargo. Divide filas largas en 2 a 7
+                columnas. Se ve en Hoy.
               </p>
             </div>
 
@@ -888,7 +891,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                               value={String(subStyle.childrenPerRow ?? 3)}
                               onValueChange={(v) =>
                                 patchNodeStyle(sub.id, {
-                                  childrenPerRow: Number(v) as 2 | 3 | 4,
+                                  childrenPerRow: Number(v) as AsistenciaChildrenPerRow,
                                 })
                               }
                             >
@@ -896,9 +899,11 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                                 <SelectValue placeholder="Por fila" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="2">2 / fila</SelectItem>
-                                <SelectItem value="3">3 / fila</SelectItem>
-                                <SelectItem value="4">4 / fila</SelectItem>
+                                {([2, 3, 4, 5, 6, 7] as AsistenciaChildrenPerRow[]).map((n) => (
+                                  <SelectItem key={n} value={String(n)}>
+                                    {n} / fila
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           ) : null}
@@ -1017,7 +1022,7 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                           value={String(style.childrenPerRow ?? 3)}
                           onValueChange={(v) =>
                             patchNodeStyle(columnId, {
-                              childrenPerRow: Number(v) as 2 | 3 | 4,
+                              childrenPerRow: Number(v) as AsistenciaChildrenPerRow,
                             })
                           }
                         >
@@ -1025,9 +1030,11 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                             <SelectValue placeholder="Por fila" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="2">2 / fila</SelectItem>
-                            <SelectItem value="3">3 / fila</SelectItem>
-                            <SelectItem value="4">4 / fila</SelectItem>
+                            {([2, 3, 4, 5, 6, 7] as AsistenciaChildrenPerRow[]).map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n} / fila
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       ) : null}

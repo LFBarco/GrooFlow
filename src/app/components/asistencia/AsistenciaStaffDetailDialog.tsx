@@ -18,6 +18,7 @@ const STATUS_BADGE: Record<string, string> = {
   presente: 'bg-slate-200 text-slate-800 dark:bg-slate-600/30 dark:text-slate-100',
   tarde: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-100',
   ausente: 'bg-red-100 text-red-900 dark:bg-red-500/20 dark:text-red-100',
+  vacaciones: 'bg-violet-100 text-violet-900 dark:bg-violet-500/20 dark:text-violet-100',
 };
 
 type Props = {

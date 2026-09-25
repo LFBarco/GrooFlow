@@ -661,6 +661,45 @@ describe('asistenciaStaff', () => {
     );
   });
 
+  it('marca vacaciones y respeta ocultar en organigrama', () => {
+    const onLeave: AsistenciaStaffMember = {
+      id: 'vac1',
+      sedeName: 'SAN ISIDRO',
+      fullName: 'Ana Vacaciones',
+      cargoLabel: 'Recepcionista',
+      area: 'administracion',
+      expectedTime: '08:00',
+      isCritical: true,
+      rut: '333',
+      serviceStatus: 'vacation',
+      showOnOrgChart: true,
+    };
+    const hidden: AsistenciaStaffMember = {
+      ...onLeave,
+      id: 'vac2',
+      fullName: 'Luis Oculto',
+      rut: '444',
+      showOnOrgChart: false,
+    };
+    const settings = mergeAsistenciaSettings({
+      staff: [onLeave, hidden],
+      sedeProfiles: [{ sedeName: 'SAN ISIDRO', bukRecintoCode: 'SANISIDRO' }],
+    });
+    const live = buildLiveSedeSummary({
+      sedeName: 'SAN ISIDRO',
+      settings,
+      records: [],
+      date: new Date('2026-06-10T12:00:00'),
+    });
+    const names = live.areas.flatMap((a) => a.staff).map((s) => s.staff.fullName);
+    expect(names).toContain('Ana Vacaciones');
+    expect(names).not.toContain('Luis Oculto');
+    const ana = live.areas.flatMap((a) => a.staff).find((s) => s.staff.id === 'vac1');
+    expect(ana?.status).toBe('vacaciones');
+    expect(ana?.matchHint ?? ana?.statusNote).toMatch(/Vacaciones/i);
+    expect(live.criticalMissing.some((s) => s.id === 'vac1')).toBe(false);
+  });
+
   it('marca tarde cuando la entrada supera horario + tolerancia', () => {
     const staff: AsistenciaStaffMember = {
       id: 's-late',

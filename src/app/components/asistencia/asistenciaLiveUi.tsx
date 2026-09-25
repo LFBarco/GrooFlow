@@ -60,6 +60,7 @@ export const STATUS_DOT: Record<AsistenciaLiveStatus, string> = {
   presente: 'bg-slate-400',
   tarde: 'bg-amber-500',
   ausente: 'bg-red-500',
+  vacaciones: 'bg-violet-500',
 };
 
 export function StaffLiveCard({
@@ -96,8 +97,9 @@ export function StaffLiveCard({
   onClick?: () => void;
   planVsReal?: TurnosPlanVsReal;
 }) {
-  const absent = status === 'ausente';
-  const detailHint = statusNote ?? (absent ? matchHint : undefined);
+  const outOfService = status === 'ausente' || status === 'vacaciones';
+  // Detalle (match Buk / vacaciones) solo en tooltip del triángulo — no hincha la tarjeta.
+  const triangleHint = statusNote || matchHint || undefined;
   return (
     <div
       ref={editLayout ? dragHandleRef : undefined}
@@ -114,11 +116,14 @@ export function StaffLiveCard({
             }
           : undefined
       }
-      className={`relative min-w-[160px] max-w-[220px] rounded-xl border p-3 transition-opacity ${
+      title={!outOfService && statusNote ? statusNote : undefined}
+      className={`relative w-full min-w-0 max-w-[200px] rounded-xl border p-2.5 transition-opacity ${
         isDragging ? 'opacity-40' : ''
       } ${
-        absent
-          ? 'border-red-200 bg-red-50/90 dark:border-red-500/30 dark:bg-slate-900/80'
+        outOfService
+          ? status === 'vacaciones'
+            ? 'border-violet-200 bg-violet-50/90 dark:border-violet-500/30 dark:bg-violet-950/20'
+            : 'border-red-200 bg-red-50/90 dark:border-red-500/30 dark:bg-slate-900/80'
           : coveringLabel
             ? 'border-teal-200 bg-teal-50/80 dark:border-teal-500/30 dark:bg-teal-950/20'
             : 'border-border bg-card dark:border-slate-700 dark:bg-slate-900/90'
@@ -131,10 +136,10 @@ export function StaffLiveCard({
         <div className="flex min-w-0 items-center gap-2">
           <div className="relative shrink-0">
             {avatarUrl ? (
-              <img src={avatarUrl} alt="" className="h-9 w-9 rounded-lg object-cover" />
+              <img src={avatarUrl} alt="" className="h-8 w-8 rounded-lg object-cover" />
             ) : (
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted dark:bg-slate-800">
-                <User className="h-4 w-4 text-muted-foreground" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted dark:bg-slate-800">
+                <User className="h-3.5 w-3.5 text-muted-foreground" />
               </div>
             )}
             <span
@@ -154,30 +159,25 @@ export function StaffLiveCard({
             ) : null}
           </div>
         </div>
-        {absent ? (
-          <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
+        {outOfService ? (
+          <span title={triangleHint} className="shrink-0" aria-label={triangleHint}>
+            <AlertTriangle
+              className={`h-4 w-4 ${
+                status === 'vacaciones' ? 'text-violet-500' : 'text-red-500'
+              }`}
+            />
+          </span>
         ) : critical ? (
           <Sparkles className="h-4 w-4 shrink-0 text-amber-500 dark:text-amber-400" />
         ) : null}
       </div>
-      <div className="mt-3 flex items-center justify-between text-[10px] text-muted-foreground">
+      <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
         <span>{time ?? '—'}</span>
         <span className="flex items-center gap-1">
           {planVsReal ? <TurnosPlanVsRealBadge compare={planVsReal} compact /> : null}
           {ASISTENCIA_LIVE_STATUS_LABELS[status]}
         </span>
       </div>
-      {detailHint ? (
-        <p
-          className={`mt-2 border-t pt-2 text-[10px] leading-snug ${
-            statusNote
-              ? 'border-amber-200 text-amber-800 dark:border-amber-500/20 dark:text-amber-200/90'
-              : 'border-red-200 text-red-700 dark:border-red-500/20 dark:text-red-300/90'
-          }`}
-        >
-          {detailHint}
-        </p>
-      ) : null}
     </div>
   );
 }

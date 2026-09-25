@@ -37,6 +37,7 @@ type Props = {
 
 const LIVE_PRESETS: { label: string; patch: Partial<AsistenciaFilters> }[] = [
   { label: 'Ausentes', patch: { liveStatus: 'ausente', arrivalFilter: 'absent' } },
+  { label: 'Vacaciones', patch: { liveStatus: 'vacaciones', arrivalFilter: 'absent' } },
   { label: 'Tardanzas', patch: { liveStatus: 'tarde', arrivalFilter: 'late' } },
   { label: 'Críticos aus.', patch: { criticalOnly: true, liveStatus: 'ausente', arrivalFilter: 'absent' } },
   { label: 'Sin cruce Buk', patch: { noBukMatchOnly: true, liveStatus: 'ausente' } },
@@ -172,6 +173,7 @@ export function AsistenciaFiltersBar({
                   <SelectItem value="presente">Presente</SelectItem>
                   <SelectItem value="tarde">Tarde</SelectItem>
                   <SelectItem value="ausente">Ausente</SelectItem>
+                  <SelectItem value="vacaciones">Vacaciones</SelectItem>
                 </SelectContent>
               </Select>
             </div>

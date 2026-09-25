@@ -1,4 +1,5 @@
 import type {
+  AsistenciaChildrenPerRow,
   AsistenciaCustomOrgColumn,
   AsistenciaOrgChartColor,
   AsistenciaOrgNodeStyle,
@@ -114,21 +115,23 @@ export function resolveOrgNodeStyle(
   return { color, childrenLayout, childrenPerRow };
 }
 
-/** Clases CSS para hijos: vertical o grilla de N columnas. */
+/** Clases CSS para hijos: vertical o grilla de N columnas (2–7). */
 export function orgChildrenLayoutClass(
   layout: 'horizontal' | 'vertical' = 'horizontal',
-  perRow: 2 | 3 | 4 = 3
+  perRow: AsistenciaChildrenPerRow = 3
 ): string {
   if (layout === 'vertical') {
     return 'flex w-full flex-col items-stretch gap-2';
   }
-  if (perRow === 2) {
-    return 'grid w-full grid-cols-1 gap-3 sm:grid-cols-2';
-  }
-  if (perRow === 4) {
-    return 'grid w-full grid-cols-2 gap-3 lg:grid-cols-4';
-  }
-  return 'grid w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3';
+  const grids: Record<AsistenciaChildrenPerRow, string> = {
+    2: 'grid w-full grid-cols-1 gap-2 sm:grid-cols-2',
+    3: 'grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3',
+    4: 'grid w-full grid-cols-2 gap-2 lg:grid-cols-4',
+    5: 'grid w-full grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5',
+    6: 'grid w-full grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6',
+    7: 'grid w-full grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7',
+  };
+  return grids[perRow] ?? grids[3];
 }
 
 export function patchOrgNodeStyle(

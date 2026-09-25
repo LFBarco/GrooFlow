@@ -4489,7 +4489,15 @@ export default function App() {
                   onPersistAsistenciaSettings={persistAsistenciaNow}
                   onPersistSystemSettings={persistSystemSettingsNow}
                   visibleSedes={visibleSedes}
-                  canConfigure={canConfigureAsistencia(currentUser, userRole)}
+                  canConfigure={canConfigureAsistencia(currentUser, userRole, {
+                    menuActions,
+                    isSuperAdmin,
+                  })}
+                  canExport={
+                    isSuperAdmin ||
+                    hasMenuAction(menuActions, 'Asistencia', 'exportar', { isSuperAdmin }) ||
+                    hasPermission('Asistencia')
+                  }
                   users={users}
                 />
               </Suspense>

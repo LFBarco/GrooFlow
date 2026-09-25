@@ -1,7 +1,13 @@
 import { ASISTENCIA_LIVE_STATUS_LABELS, type AsistenciaLiveStatus } from '../../types/asistencia';
 import { STATUS_DOT } from './asistenciaLiveUi';
 
-const ORDER: AsistenciaLiveStatus[] = ['trabajando', 'presente', 'tarde', 'ausente'];
+const ORDER: AsistenciaLiveStatus[] = [
+  'trabajando',
+  'presente',
+  'tarde',
+  'ausente',
+  'vacaciones',
+];
 
 export function AsistenciaStatusLegend({ className }: { className?: string }) {
   return (

@@ -167,7 +167,8 @@ export function AsistenciaLiveView({
 
           {editLayout ? (
             <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-950/30 dark:text-indigo-200">
-              Modo edición: arrastra tarjetas entre áreas, reordénalas dentro del área o mueve columnas
+              Modo edición: arrastra personal entre áreas, reordena hijos (subáreas) arrastrando su
+              título, o mueve columnas raíz desde el encabezado.
               agarrando el encabezado del área.
             </div>
           ) : null}

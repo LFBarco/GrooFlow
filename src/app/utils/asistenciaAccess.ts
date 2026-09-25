@@ -2,6 +2,7 @@ import type { Role } from '../components/users/types';
 import type { User } from '../types';
 import { getSuperAdminEmails } from '../config/superAdmins';
 import { isAdminAppUser } from '../services/repository/userProfileSync';
+import { hasMenuAction, type MenuActionsMap } from './menuActions';
 import { roleRecordHasModuleAccess } from './rolePermissions';
 
 /** Roles de app con permiso para configurar sede / organigrama en Asistencia. */
@@ -55,15 +56,25 @@ function isGerenciaAsistenciaRole(user: User, roleRecord?: Role | null): boolean
 
 /**
  * Puede editar sede, personal y organigrama en el módulo Asistencia.
- * Solo administrador de sistema, gerencia y Recursos Humanos.
- * Encargado de sede: no (solo operativa en vivo + dashboard Buk).
+ * Requiere rol autorizado Y (si hay mapa de menú) acción `configurar`.
+ * Encargado de sede: no (solo Hoy + Marcaciones).
  */
 export function canConfigureAsistencia(
   user: User | null | undefined,
-  rolesOrRecord?: Role[] | Role | null
+  rolesOrRecord?: Role[] | Role | null,
+  options?: { menuActions?: MenuActionsMap | null; isSuperAdmin?: boolean }
 ): boolean {
   if (!user) return false;
   if (isEncargadoSedeAsistencia(user)) return false;
+
+  if (options?.isSuperAdmin) return true;
+
+  // Perfil de menú: sin «configurar» no edita/mueve (solo operativa).
+  if (options?.menuActions != null) {
+    if (!hasMenuAction(options.menuActions, 'Asistencia', 'configurar', { isSuperAdmin: false })) {
+      return false;
+    }
+  }
 
   if (isAdminAppUser(user)) return true;
 
@@ -76,6 +87,14 @@ export function canConfigureAsistencia(
   const roleRecord = resolveUserRoleRecord(user, rolesOrRecord);
   if (isGerenciaAsistenciaRole(user, roleRecord)) return true;
   if (isRrhhAsistenciaRole(user, roleRecord)) return true;
+
+  // Si el menú ya otorgó configurar, permitir aunque el rol no esté en la lista.
+  if (
+    options?.menuActions != null &&
+    hasMenuAction(options.menuActions, 'Asistencia', 'configurar', { isSuperAdmin: false })
+  ) {
+    return true;
+  }
 
   return false;
 }

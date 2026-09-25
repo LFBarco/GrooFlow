@@ -92,7 +92,7 @@ export function matchesLiveStaffFilter(
 function recomputeSedeCounts(staff: AsistenciaStaffLiveState[]) {
   return {
     workingCount: staff.filter((s) => s.status === 'trabajando').length,
-    absentCount: staff.filter((s) => s.status === 'ausente').length,
+    absentCount: staff.filter((s) => s.status === 'ausente' || s.status === 'vacaciones').length,
     lateCount: staff.filter((s) => s.status === 'tarde').length,
     criticalMissing: staff
       .filter((s) => s.staff.isCritical && s.status === 'ausente')

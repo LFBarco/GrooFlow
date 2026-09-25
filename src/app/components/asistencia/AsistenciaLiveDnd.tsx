@@ -11,12 +11,13 @@ import type {
 } from '../../types/asistencia';
 import type { TurnosPlanVsReal } from '../../types/turnos';
 import { shiftLabelForStaff } from '../../utils/asistenciaShift';
-import { applyAreaLayoutReorder, applyStaffLayoutMove } from '../../utils/asistenciaLayoutUtils';
+import { applyAreaLayoutReorder, applyStaffLayoutMove, applySubColumnReorder } from '../../utils/asistenciaLayoutUtils';
 import { ORG_CHART_COLOR_STYLES, groupStaffByCargoHierarchy, orgChildrenLayoutClass } from '../../utils/asistenciaOrgChart';
 import { ManagerPlaceholder, StaffLiveCard, themeForColumnId } from './asistenciaLiveUi';
 
 export const DND_STAFF = 'asistencia-live-staff';
 export const DND_AREA = 'asistencia-live-area';
+export const DND_SUB_AREA = 'asistencia-live-sub-area';
 
 export type StaffDragItem = {
   staffId: string;
@@ -28,6 +29,12 @@ export type StaffDragItem = {
 export type AreaDragItem = {
   sedeName: string;
   area: string;
+};
+
+export type SubAreaDragItem = {
+  sedeName: string;
+  subId: string;
+  parentId: string;
 };
 type LayoutPersist = (
   updater: (prev: AsistenciaSettings) => AsistenciaSettings,
@@ -280,31 +287,76 @@ function StaffAreaList({
 function SubAreaColumn({
   sub,
   sedeName,
+  parentId,
   editLayout,
   onStaffDrop,
+  onSubReorder,
   viewDate,
   onStaffClick,
   getPlanVsReal,
 }: {
   sub: AsistenciaLiveSubAreaBlock;
   sedeName: string;
+  parentId: string;
   editLayout: boolean;
   onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: string) => void;
+  onSubReorder: (dragSubId: string, hoverSubId: string) => void;
   viewDate?: Date;
   onStaffClick?: (live: AsistenciaStaffLiveState) => void;
   getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
 }) {
+  const headerRef = useRef<HTMLDivElement>(null);
   const color = ORG_CHART_COLOR_STYLES[sub.color ?? 'default'];
   const layout = sub.childrenLayout ?? 'horizontal';
   const perRow = sub.childrenPerRow ?? 3;
   const hasChildren = (sub.children?.length ?? 0) > 0;
 
+  const [{ isDraggingSub }, dragSub] = useDrag(
+    () => ({
+      type: DND_SUB_AREA,
+      item: { sedeName, subId: sub.area, parentId } satisfies SubAreaDragItem,
+      canDrag: editLayout,
+      collect: (monitor) => ({ isDraggingSub: monitor.isDragging() }),
+    }),
+    [editLayout, sedeName, sub.area, parentId]
+  );
+
+  const [, dropSub] = useDrop(
+    () => ({
+      accept: DND_SUB_AREA,
+      drop(item: SubAreaDragItem) {
+        if (!editLayout || item.sedeName !== sedeName || item.parentId !== parentId) return;
+        if (item.subId === sub.area) return;
+        onSubReorder(item.subId, sub.area);
+      },
+      canDrop: (item) =>
+        editLayout &&
+        item.sedeName === sedeName &&
+        item.parentId === parentId &&
+        item.subId !== sub.area,
+    }),
+    [editLayout, sedeName, parentId, sub.area, onSubReorder]
+  );
+
+  dragSub(dropSub(headerRef));
+
   return (
-    <div className={`w-full min-w-0 rounded-lg border-2 p-2 ${color.border} ${color.bg}`}>
-      <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wide text-foreground">
+    <div
+      className={`w-full min-w-0 rounded-lg border-2 p-2 ${color.border} ${color.bg} ${
+        isDraggingSub ? 'opacity-50' : ''
+      }`}
+    >
+      <p
+        ref={headerRef}
+        className={`mb-2 text-center text-[11px] font-semibold uppercase tracking-wide text-foreground ${
+          editLayout ? 'cursor-grab active:cursor-grabbing' : ''
+        }`}
+      >
         {sub.label}
         {sub.totalCount > 0 ? (
-          <span className="ml-1 font-normal text-muted-foreground">({sub.activeCount}/{sub.totalCount})</span>
+          <span className="ml-1 font-normal text-muted-foreground">
+            ({sub.activeCount}/{sub.totalCount})
+          </span>
         ) : null}
       </p>
       <StaffAreaList
@@ -327,8 +379,10 @@ function SubAreaColumn({
                 <SubAreaColumn
                   sub={child}
                   sedeName={sedeName}
+                  parentId={sub.area}
                   editLayout={editLayout}
                   onStaffDrop={onStaffDrop}
+                  onSubReorder={onSubReorder}
                   viewDate={viewDate}
                   onStaffClick={onStaffClick}
                   getPlanVsReal={getPlanVsReal}
@@ -348,6 +402,7 @@ function DraggableAreaColumn({
   editLayout,
   onAreaReorder,
   onStaffDrop,
+  onSubReorder,
   viewDate,
   onStaffClick,
   getPlanVsReal,
@@ -357,6 +412,7 @@ function DraggableAreaColumn({
   editLayout: boolean;
   onAreaReorder: (dragArea: string, hoverArea: string) => void;
   onStaffDrop: (item: StaffDragItem, toIndex: number, toArea: string) => void;
+  onSubReorder: (dragSubId: string, hoverSubId: string) => void;
   viewDate?: Date;
   onStaffClick?: (live: AsistenciaStaffLiveState) => void;
   getPlanVsReal?: (live: AsistenciaStaffLiveState) => TurnosPlanVsReal | undefined;
@@ -423,8 +479,10 @@ function DraggableAreaColumn({
               <SubAreaColumn
                 sub={sub}
                 sedeName={sedeName}
+                parentId={block.area}
                 editLayout={editLayout}
                 onStaffDrop={onStaffDrop}
+                onSubReorder={onSubReorder}
                 viewDate={viewDate}
                 onStaffClick={onStaffClick}
                 getPlanVsReal={getPlanVsReal}
@@ -513,6 +571,16 @@ export function AsistenciaLiveSedeBlock({
     [summary.sedeName, onPersistLayout]
   );
 
+  const handleSubReorder = useCallback(
+    (dragSubId: string, hoverSubId: string) => {
+      void onPersistLayout(
+        (prev) => applySubColumnReorder(prev, summary.sedeName, dragSubId, hoverSubId),
+        'Hijos reordenados.'
+      );
+    },
+    [summary.sedeName, onPersistLayout]
+  );
+
   return (
     <div className={compact ? 'pt-6 border-t border-border first:border-t-0 dark:border-slate-800 first:pt-0' : ''}>
       {compact ? (
@@ -577,6 +645,7 @@ export function AsistenciaLiveSedeBlock({
                 editLayout={editLayout}
                 onAreaReorder={handleAreaReorder}
                 onStaffDrop={handleStaffDrop}
+                onSubReorder={handleSubReorder}
                 viewDate={viewDate}
                 onStaffClick={onStaffClick}
                 getPlanVsReal={getPlanVsReal}

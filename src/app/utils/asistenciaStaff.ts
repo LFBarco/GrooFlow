@@ -43,6 +43,13 @@ import {
   type BukRecordsByRut,
   type LiveOrgMode,
 } from './asistenciaSedeOperativa';
+import {
+  isStaffOutOfService,
+  resolveStaffServiceStatus,
+  serviceStatusLiveNote,
+  serviceStatusToLiveStatus,
+  shouldShowStaffOnOrgChart,
+} from './asistenciaServiceStatus';
 import { normalizeSedeKey } from './gestionSedes';
 
 const DEFAULT_SCHEDULE = { start: '08:00', end: '18:00' };
@@ -220,6 +227,15 @@ function resolveLiveStatus(
   date: Date,
   profile: AsistenciaSedeProfile
 ): Pick<AsistenciaStaffLiveState, 'status' | 'entradaFormat' | 'stillOnSite' | 'statusNote'> {
+  const service = resolveStaffServiceStatus(staff.serviceStatus);
+  if (isStaffOutOfService(service)) {
+    return {
+      status: serviceStatusToLiveStatus(service),
+      stillOnSite: false,
+      statusNote: serviceStatusLiveNote(service),
+    };
+  }
+
   if (!record || !hasEntradaMarcada(record)) {
     return { status: 'ausente', stillOnSite: false };
   }
@@ -327,6 +343,7 @@ export function staffForSedeLive(
   const byRut = recordsByRut ?? indexBukRecordsForDate(records, date);
   return (merged.staff ?? [])
     .filter((s) => staffMatchesShiftFilter(s, shiftFilter, date))
+    .filter((s) => shouldShowStaffOnOrgChart(s.showOnOrgChart))
     .filter((s) => {
       const eff = resolveEffectiveSedeForLive(
         s,
@@ -405,40 +422,44 @@ export function buildLiveSedeSummary(input: {
     const buk = eff.record ?? findBukRecordForStaffAnySede(staff, input.records, input.date, recordsByRut);
     const live = resolveLiveStatus(staff, buk, input.date, profile);
     let statusNote = live.statusNote;
-    if (orgMode === 'operativo' && eff.coveringFromBase && eff.sedeBase) {
-      const coverNote = `Base: ${eff.sedeBase}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
-      statusNote = statusNote ? `${coverNote}. ${statusNote}` : coverNote;
-    } else if (
-      orgMode === 'base' &&
-      eff.punchedAwayFromBase &&
-      eff.sedeOperativaHoy
-    ) {
-      const hoyNote = `Hoy en ${eff.sedeOperativaHoy}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
-      statusNote = statusNote ? `${hoyNote}. ${statusNote}` : hoyNote;
-    } else if (
-      orgMode === 'operativo' &&
-      !eff.coveringFromBase &&
-      eff.punchedAwayFromBase &&
-      eff.sedeOperativaHoy &&
-      normalizeSedeKey(eff.sedeOperativaHoy) !== normalizeSedeKey(eff.sedeBase)
-    ) {
-      // Petmovil/Central: permanece en base pero marcó en otro lado.
-      const hoyNote = `Marcó en ${eff.sedeOperativaHoy}`;
-      statusNote = statusNote ? `${hoyNote}. ${statusNote}` : hoyNote;
+    if (!isStaffOutOfService(staff.serviceStatus)) {
+      if (orgMode === 'operativo' && eff.coveringFromBase && eff.sedeBase) {
+        const coverNote = `Base: ${eff.sedeBase}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
+        statusNote = statusNote ? `${coverNote}. ${statusNote}` : coverNote;
+      } else if (
+        orgMode === 'base' &&
+        eff.punchedAwayFromBase &&
+        eff.sedeOperativaHoy
+      ) {
+        const hoyNote = `Hoy en ${eff.sedeOperativaHoy}${eff.bukRecintoHoy ? ` · ${eff.bukRecintoHoy}` : ''}`;
+        statusNote = statusNote ? `${hoyNote}. ${statusNote}` : hoyNote;
+      } else if (
+        orgMode === 'operativo' &&
+        !eff.coveringFromBase &&
+        eff.punchedAwayFromBase &&
+        eff.sedeOperativaHoy &&
+        normalizeSedeKey(eff.sedeOperativaHoy) !== normalizeSedeKey(eff.sedeBase)
+      ) {
+        // Petmovil/Central: permanece en base pero marcó en otro lado.
+        const hoyNote = `Marcó en ${eff.sedeOperativaHoy}`;
+        statusNote = statusNote ? `${hoyNote}. ${statusNote}` : hoyNote;
+      }
     }
     const matchHint =
-      live.status === 'ausente' &&
-      !statusNote &&
-      input.records.length > 0 &&
-      input.records.length <= 2500
-        ? diagnoseStaffBukMatch({
-            staff,
-            records: input.records,
-            sedeName: input.sedeName,
-            settings: input.settings,
-            date: input.date,
-          })
-        : undefined;
+      isStaffOutOfService(staff.serviceStatus)
+        ? undefined
+        : live.status === 'ausente' &&
+            !statusNote &&
+            input.records.length > 0 &&
+            input.records.length <= 2500
+          ? diagnoseStaffBukMatch({
+              staff,
+              records: input.records,
+              sedeName: input.sedeName,
+              settings: input.settings,
+              date: input.date,
+            })
+          : undefined;
     return {
       staff,
       ...live,
@@ -539,11 +560,18 @@ export function buildLiveSedeSummary(input: {
     });
 
   const workingCount = liveStates.filter((s) => s.status === 'trabajando').length;
-  const absentCount = liveStates.filter((s) => s.status === 'ausente').length;
+  const absentCount = liveStates.filter(
+    (s) => s.status === 'ausente' || s.status === 'vacaciones'
+  ).length;
   const lateCount = liveStates.filter((s) => s.status === 'tarde').length;
 
   const criticalMissing = liveStates
-    .filter((s) => s.staff.isCritical && s.status === 'ausente')
+    .filter(
+      (s) =>
+        s.staff.isCritical &&
+        (s.status === 'ausente' || s.status === 'vacaciones') &&
+        !isStaffOutOfService(s.staff.serviceStatus)
+    )
     .map((s) => s.staff);
 
   const scheduleLabel = scheduleLabelForShift(shiftFilter, profile);

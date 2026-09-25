@@ -104,6 +104,8 @@ export interface AsistenciaModuleProps {
   ) => Promise<boolean>;
   visibleSedes?: string[];
   canConfigure?: boolean;
+  /** Exportar Excel (organigrama / Buk). Sin permiso: se ocultan botones. */
+  canExport?: boolean;
   users?: User[];
 }
 
@@ -116,6 +118,7 @@ export function AsistenciaModule({
   onPersistSystemSettings,
   visibleSedes = [],
   canConfigure = false,
+  canExport = true,
   users = [],
 }: AsistenciaModuleProps) {
   const { employees: hrCollaborators, loading: hrCollaboratorsLoading } = useHrCollaborators();
@@ -1028,16 +1031,18 @@ export function AsistenciaModule({
               <Printer className="mr-1 h-4 w-4" />
               Imprimir
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={records.length === 0}
-              onClick={handleExportLive}
-            >
-              <Download className="mr-1 h-4 w-4" />
-              Exportar organigrama
-            </Button>
+            {canExport ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={records.length === 0}
+                onClick={handleExportLive}
+              >
+                <Download className="mr-1 h-4 w-4" />
+                Exportar organigrama
+              </Button>
+            ) : null}
           </div>
           <AsistenciaLiveView
             mode={liveViewMode}

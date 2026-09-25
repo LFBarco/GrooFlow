@@ -96,3 +96,43 @@ export function applyAreaLayoutReorder(
     sedeProfiles: [...rest, { ...profile, sedeName, areaOrder: next }],
   });
 }
+
+/** Reordena hijos (subcolumnas) bajo el mismo padre en el organigrama. */
+export function applySubColumnReorder(
+  settings: AsistenciaSettings,
+  sedeName: string,
+  dragSubId: string,
+  hoverSubId: string
+): AsistenciaSettings {
+  if (dragSubId === hoverSubId) return settings;
+  const merged = mergeAsistenciaSettings(settings);
+  const profile = getSedeProfile(merged, sedeName);
+  const all = [...(profile.subOrgColumns ?? [])];
+  const drag = all.find((s) => s.id === dragSubId);
+  const hover = all.find((s) => s.id === hoverSubId);
+  if (!drag || !hover || drag.parentColumnId !== hover.parentColumnId) return merged;
+
+  const parentId = drag.parentColumnId;
+  const siblingIds = all.filter((s) => s.parentColumnId === parentId).map((s) => s.id);
+  const from = siblingIds.indexOf(dragSubId);
+  const to = siblingIds.indexOf(hoverSubId);
+  if (from < 0 || to < 0) return merged;
+
+  const nextSibling = [...siblingIds];
+  nextSibling.splice(from, 1);
+  nextSibling.splice(to, 0, dragSubId);
+
+  const byId = new Map(all.map((s) => [s.id, s]));
+  let si = 0;
+  const nextSubs = all.map((s) => {
+    if (s.parentColumnId !== parentId) return s;
+    const id = nextSibling[si++]!;
+    return byId.get(id)!;
+  });
+
+  const rest = (merged.sedeProfiles ?? []).filter((p) => p.sedeName !== sedeName);
+  return mergeAsistenciaSettings({
+    ...merged,
+    sedeProfiles: [...rest, { ...profile, sedeName, subOrgColumns: nextSubs }],
+  });
+}

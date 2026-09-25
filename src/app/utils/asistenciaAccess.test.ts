@@ -68,4 +68,20 @@ describe('asistenciaAccess', () => {
   it('niega configurar a operador sin RRHH/gerencia/admin', () => {
     expect(canConfigureAsistencia(operatorUser, DEFAULT_ROLES)).toBe(false);
   });
+
+  it('sin acción menú configurar no edita aunque sea manager', () => {
+    expect(
+      canConfigureAsistencia(managerUser, DEFAULT_ROLES, {
+        menuActions: { Asistencia: { ver: true, configurar: false } },
+      })
+    ).toBe(false);
+  });
+
+  it('con menú configurar permite aunque el rol no sea admin', () => {
+    expect(
+      canConfigureAsistencia(operatorUser, DEFAULT_ROLES, {
+        menuActions: { Asistencia: { ver: true, configurar: true } },
+      })
+    ).toBe(true);
+  });
 });

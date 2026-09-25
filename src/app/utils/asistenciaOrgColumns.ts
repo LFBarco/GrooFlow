@@ -1,4 +1,5 @@
 import type {
+  AsistenciaChildrenPerRow,
   AsistenciaOrgChartColor,
   AsistenciaOrgNodeStyle,
   AsistenciaOrgSubColumn,
@@ -217,7 +218,7 @@ export function applyAddOrgSubColumn(
   label: string,
   extras?: {
     childrenLayout?: 'horizontal' | 'vertical';
-    childrenPerRow?: 2 | 3 | 4;
+    childrenPerRow?: AsistenciaChildrenPerRow;
     color?: AsistenciaOrgChartColor;
     orgNodeStyles?: Record<string, AsistenciaOrgNodeStyle>;
   }
