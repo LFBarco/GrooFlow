@@ -25,7 +25,7 @@ type Props = {
   filters: AsistenciaFilters;
 };
 
-function DayCellIcon({ cell, day }: { cell: BukMonthlyDayCell; day: number }) {
+function DayCellIcon({ cell, dayLabel }: { cell: BukMonthlyDayCell; dayLabel: string }) {
   if (cell === 'future') {
     return (
       <span className="inline-flex h-5 w-5 items-center justify-center text-[10px] text-muted-foreground/50">
@@ -41,7 +41,7 @@ function DayCellIcon({ cell, day }: { cell: BukMonthlyDayCell; day: number }) {
             <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={3} />
           </span>
         </TooltipTrigger>
-        <TooltipContent>Día {day}: marcó</TooltipContent>
+        <TooltipContent>{dayLabel}: entrada + salida</TooltipContent>
       </Tooltip>
     );
   }
@@ -52,7 +52,7 @@ function DayCellIcon({ cell, day }: { cell: BukMonthlyDayCell; day: number }) {
           <X className="h-3.5 w-3.5 text-red-600 dark:text-red-400" strokeWidth={3} />
         </span>
       </TooltipTrigger>
-      <TooltipContent>Día {day}: sin marcación</TooltipContent>
+      <TooltipContent>{dayLabel}: sin jornada completa</TooltipContent>
     </Tooltip>
   );
 }
@@ -76,11 +76,6 @@ export function AsistenciaBukMonthlyTrajectory({
     [records, settings, sedeName, date, filters.search]
   );
 
-  const dayNums = useMemo(
-    () => Array.from({ length: trajectory.daysInMonth }, (_, i) => i + 1),
-    [trajectory.daysInMonth]
-  );
-
   if (trajectory.rows.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-8 text-center">
@@ -93,36 +88,48 @@ export function AsistenciaBukMonthlyTrajectory({
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        Trayectoria de {trajectory.monthLabel} · {sedeName}. ✓ verde = marcó entrada · ✗ rojo =
-        sin marcación · · = día futuro. Columna final: minutos de tardanza acumulados (tras
-        tolerancia del horario).
+        Trayectoria de {trajectory.monthLabel} · {sedeName}. ✓ = entrada y salida (como reporte Buk) ·
+        ✗ = incompleto o sin marca · · = día futuro. Min. tarde: acumulación tras tolerancia.
       </p>
       <div className="rounded-xl border border-border overflow-auto max-h-[70vh] dark:border-slate-800">
         <Table className="min-w-max text-xs">
           <TableHeader className="sticky top-0 z-20 bg-muted/95 backdrop-blur dark:bg-slate-900/95">
             <TableRow className="border-border dark:border-slate-800 hover:bg-transparent">
-              <TableHead className="sticky left-0 z-30 min-w-[180px] bg-muted/95 dark:bg-slate-900/95 font-semibold text-foreground">
+              <TableHead
+                rowSpan={2}
+                className="sticky left-0 z-30 min-w-[180px] bg-muted/95 dark:bg-slate-900/95 font-semibold text-foreground align-bottom"
+              >
                 Nombre completo
               </TableHead>
-              {dayNums.map((d) => (
+              {trajectory.dayHeaders.map((h) => (
                 <TableHead
-                  key={d}
-                  className="w-8 min-w-[2rem] px-0.5 text-center tabular-nums text-muted-foreground"
+                  key={`d-${h.day}`}
+                  className="w-9 min-w-[2.25rem] px-0.5 text-center tabular-nums text-[10px] font-semibold text-foreground leading-tight"
                 >
-                  {d}
+                  {h.label}
                 </TableHead>
               ))}
-              <TableHead className="sticky right-0 z-30 min-w-[100px] bg-muted/95 dark:bg-slate-900/95 text-right font-semibold text-foreground">
+              <TableHead
+                rowSpan={2}
+                className="sticky right-0 z-30 min-w-[100px] bg-muted/95 dark:bg-slate-900/95 text-right font-semibold text-foreground align-bottom"
+              >
                 Min. tarde
               </TableHead>
+            </TableRow>
+            <TableRow className="border-border dark:border-slate-800 hover:bg-transparent">
+              {trajectory.dayHeaders.map((h) => (
+                <TableHead
+                  key={`w-${h.day}`}
+                  className="w-9 min-w-[2.25rem] px-0.5 pb-1.5 text-center text-[10px] font-medium text-muted-foreground"
+                >
+                  {h.weekdayLetter}
+                </TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
             {trajectory.rows.map((row) => (
-              <TableRow
-                key={row.rut}
-                className="border-border dark:border-slate-800"
-              >
+              <TableRow key={row.rut} className="border-border dark:border-slate-800">
                 <TableCell className="sticky left-0 z-10 min-w-[180px] bg-card dark:bg-slate-950 font-medium text-foreground whitespace-nowrap">
                   <div className="flex flex-col gap-0.5">
                     <span>{row.fullName}</span>
@@ -130,8 +137,11 @@ export function AsistenciaBukMonthlyTrajectory({
                   </div>
                 </TableCell>
                 {row.days.map((cell, idx) => (
-                  <TableCell key={idx} className="w-8 min-w-[2rem] px-0.5 text-center">
-                    <DayCellIcon cell={cell} day={idx + 1} />
+                  <TableCell key={idx} className="w-9 min-w-[2.25rem] px-0.5 text-center">
+                    <DayCellIcon
+                      cell={cell}
+                      dayLabel={trajectory.dayHeaders[idx]?.label ?? `Día ${idx + 1}`}
+                    />
                   </TableCell>
                 ))}
                 <TableCell className="sticky right-0 z-10 min-w-[100px] bg-card dark:bg-slate-950 text-right tabular-nums font-medium">

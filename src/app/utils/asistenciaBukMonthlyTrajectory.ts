@@ -1,16 +1,26 @@
-import { format, getDaysInMonth, isAfter, startOfDay, startOfMonth } from 'date-fns';
+import { format, getDaysInMonth, getDay, isAfter, startOfDay, startOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 import type { AsistenciaSettings, BukAsistenciaRecord } from '../types/asistencia';
 import {
   hasBukEntradaMarcada,
+  hasBukJornadaCompletaInRecords,
   personFullName,
   resolveBukEntryLateMinutes,
+  isRecordOnDate,
 } from './asistenciaData';
-import { asistenciaRutMatchKey } from './asistenciaRut';
+import { asistenciaRutMatchKey, asistenciaRutsMatch } from './asistenciaRut';
 import { filterBukRecordsForSedeDate, getSedeProfile, staffForSede } from './asistenciaStaff';
 
 export type BukMonthlyDayCell = 'present' | 'absent' | 'future';
+
+export type BukMonthlyDayHeader = {
+  day: number;
+  /** Ej. "1-Set" */
+  label: string;
+  /** Inicial del día: L M M J V S D */
+  weekdayLetter: string;
+};
 
 export type BukMonthlyTrajectoryRow = {
   rut: string;
@@ -28,8 +38,42 @@ export type BukMonthlyTrajectory = {
   month: number;
   daysInMonth: number;
   monthLabel: string;
+  dayHeaders: BukMonthlyDayHeader[];
   rows: BukMonthlyTrajectoryRow[];
 };
+
+/** Abreviaturas tipo reporte Buk (Set = septiembre). */
+const MONTH_ABBR_ES = [
+  'Ene',
+  'Feb',
+  'Mar',
+  'Abr',
+  'May',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Set',
+  'Oct',
+  'Nov',
+  'Dic',
+] as const;
+
+/** getDay(): 0=Dom … 6=Sáb */
+const WEEKDAY_LETTER = ['D', 'L', 'M', 'M', 'J', 'V', 'S'] as const;
+
+export function buildMonthDayHeaders(year: number, monthIndex: number, daysInMonth: number): BukMonthlyDayHeader[] {
+  const abbr = MONTH_ABBR_ES[monthIndex] ?? 'Mes';
+  const out: BukMonthlyDayHeader[] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = new Date(year, monthIndex, day);
+    out.push({
+      day,
+      label: `${day}-${abbr}`,
+      weekdayLetter: WEEKDAY_LETTER[getDay(d)] ?? '',
+    });
+  }
+  return out;
+}
 
 function dayCellFor(
   day: number,
@@ -45,7 +89,8 @@ function dayCellFor(
 
 /**
  * Trayectoria mensual de marcaciones por persona (sede + mes de `date`).
- * Verde = marcó entrada; rojo = no marcó (días pasados/hoy); futuro = vacío.
+ * ✓ = jornada completa (entrada + salida) ese día, como en el reporte Buk.
+ * Las marcaciones se buscan por RUT en todo el dataset (no se pierden por filtro de sede/huellero).
  */
 export function buildBukMonthlyTrajectory(input: {
   records: BukAsistenciaRecord[];
@@ -63,6 +108,7 @@ export function buildBukMonthlyTrajectory(input: {
   const daysInMonth = getDaysInMonth(input.date);
   const profile = getSedeProfile(input.settings, input.sedeName);
   const monthLabel = format(startOfMonth(input.date), 'MMMM yyyy', { locale: es });
+  const dayHeaders = buildMonthDayHeaders(year, monthIndex, daysInMonth);
 
   type Acc = {
     rut: string;
@@ -90,28 +136,37 @@ export function buildBukMonthlyTrajectory(input: {
     });
   };
 
+  // Personas de la plantilla de la sede.
   for (const s of staffForSede(input.settings, input.sedeName, 'all')) {
     if (s.rut?.trim()) putPerson(s.rut, s.fullName);
   }
 
+  // También quien marcó en el huellero de esta sede (descubrimiento).
   for (let day = 1; day <= daysInMonth; day++) {
     const dayDate = new Date(year, monthIndex, day, 12, 0, 0);
-    const dayRecords = filterBukRecordsForSedeDate(
+    for (const r of filterBukRecordsForSedeDate(
       input.records,
       input.sedeName,
       input.settings,
       dayDate
-    );
-    for (const r of dayRecords) {
-      const name = personFullName(r);
-      putPerson(r.rut_trabajador, name);
-      const key = asistenciaRutMatchKey(r.rut_trabajador);
-      if (!key) continue;
-      const acc = byRut.get(key);
-      if (!acc) continue;
-      if (hasBukEntradaMarcada(r)) {
-        acc.marked[day - 1] = true;
-        acc.lateMinutes += resolveBukEntryLateMinutes(r, profile);
+    )) {
+      putPerson(r.rut_trabajador, personFullName(r));
+    }
+  }
+
+  // Marcas por RUT+día en TODOS los registros (✓ = entrada + salida, como reporte Buk).
+  for (const [key, acc] of byRut) {
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dayDate = new Date(year, monthIndex, day, 12, 0, 0);
+      const dayRecords = input.records.filter(
+        (r) =>
+          isRecordOnDate(r, dayDate) && asistenciaRutsMatch(key, r.rut_trabajador)
+      );
+      if (!hasBukJornadaCompletaInRecords(dayRecords, dayDate)) continue;
+      acc.marked[day - 1] = true;
+      const entradaRec = dayRecords.find((r) => hasBukEntradaMarcada(r));
+      if (entradaRec) {
+        acc.lateMinutes += resolveBukEntryLateMinutes(entradaRec, profile);
       }
     }
   }
@@ -122,15 +177,13 @@ export function buildBukMonthlyTrajectory(input: {
       const days: BukMonthlyDayCell[] = acc.marked.map((marked, i) =>
         dayCellFor(i + 1, year, monthIndex, marked, today)
       );
-      const daysPresent = days.filter((d) => d === 'present').length;
-      const daysAbsent = days.filter((d) => d === 'absent').length;
       return {
         rut: acc.rut,
         fullName: acc.fullName,
         days,
         lateMinutesTotal: acc.lateMinutes,
-        daysPresent,
-        daysAbsent,
+        daysPresent: days.filter((d) => d === 'present').length,
+        daysAbsent: days.filter((d) => d === 'absent').length,
       };
     })
     .filter((row) => {
@@ -142,7 +195,7 @@ export function buildBukMonthlyTrajectory(input: {
     })
     .sort((a, b) => a.fullName.localeCompare(b.fullName, 'es'));
 
-  return { year, month, daysInMonth, monthLabel, rows };
+  return { year, month, daysInMonth, monthLabel, dayHeaders, rows };
 }
 
 export function formatLateMinutesLabel(minutes: number): string {

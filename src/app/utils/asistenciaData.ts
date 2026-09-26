@@ -352,7 +352,7 @@ export function resolveBukEntryPunctuality(
       isNight
         ? profile.scheduleNightStart ?? '20:00'
         : profile.scheduleStart ?? '08:00'
-    ) ?? (isNight ? 20 * 60 : 8 * 60);
+    ) ?? (isNight ? 19 * 60 : 8 * 60);
   const tolerance = profile.scheduleToleranceMinutes ?? 10;
   const deadline = expectedStart + tolerance;
 
@@ -385,7 +385,7 @@ export function resolveBukEntryLateMinutes(
       isNight
         ? profile.scheduleNightStart ?? '20:00'
         : profile.scheduleStart ?? '08:00'
-    ) ?? (isNight ? 20 * 60 : 8 * 60);
+    ) ?? (isNight ? 19 * 60 : 8 * 60);
   const tolerance = profile.scheduleToleranceMinutes ?? 10;
   const deadline = expectedStart + tolerance;
   if (entradaMin <= deadline) return 0;
@@ -412,6 +412,34 @@ export function parseBukFormatDayKey(raw?: string | null): string | null {
     return isValid(d) ? formatDayKey(d) : null;
   }
   return null;
+}
+
+/** Salida marcada en el registro (timestamp o salida_format válido), sin exigir mismo día civil. */
+export function hasBukSalidaMarcada(r: BukAsistenciaRecord): boolean {
+  if (hasBukEntradaTimestamp(r.salida)) return true;
+  return isValidBukSalidaFormat(r.salida_format);
+}
+
+/**
+ * Jornada completa Buk: entrada + salida en el registro del día
+ * (la salida puede caer al día siguiente en turno noche).
+ */
+export function hasBukJornadaCompleta(r: BukAsistenciaRecord, date: Date): boolean {
+  return isRecordOnDate(r, date) && hasBukEntradaMarcada(r) && hasBukSalidaMarcada(r);
+}
+
+/**
+ * Jornada completa por persona/día: entrada y salida pueden venir en el mismo
+ * registro o repartidas en varios (merge empresa + huellero).
+ */
+export function hasBukJornadaCompletaInRecords(
+  records: BukAsistenciaRecord[],
+  date: Date
+): boolean {
+  const day = records.filter((r) => isRecordOnDate(r, date));
+  if (day.length === 0) return false;
+  if (day.some((r) => hasBukJornadaCompleta(r, date))) return true;
+  return day.some(hasBukEntradaMarcada) && day.some(hasBukSalidaMarcada);
 }
 
 /** Hora de salida válida en Buk (`salida_format`). */

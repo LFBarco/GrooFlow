@@ -91,7 +91,8 @@ export const ASISTENCIA_WEEKDAY_LABELS: Record<AsistenciaWeekday, string> = {
 export type AsistenciaShiftMode = 'fixed' | 'weekly';
 
 export const ASISTENCIA_DEFAULT_DAY_EXPECTED_TIME = '08:00';
-export const ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME = '20:00';
+/** Inicio típico turno noche clínica 24h (19:00 → 08:00). */
+export const ASISTENCIA_DEFAULT_NIGHT_EXPECTED_TIME = '19:00';
 /** Tolerancia de llegada turno día (minutos después de scheduleStart). */
 export const ASISTENCIA_DEFAULT_DAY_TOLERANCE_MINUTES = 10;
 
@@ -129,14 +130,25 @@ export interface AsistenciaStaffMember {
   area: string;
   /** HH:mm esperado de llegada. */
   expectedTime: string;
-  /** Turno operativo (cruce con Buk `turno_noche` y filtro del organigrama). */
+  /** Turno operativo (día 08–19 / noche 19–08). */
   shift?: AsistenciaWorkShift;
   /** `fixed`: un solo turno; `weekly`: turno distinto por día (turno mixto). */
   shiftMode?: AsistenciaShiftMode;
   /** Turno por día cuando `shiftMode === 'weekly'`. `off` = no labora ese día. */
   weeklyShifts?: Partial<Record<AsistenciaWeekday, AsistenciaWeekdayShift>>;
-  /** Hora esperada turno noche (opcional; default 20:00). */
+  /** Hora esperada turno noche (default 19:00 clínica 24h). */
   expectedTimeNight?: string;
+  /**
+   * Si true, el sync de turnos Buk no pisa `shift` / horarios esperados.
+   * Los campos bukTurno* sí se actualizan como referencia.
+   */
+  shiftManualOverride?: boolean;
+  /** nombreTurno desde getAsignacionTurnos (Ctrlit). */
+  bukTurnoNombre?: string;
+  /** horarioTurno (ej. 08:00-19:00). */
+  bukTurnoHorario?: string;
+  /** idTurno. */
+  bukTurnoCodigo?: string;
   email?: string;
   phone?: string;
   avatarUrl?: string;

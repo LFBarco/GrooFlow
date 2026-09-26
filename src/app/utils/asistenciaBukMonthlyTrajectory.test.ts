@@ -4,6 +4,7 @@ import type { AsistenciaStaffMember, BukAsistenciaRecord } from '../types/asiste
 import { mergeAsistenciaSettings } from './asistenciaData';
 import {
   buildBukMonthlyTrajectory,
+  buildMonthDayHeaders,
   formatLateMinutesLabel,
 } from './asistenciaBukMonthlyTrajectory';
 
@@ -31,7 +32,14 @@ describe('asistenciaBukMonthlyTrajectory', () => {
     ],
   });
 
-  it('arma grilla del mes con check/ausente y minutos tarde', () => {
+  it('arma headers 1-Set + inicial del día', () => {
+    // Sept 2026: día 1 = martes → M
+    const headers = buildMonthDayHeaders(2026, 8, 30);
+    expect(headers[0]).toEqual({ day: 1, label: '1-Set', weekdayLetter: 'M' });
+    expect(headers[5]).toEqual({ day: 6, label: '6-Set', weekdayLetter: 'D' });
+  });
+
+  it('✓ solo con entrada + salida; ausente si falta una', () => {
     const records: BukAsistenciaRecord[] = [
       {
         id: 1,
@@ -44,6 +52,8 @@ describe('asistenciaBukMonthlyTrajectory', () => {
         dia_entrada: '05/06/2026',
         entrada: '2026-06-05T08:05:00',
         entrada_format: '08:05',
+        salida: '2026-06-05T17:00:00',
+        salida_format: '17:00',
       },
       {
         id: 2,
@@ -56,6 +66,21 @@ describe('asistenciaBukMonthlyTrajectory', () => {
         dia_entrada: '06/06/2026',
         entrada: '2026-06-06T09:00:00',
         entrada_format: '09:00',
+        salida: '2026-06-06T18:00:00',
+        salida_format: '18:00',
+      },
+      {
+        id: 3,
+        trab_id: 1,
+        rut_trabajador: '11111111-1',
+        nombre: 'Ana',
+        apellido_paterno: 'Pérez',
+        apellido_materno: 'López',
+        codigo_recinto: 'SANISIDRO',
+        dia_entrada: '07/06/2026',
+        entrada: '2026-06-07T08:00:00',
+        entrada_format: '08:00',
+        // sin salida → ausente
       },
     ];
 
@@ -68,15 +93,57 @@ describe('asistenciaBukMonthlyTrajectory', () => {
     });
 
     expect(traj.daysInMonth).toBe(30);
+    expect(traj.dayHeaders[0]?.label).toBe('1-Jun');
     expect(traj.rows).toHaveLength(1);
     const row = traj.rows[0]!;
     expect(row.fullName).toMatch(/Ana/i);
     expect(row.days[4]).toBe('present'); // día 5
     expect(row.days[5]).toBe('present'); // día 6
-    expect(row.days[6]).toBe('absent'); // día 7 sin marca
-    expect(row.days[15]).toBe('future'); // día 16 > hoy 15
-    // 09:00 vs 08:00+10 = 50 min tarde
+    expect(row.days[6]).toBe('absent'); // día 7 solo entrada
+    expect(row.days[15]).toBe('future');
     expect(row.lateMinutesTotal).toBe(50);
+  });
+
+  it('marca ✓ si entrada y salida vienen en registros distintos del mismo día', () => {
+    const records: BukAsistenciaRecord[] = [
+      {
+        id: 10,
+        trab_id: 1,
+        rut_trabajador: '11111111-1',
+        nombre: 'Alberling',
+        apellido_paterno: 'Rivas',
+        dia_entrada: '17/09/2026',
+        entrada: '2026-09-17T08:10:00',
+        entrada_format: '08:10',
+      },
+      {
+        id: 11,
+        trab_id: 1,
+        rut_trabajador: '11111111-1',
+        nombre: 'Alberling',
+        apellido_paterno: 'Rivas',
+        dia_entrada: '17/09/2026',
+        salida: '2026-09-17T19:05:00',
+        salida_format: '19:05',
+      },
+    ];
+    const traj = buildBukMonthlyTrajectory({
+      records,
+      settings: mergeAsistenciaSettings({
+        staff: [
+          {
+            ...staff,
+            fullName: 'Alberling Rivas',
+            rut: '11111111-1',
+          },
+        ],
+        sedeProfiles: settings.sedeProfiles,
+      }),
+      sedeName: 'SAN ISIDRO',
+      date: new Date(2026, 8, 20, 12, 0, 0),
+      today: new Date(2026, 8, 25, 12, 0, 0),
+    });
+    expect(traj.rows[0]?.days[16]).toBe('present');
   });
 
   it('formatea minutos tarde', () => {

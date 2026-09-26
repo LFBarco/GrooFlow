@@ -218,3 +218,37 @@ export function createDefaultWeeklyShifts(
   }
   return out;
 }
+
+/**
+ * Infere día/noche desde nombre u horario Ctrlit (getAsignacionTurnos).
+ * Clínica 24h: diurno ~08:00–19:00 · noche ~19:00–08:00.
+ * Prioriza la hora de *inicio* del rango (no el fin 19:00 del diurno).
+ */
+export function inferWorkShiftFromBukTurno(
+  nombreTurno?: string | null,
+  horarioTurno?: string | null
+): AsistenciaWorkShift {
+  const nombre = (nombreTurno ?? '').toLowerCase();
+  const horario = (horarioTurno ?? '').trim();
+
+  // Inicio del rango "HH:mm-HH:mm" o "HH:mm a HH:mm"
+  const start =
+    /^(\d{1,2})\s*[:.]\s*(\d{2})\s*[-–a]/i.exec(horario) ??
+    /^(\d{1,2})\s*[:.]\s*(\d{2})/.exec(horario);
+  if (start) {
+    const h = Number(start[1]);
+    if (h >= 19 || h < 6) return 'night';
+    if (h >= 6 && h < 19) return 'day';
+  }
+
+  if (/noct|noche|night|madrug/.test(nombre)) return 'night';
+  if (/diurn|dia\b|día|day|mañana|manana/.test(nombre)) return 'day';
+  return 'day';
+}
+
+/** Extrae HH:mm de inicio desde "08:00-19:00" o similar. */
+export function parseBukTurnoStartHhmm(horarioTurno?: string | null): string | undefined {
+  const m = /^(\d{1,2})\s*[:.]\s*(\d{2})/.exec((horarioTurno ?? '').trim());
+  if (!m) return undefined;
+  return `${String(Number(m[1])).padStart(2, '0')}:${m[2]}`;
+}

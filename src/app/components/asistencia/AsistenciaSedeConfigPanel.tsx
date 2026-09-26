@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Building2, CornerDownRight, LayoutGrid, Loader2, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Building2,
+  CornerDownRight,
+  LayoutGrid,
+  Loader2,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Users,
+} from 'lucide-react';
 
 import type {
   AsistenciaChildrenPerRow,
@@ -33,6 +45,11 @@ import {
 } from '../../utils/asistenciaOrgColumns';
 import { projectOrgTreeFromCollaborators } from '../../utils/asistenciaOrgFromCollaborators';
 import { ORG_CHART_COLOR_OPTIONS, resolveOrgNodeStyle } from '../../utils/asistenciaOrgChart';
+import {
+  applyBukTurnosToAsistenciaStaff,
+  fetchBukAsignacionTurnos,
+} from '../../utils/asistenciaBukTurnos';
+import { DEFAULT_BUK_ASISTENCIA_BASE_URL } from '../../utils/bukAsistenciaApi';
 import { useHrCollaborators } from '../../hooks/useHrCollaborators';
 import { toast } from 'sonner';
 import { Textarea } from '../ui/textarea';
@@ -82,10 +99,11 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
   const staff = useMemo(() => staffForSede(settings, sedeName), [settings, sedeName]);
   const diagnosis = useMemo(() => diagnoseSedeStaff(staff), [staff]);
   const [projectingOrg, setProjectingOrg] = useState(false);
+  const [syncingTurnos, setSyncingTurnos] = useState(false);
   const [editSede, setEditSede] = useState(false);
   const [scheduleStart, setScheduleStart] = useState(profile.scheduleStart ?? '08:00');
-  const [scheduleEnd, setScheduleEnd] = useState(profile.scheduleEnd ?? '18:00');
-  const [scheduleNightStart, setScheduleNightStart] = useState(profile.scheduleNightStart ?? '20:00');
+  const [scheduleEnd, setScheduleEnd] = useState(profile.scheduleEnd ?? '19:00');
+  const [scheduleNightStart, setScheduleNightStart] = useState(profile.scheduleNightStart ?? '19:00');
   const [scheduleNightEnd, setScheduleNightEnd] = useState(profile.scheduleNightEnd ?? '08:00');
   const [scheduleTolerance, setScheduleTolerance] = useState(
     String(profile.scheduleToleranceMinutes ?? 10)
@@ -459,6 +477,32 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
       }
     } finally {
       setProjectingOrg(false);
+    }
+  };
+
+  const syncTurnosFromBuk = async () => {
+    if (syncingTurnos || saving) return;
+    setSyncingTurnos(true);
+    try {
+      const rows = await fetchBukAsignacionTurnos({
+        baseUrl: settings.buk?.apiBaseUrl || DEFAULT_BUK_ASISTENCIA_BASE_URL,
+        apiToken: settings.buk?.apiToken || '',
+      });
+      const applied = applyBukTurnosToAsistenciaStaff(settings, rows);
+      if (applied.matched === 0) {
+        toast.message(
+          `API devolvió ${applied.totalApi} turno(s); ninguno coincidió por RUT con el personal de Asistencia.`
+        );
+        return;
+      }
+      await onSave(
+        () => applied.settings,
+        `Turnos Buk: ${applied.updated} ficha(s) actualizada(s) de ${applied.matched} coincidencia(s) (${applied.totalApi} en API).`
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudieron sincronizar los turnos Buk.');
+    } finally {
+      setSyncingTurnos(false);
     }
   };
 
@@ -1195,6 +1239,21 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
           {canConfigure ? (
             <div className="flex flex-wrap gap-2 justify-end">
               <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-border text-foreground dark:border-slate-600"
+                disabled={syncingTurnos || saving}
+                onClick={() => void syncTurnosFromBuk()}
+              >
+                {syncingTurnos ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                )}
+                Sync turnos Buk
+              </Button>
+              <Button
                 className="bg-gradient-to-r from-violet-600 to-cyan-500 hover:from-violet-500 hover:to-cyan-400 text-white border-0"
                 data-testid="asistencia-add-staff"
                 onClick={() => {
@@ -1236,6 +1295,13 @@ export function AsistenciaSedeConfigPanel({ sedeName, settings, sedeOptions = []
                             {formatWeeklyShiftSummary(member) ??
                               ASISTENCIA_WORK_SHIFT_LABELS[member.shift ?? 'day']}
                           </p>
+                          {member.bukTurnoNombre || member.bukTurnoHorario ? (
+                            <p className="text-[10px] text-cyan-600 dark:text-cyan-400 truncate">
+                              Buk: {member.bukTurnoNombre || '—'}
+                              {member.bukTurnoHorario ? ` · ${member.bukTurnoHorario}` : ''}
+                              {member.shiftManualOverride ? ' · manual' : ''}
+                            </p>
+                          ) : null}
                           {member.isCritical ? (
                             <span className="text-[10px] text-amber-400">Puesto crítico</span>
                           ) : null}

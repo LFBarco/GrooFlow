@@ -169,6 +169,18 @@ export function AsistenciaStaffDialog({
       if (partial.isManager !== undefined) {
         next.isManager = partial.isManager;
       }
+      // Edición manual de turno/hora → no pisar en el próximo sync Buk.
+      if (
+        partial.shift !== undefined ||
+        partial.expectedTime !== undefined ||
+        partial.expectedTimeNight !== undefined ||
+        partial.shiftMode !== undefined ||
+        partial.weeklyShifts !== undefined
+      ) {
+        if (partial.shiftManualOverride === undefined) {
+          next.shiftManualOverride = true;
+        }
+      }
       if (partial.shift) {
         const oldShift = f.shift ?? 'day';
         const oldDefault = defaultExpectedTimeForShift(oldShift);
@@ -272,7 +284,46 @@ export function AsistenciaStaffDialog({
             </div>
           </div>
 
+          {(form.bukTurnoNombre || form.bukTurnoHorario || form.bukTurnoCodigo) && (
+            <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3 space-y-1.5">
+              <p className="text-xs font-semibold text-cyan-700 dark:text-cyan-300 uppercase tracking-wide">
+                Turno Buk (getAsignacionTurnos)
+              </p>
+              <div className="grid grid-cols-1 gap-1 text-xs text-muted-foreground sm:grid-cols-3">
+                <p>
+                  <span className="text-foreground/80">Nombre: </span>
+                  {form.bukTurnoNombre || '—'}
+                </p>
+                <p>
+                  <span className="text-foreground/80">Horario: </span>
+                  {form.bukTurnoHorario || '—'}
+                </p>
+                <p>
+                  <span className="text-foreground/80">Código: </span>
+                  {form.bukTurnoCodigo || '—'}
+                </p>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Clínica 24h: diurno ~08:00–19:00 · noche ~19:00–08:00. Puedes editar el turno abajo;
+                con override activo el sync no lo pisa.
+              </p>
+            </div>
+          )}
+
           <div className="rounded-xl border border-border bg-muted/50 dark:border-slate-700 dark:bg-slate-900/60 p-3 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Turno manual (no pisar sync)</p>
+                <p className="text-xs text-muted-foreground">
+                  Si está activo, el sync de turnos Buk actualiza solo la referencia y respeta tu turno
+                  operativo.
+                </p>
+              </div>
+              <Switch
+                checked={Boolean(form.shiftManualOverride)}
+                onCheckedChange={(v) => patch({ shiftManualOverride: v })}
+              />
+            </div>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Turno mixto</p>
