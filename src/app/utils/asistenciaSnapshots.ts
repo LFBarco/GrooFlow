@@ -6,6 +6,7 @@ import type {
 import { repository } from '../services/repository';
 import { buildAsistenciaDaySummary } from './asistenciaData';
 import { buildLiveSedeSummary } from './asistenciaStaff';
+import { indexBukRecordsForDate } from './asistenciaSedeOperativa';
 import { toDateKey } from './turnosCalendar';
 
 const STORAGE_KEY = 'gooflow:asistencia-snapshots:v1';
@@ -84,12 +85,14 @@ export function captureAsistenciaDailySnapshots(input: {
     visibleSedes: input.sedeNames,
   });
 
+  const recordsByRut = indexBukRecordsForDate(input.records, input.date);
   const created: AsistenciaDailySnapshot[] = input.sedeNames.map((sedeName) => {
     const live = buildLiveSedeSummary({
       sedeName,
       settings: input.settings,
       records: input.records,
       date: input.date,
+      recordsByRut,
     });
     const cov = daySummary.sedes.find((s) => s.sedeName === sedeName);
     return {

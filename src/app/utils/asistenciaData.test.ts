@@ -8,12 +8,33 @@ import {
   formatBukEntradaDisplay,
   hasBukEntradaMarcada,
   hasBukSalidaMarcadaOnDate,
+  formatDayKey,
   isRecordOnDate,
   mergeAsistenciaSettings,
   parseBukEntradaFormatMinutes,
+  recordsOnDate,
 } from './asistenciaData';
 
 describe('asistenciaData', () => {
+  it('formatDayKey usa dd/MM/yyyy local', () => {
+    expect(formatDayKey(new Date(2026, 8, 5, 23, 59))).toBe('05/09/2026');
+    expect(formatDayKey(new Date(2026, 11, 31, 0, 0))).toBe('31/12/2026');
+  });
+
+  it('recordsOnDate filtra por día y reutiliza el resultado para la misma lista', () => {
+    const records = [
+      { id: 1, dia_entrada: '27/09/2026' },
+      { id: 2, dia_entrada: '2026-09-26' },
+      { id: 3, entrada_format: '2026/09/27 08:01:00' },
+    ] as BukAsistenciaRecord[];
+    const day = new Date(2026, 8, 27, 12);
+    const first = recordsOnDate(records, day);
+    expect(first.map((r) => r.id)).toEqual([1, 3]);
+    expect(recordsOnDate(records, day)).toBe(first);
+    expect(recordsOnDate(records, new Date(2026, 8, 26, 12)).map((r) => r.id)).toEqual([2]);
+    expect(records.filter((r) => isRecordOnDate(r, day)).map((r) => r.id)).toEqual([1, 3]);
+  });
+
   it('calcula cobertura por cargo y sede', () => {
     const settings = mergeAsistenciaSettings({
       requirements: buildDefaultRequirementsForSede('Petmax Principal', 'Petmax'),

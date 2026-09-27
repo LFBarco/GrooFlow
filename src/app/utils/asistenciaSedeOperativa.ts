@@ -10,6 +10,7 @@ import {
   isRecordOnDate,
   matchesBukRecintoConfig,
   mergeAsistenciaSettings,
+  recordsOnDate,
 } from './asistenciaData';
 import { recordMatchesStaffShift } from './asistenciaShift';
 import { asistenciaRutMatchKey, asistenciaRutsMatch } from './asistenciaRut';
@@ -51,6 +52,18 @@ export function normalizeCostCenterCode(raw?: string | null): string {
   return digits;
 }
 
+const readOnlyMergedCache = new WeakMap<AsistenciaSettings, AsistenciaSettings>();
+
+/** Solo lectura de mapeos: evita re-normalizar todo el personal por cada marcación. */
+function mergedForLookup(settings: AsistenciaSettings): AsistenciaSettings {
+  let merged = readOnlyMergedCache.get(settings);
+  if (!merged) {
+    merged = mergeAsistenciaSettings(settings);
+    readOnlyMergedCache.set(settings, merged);
+  }
+  return merged;
+}
+
 function canonSede(name: string, visibleSedes?: string[]): string {
   const trimmed = name.trim();
   if (!trimmed) return '';
@@ -72,7 +85,7 @@ export function resolveSedeFromCostCenterCode(
 ): string | undefined {
   const code = normalizeCostCenterCode(codeRaw);
   if (!code) return undefined;
-  const merged = settings ? mergeAsistenciaSettings(settings) : null;
+  const merged = settings ? mergedForLookup(settings) : null;
   const overrides = merged?.costCenterSedeMappings ?? [];
   for (const row of overrides) {
     if (normalizeCostCenterCode(row.costCenterCode) === code && row.sedeName?.trim()) {
@@ -115,12 +128,35 @@ function normalizePersonName(raw?: string | null): string {
     .trim();
 }
 
+const bukNameCache = new WeakMap<BukAsistenciaRecord, string>();
+const staffNameCache = new Map<string, string>();
+
+function bukRecordPersonName(r: BukAsistenciaRecord): string {
+  let name = bukNameCache.get(r);
+  if (name === undefined) {
+    name = normalizePersonName(
+      [r.nombre, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ')
+    );
+    bukNameCache.set(r, name);
+  }
+  return name;
+}
+
+function staffPersonName(fullName?: string | null): string {
+  const raw = String(fullName ?? '');
+  let name = staffNameCache.get(raw);
+  if (name === undefined) {
+    if (staffNameCache.size > 5000) staffNameCache.clear();
+    name = normalizePersonName(raw);
+    staffNameCache.set(raw, name);
+  }
+  return name;
+}
+
 function staffNameMatchesRecord(staff: AsistenciaStaffMember, r: BukAsistenciaRecord): boolean {
-  const staffName = normalizePersonName(staff.fullName);
+  const staffName = staffPersonName(staff.fullName);
   if (staffName.length < 5) return false;
-  const bukName = normalizePersonName(
-    [r.nombre, r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ')
-  );
+  const bukName = bukRecordPersonName(r);
   if (!bukName) return false;
   if (staffName === bukName) return true;
   if (bukName.includes(staffName) || staffName.includes(bukName)) return true;
@@ -138,8 +174,7 @@ export function indexBukRecordsForDate(
   date: Date
 ): BukRecordsByRut {
   const map: BukRecordsByRut = new Map();
-  for (const r of records) {
-    if (!isRecordOnDate(r, date)) continue;
+  for (const r of recordsOnDate(records, date)) {
     const key = rutMatchKey(r.rut_trabajador);
     if (!key) continue;
     const list = map.get(key);
@@ -156,7 +191,7 @@ function lookupDispositivoSedeRaw(
   device: string,
   settings?: AsistenciaSettings | null
 ): string | undefined {
-  const merged = settings ? mergeAsistenciaSettings(settings) : null;
+  const merged = settings ? mergedForLookup(settings) : null;
   for (const row of merged?.dispositivoSedeMappings ?? []) {
     if (normalizeDispositivoId(row.dispositivoId) === device && row.sedeName?.trim()) {
       return row.sedeName.trim();
@@ -213,7 +248,7 @@ export function resolveSedeNameFromBukRecinto(
   );
   if (fromDevice) return fromDevice;
 
-  const merged = mergeAsistenciaSettings(settings);
+  const merged = mergedForLookup(settings);
   const profiles = merged.sedeProfiles ?? [];
   const mappings = merged.sedeMappings ?? [];
 
@@ -243,18 +278,15 @@ export function findBukRecordForStaffAnySede(
 ): BukAsistenciaRecord | undefined {
   const key = rutMatchKey(staff.rut);
   let candidates: BukAsistenciaRecord[] = [];
+  const onDate = recordsOnDate(records, date);
   if (key && recordsByRut) {
     candidates = recordsByRut.get(key) ?? [];
   } else if (key) {
-    candidates = records.filter(
-      (r) => isRecordOnDate(r, date) && rutsMatch(staff.rut, r.rut_trabajador)
-    );
+    candidates = onDate.filter((r) => rutsMatch(staff.rut, r.rut_trabajador));
   }
   // Sin RUT en ficha o sin hit: intenta por nombre (Iris Quintero, etc.).
   if (candidates.length === 0) {
-    candidates = records.filter(
-      (r) => isRecordOnDate(r, date) && staffNameMatchesRecord(staff, r)
-    );
+    candidates = onDate.filter((r) => staffNameMatchesRecord(staff, r));
   }
 
   // Preferir mismo turno; si no hay, usar cualquier marcación del día (asistencia operativa).

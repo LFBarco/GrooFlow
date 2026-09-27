@@ -31,6 +31,7 @@ import {
   matchesBukRecintoConfig,
   mergeAsistenciaSettings,
   parseBukEntradaFormatMinutes,
+  recordsOnDate,
   resolveBukEntryPunctuality,
 } from './asistenciaData';
 import { asistenciaRutMatchKey, asistenciaRutsMatch } from './asistenciaRut';
@@ -133,8 +134,8 @@ export function filterBukRecordsForSedeDate(
 ): BukAsistenciaRecord[] {
   const merged = mergeAsistenciaSettings(settings);
   const profile = getSedeProfile(merged, sedeName);
-  return records.filter(
-    (r) => isRecordOnDate(r, date) && recordMatchesSede(r, sedeName, profile, merged)
+  return recordsOnDate(records, date).filter((r) =>
+    recordMatchesSede(r, sedeName, profile, merged)
   );
 }
 
@@ -149,7 +150,7 @@ export function diagnoseStaffBukMatch(input: {
   const settings = mergeAsistenciaSettings(input.settings);
   const profile = getSedeProfile(settings, input.sedeName);
   const dateKey = formatDayKey(input.date);
-  const onDate = input.records.filter((r) => isRecordOnDate(r, input.date));
+  const onDate = recordsOnDate(input.records, input.date);
   const staffRut = rutMatchKey(input.staff.rut);
 
   if (onDate.length === 0) {

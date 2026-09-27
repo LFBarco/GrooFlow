@@ -222,7 +222,9 @@ export function parseBukDayEntrada(raw?: string): Date | null {
 }
 
 export function formatDayKey(date: Date): string {
-  return format(date, 'dd/MM/yyyy');
+  const t = date.getTime();
+  if (Number.isNaN(t)) return format(date, 'dd/MM/yyyy');
+  return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
 }
 
 /**
@@ -243,18 +245,46 @@ export function normalizeDiaEntradaKey(raw?: string | null): string | null {
   return null;
 }
 
-export function isRecordOnDate(r: BukAsistenciaRecord, date: Date): boolean {
-  const key = formatDayKey(date);
+/** Claves de día que puede tener una marcación (dia_entrada, entrada, entrada_format). */
+const recordDayKeysCache = new WeakMap<BukAsistenciaRecord, string[]>();
+
+export function recordDayKeys(r: BukAsistenciaRecord): string[] {
+  const cached = recordDayKeysCache.get(r);
+  if (cached) return cached;
+  const keys: string[] = [];
   const dia = normalizeDiaEntradaKey(r.dia_entrada);
-  if (dia && dia === key) return true;
+  if (dia) keys.push(dia);
   if (r.entrada) {
     const d = new Date(r.entrada);
-    if (isValid(d) && formatDayKey(d) === key) return true;
+    if (isValid(d)) keys.push(formatDayKey(d));
   }
   // entrada_format con fecha completa (yyyy/MM/dd HH:mm:ss)
   const fromFmt = parseBukFormatDayKey(r.entrada_format);
-  if (fromFmt && fromFmt === key) return true;
-  return false;
+  if (fromFmt) keys.push(fromFmt);
+  recordDayKeysCache.set(r, keys);
+  return keys;
+}
+
+export function isRecordOnDate(r: BukAsistenciaRecord, date: Date): boolean {
+  return recordDayKeys(r).includes(formatDayKey(date));
+}
+
+const recordsOnDateCache = new WeakMap<BukAsistenciaRecord[], Map<string, BukAsistenciaRecord[]>>();
+
+/** Marcaciones del día, cacheadas por lista (misma referencia → mismo resultado). */
+export function recordsOnDate(records: BukAsistenciaRecord[], date: Date): BukAsistenciaRecord[] {
+  const key = formatDayKey(date);
+  let byDay = recordsOnDateCache.get(records);
+  if (!byDay) {
+    byDay = new Map();
+    recordsOnDateCache.set(records, byDay);
+  }
+  let list = byDay.get(key);
+  if (!list) {
+    list = records.filter((r) => recordDayKeys(r).includes(key));
+    byDay.set(key, list);
+  }
+  return list;
 }
 
 export function isPresentOnDate(r: BukAsistenciaRecord, date: Date): boolean {

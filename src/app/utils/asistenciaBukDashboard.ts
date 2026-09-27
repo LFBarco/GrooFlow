@@ -113,6 +113,8 @@ export function buildBukMultiSedeDashboard(input: {
   return { sedes, totals };
 }
 
+const esCollator = new Intl.Collator('es');
+
 function apellidosFromRecord(r: BukAsistenciaRecord): string {
   return [r.apellido_paterno, r.apellido_materno].filter(Boolean).join(' ').trim();
 }
@@ -147,7 +149,7 @@ function groupByName(
     }))
     .sort((a, b) => {
       if (b.total !== a.total) return b.total - a.total;
-      return a.name.localeCompare(b.name, 'es');
+      return esCollator.compare(a.name, b.name);
     });
 }
 
@@ -212,7 +214,7 @@ export function buildBukDashboardSummary(input: {
       if (a.arrived !== b.arrived) return a.arrived ? -1 : 1;
       const nameA = `${a.apellidos} ${a.nombre}`.toLowerCase();
       const nameB = `${b.apellidos} ${b.nombre}`.toLowerCase();
-      return nameA.localeCompare(nameB, 'es');
+      return esCollator.compare(nameA, nameB);
     });
 
   const arrived = rows.filter((r) => r.arrived).length;
