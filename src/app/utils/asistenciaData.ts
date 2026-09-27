@@ -37,12 +37,12 @@ export function defaultAsistenciaSettings(): AsistenciaSettings {
       apiBaseUrl: 'https://app.ctrlit.cl/ctrl/api/v2',
       apiToken: '',
       enabled: false,
-      autoRefreshEnabled: false,
-      autoRefreshIntervalMinutes: 30,
-      autoRefreshWindowStart: '06:00',
-      autoRefreshWindowEnd: '22:00',
+      autoRefreshEnabled: true,
+      autoRefreshIntervalMinutes: 15,
+      autoRefreshWindowStart: '00:00',
+      autoRefreshWindowEnd: '23:59',
       marcacionesPipelineEnabled: true,
-      marcacionesPipelineIntervalMinutes: 30,
+      marcacionesPipelineIntervalMinutes: 15,
       catalogEndpoints: [
         {
           id: 'buk-asistencia-empresa',

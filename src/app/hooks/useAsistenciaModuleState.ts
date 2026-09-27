@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { format, subDays } from 'date-fns';
 
@@ -22,7 +22,7 @@ import { repository } from '../services/repository';
 import { TURNOS_SETTINGS_KV_KEY, mergeTurnosSettings } from '../utils/turnosData';
 
 export function useAsistenciaModuleState(asistenciaInput?: AsistenciaSettings | null) {
-  const asistencia = mergeAsistenciaSettings(asistenciaInput);
+  const asistencia = useMemo(() => mergeAsistenciaSettings(asistenciaInput), [asistenciaInput]);
   const bukBaseUrl = sanitizeBukBaseUrl(asistencia.buk?.apiBaseUrl || 'https://app.ctrlit.cl/ctrl/api/v2');
   const bukToken = asistencia.buk?.apiToken?.trim() ?? '';
 

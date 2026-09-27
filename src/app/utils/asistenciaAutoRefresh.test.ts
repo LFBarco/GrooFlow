@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { BukAsistenciaIntegrationSettings } from '../types/asistencia';
 import {
   autoRefreshIntervalMs,
+  isAutoRefreshDue,
   isWithinAutoRefreshWindow,
   shouldRunAutoRefresh,
 } from './asistenciaAutoRefresh';
@@ -31,6 +32,12 @@ describe('isWithinAutoRefreshWindow', () => {
     expect(isWithinAutoRefreshWindow(cfg, new Date(2026, 8, 21, 22, 1))).toBe(false);
   });
 
+  it('sin ventana configurada cubre las 24h (clínica)', () => {
+    const cfg = buk({ autoRefreshWindowStart: undefined, autoRefreshWindowEnd: undefined });
+    expect(isWithinAutoRefreshWindow(cfg, new Date(2026, 8, 21, 3, 0))).toBe(true);
+    expect(isWithinAutoRefreshWindow(cfg, new Date(2026, 8, 21, 23, 30))).toBe(true);
+  });
+
   it('soporta ventana que cruza medianoche', () => {
     const cfg = buk({ autoRefreshWindowStart: '22:00', autoRefreshWindowEnd: '06:00' });
     expect(isWithinAutoRefreshWindow(cfg, new Date(2026, 8, 21, 23, 0))).toBe(true);
@@ -50,7 +57,7 @@ describe('shouldRunAutoRefresh', () => {
   const noon = new Date(2026, 8, 21, 12, 0);
   const night = new Date(2026, 8, 21, 23, 0);
 
-  it('exige integración activa, token y opt-in explícito', () => {
+  it('exige integración activa y token; activo por defecto salvo desactivado', () => {
     expect(
       shouldRunAutoRefresh({
         buk: buk(),
@@ -76,7 +83,7 @@ describe('shouldRunAutoRefresh', () => {
         documentVisible: true,
         now: noon,
       })
-    ).toBe(false);
+    ).toBe(true);
 
     expect(
       shouldRunAutoRefresh({
@@ -132,5 +139,14 @@ describe('shouldRunAutoRefresh', () => {
         now: night,
       })
     ).toBe(false);
+  });
+});
+
+describe('isAutoRefreshDue', () => {
+  it('vence sin datos o con datos más viejos que el intervalo', () => {
+    const ms = 15 * 60_000;
+    expect(isAutoRefreshDue({ lastFetchedAt: null, intervalMs: ms })).toBe(true);
+    expect(isAutoRefreshDue({ lastFetchedAt: 0, intervalMs: ms, now: ms })).toBe(true);
+    expect(isAutoRefreshDue({ lastFetchedAt: 0, intervalMs: ms, now: ms - 1 })).toBe(false);
   });
 });

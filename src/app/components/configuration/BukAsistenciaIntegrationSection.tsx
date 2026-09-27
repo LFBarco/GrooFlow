@@ -292,11 +292,12 @@ export function BukAsistenciaIntegrationSection({
             <div>
               <p className="text-sm font-medium">Auto-refresh en módulo Asistencia</p>
               <p className="text-xs text-muted-foreground">
-                Actualiza Buk automáticamente dentro de la ventana horaria operativa.
+                Actualiza Buk sin pulsar el botón: al abrir el módulo si los datos están viejos y luego
+                cada intervalo, dentro de la ventana horaria (por defecto 24 h).
               </p>
             </div>
             <Switch
-              checked={buk.autoRefreshEnabled === true}
+              checked={buk.autoRefreshEnabled !== false}
               disabled={readOnly || buk.enabled !== true}
               onCheckedChange={(v) =>
                 patchBuk(
@@ -314,10 +315,10 @@ export function BukAsistenciaIntegrationSection({
                 type="number"
                 min={5}
                 max={120}
-                defaultValue={buk.autoRefreshIntervalMinutes ?? 30}
+                defaultValue={buk.autoRefreshIntervalMinutes ?? 15}
                 disabled={readOnly}
                 onBlur={(e) => {
-                  const n = Math.max(5, Math.min(120, Number(e.target.value) || 30));
+                  const n = Math.max(5, Math.min(120, Number(e.target.value) || 15));
                   patchBuk({ autoRefreshIntervalMinutes: n }, { persist: true });
                 }}
               />
@@ -327,10 +328,10 @@ export function BukAsistenciaIntegrationSection({
               <Input
                 id="buk-auto-start"
                 type="time"
-                defaultValue={buk.autoRefreshWindowStart ?? '06:00'}
+                defaultValue={buk.autoRefreshWindowStart ?? '00:00'}
                 disabled={readOnly}
                 onBlur={(e) =>
-                  patchBuk({ autoRefreshWindowStart: e.target.value || '06:00' }, { persist: true })
+                  patchBuk({ autoRefreshWindowStart: e.target.value || '00:00' }, { persist: true })
                 }
               />
             </div>
@@ -339,10 +340,10 @@ export function BukAsistenciaIntegrationSection({
               <Input
                 id="buk-auto-end"
                 type="time"
-                defaultValue={buk.autoRefreshWindowEnd ?? '22:00'}
+                defaultValue={buk.autoRefreshWindowEnd ?? '23:59'}
                 disabled={readOnly}
                 onBlur={(e) =>
-                  patchBuk({ autoRefreshWindowEnd: e.target.value || '22:00' }, { persist: true })
+                  patchBuk({ autoRefreshWindowEnd: e.target.value || '23:59' }, { persist: true })
                 }
               />
             </div>

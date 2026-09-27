@@ -1,7 +1,8 @@
 import type { BukAsistenciaIntegrationSettings } from '../types/asistencia';
 
-const DEFAULT_START = '06:00';
-const DEFAULT_END = '22:00';
+/** Clínica 24h: por defecto refresca todo el día. */
+export const AUTO_REFRESH_DEFAULT_WINDOW_START = '00:00';
+export const AUTO_REFRESH_DEFAULT_WINDOW_END = '23:59';
 
 function parseMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number);
@@ -12,8 +13,8 @@ export function isWithinAutoRefreshWindow(
   buk?: BukAsistenciaIntegrationSettings,
   now = new Date()
 ): boolean {
-  const start = buk?.autoRefreshWindowStart?.trim() || DEFAULT_START;
-  const end = buk?.autoRefreshWindowEnd?.trim() || DEFAULT_END;
+  const start = buk?.autoRefreshWindowStart?.trim() || AUTO_REFRESH_DEFAULT_WINDOW_START;
+  const end = buk?.autoRefreshWindowEnd?.trim() || AUTO_REFRESH_DEFAULT_WINDOW_END;
   const nowMin = now.getHours() * 60 + now.getMinutes();
   const startMin = parseMinutes(start);
   const endMin = parseMinutes(end);
@@ -24,8 +25,13 @@ export function isWithinAutoRefreshWindow(
 }
 
 export function autoRefreshIntervalMs(buk?: BukAsistenciaIntegrationSettings): number {
-  const min = Math.max(5, buk?.autoRefreshIntervalMinutes ?? 30);
+  const min = Math.max(5, buk?.autoRefreshIntervalMinutes ?? 15);
   return min * 60 * 1000;
+}
+
+/** Activo salvo que se haya desactivado explícitamente en Integraciones. */
+export function isAutoRefreshEnabled(buk?: BukAsistenciaIntegrationSettings): boolean {
+  return buk?.autoRefreshEnabled !== false;
 }
 
 export function shouldRunAutoRefresh(input: {
@@ -35,9 +41,19 @@ export function shouldRunAutoRefresh(input: {
   now?: Date;
 }): boolean {
   if (!input.buk?.enabled || !input.buk.apiToken?.trim()) return false;
-  // Opt-in explícito (alineado con el Switch de Integraciones).
-  if (input.buk.autoRefreshEnabled !== true) return false;
+  if (!isAutoRefreshEnabled(input.buk)) return false;
   if (input.loading) return false;
   if (input.documentVisible === false) return false;
   return isWithinAutoRefreshWindow(input.buk, input.now);
+}
+
+/** Los datos en pantalla son más viejos que el intervalo configurado. */
+export function isAutoRefreshDue(input: {
+  lastFetchedAt: number | null;
+  intervalMs: number;
+  now?: number;
+}): boolean {
+  if (input.lastFetchedAt == null) return true;
+  const now = input.now ?? Date.now();
+  return now - input.lastFetchedAt >= input.intervalMs;
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, endOfMonth, format, startOfMonth, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
@@ -55,7 +55,12 @@ import {
 } from '../../utils/asistenciaTrend';
 import { flattenLiveSedeStaff, flattenLiveSedesStaff } from '../../utils/asistenciaLiveFlatten';
 import { buildAsistenciaOperationalAlerts } from '../../utils/asistenciaAlerts';
-import { autoRefreshIntervalMs, shouldRunAutoRefresh } from '../../utils/asistenciaAutoRefresh';
+import {
+  autoRefreshIntervalMs,
+  isAutoRefreshDue,
+  isAutoRefreshEnabled,
+  shouldRunAutoRefresh,
+} from '../../utils/asistenciaAutoRefresh';
 import { saveAsistenciaOperationalContext } from '../../utils/asistenciaOperationalContext';
 import {
   takeKvPermissionDenied,
@@ -713,36 +718,48 @@ export function AsistenciaModule({
     toast.success(`Reporte RRHH ${monthLabel} descargado.`);
   }, [snapshots, monthPrefix, monthLabel, records]);
 
-  useEffect(() => {
+  // Refs: el tick lee siempre lo último sin reiniciar el temporizador en cada render.
+  const autoRefreshRef = useRef({ refresh, buk: asistencia.buk, loading, cacheFetchedAt });
+  autoRefreshRef.current = { refresh, buk: asistencia.buk, loading, cacheFetchedAt };
+  const autoRefreshInFlightRef = useRef(false);
+
+  const runAutoRefreshIfDue = useCallback(() => {
+    const { refresh: doRefresh, buk, loading: isLoading, cacheFetchedAt: fetchedAt } =
+      autoRefreshRef.current;
+    if (autoRefreshInFlightRef.current) return;
     if (
       !shouldRunAutoRefresh({
-        buk: asistencia.buk,
-        loading,
-        documentVisible,
+        buk,
+        loading: isLoading,
+        documentVisible: typeof document === 'undefined' || !document.hidden,
       })
     ) {
       return;
     }
-    const ms = autoRefreshIntervalMs(asistencia.buk);
-    const id = window.setInterval(() => {
-      if (
-        !shouldRunAutoRefresh({
-          buk: asistencia.buk,
-          loading,
-          documentVisible: !document.hidden,
-        })
-      ) {
-        return;
-      }
-      void refresh({ silent: true, source: 'auto', skipStaffCheck: true });
-    }, ms);
+    if (!isAutoRefreshDue({ lastFetchedAt: fetchedAt, intervalMs: autoRefreshIntervalMs(buk) })) {
+      return;
+    }
+    autoRefreshInFlightRef.current = true;
+    void doRefresh({ silent: true, source: 'auto', skipStaffCheck: true }).finally(() => {
+      autoRefreshInFlightRef.current = false;
+    });
+  }, []);
+
+  const autoRefreshOn = Boolean(
+    moduleReady && bukEnabled && isAutoRefreshEnabled(asistencia.buk)
+  );
+
+  useEffect(() => {
+    if (!autoRefreshOn) return;
+    // Al abrir el módulo: si la caché está vieja, actualiza sin pulsar el botón.
+    runAutoRefreshIfDue();
+    const id = window.setInterval(runAutoRefreshIfDue, 60_000);
     return () => window.clearInterval(id);
-  }, [
-    asistencia.buk,
-    loading,
-    documentVisible,
-    refresh,
-  ]);
+  }, [autoRefreshOn, runAutoRefreshIfDue]);
+
+  useEffect(() => {
+    if (autoRefreshOn && documentVisible) runAutoRefreshIfDue();
+  }, [autoRefreshOn, documentVisible, runAutoRefreshIfDue]);
 
   if (!moduleReady) {
     return (
@@ -933,10 +950,10 @@ export function AsistenciaModule({
             {lastTruncated ? (
               <span className="text-amber-600"> · última descarga Buk truncada</span>
             ) : null}
-            {asistencia.buk?.autoRefreshEnabled ? (
+            {autoRefreshOn ? (
               <>
                 {' '}
-                · auto-refresh cada {asistencia.buk.autoRefreshIntervalMinutes ?? 30} min
+                · actualización automática cada {asistencia.buk?.autoRefreshIntervalMinutes ?? 15} min
                 {lastAutoRefreshAtLocal ? (
                   <> · último {cacheAgeLabel(new Date(lastAutoRefreshAtLocal).getTime())}</>
                 ) : null}
@@ -1029,7 +1046,9 @@ export function AsistenciaModule({
           {records.length === 0 && !loading ? (
             <Card className="border-border bg-muted/40 dark:border-slate-800 dark:bg-slate-950/50">
               <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                Pulsa «Actualizar marcaciones» para cargar datos de{' '}
+                {autoRefreshOn
+                  ? 'Cargando marcaciones automáticamente para '
+                  : 'Pulsa «Actualizar marcaciones» para cargar datos de '}
                 {format(dateObj, "d 'de' MMMM", { locale: es })}. El organigrama mostrará ausentes en rojo.
               </CardContent>
             </Card>
