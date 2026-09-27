@@ -94,6 +94,12 @@ export interface IKVRepository {
   /** Write a value by key */
   set(key: string, value: unknown): Promise<void>;
 
+  /**
+   * Escribe solo si nadie cambió la clave desde la última lectura (`getWithStatus`).
+   * Ante conflicto lanza error con `status === 409` en vez de reintentar con datos viejos.
+   */
+  setStrict?(key: string, value: unknown): Promise<void>;
+
   /** Delete a key */
   delete(key: string): Promise<void>;
 }

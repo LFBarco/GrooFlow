@@ -52,3 +52,24 @@ it('refreshes revision and retries KV PUT after HTTP 409 conflict', async () => 
   await expect(restRepository.kv.set('data:users', [{ id: 'u1' }])).resolves.toBeUndefined();
   expect(putCount).toBe(2);
 });
+
+it('setStrict no reintenta ante 409 (no reenvía datos viejos)', async () => {
+  let putCount = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      if ((init?.method ?? 'GET').toUpperCase() === 'PUT') {
+        putCount += 1;
+        return new Response(JSON.stringify({ ok: false, error: 'Los datos cambiaron.' }), {
+          status: 409,
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, value: {}, revision: 'r' }), { status: 200 });
+    })
+  );
+
+  await expect(
+    restRepository.kv.setStrict!('settings:accidentes-trabajo', { records: [] })
+  ).rejects.toMatchObject({ status: 409 });
+  expect(putCount).toBe(1);
+});

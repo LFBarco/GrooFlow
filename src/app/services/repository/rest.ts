@@ -273,6 +273,14 @@ class RestKVRepository implements IKVRepository {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
+  async setStrict(key: string, value: unknown): Promise<void> {
+    const data = await restFetch<{ revision: string }>(`/kv/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value, revision: resourceRevisions.get(key) ?? null }),
+    });
+    resourceRevisions.set(key, data.revision);
+  }
+
   async delete(key: string): Promise<void> {
     await restFetch(`/kv/${encodeURIComponent(key)}`, { method: 'DELETE', body: JSON.stringify({ revision: resourceRevisions.get(key) }) });
   }
