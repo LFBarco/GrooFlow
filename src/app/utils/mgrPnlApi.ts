@@ -165,6 +165,12 @@ export const mgrPnlApi = {
       items: (json.items as Array<Record<string, unknown>>) ?? [],
     };
   },
+  syncSources: async (): Promise<Record<string, Record<string, number>>> => {
+    const res = await grooflowFetch('/mgr-pnl/sync-sources', { method: 'POST', body: '{}' });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return (json.sync as Record<string, Record<string, number>>) ?? {};
+  },
   ingestExpense: async (data: Record<string, unknown>): Promise<{
     ok: boolean;
     duplicated?: boolean;

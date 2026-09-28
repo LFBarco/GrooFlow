@@ -167,6 +167,24 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
     }
   };
 
+  const runSyncSources = async () => {
+    if (!canEdit) return;
+    setAutoMapping(true);
+    try {
+      const r = await mgrPnlApi.syncSources();
+      const fmt = (s?: Record<string, number>) =>
+        s ? `${s.creados ?? 0} nuevos, ${s.actualizados ?? 0} act., ${s.anulados ?? 0} anul.` : '—';
+      toast.success('Caja chica y transacciones sincronizadas', {
+        description: `Caja: ${fmt(r.caja)} · Transacciones: ${fmt(r.transaccion)}`,
+      });
+      if (tab === 'statement') await loadStatement();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo sincronizar');
+    } finally {
+      setAutoMapping(false);
+    }
+  };
+
   const runQa = async () => {
     try {
       setQa(await mgrPnlApi.qa(chartOfAccounts));
@@ -436,6 +454,17 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
               >
                 <Sparkles className="mr-2 h-4 w-4" />
                 {autoMapping ? 'Sincronizando…' : 'Auto-mapear desde plan'}
+              </Button>
+            ) : null}
+            {canEdit ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={autoMapping}
+                onClick={() => void runSyncSources()}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Sincronizar caja y transacciones
               </Button>
             ) : null}
             <span className="text-sm text-muted-foreground self-center ml-auto">
