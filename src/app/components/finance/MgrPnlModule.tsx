@@ -17,6 +17,7 @@ import type {
 import type { CostCenter, OrgArea } from '../../types/costCenters';
 import { mgrPnlApi } from '../../utils/mgrPnlApi';
 import { costCentersApi } from '../../utils/costCentersApi';
+import { MgrAreaMapTab } from './MgrAreaMapTab';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -51,7 +52,7 @@ type Props = {
   chartOfAccounts?: ChartOfAccountEntry[];
 };
 
-type TabKey = 'dashboard' | 'structure' | 'mappings' | 'classify' | 'shared' | 'statement' | 'qa';
+type TabKey = 'dashboard' | 'structure' | 'mappings' | 'areas' | 'classify' | 'shared' | 'statement' | 'qa';
 
 export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
   const [tab, setTab] = useState<TabKey>('dashboard');
@@ -174,8 +175,8 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
       const r = await mgrPnlApi.syncSources();
       const fmt = (s?: Record<string, number>) =>
         s ? `${s.creados ?? 0} nuevos, ${s.actualizados ?? 0} act., ${s.anulados ?? 0} anul.` : '—';
-      toast.success('Caja chica y transacciones sincronizadas', {
-        description: `Caja: ${fmt(r.caja)} · Transacciones: ${fmt(r.transaccion)}`,
+      toast.success('Fuentes operativas sincronizadas', {
+        description: `Caja: ${fmt(r.caja)} · Transacciones: ${fmt(r.transaccion)} · Compras: ${fmt(r.compra)} · Honorarios: ${fmt(r.honorario)}`,
       });
       if (tab === 'statement') await loadStatement();
     } catch (e) {
@@ -359,6 +360,7 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="structure">Estructura</TabsTrigger>
           <TabsTrigger value="mappings">Mapping cuentas</TabsTrigger>
+          <TabsTrigger value="areas">Áreas → centro</TabsTrigger>
           <TabsTrigger value="classify">Clasificar</TabsTrigger>
           <TabsTrigger value="shared">Compartidos</TabsTrigger>
           <TabsTrigger value="statement">Estado P&amp;L</TabsTrigger>
@@ -464,7 +466,7 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
                 onClick={() => void runSyncSources()}
               >
                 <RefreshCw className="mr-2 h-4 w-4" />
-                Sincronizar caja y transacciones
+                Sincronizar caja, transacciones, compras y honorarios
               </Button>
             ) : null}
             <span className="text-sm text-muted-foreground self-center ml-auto">
@@ -527,6 +529,10 @@ export function MgrPnlModule({ canEdit = false, chartOfAccounts = [] }: Props) {
               </TableBody>
             </Table>
           </div>
+        </TabsContent>
+
+        <TabsContent value="areas" className="space-y-3">
+          {tab === 'areas' ? <MgrAreaMapTab canEdit={canEdit} /> : null}
         </TabsContent>
 
         <TabsContent value="classify" className="space-y-3">

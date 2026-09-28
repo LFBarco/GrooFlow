@@ -22,9 +22,13 @@ interface TransactionFormProps {
   providers?: Provider[];
   bankAccounts?: BankAccountConfig[];
   sedesCatalog?: string[];
+  /** Áreas de Configuración; el egreso se asigna al centro de costo de esa área en la sede. */
+  areasCatalog?: string[];
   initialData?: any;
   onCancel?: () => void;
 }
+
+const AREA_FROM_PROVIDER = "__provider__";
 
 export function TransactionForm({
   onSubmit,
@@ -32,6 +36,7 @@ export function TransactionForm({
   providers = [],
   bankAccounts = [],
   sedesCatalog = [],
+  areasCatalog = [],
   initialData,
   onCancel,
 }: TransactionFormProps) {
@@ -44,6 +49,12 @@ export function TransactionForm({
   const selectedCategory = watch("category");
   const selectedSubcategory = watch("subcategory");
   const selectedAccountId = watch("account");
+  const selectedArea = watch("area");
+  const selectedProviderId = watch("providerId");
+  const providerArea = useMemo(
+    () => providers.find((p) => p.id === selectedProviderId)?.area,
+    [providers, selectedProviderId]
+  );
   const sedeOptions = useMemo(
     () => (sedesCatalog.length > 0 ? sedesCatalog : []),
     [sedesCatalog]
@@ -62,6 +73,7 @@ export function TransactionForm({
       setValue("description", initialData.description);
       setValue("providerId", initialData.providerId);
       setValue("location", initialData.location);
+      setValue("area", initialData.area || "");
       setValue("operation", initialData.operation);
       setValue("reference", initialData.reference);
       setValue("account", initialData.account);
@@ -298,6 +310,31 @@ export function TransactionForm({
           <input type="hidden" {...register("location")} />
         </div>
       </div>
+
+      {selectedType === "expense" && areasCatalog.length > 0 && (
+        <div className="space-y-2">
+          <Label>Área / centro de costo (Opcional)</Label>
+          <Select
+            value={selectedArea || AREA_FROM_PROVIDER}
+            onValueChange={(val) => setValue("area", val === AREA_FROM_PROVIDER ? "" : val)}
+          >
+            <SelectTrigger className="w-full bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={AREA_FROM_PROVIDER}>
+                {providerArea ? `Del proveedor (${providerArea})` : "Del proveedor / automático"}
+              </SelectItem>
+              {areasCatalog.map((a) => (
+                <SelectItem key={a} value={a}>
+                  {a}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <input type="hidden" {...register("area")} />
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="category">Categoría</Label>

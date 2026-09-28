@@ -12,6 +12,23 @@ import type {
 } from '../types/mgrPnl';
 import type { ChartOfAccountEntry } from '../types';
 
+export type MgrAreaDestino = 'auto' | 'sede' | 'fijo';
+
+export interface MgrAreaMapItem {
+  area: string;
+  destino: MgrAreaDestino;
+  centro_base: string | null;
+  centro_codigo: string | null;
+  /** Resolución que aplica sin configuración (alias o centro corporativo). */
+  automatico: string;
+}
+
+export interface MgrAreaMapCatalog {
+  items: MgrAreaMapItem[];
+  bases: string[];
+  centros: Array<{ codigo: string; nombre: string; sede: string | null }>;
+}
+
 async function grooflowFetch(path: string, init?: RequestInit): Promise<Response> {
   const token = getGrooflowToken();
   if (!token) throw new Error('Sesión caducada. Vuelve a iniciar sesión.');
@@ -170,6 +187,27 @@ export const mgrPnlApi = {
     const json = await readJson(res);
     if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
     return (json.sync as Record<string, Record<string, number>>) ?? {};
+  },
+  getAreaMap: async (): Promise<MgrAreaMapCatalog> => {
+    const res = await grooflowFetch('/mgr-pnl/area-map');
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return {
+      items: (json.items as MgrAreaMapItem[]) ?? [],
+      bases: (json.bases as string[]) ?? [],
+      centros: (json.centros as MgrAreaMapCatalog['centros']) ?? [],
+    };
+  },
+  saveAreaMap: async (
+    items: Array<Pick<MgrAreaMapItem, 'area' | 'destino' | 'centro_base' | 'centro_codigo'>>
+  ): Promise<{ saved: number; sync: Record<string, Record<string, number>> }> => {
+    const res = await grooflowFetch('/mgr-pnl/area-map', { method: 'PUT', body: JSON.stringify({ items }) });
+    const json = await readJson(res);
+    if (!res.ok || json.ok === false) throw new Error(String(json.error ?? `HTTP ${res.status}`));
+    return {
+      saved: Number(json.saved ?? 0),
+      sync: (json.sync as Record<string, Record<string, number>>) ?? {},
+    };
   },
   ingestExpense: async (data: Record<string, unknown>): Promise<{
     ok: boolean;

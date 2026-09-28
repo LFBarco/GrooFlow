@@ -41,6 +41,8 @@ export interface Transaction {
   reference?: string;
   providerId?: string; // Nuevo: Proveedor asociado
   location?: string; // Nuevo: Sede (Principal, Norte, etc.)
+  /** Área operativa para centro de costo; si falta se usa el área del proveedor. */
+  area?: string;
 }
 
 export interface MonthlyStats {

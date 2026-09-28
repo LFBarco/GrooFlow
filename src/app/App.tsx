@@ -2592,6 +2592,7 @@ export default function App() {
       reference: data.reference || undefined,
       providerId: data.providerId,
       location: data.location || undefined,
+      area: data.area || undefined,
     };
     const ok = await persistTransactionsNow(
       [newTransaction, ...transactions],
@@ -4155,6 +4156,7 @@ export default function App() {
                     providers={providers}
                     bankAccounts={bankAccountsForForms}
                     sedesCatalog={sedesForUserForms}
+                    areasCatalog={commercialAreas}
                   />
                 </div>
               </div>
@@ -4837,6 +4839,7 @@ export default function App() {
                   providers={providers}
                   bankAccounts={bankAccountsForForms}
                   sedesCatalog={sedesForUserForms}
+                  areasCatalog={commercialAreas}
                   initialData={editingTransaction}
                   onCancel={() => setIsEditDialogOpen(false)}
                 />

@@ -1441,6 +1441,38 @@ export function ProviderManager({
         setSelectAllMatching(true);
     };
 
+    const pettyWithoutLines = useMemo(
+        () =>
+            providers.filter(
+                (p) => p.usageContexts?.pettyCash !== false && (p.pettyExpenseLines?.length ?? 0) === 0,
+            ),
+        [providers],
+    );
+
+    const handleDisablePettyWithoutLines = async () => {
+        const n = pettyWithoutLines.length;
+        if (n === 0) return;
+        const dni = pettyWithoutLines.filter((p) => getProviderDocumentLabel(p) === 'DNI').length;
+        if (
+            !(await appConfirm(
+                `${n} proveedor(es) tienen "caja chica" marcado pero ninguna línea de gasto (${dni} con DNI), así que no se pueden usar en caja. ¿Desmarcar "caja chica" en todos? Compras y honorarios no cambian.`,
+                { title: 'Limpiar proveedores de caja chica', confirmLabel: 'Desmarcar' },
+            ))
+        ) {
+            return;
+        }
+        const ids = new Set(pettyWithoutLines.map((p) => p.id));
+        const next = providers.map((p) =>
+            ids.has(p.id)
+                ? { ...p, usageContexts: { ...mergeProviderUsageContexts(p.usageContexts), pettyCash: false } }
+                : p,
+        );
+        const saved = await Promise.resolve(onUpdateProviders(next));
+        if (saved === false) return;
+        toast.success(`"Caja chica" desmarcado en ${n} proveedor(es)`);
+        if (useServerPaging) await serverList.reload();
+    };
+
     const handleBulkDelete = async () => {
         if (selectedCount <= 0) return;
         if (
@@ -1550,6 +1582,16 @@ export function ProviderManager({
                             title="Configurar Listas"
                         >
                             <Settings className="w-4 h-4 mr-2" /> Configuración
+                        </Button>
+                    )}
+                    {(userRole === 'admin' || userRole === 'manager') && pettyWithoutLines.length > 0 && (
+                        <Button
+                            variant="outline"
+                            onClick={() => void handleDisablePettyWithoutLines()}
+                            title="Desmarca caja chica en proveedores sin líneas de gasto"
+                            data-testid="providers-disable-petty-without-lines"
+                        >
+                            <Wallet className="w-4 h-4 mr-2" /> Limpiar caja chica ({pettyWithoutLines.length})
                         </Button>
                     )}
                     <Button variant="outline" onClick={exportProvidersExcel}>

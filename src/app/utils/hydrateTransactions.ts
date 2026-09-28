@@ -26,6 +26,7 @@ export function hydrateTransactions(raw: unknown): Transaction[] {
       operation: t.operation != null ? String(t.operation) : undefined,
       reference: t.reference != null ? String(t.reference) : undefined,
       location: t.location != null ? String(t.location) : undefined,
+      area: t.area != null && String(t.area).trim() !== '' ? String(t.area) : undefined,
     };
   });
 }
