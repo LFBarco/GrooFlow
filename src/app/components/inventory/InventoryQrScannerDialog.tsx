@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Camera, Keyboard, AlertTriangle } from 'lucide-react';
 
 import {
@@ -26,8 +26,8 @@ export function InventoryQrScannerDialog({
   open,
   onOpenChange,
   onScan,
-  title = 'Escanear QR de Equipo',
-  description = 'Apunta la cámara al código QR o escribe el código manualmente para buscar al instante.',
+  title = 'Escanear código de equipo',
+  description = 'Apunta la cámara al QR o código de barras. Con un lector USB, escanea directamente sobre el campo de abajo.',
   placeholder = 'Ej. ANE-SJL-002',
 }: InventoryQrScannerDialogProps) {
   const rawId = useId();
@@ -95,7 +95,16 @@ export function InventoryQrScannerDialog({
       }
 
       try {
-        const scanner = new Html5Qrcode(regionId);
+        const scanner = new Html5Qrcode(regionId, {
+          verbose: false,
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+          ],
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        });
         scannerRef.current = scanner;
 
         const cameras = await Html5Qrcode.getCameras().catch(() => []);
@@ -112,7 +121,13 @@ export function InventoryQrScannerDialog({
 
         await scanner.start(
           cameraId,
-          { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1 },
+          {
+            fps: 10,
+            qrbox: (w, h) => ({
+              width: Math.max(160, Math.floor(Math.min(w * 0.9, 340))),
+              height: Math.max(120, Math.floor(Math.min(h * 0.7, 220))),
+            }),
+          },
           (text) => handleDecoded(text),
           () => undefined
         );
@@ -186,6 +201,7 @@ export function InventoryQrScannerDialog({
             </Label>
             <div className="flex gap-2">
               <Input
+                autoFocus
                 placeholder={placeholder}
                 value={manualCode}
                 onChange={(e) => setManualCode(e.target.value.toUpperCase())}

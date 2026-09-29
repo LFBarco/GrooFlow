@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   abbrevSede,
+  buildInventoryQrPayload,
   formatFloorRoomSegment,
   generateEquipmentCode,
   parseInventoryQrScan,
@@ -46,5 +47,13 @@ describe('inventoryCodeGenerator', () => {
     ).toEqual({ id: 'eq1', code: 'IMG-MIR-001' });
     expect(parseInventoryQrScan('ANE-SJL-002')).toEqual({ code: 'ANE-SJL-002' });
     expect(parseInventoryQrScan('')).toBeNull();
+  });
+
+  it('parseInventoryQrScan corrige lector USB con distribución de teclado distinta', () => {
+    expect(parseInventoryQrScan("ane'sjl'002")).toEqual({ code: 'ANE-SJL-002' });
+  });
+
+  it('buildInventoryQrPayload codifica solo el código', () => {
+    expect(buildInventoryQrPayload({ code: ' img-mir-001 ' })).toBe('IMG-MIR-001');
   });
 });

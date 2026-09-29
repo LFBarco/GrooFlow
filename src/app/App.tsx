@@ -3925,7 +3925,7 @@ export default function App() {
           ) : (
           <>
           {/* Header fuera de Suspense: no desaparece al cambiar de módulo */}
-          {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products', 'rrhhAreas', 'rrhhPuestos', 'rrhhTurnosCatalog', 'fees', 'providers', 'inventory', 'reconciliation', 'pnl', 'reports', 'audit', 'users', 'config', 'requests', 'alerts', 'menuConfig', 'menuAssignment'].includes(view) && (urlView ?? view) !== 'fleet' && (
+          {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products', 'rrhhAreas', 'rrhhPuestos', 'rrhhTurnosCatalog', 'fees', 'providers', 'reconciliation', 'pnl', 'reports', 'audit', 'users', 'config', 'requests', 'alerts', 'menuConfig', 'menuAssignment'].includes(view) && !['fleet', 'inventory'].includes(urlView ?? view) && (
             <ModuleHeader
               icon={moduleIdentity.icon}
               title={moduleIdentity.title}
@@ -4467,6 +4467,7 @@ export default function App() {
               <Suspense fallback={<RouteLoader />}>
                 <InventoryModule
                   dataset={inventoryDataset}
+                  canEdit={canWriteAppKv('data:inventory')}
                   setDataset={handleInventoryDatasetUpdate}
                   onPersistDataset={persistInventoryNow}
                   visibleSedes={visibleSedes}

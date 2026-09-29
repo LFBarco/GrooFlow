@@ -64,6 +64,7 @@ type EquipmentFormDialogProps = {
   onSave: () => void;
   onDelete?: () => void;
   applyGeneratedCode: (draft: InventoryEquipment) => InventoryEquipment;
+  canEdit?: boolean;
 };
 
 export function EquipmentFormDialog({
@@ -79,6 +80,7 @@ export function EquipmentFormDialog({
   onSave,
   onDelete,
   applyGeneratedCode,
+  canEdit = true,
 }: EquipmentFormDialogProps) {
   if (!equipment) return null;
 
@@ -133,7 +135,7 @@ export function EquipmentFormDialog({
         </DialogHeader>
 
         <div className="grid lg:grid-cols-[1fr_240px] gap-0">
-          <div className="px-6 py-5 space-y-6 min-w-0">
+          <fieldset disabled={!canEdit} className="m-0 border-0 px-6 py-5 space-y-6 min-w-0">
             <FormSection
               icon={Box}
               title="1. Identificación"
@@ -546,7 +548,7 @@ export function EquipmentFormDialog({
                 />
               </FormField>
             </FormSection>
-          </div>
+          </fieldset>
 
           <aside className="border-t lg:border-t-0 lg:border-l bg-muted/15 px-4 py-5 space-y-4">
             <div className="space-y-2">
@@ -557,8 +559,9 @@ export function EquipmentFormDialog({
                 <Input
                   className="font-mono text-sm bg-background"
                   value={equipment.code}
+                  disabled={!canEdit}
                   onChange={(e) =>
-                    patch({ code: e.target.value.toUpperCase() })
+                    patch({ code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') })
                   }
                 />
                 <Button
@@ -566,6 +569,7 @@ export function EquipmentFormDialog({
                   variant="outline"
                   size="icon"
                   onClick={onRegenerateCode}
+                  disabled={!canEdit}
                   title="Regenerar código"
                 >
                   <Wand2 className="h-4 w-4" />
@@ -579,6 +583,11 @@ export function EquipmentFormDialog({
                   Al cambiar categoría o ubicación se actualiza el código automáticamente.
                 </p>
               )}
+              {!isNew && canEdit && (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Si cambias el código, vuelve a imprimir la etiqueta: la anterior dejará de encontrar este equipo.
+                </p>
+              )}
             </div>
 
             <Separator />
@@ -587,25 +596,31 @@ export function EquipmentFormDialog({
               equipment={equipment}
               visible={equipment.code.trim().length > 0}
               variant="compact"
+              isUnsaved={isNew}
             />
           </aside>
         </div>
 
         <DialogFooter className="px-6 py-4 border-t bg-muted/10 gap-2 sm:justify-between">
           <div>
-            {onDelete && (
+            {onDelete && canEdit && (
               <Button type="button" variant="destructive" onClick={onDelete}>
                 Eliminar equipo
               </Button>
             )}
+            {!canEdit && (
+              <p className="text-xs text-muted-foreground">Solo lectura: tu perfil no tiene permiso para editar inventario.</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {canEdit ? 'Cancelar' : 'Cerrar'}
             </Button>
-            <Button onClick={onSave} data-testid="equipment-save">
-              {isNew ? 'Registrar equipo' : 'Guardar cambios'}
-            </Button>
+            {canEdit && (
+              <Button onClick={onSave} data-testid="equipment-save">
+                {isNew ? 'Registrar equipo' : 'Guardar cambios'}
+              </Button>
+            )}
           </div>
         </DialogFooter>
       </DialogContent>

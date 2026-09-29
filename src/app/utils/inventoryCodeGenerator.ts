@@ -70,21 +70,12 @@ export function generateEquipmentCode(input: GenerateEquipmentCodeInput): string
   return code;
 }
 
-/** Payload QR escaneable (muestra en pantalla sin impresora). */
-export function buildInventoryQrPayload(eq: Pick<
-  InventoryEquipment,
-  'id' | 'code' | 'name' | 'sede' | 'floor' | 'room'
->): string {
-  return JSON.stringify({
-    app: 'grooflow',
-    type: 'inventory',
-    id: eq.id,
-    code: eq.code,
-    name: eq.name,
-    sede: eq.sede,
-    floor: eq.floor ?? '',
-    room: eq.room ?? '',
-  });
+/**
+ * Contenido del QR: solo el código. Un QR corto se lee bien en etiquetas de 20 mm
+ * y los lectores USB lo teclean sin caracteres que dependan del idioma del teclado.
+ */
+export function buildInventoryQrPayload(eq: Pick<InventoryEquipment, 'code'>): string {
+  return eq.code.trim().toUpperCase();
 }
 
 export function describeCodePattern(prefix: string): string {
@@ -96,7 +87,10 @@ export type InventoryQrScanPayload = {
   code?: string;
 };
 
-/** Interpreta texto del QR (JSON GrooFlow o código plano). */
+/**
+ * Interpreta texto del QR/código de barras (código plano o JSON de etiquetas antiguas).
+ * Un lector USB configurado en inglés sobre Windows en español teclea `'` en lugar de `-`.
+ */
 export function parseInventoryQrScan(raw: string): InventoryQrScanPayload | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -114,5 +108,5 @@ export function parseInventoryQrScan(raw: string): InventoryQrScanPayload | null
     }
   }
 
-  return { code: trimmed };
+  return { code: trimmed.replace(/'/g, '-').toUpperCase() };
 }

@@ -19,6 +19,7 @@ import {
   QrCode,
   Trash2,
   FileSpreadsheet,
+  Printer,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -35,7 +36,7 @@ import {
   BarChart,
   Bar,
 } from 'recharts';
-import { format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { ChartEmptyState, seriesHasValues } from '../ui/ChartEmptyState';
@@ -76,6 +77,8 @@ import { EquipmentFormDialog } from './EquipmentFormDialog';
 import { formatCurrencyEs } from '../../utils/numberFormat';
 import { InventoryCategoryConfigDialog } from './InventoryCategoryConfigDialog';
 import { InventoryQrScannerDialog } from './InventoryQrScannerDialog';
+import { InventoryLabelPrintDialog } from './InventoryLabelPrintDialog';
+import { Checkbox } from '../ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -127,6 +130,8 @@ export interface InventoryModuleProps {
   defaultSede?: string;
   providers?: Provider[];
   isLoading?: boolean;
+  /** Sin permiso de escritura: consulta, escaneo e impresión de etiquetas. */
+  canEdit?: boolean;
 }
 
 type InventoryTab = 'dashboard' | 'equipment' | 'maintenance';
@@ -139,6 +144,7 @@ export function InventoryModule({
   defaultSede = 'Principal',
   providers = [],
   isLoading = false,
+  canEdit = true,
 }: InventoryModuleProps) {
   const [tab, setTab] = useState<InventoryTab>('dashboard');
   const [sedeFilter, setSedeFilter] = useState<string>('all');
@@ -155,33 +161,50 @@ export function InventoryModule({
   const [categoryConfigOpen, setCategoryConfigOpen] = useState(false);
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
 
+  const [labelDialogOpen, setLabelDialogOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+
   const activeCategories = useMemo(() => getActiveCategories(dataset), [dataset]);
   const defaultCategoryId = activeCategories[0]?.id ?? 'otros';
 
-  const kpis = useMemo(() => computeInventoryKpis(dataset), [dataset]);
-  const alerts = useMemo(() => buildInventoryAlerts(dataset), [dataset]);
-  const maintSeries = useMemo(() => monthlyMaintenanceSeries(dataset, 6), [dataset]);
-  const categoryBars = useMemo(() => categoryDistribution(dataset), [dataset]);
-  const sedeRows = useMemo(() => sedeSummary(dataset), [dataset]);
-  const upcoming = useMemo(() => upcomingMaintenance(dataset, 6), [dataset]);
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const in30Days = format(addDays(new Date(), 30), 'yyyy-MM-dd');
+  /** Vista por sede; un mantenimiento programado con fecha pasada se muestra como vencido. */
+  const viewDataset = useMemo<InventoryDataset>(() => {
+    const maintenance = dataset.maintenance.map((m) =>
+      m.status === 'scheduled' && m.scheduledDate && m.scheduledDate < today
+        ? { ...m, status: 'overdue' as InventoryMaintenanceStatus }
+        : m
+    );
+    if (sedeFilter === 'all') return { ...dataset, maintenance };
+    const equipment = dataset.equipment.filter((e) => e.sede === sedeFilter);
+    const ids = new Set(equipment.map((e) => e.id));
+    return { ...dataset, equipment, maintenance: maintenance.filter((m) => ids.has(m.equipmentId)) };
+  }, [dataset, sedeFilter, today]);
+
+  const kpis = useMemo(() => computeInventoryKpis(viewDataset), [viewDataset]);
+  const alerts = useMemo(() => buildInventoryAlerts(viewDataset), [viewDataset]);
+  const maintSeries = useMemo(() => monthlyMaintenanceSeries(viewDataset, 6), [viewDataset]);
+  const categoryBars = useMemo(() => categoryDistribution(viewDataset), [viewDataset]);
+  const sedeRows = useMemo(() => sedeSummary(viewDataset), [viewDataset]);
+  const upcoming = useMemo(() => upcomingMaintenance(viewDataset, 6), [viewDataset]);
 
   const statusPie = useMemo(() => {
     const c = { active: 0, maintenance: 0, critical: 0, inactive: 0 };
-    for (const e of dataset.equipment) c[e.status] += 1;
+    for (const e of viewDataset.equipment) c[e.status] += 1;
     return [
       { name: 'Activos', value: c.active },
       { name: 'Mantenimiento', value: c.maintenance },
       { name: 'Críticos', value: c.critical },
       { name: 'Inactivos', value: c.inactive },
     ].filter((x) => x.value > 0);
-  }, [dataset.equipment]);
+  }, [viewDataset.equipment]);
 
   const sedeOptions = visibleSedes.length > 0 ? visibleSedes : [...new Set(dataset.equipment.map((e) => e.sede))];
 
   const filteredEquipment = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return dataset.equipment.filter((e) => {
-      if (sedeFilter !== 'all' && e.sede !== sedeFilter) return false;
+    return viewDataset.equipment.filter((e) => {
       if (statusFilter !== 'all' && e.status !== statusFilter) return false;
       if (categoryFilter !== 'all' && e.category !== categoryFilter) return false;
       if (consignmentFilter === 'consignment' && !isEquipmentConsignment(e)) return false;
@@ -199,26 +222,46 @@ export function InventoryModule({
         (e.consignmentAgreementRef || '').toLowerCase().includes(q)
       );
     });
-  }, [dataset.equipment, search, sedeFilter, statusFilter, categoryFilter, consignmentFilter]);
+  }, [viewDataset.equipment, search, statusFilter, categoryFilter, consignmentFilter]);
 
   const filteredMaintenance = useMemo(() => {
-    return dataset.maintenance
+    return viewDataset.maintenance
       .filter((m) => {
         if (maintStatusFilter !== 'all' && m.status !== maintStatusFilter) return false;
         if (maintTypeFilter !== 'all' && m.kind !== maintTypeFilter) return false;
-        if (sedeFilter !== 'all' && m.sede && m.sede !== sedeFilter) return false;
         return true;
       })
       .sort((a, b) => b.scheduledDate.localeCompare(a.scheduledDate));
-  }, [dataset.maintenance, maintStatusFilter, maintTypeFilter, sedeFilter]);
+  }, [viewDataset.maintenance, maintStatusFilter, maintTypeFilter]);
 
   const maintCounts = useMemo(() => {
     const c = { scheduled: 0, in_progress: 0, completed: 0, overdue: 0 };
-    for (const m of dataset.maintenance) {
+    for (const m of viewDataset.maintenance) {
       if (m.status in c) c[m.status as keyof typeof c] += 1;
     }
     return c;
-  }, [dataset.maintenance]);
+  }, [viewDataset.maintenance]);
+
+  const selectedEquipment = useMemo(
+    () => dataset.equipment.filter((e) => selectedIds.has(e.id)),
+    [dataset.equipment, selectedIds]
+  );
+  const allFilteredSelected =
+    filteredEquipment.length > 0 && filteredEquipment.every((e) => selectedIds.has(e.id));
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleAllFiltered = () =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) filteredEquipment.forEach((e) => next.delete(e.id));
+      else filteredEquipment.forEach((e) => next.add(e.id));
+      return next;
+    });
 
   const persist = async (next: InventoryDataset, msg?: string) =>
     applyInventoryDatasetChange(setDataset, onPersistDataset, next, msg);
@@ -338,6 +381,13 @@ export function InventoryModule({
       toast.error('Código y nombre son obligatorios.');
       return;
     }
+    const duplicate = dataset.equipment.find(
+      (e) => e.id !== equipmentDialog.id && e.code.trim().toUpperCase() === code.toUpperCase()
+    );
+    if (duplicate) {
+      toast.error(`El código ${code} ya lo usa "${duplicate.name}". Regenera el código o usa otro.`);
+      return;
+    }
     if (equipmentDialog.isConsignment) {
       const hasConsignor =
         Boolean(equipmentDialog.consignorProviderId?.trim()) ||
@@ -409,7 +459,7 @@ export function InventoryModule({
     setIsNewMaint(true);
     setMaintDialog({
       id: newId('inv-m'),
-      equipmentId: dataset.equipment[0]?.id || '',
+      equipmentId: viewDataset.equipment[0]?.id || '',
       kind: 'preventive',
       status: 'scheduled',
       scheduledDate: format(new Date(), 'yyyy-MM-dd'),
@@ -475,10 +525,23 @@ export function InventoryModule({
           </Select>
           <Button variant="outline" size="sm" onClick={() => setQrScannerOpen(true)}>
             <QrCode className="h-4 w-4 mr-1" />
-            Escanear QR
+            Escanear código
           </Button>
         </div>
       </div>
+
+      {!canEdit && (
+        <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Modo consulta: puedes ver, escanear e imprimir etiquetas. Para registrar o editar equipos se requiere permiso de edición en Gestión de Inventario.
+        </p>
+      )}
+
+      <InventoryLabelPrintDialog
+        open={labelDialogOpen}
+        onOpenChange={setLabelDialogOpen}
+        equipment={selectedEquipment.length > 0 ? selectedEquipment : filteredEquipment}
+        scopeLabel={selectedEquipment.length > 0 ? 'seleccionados' : 'del filtro actual'}
+      />
 
       <InventoryCategoryConfigDialog
         open={categoryConfigOpen}
@@ -671,19 +734,38 @@ export function InventoryModule({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-lg font-semibold">Equipos Médicos</h3>
-              <p className="text-sm text-muted-foreground">{filteredEquipment.length} de {dataset.equipment.length} equipos</p>
+              <p className="text-sm text-muted-foreground">
+                {filteredEquipment.length} de {viewDataset.equipment.length} equipos
+                {selectedIds.size > 0 && (
+                  <>
+                    {' · '}
+                    <span className="font-medium text-foreground">{selectedIds.size} seleccionado(s)</span>{' '}
+                    <button type="button" className="underline underline-offset-2" onClick={() => setSelectedIds(new Set())}>
+                      quitar selección
+                    </button>
+                  </>
+                )}
+              </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setLabelDialogOpen(true)} disabled={filteredEquipment.length === 0 && selectedIds.size === 0}>
+                <Printer className="h-4 w-4 mr-1" />
+                {selectedIds.size > 0 ? `Imprimir etiquetas (${selectedIds.size})` : 'Imprimir etiquetas'}
+              </Button>
               <Button variant="outline" onClick={exportEquipmentExcel}>
                 <FileSpreadsheet className="h-4 w-4 mr-1" /> Exportar Excel
               </Button>
-              <Button variant="outline" onClick={() => setCategoryConfigOpen(true)}>
-                <Settings2 className="h-4 w-4 mr-1" />
-                Categorías
-              </Button>
-              <Button onClick={openNewEquipment} data-testid="inventory-add-equipment">
-                <Plus className="h-4 w-4 mr-1" /> Nuevo Equipo
-              </Button>
+              {canEdit && (
+                <>
+                  <Button variant="outline" onClick={() => setCategoryConfigOpen(true)}>
+                    <Settings2 className="h-4 w-4 mr-1" />
+                    Categorías
+                  </Button>
+                  <Button onClick={openNewEquipment} data-testid="inventory-add-equipment">
+                    <Plus className="h-4 w-4 mr-1" /> Nuevo Equipo
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -692,7 +774,7 @@ export function InventoryModule({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input className="pl-9" placeholder="Buscar por nombre, código, marca, serie…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            <Button variant="outline" onClick={() => setQrScannerOpen(true)} title="Escanear QR">
+            <Button variant="outline" onClick={() => setQrScannerOpen(true)} title="Escanear QR o código de barras">
               <QrCode className="h-4 w-4 mr-1" />
               Escanear
             </Button>
@@ -729,6 +811,13 @@ export function InventoryModule({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <Checkbox
+                      checked={allFilteredSelected}
+                      onCheckedChange={toggleAllFiltered}
+                      aria-label="Seleccionar todos para imprimir"
+                    />
+                  </TableHead>
                   <TableHead>CÓDIGO</TableHead>
                   <TableHead>EQUIPO</TableHead>
                   <TableHead>SEDE</TableHead>
@@ -742,16 +831,23 @@ export function InventoryModule({
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableSkeletonRows columnsCount={9} rowsCount={5} />
+                  <TableSkeletonRows columnsCount={10} rowsCount={5} />
                 ) : filteredEquipment.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                       No hay equipos registrados.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredEquipment.map((e) => (
                     <TableRow key={e.id} className="cursor-pointer hover:bg-muted/50" onClick={() => { setIsNewEquipment(false); setEquipmentDialog(e); }}>
+                      <TableCell onClick={(ev) => ev.stopPropagation()}>
+                        <Checkbox
+                          checked={selectedIds.has(e.id)}
+                          onCheckedChange={() => toggleSelected(e.id)}
+                          aria-label={`Seleccionar ${e.code}`}
+                        />
+                      </TableCell>
                       <TableCell className="font-mono text-xs">{e.code}</TableCell>
                       <TableCell>
                         <div className="font-medium">{e.name}</div>
@@ -785,14 +881,19 @@ export function InventoryModule({
                       <TableCell>
                         <span className="flex items-center gap-1 text-sm">
                           {e.nextMaintenanceDate || '—'}
-                          {e.nextMaintenanceDate && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+                          {e.nextMaintenanceDate && e.nextMaintenanceDate < today && (
+                            <AlertTriangle className="h-3.5 w-3.5 text-red-500" aria-label="Vencido" />
+                          )}
+                          {e.nextMaintenanceDate && e.nextMaintenanceDate >= today && e.nextMaintenanceDate <= in30Days && (
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" aria-label="Próximo" />
+                          )}
                         </span>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{formatCurrencyEs(e.currentValue)}</TableCell>
                       <TableCell><UsefulLifeBar percent={computeUsefulLifePercent(e)} /></TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
-                          <Button
+                          {canEdit && <Button
                             type="button"
                             variant="ghost"
                             size="icon"
@@ -805,7 +906,7 @@ export function InventoryModule({
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
-                          </Button>
+                          </Button>}
                           <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
                       </TableCell>
@@ -823,9 +924,11 @@ export function InventoryModule({
               <h3 className="text-lg font-semibold">Gestión de Mantenimientos</h3>
               <p className="text-sm text-muted-foreground">Planificación, seguimiento e historial</p>
             </div>
-            <Button onClick={openNewMaintenance}>
-              <Plus className="h-4 w-4 mr-1" /> Programar Mantenimiento
-            </Button>
+            {canEdit && (
+              <Button onClick={openNewMaintenance} disabled={viewDataset.equipment.length === 0}>
+                <Plus className="h-4 w-4 mr-1" /> Programar Mantenimiento
+              </Button>
+            )}
           </div>
 
           <div className="grid gap-3 sm:grid-cols-4">
@@ -857,6 +960,13 @@ export function InventoryModule({
           </div>
 
           <div className="space-y-3">
+            {filteredMaintenance.length === 0 && (
+              <Card>
+                <CardContent className="p-8 text-center text-sm text-muted-foreground">
+                  No hay mantenimientos con los filtros actuales.
+                </CardContent>
+              </Card>
+            )}
             {filteredMaintenance.map((m) => {
               const eq = getEquipmentById(dataset, m.equipmentId);
               return (
@@ -914,19 +1024,20 @@ export function InventoryModule({
         onSave={() => void saveEquipment()}
         onDelete={!isNewEquipment && equipmentDialog ? () => void deleteEquipment(equipmentDialog) : undefined}
         applyGeneratedCode={applyGeneratedCode}
+        canEdit={canEdit}
       />
 
       <Dialog open={maintDialog != null} onOpenChange={(o) => !o && setMaintDialog(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{isNewMaint ? 'Programar mantenimiento' : 'Editar mantenimiento'}</DialogTitle>
+            <DialogTitle>{isNewMaint ? 'Programar mantenimiento' : canEdit ? 'Editar mantenimiento' : 'Detalle de mantenimiento'}</DialogTitle>
           </DialogHeader>
           {maintDialog && (
-            <div className="grid gap-3 py-2">
+            <fieldset disabled={!canEdit} className="m-0 grid gap-3 border-0 p-0 py-2">
               <Select value={maintDialog.equipmentId} onValueChange={(v) => setMaintDialog({ ...maintDialog, equipmentId: v })}>
                 <SelectTrigger><SelectValue placeholder="Equipo" /></SelectTrigger>
                 <SelectContent>
-                  {dataset.equipment.map((e) => (
+                  {[...viewDataset.equipment].sort((a, b) => a.code.localeCompare(b.code)).map((e) => (
                     <SelectItem key={e.id} value={e.id}>{e.code} — {e.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -964,11 +1075,11 @@ export function InventoryModule({
                 <Field label="Costo repuestos (S/)" type="number" value={String(maintDialog.partsCost)} onChange={(v) => setMaintDialog({ ...maintDialog, partsCost: Number(v) || 0 })} />
               </div>
               <Textarea placeholder="Notas de resultado" value={maintDialog.resultNotes || ''} onChange={(e) => setMaintDialog({ ...maintDialog, resultNotes: e.target.value })} rows={2} />
-            </div>
+            </fieldset>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setMaintDialog(null)}>Cancelar</Button>
-            <Button onClick={() => void saveMaintenance()}>Guardar</Button>
+            <Button variant="outline" onClick={() => setMaintDialog(null)}>{canEdit ? 'Cancelar' : 'Cerrar'}</Button>
+            {canEdit && <Button onClick={() => void saveMaintenance()}>Guardar</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
