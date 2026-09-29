@@ -3925,7 +3925,7 @@ export default function App() {
           ) : (
           <>
           {/* Header fuera de Suspense: no desaparece al cambiar de módulo */}
-          {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products', 'rrhhAreas', 'rrhhPuestos', 'rrhhTurnosCatalog', 'fees', 'providers', 'inventory', 'reconciliation', 'pnl', 'reports', 'audit', 'users', 'config', 'requests', 'alerts', 'menuConfig', 'menuAssignment'].includes(view) && (
+          {['dashboard', 'analytics', 'transactions', 'cashflow', 'pettycash', 'products', 'rrhhAreas', 'rrhhPuestos', 'rrhhTurnosCatalog', 'fees', 'providers', 'inventory', 'reconciliation', 'pnl', 'reports', 'audit', 'users', 'config', 'requests', 'alerts', 'menuConfig', 'menuAssignment'].includes(view) && (urlView ?? view) !== 'fleet' && (
             <ModuleHeader
               icon={moduleIdentity.icon}
               title={moduleIdentity.title}
@@ -4130,6 +4130,7 @@ export default function App() {
                      onNavigate={(targetView) => navigate(viewToPath(targetView as ViewType))}
                      thresholds={alertThresholds}
                      onUpdateThresholds={setAlertThresholds}
+                     canEdit={canWriteAppKv('settings:alertThresholds')}
                  />
              </div>
           )}

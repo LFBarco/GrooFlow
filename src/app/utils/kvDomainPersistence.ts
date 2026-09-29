@@ -109,6 +109,9 @@ export async function autosaveKvDomain<T>(options: {
   errorMessage: string;
   sync?: CloudSyncTracker;
   enqueueOptions?: { updateLatestRef?: boolean };
+  /** Reintentos automáticos: no repetir el toast de error. */
+  silentError?: boolean;
+  onOutcome?: (outcome: 'ok' | 'denied' | 'failed') => void;
 }): Promise<boolean> {
   const {
     kvKey,
@@ -119,6 +122,8 @@ export async function autosaveKvDomain<T>(options: {
     errorMessage,
     sync,
     enqueueOptions,
+    silentError,
+    onOutcome,
   } = options;
 
   sync?.onStart();
@@ -140,13 +145,14 @@ export async function autosaveKvDomain<T>(options: {
   /** 403 por módulo no asignado: esperado; no ensucia el indicador ni muestra toast. */
   const permissionDenied = !ok && takeKvPermissionDenied(kvKey);
   sync?.onEnd(ok || permissionDenied, kvKey);
+  onOutcome?.(ok ? 'ok' : permissionDenied ? 'denied' : 'failed');
 
   if (ok) {
     refs.cooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
     return true;
   }
 
-  if (permissionDenied) {
+  if (permissionDenied || silentError) {
     return false;
   }
 

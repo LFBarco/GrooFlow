@@ -16,6 +16,45 @@ import { isProductionSqlEnabled } from '../../services/repository/sqlDomainUtils
 
 const PRODUCTION_USE_SQL = isProductionSqlEnabled();
 
+/** Esperas antes de reintentar un guardado fallido (red/deploy); el indicador se recupera solo. */
+const AUTOSAVE_RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
+
+type AutosaveParams<T> = Omit<Parameters<typeof autosaveKvDomain<T>>[0], 'silentError' | 'onOutcome'>;
+
+/** Guarda y, si falla por algo distinto de permisos, reintenta mientras el efecto siga vigente. */
+function autosaveWithRetry<T>(
+  params: AutosaveParams<T>,
+  onSaved: () => void
+): () => void {
+  let cancelled = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const attempt = (index: number) => {
+    let outcome: 'ok' | 'denied' | 'failed' = 'failed';
+    void autosaveKvDomain({
+      ...params,
+      silentError: index > 0,
+      onOutcome: (o) => {
+        outcome = o;
+      },
+    }).then((ok) => {
+      if (cancelled) return;
+      if (ok) {
+        onSaved();
+        return;
+      }
+      if (outcome !== 'failed' || index >= AUTOSAVE_RETRY_DELAYS_MS.length) return;
+      timer = setTimeout(() => attempt(index + 1), AUTOSAVE_RETRY_DELAYS_MS[index]);
+    });
+  };
+
+  attempt(0);
+  return () => {
+    cancelled = true;
+    if (timer) clearTimeout(timer);
+  };
+}
+
 type SqlTableSaver<T> = (
   client: SupabaseClient,
   data: T,
@@ -60,19 +99,20 @@ export function useKvSqlTableAutosave<T>(options: KvSqlTableAutosaveOptions<T>):
 
   useEffect(() => {
     if (!isDataLoaded || !hydratedRef.current || !when || !canWrite) return;
-    void autosaveKvDomain({
-      kvKey,
-      payload: data,
-      refs,
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage,
-      sync: cloudSync,
-    }).then((ok) => {
-      if (ok) {
+    return autosaveWithRetry(
+      {
+        kvKey,
+        payload: data,
+        refs,
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        errorMessage,
+        sync: cloudSync,
+      },
+      () => {
         void backupDomainSqlAfterKvSave(sqlEnabled, kvKey, data, saveSql, lastSaveErrorAtRef);
       }
-    });
+    );
   }, [data, isDataLoaded, when, canWrite]);
 }
 
@@ -113,18 +153,19 @@ export function useKvAppKeyAutosave<T>(options: KvAppKeyAutosaveOptions<T>): voi
   useEffect(() => {
     if (!isDataLoaded || !hydratedRef.current || !when || !canWrite) return;
     if (skipIfUndefined && data === undefined) return;
-    void autosaveKvDomain({
-      kvKey,
-      payload: data,
-      refs,
-      kvApplyGenerationRef,
-      lastSaveErrorAtRef,
-      errorMessage,
-      sync: cloudSync,
-    }).then((ok) => {
-      if (ok) {
+    return autosaveWithRetry(
+      {
+        kvKey,
+        payload: data,
+        refs,
+        kvApplyGenerationRef,
+        lastSaveErrorAtRef,
+        errorMessage,
+        sync: cloudSync,
+      },
+      () => {
         void backupAppKvAfterKvSave(PRODUCTION_USE_SQL, kvKey, data, lastSaveErrorAtRef);
       }
-    });
+    );
   }, [data, isDataLoaded, when, canWrite]);
 }

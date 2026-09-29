@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { 
     AlertTriangle, 
     AlertCircle, 
@@ -52,7 +52,11 @@ interface AlertsCenterProps {
     onNavigate: (view: string) => void;
     thresholds: AlertThresholds;
     onUpdateThresholds: (t: AlertThresholds) => void;
+    /** Sin permiso de escritura en Configuración los umbrales son de solo lectura. */
+    canEdit?: boolean;
 }
+
+type ThresholdKey = 'invoiceDueDays' | 'spendingSpikePercent' | 'staleRequestDays' | 'pettyCashLowBalance';
 
 export function AlertsCenter({ 
     alerts, 
@@ -60,9 +64,29 @@ export function AlertsCenter({
     onMarkAllAsRead, 
     onNavigate,
     thresholds,
-    onUpdateThresholds
+    onUpdateThresholds,
+    canEdit = true
 }: AlertsCenterProps) {
     const s = useModuleSurfaces();
+    const [draft, setDraft] = useState<AlertThresholds>(thresholds);
+    useEffect(() => {
+        setDraft(thresholds);
+    }, [thresholds]);
+    const sameThresholds = (a: AlertThresholds, b: AlertThresholds) =>
+        a.invoiceDueDays === b.invoiceDueDays &&
+        a.spendingSpikePercent === b.spendingSpikePercent &&
+        a.staleRequestDays === b.staleRequestDays &&
+        a.pettyCashLowBalance === b.pettyCashLowBalance;
+    const commitDraft = (next: AlertThresholds) => {
+        if (!canEdit || sameThresholds(next, thresholds)) return;
+        onUpdateThresholds(next);
+    };
+    const sliderProps = (key: ThresholdKey) => ({
+        value: [draft[key]],
+        disabled: !canEdit,
+        onValueChange: ([val]: number[]) => setDraft((d) => ({ ...d, [key]: val })),
+        onValueCommit: ([val]: number[]) => commitDraft({ ...draft, [key]: val }),
+    });
     const [viewMode, setViewMode] = useState<'dashboard' | 'list' | 'settings'>('dashboard');
     const [filterSeverity, setFilterSeverity] = useState<AlertSeverity | 'all'>('all');
     const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -503,26 +527,18 @@ export function AlertsCenter({
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <Label>Vencimiento de Facturas (Días de anticipación)</Label>
-                                            <span className="font-mono text-sm">{thresholds.invoiceDueDays} días</span>
+                                            <span className="font-mono text-sm">{draft.invoiceDueDays} días</span>
                                         </div>
-                                        <Slider 
-                                            value={[thresholds.invoiceDueDays]} 
-                                            min={1} max={30} step={1}
-                                            onValueChange={([val]) => onUpdateThresholds({...thresholds, invoiceDueDays: val})}
-                                        />
+                                        <Slider min={1} max={30} step={1} {...sliderProps('invoiceDueDays')} />
                                         <p className="text-xs text-muted-foreground">Generar alerta "Por Vencer" X días antes de la fecha límite.</p>
                                     </div>
 
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <Label>Desviación de Presupuesto (%)</Label>
-                                            <span className="font-mono text-sm">{thresholds.spendingSpikePercent}%</span>
+                                            <span className="font-mono text-sm">{draft.spendingSpikePercent}%</span>
                                         </div>
-                                        <Slider 
-                                            value={[thresholds.spendingSpikePercent]} 
-                                            min={5} max={100} step={5}
-                                            onValueChange={([val]) => onUpdateThresholds({...thresholds, spendingSpikePercent: val})}
-                                        />
+                                        <Slider min={5} max={100} step={5} {...sliderProps('spendingSpikePercent')} />
                                         <p className="text-xs text-muted-foreground">Alertar si una categoría gasta X% más que su promedio trimestral.</p>
                                     </div>
                                 </div>
@@ -538,34 +554,36 @@ export function AlertsCenter({
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <Label>Solicitudes Estancadas (Días)</Label>
-                                            <span className="font-mono text-sm">{thresholds.staleRequestDays} días</span>
+                                            <span className="font-mono text-sm">{draft.staleRequestDays} días</span>
                                         </div>
-                                        <Slider 
-                                            value={[thresholds.staleRequestDays]} 
-                                            min={1} max={14} step={1}
-                                            onValueChange={([val]) => onUpdateThresholds({...thresholds, staleRequestDays: val})}
-                                        />
+                                        <Slider min={1} max={14} step={1} {...sliderProps('staleRequestDays')} />
                                         <p className="text-xs text-muted-foreground">Alertar si una solicitud de compra lleva más de X días pendiente.</p>
                                     </div>
 
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <Label>Saldo Mínimo Caja Chica (%)</Label>
-                                            <span className="font-mono text-sm">{thresholds.pettyCashLowBalance}%</span>
+                                            <span className="font-mono text-sm">{draft.pettyCashLowBalance}%</span>
                                         </div>
-                                        <Slider 
-                                            value={[thresholds.pettyCashLowBalance]} 
-                                            min={5} max={50} step={5}
-                                            onValueChange={([val]) => onUpdateThresholds({...thresholds, pettyCashLowBalance: val})}
-                                        />
+                                        <Slider min={5} max={50} step={5} {...sliderProps('pettyCashLowBalance')} />
                                         <p className="text-xs text-muted-foreground">Alertar cuando el fondo fijo baje del X% de su capacidad.</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="flex justify-end pt-4">
-                                <Button onClick={() => setViewMode('dashboard')}>
-                                    Guardar Cambios
+                            <div className="flex items-center justify-end gap-3 pt-4">
+                                {!canEdit && (
+                                    <p className="mr-auto text-xs text-muted-foreground">
+                                        Solo lectura: se requiere permiso de edición en Configuración para cambiar los umbrales.
+                                    </p>
+                                )}
+                                <Button
+                                    onClick={() => {
+                                        commitDraft(draft);
+                                        setViewMode('dashboard');
+                                    }}
+                                >
+                                    {canEdit ? 'Guardar Cambios' : 'Volver'}
                                 </Button>
                             </div>
                         </CardContent>
