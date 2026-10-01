@@ -163,20 +163,20 @@ export function AccidentesDashboard({ kpis }: Props) {
         <KpiCard
           title="Tasa de siniestralidad"
           value={`${kpis.sinistralityRate}%`}
-          subtitle={`${kpis.accidentsWithLostTime} trabajadores / ${kpis.activeWorkers}`}
-          help="Porcentaje de trabajadores que sufrieron al menos un accidente con baja en el periodo filtrado, respecto al total de personal activo."
+          subtitle={`${kpis.affectedWorkers} trabajador${kpis.affectedWorkers === 1 ? '' : 'es'} / ${kpis.activeWorkers} activos`}
+          help="Porcentaje de trabajadores que sufrieron al menos un accidente con baja en el periodo filtrado, respecto al personal activo en Colaboradores (Buk.pe) o al headcount manual de Config KPI."
           icon={ShieldAlert}
           accent="#ef4444"
         />
         <KpiCard
           title="Días sin accidentes"
-          value={String(kpis.daysWithoutAccident)}
+          value={kpis.lastAccidentDate ? String(kpis.daysWithoutAccident) : '—'}
           subtitle={
             kpis.lastAccidentDate
               ? `Último: ${kpis.lastAccidentDate}`
-              : 'Sin registros con baja'
+              : 'Sin accidentes en el periodo'
           }
-          help="Días calendario desde el último accidente con baja dentro del periodo filtrado."
+          help="Días calendario desde el último accidente de trabajo (prioriza los que tuvieron baja) dentro del periodo filtrado. Incidentes y casi accidentes no reinician el contador."
           icon={CalendarCheck}
           accent="#22c55e"
         />
@@ -192,7 +192,7 @@ export function AccidentesDashboard({ kpis }: Props) {
           title="Horas hombre (est.)"
           value={kpis.manHours.toLocaleString('es-PE')}
           subtitle={`${kpis.openInvestigations} casos abiertos · ${kpis.totalLostDays} días perdidos`}
-          help="Estimación de horas hombre del periodo: trabajadores activos × horas mensuales configuradas × meses del filtro. Los casos abiertos son registros cuyo flujo aún no está cerrado."
+          help="Estimación de horas hombre del periodo: trabajadores activos (Colaboradores Buk.pe o headcount manual) × horas mensuales configuradas × meses del filtro. Los casos abiertos son registros cuyo flujo aún no está cerrado."
           icon={AlertTriangle}
           accent="#64748b"
         />

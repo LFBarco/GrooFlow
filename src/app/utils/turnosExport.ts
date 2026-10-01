@@ -6,6 +6,7 @@ import type { TurnosRosterEntry, TurnosSettings } from '../types/turnos';
 import { TURNO_SHIFT_SHORT } from '../types/turnos';
 import { assignmentForCell } from './turnosData';
 import { toDateKey, weekRangeLabel } from './turnosCalendar';
+import { printHtmlDocument } from './printHtml';
 
 function shiftLabel(
   settings: TurnosSettings,
@@ -96,13 +97,9 @@ export function printTurnosWeek(input: {
     <thead><tr><th>Personal</th>${dayHeaders.map((h) => `<th>${h}</th>`).join('')}</tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
-  <script>window.onload = () => { window.print(); };</script>
 </body></html>`;
 
-  const win = window.open('', '_blank', 'noopener,noreferrer,width=1100,height=800');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  void printHtmlDocument(html);
 }
 
 export function printTurnosDay(input: {
@@ -136,11 +133,7 @@ export function printTurnosDay(input: {
     <thead><tr><th>Personal</th><th>Cargo</th><th>Turno</th></tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
-  <script>window.onload = () => window.print();</script>
 </body></html>`;
 
-  const win = window.open('', '_blank', 'noopener,noreferrer');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  void printHtmlDocument(html);
 }

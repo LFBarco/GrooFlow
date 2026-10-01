@@ -1,8 +1,9 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Printer } from 'lucide-react';
 
 import {
   ACCIDENT_CARE_LABELS,
   ACCIDENT_EVENT_TYPE_LABELS,
+  ACCIDENT_INSURANCE_LABELS,
   ACCIDENT_SEVERITY_LABELS,
   ACCIDENT_SHIFT_LABELS,
   ACCIDENT_WORKFLOW_LABELS,
@@ -12,8 +13,11 @@ import {
 import type { UniformDeliveryRecord } from '../../types/uniformes';
 import {
   ACCIDENT_WORKFLOW_ORDER,
+  formatSeniorityLabel,
   nextAccidentWorkflowStatus,
+  requiresMtpeNotification,
 } from '../../utils/accidentesData';
+import { printAccidentReport } from '../../utils/accidentesReportPrint';
 import { StaffHrHistoryPanel } from '../hr/StaffHrHistoryPanel';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
@@ -98,16 +102,21 @@ export function AccidenteDetailDialog({
           ))}
         </div>
 
-        {canEdit && nextStatus && onAdvanceWorkflow ? (
-          <Button
-            type="button"
-            size="sm"
-            className="mb-3"
-            onClick={() => onAdvanceWorkflow(record.id, nextStatus)}
-          >
-            Avanzar a: {ACCIDENT_WORKFLOW_LABELS[nextStatus]}
+        <div className="mb-3 flex flex-wrap gap-2">
+          {canEdit && nextStatus && onAdvanceWorkflow ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onAdvanceWorkflow(record.id, nextStatus)}
+            >
+              Avanzar a: {ACCIDENT_WORKFLOW_LABELS[nextStatus]}
+            </Button>
+          ) : null}
+          <Button type="button" size="sm" variant="outline" onClick={() => printAccidentReport(record)}>
+            <Printer className="mr-1 h-4 w-4" />
+            Imprimir registro
           </Button>
-        ) : null}
+        </div>
 
         <dl className="space-y-3">
           <Row
@@ -130,7 +139,35 @@ export function AccidenteDetailDialog({
             value={`Médico S/ ${record.medicalCost.toLocaleString('es-PE')} · Indemn. S/ ${record.indemnizationCost.toLocaleString('es-PE')}`}
           />
           <Row label="Contrato" value={record.contractType} />
-          <Row label="Antigüedad" value={`${record.seniorityMonths} meses`} />
+          <Row label="Documento" value={record.documentNumber ?? ''} />
+          <Row label="Jefe inmediato" value={record.supervisorName ?? ''} />
+          <Row label="Fecha de ingreso" value={record.hireDate ?? ''} />
+          <Row label="Antigüedad" value={formatSeniorityLabel(record.seniorityMonths)} />
+          <Row label="Testigos" value={record.witnesses ?? ''} />
+          <Row
+            label="Cobertura"
+            value={record.insuranceCoverage ? ACCIDENT_INSURANCE_LABELS[record.insuranceCoverage] : ''}
+          />
+          <Row
+            label="Descanso médico"
+            value={
+              record.medicalLeaveFrom
+                ? `${record.medicalLeaveFrom} al ${record.medicalLeaveTo ?? '—'}${record.cittNumber ? ` · CITT ${record.cittNumber}` : ''}`
+                : record.cittNumber
+                  ? `CITT ${record.cittNumber}`
+                  : ''
+            }
+          />
+          <Row
+            label="Notificación MTPE"
+            value={
+              record.mtpeNotifiedAt
+                ? `${record.mtpeNotifiedAt}${record.mtpeNotificationNumber ? ` · N.º ${record.mtpeNotificationNumber}` : ''}`
+                : requiresMtpeNotification(record)
+                  ? 'PENDIENTE (obligatoria en 24 h)'
+                  : ''
+            }
+          />
           {record.description ? (
             <div>
               <p className="text-xs font-medium text-muted-foreground">Descripción</p>

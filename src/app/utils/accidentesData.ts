@@ -8,6 +8,7 @@ import type {
   AccidentesSettings,
   AccidentEventType,
   AccidentWorkflowStatus,
+  AccidentWorkShift,
   WorkplaceAccidentRecord,
 } from '../types/accidentes';
 import { mergeAsistenciaSettings } from './asistenciaData';
@@ -150,7 +151,15 @@ export function filterAccidentRecords(
       }
     }
     if (q) {
-      const haystack = [r.affectedName, r.jobTitle, r.workArea, r.exactLocation, r.description ?? '']
+      const haystack = [
+        r.affectedName,
+        r.documentNumber ?? '',
+        r.jobTitle,
+        r.workArea,
+        r.exactLocation,
+        r.supervisorName ?? '',
+        r.description ?? '',
+      ]
         .join(' ')
         .toLowerCase();
       if (!haystack.includes(q)) return false;
@@ -187,6 +196,48 @@ export function computeSeniorityMonths(hireDate?: string, _asOfDate?: string): n
   }
 }
 
+/** Antigüedad a una fecha dada (ej. fecha del accidente), no a hoy. */
+export function seniorityMonthsAt(hireDate: string | undefined, asOfDate: string | undefined): number {
+  if (!hireDate) return 0;
+  if (!asOfDate) return computeSeniorityMonths(hireDate);
+  try {
+    const hire = parseISO(`${hireDate.slice(0, 10)}T12:00:00`);
+    const asOf = parseISO(`${asOfDate.slice(0, 10)}T12:00:00`);
+    if (Number.isNaN(hire.getTime()) || Number.isNaN(asOf.getTime())) return 0;
+    return Math.max(0, differenceInMonths(asOf, hire));
+  } catch {
+    return 0;
+  }
+}
+
+/** Turno a partir del horario Buk «HH:mm-HH:mm». */
+export function shiftFromHours(hours?: string | null): AccidentWorkShift | null {
+  const m = String(hours ?? '').match(/^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const start = Number(m[1]);
+  const end = Number(m[3]);
+  if (start >= 19 || start < 5) return 'night';
+  if (end < start || end > 22) return 'mixed';
+  return 'day';
+}
+
+export function toTitleCase(raw: string): string {
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/(^|\s)(\p{L})/gu, (_, sp: string, ch: string) => sp + ch.toUpperCase());
+}
+
+/** Días calendario de descanso médico, ambos extremos incluidos. */
+export function medicalLeaveDays(from?: string, to?: string): number {
+  if (!from || !to) return 0;
+  const a = parseISO(`${from}T12:00:00`);
+  const b = parseISO(`${to}T12:00:00`);
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0;
+  return Math.max(0, differenceInCalendarDays(b, a) + 1);
+}
+
 export function formatSeniorityLabel(months: number): string {
   if (months < 1) return 'Menos de 1 mes';
   if (months < 12) return `${months} mes${months === 1 ? '' : 'es'}`;
@@ -214,6 +265,9 @@ export type HrCollaboratorRow = {
   sede?: string | null;
   /** Centro de costo Buk.pe (6 dígitos) para sede base. */
   costCenter?: string | null;
+  supervisor?: string | null;
+  /** Horario del turno Buk, ej. «08:00-17:00». */
+  shiftHours?: string | null;
   linkedUsuarioId?: string | null;
 };
 
@@ -239,6 +293,8 @@ export interface StaffOption {
   sedeKeys?: string[];
   seniorityMonths: number;
   hireDate?: string;
+  supervisorName?: string;
+  shiftHours?: string;
   uniformSizes?: Partial<Record<string, string>>;
   /** Origen: colaboradores Buk vs Gestión/Asistencia. */
   source?: 'rrhh' | 'user' | 'asistencia';
@@ -486,6 +542,8 @@ export function buildStaffOptions(input: {
       sedeKeys: sedesInfo.keys,
       seniorityMonths: computeSeniorityMonths(hireDate),
       hireDate,
+      supervisorName: emp.supervisor ? toTitleCase(emp.supervisor) : undefined,
+      shiftHours: (emp.shiftHours || '').trim() || undefined,
       uniformSizes: matchedUser?.uniformSizes,
       source: 'rrhh',
     };
@@ -501,8 +559,10 @@ export function buildStaffOptions(input: {
     );
   }
 
-  // 2) Fallback Gestión + Asistencia (cuando no hay Buk o faltan personas).
-  for (const u of input.users) {
+  // 2) Fallback Gestión + Asistencia solo si Colaboradores no respondió: con Buk cargado,
+  // la lista debe coincidir con los activos de Colaboradores (sin cesados ni cuentas de sistema).
+  const useFallback = employees.length === 0;
+  for (const u of useFallback ? input.users : []) {
     if (u.status === 'inactive') continue;
     if (coveredUserIds.has(String(u.id))) continue;
     const doc = docKey(u.documentNumber);
@@ -546,7 +606,7 @@ export function buildStaffOptions(input: {
     );
   }
 
-  for (const s of staffList) {
+  for (const s of useFallback ? staffList : []) {
     if (coveredStaffIds.has(s.id)) continue;
     const doc = docKey(s.rut);
     const email = (s.email ?? '').trim().toLowerCase();
@@ -650,7 +710,51 @@ export function estimateManHours(
   return activeWorkers * config.hoursPerWorkerMonth * Math.max(monthsInPeriod, 1);
 }
 
-export function countActiveWorkers(users: User[], config: AccidentesKpiConfig): number {
+/**
+ * Plantilla para IF/IG: headcount manual > activos de Colaboradores (Buk) > usuarios activos.
+ * Los usuarios del sistema incluyen cuentas sin contrato vigente, por eso son el último recurso.
+ */
+export function countActiveWorkers(
+  users: User[],
+  config: AccidentesKpiConfig,
+  collaboratorHeadcount?: number
+): number {
+  if (config.manualHeadcount && config.manualHeadcount > 0) return config.manualHeadcount;
+  if (collaboratorHeadcount && collaboratorHeadcount > 0) return collaboratorHeadcount;
   const active = users.filter((u) => u.status !== 'inactive').length;
-  return Math.max(active, config.manualHeadcount ?? 0, 1);
+  return Math.max(active, 1);
+}
+
+/** Solo los accidentes de trabajo alimentan IF / IG / siniestralidad (no incidentes ni casi accidentes). */
+export function isWorkAccident(r: WorkplaceAccidentRecord): boolean {
+  return (r.eventType ?? 'accidente') === 'accidente';
+}
+
+export function accidentHasLostTime(r: WorkplaceAccidentRecord): boolean {
+  return hasLostTime(r);
+}
+
+export function workerKey(r: WorkplaceAccidentRecord): string {
+  if (r.bukEmployeeId) return `buk:${r.bukEmployeeId}`;
+  const doc = docKey(r.documentNumber);
+  if (doc) return `doc:${doc}`;
+  if (r.userId) return `user:${r.userId}`;
+  return `name:${normalizePersonName(r.affectedName)}`;
+}
+
+/** Eventos previos del mismo colaborador (reincidencia). */
+export function previousAccidentsFor(
+  records: WorkplaceAccidentRecord[],
+  target: Pick<WorkplaceAccidentRecord, 'bukEmployeeId' | 'documentNumber' | 'userId' | 'affectedName'>,
+  excludeId?: string
+): WorkplaceAccidentRecord[] {
+  const key = workerKey(target as WorkplaceAccidentRecord);
+  return records
+    .filter((r) => r.id !== excludeId && workerKey(r) === key)
+    .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
+}
+
+/** Mortales: el MTPE exige notificación en 24 h (DS 005-2012-TR, art. 110). */
+export function requiresMtpeNotification(r: Pick<WorkplaceAccidentRecord, 'severity'>): boolean {
+  return r.severity === 'mortal';
 }

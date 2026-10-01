@@ -13,34 +13,41 @@ import type {
   WorkplaceAccidentRecord,
 } from '../types/accidentes';
 import {
+  accidentHasLostTime,
   countActiveWorkers,
   daysWithoutAccident,
   estimateManHours,
   filterAccidentRecords,
+  isWorkAccident,
+  requiresMtpeNotification,
+  workerKey,
 } from './accidentesData';
 
 function monthsInRange(dateFrom: string, dateTo: string): number {
+  if (!dateFrom || !dateTo) return 1;
   const from = parseISO(`${dateFrom}T12:00:00`);
   const to = parseISO(`${dateTo}T12:00:00`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return 1;
   return Math.max(1, differenceInMonths(to, from) + 1);
-}
-
-function hasLostTime(r: WorkplaceAccidentRecord): boolean {
-  return r.estimatedLostDays > 0 || r.immediateCare === 'dias_baja';
 }
 
 export function computeAccidentesKpis(input: {
   settings: AccidentesSettings;
   filters: AccidentesFilters;
   users: User[];
+  /** Activos en Colaboradores (Buk). */
+  collaboratorHeadcount?: number;
+  today?: string;
 }): AccidentesKpiSnapshot {
   const { settings, filters, users } = input;
   const records = filterAccidentRecords(settings.records, filters);
+  const accidents = records.filter(isWorkAccident);
   const config = settings.config;
+  const today = input.today ?? format(new Date(), 'yyyy-MM-dd');
 
-  const accidentsWithLostTime = records.filter(hasLostTime);
-  const totalLostDays = records.reduce((sum, r) => sum + (r.estimatedLostDays ?? 0), 0);
-  const activeWorkers = countActiveWorkers(users, config);
+  const accidentsWithLostTime = accidents.filter(accidentHasLostTime);
+  const totalLostDays = accidents.reduce((sum, r) => sum + (r.estimatedLostDays ?? 0), 0);
+  const activeWorkers = countActiveWorkers(users, config, input.collaboratorHeadcount);
   const manHours = estimateManHours(
     activeWorkers,
     config,
@@ -51,9 +58,7 @@ export function computeAccidentesKpis(input: {
     manHours > 0 ? (accidentsWithLostTime.length * 1_000_000) / manHours : 0;
   const gravityIndex = manHours > 0 ? (totalLostDays * 1_000) / manHours : 0;
 
-  const affectedWorkerKeys = new Set(
-    records.filter(hasLostTime).map((r) => r.userId ?? r.affectedName.trim().toLowerCase())
-  );
+  const affectedWorkerKeys = new Set(accidentsWithLostTime.map(workerKey));
   const sinistralityRate =
     activeWorkers > 0 ? (affectedWorkerKeys.size / activeWorkers) * 100 : 0;
 
@@ -62,7 +67,19 @@ export function computeAccidentesKpis(input: {
   const lostDaysCost = totalLostDays * config.dailyLostDayCost;
   const totalCost = medicalCost + indemnizationCost + lostDaysCost;
 
-  const lastAccident = [...records].sort((a, b) => b.eventDate.localeCompare(a.eventDate))[0];
+  const lastAccident = [...accidents].sort((a, b) => b.eventDate.localeCompare(a.eventDate))[0];
+
+  const overdueCorrectiveActions = records.reduce(
+    (n, r) =>
+      n +
+      (r.correctiveActions ?? []).filter(
+        (a) => a.status !== 'completada' && a.dueDate && a.dueDate < today
+      ).length,
+    0
+  );
+  const pendingMtpeNotifications = records.filter(
+    (r) => requiresMtpeNotification(r) && !r.mtpeNotifiedAt
+  ).length;
 
   const byAreaMap = new Map<string, number>();
   const bySeverityMap = new Map<AccidentSeverity, number>();
@@ -90,13 +107,16 @@ export function computeAccidentesKpis(input: {
   }
 
   return {
-    totalAccidents: records.length,
+    totalAccidents: accidents.length,
     accidentsWithLostTime: accidentsWithLostTime.length,
+    affectedWorkers: affectedWorkerKeys.size,
+    overdueCorrectiveActions,
+    pendingMtpeNotifications,
     totalLostDays,
     frequencyIndex: Math.round(frequencyIndex * 100) / 100,
     gravityIndex: Math.round(gravityIndex * 100) / 100,
     sinistralityRate: Math.round(sinistralityRate * 10) / 10,
-    daysWithoutAccident: daysWithoutAccident(records),
+    daysWithoutAccident: daysWithoutAccident(accidents),
     lastAccidentDate: lastAccident?.eventDate ?? null,
     totalCost,
     medicalCost,

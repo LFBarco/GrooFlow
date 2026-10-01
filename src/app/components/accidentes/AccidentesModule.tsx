@@ -56,9 +56,16 @@ export function AccidentesModule({
   reportedBy,
 }: AccidentesModuleProps) {
   const canPersist = canAdd || canEdit || canDelete || canConfigure;
-  const asistencia = mergeAsistenciaSettings(systemSettings.asistencia);
+  const asistencia = useMemo(
+    () => mergeAsistenciaSettings(systemSettings.asistencia),
+    [systemSettings.asistencia]
+  );
   const { settings, loading, saving, updateSettings } = useAccidentesModuleState(canPersist);
-  const { employees: collaborators, loading: collaboratorsLoading } = useHrCollaborators();
+  const {
+    employees: collaborators,
+    loading: collaboratorsLoading,
+    error: collaboratorsError,
+  } = useHrCollaborators();
   const { uniforms: uniformRecords } = useHrStaffRecords();
   const [filters, setFilters] = useState(defaultFilters);
   const [formOpen, setFormOpen] = useState(false);
@@ -103,8 +110,14 @@ export function AccidentesModule({
   );
 
   const kpis = useMemo(
-    () => computeAccidentesKpis({ settings, filters, users }),
-    [settings, filters, users]
+    () =>
+      computeAccidentesKpis({
+        settings,
+        filters,
+        users,
+        collaboratorHeadcount: collaborators.length,
+      }),
+    [settings, filters, users, collaborators.length]
   );
 
   const openNew = () => {
@@ -175,10 +188,15 @@ export function AccidentesModule({
           </p>
           {collaboratorsLoading ? (
             <p className="text-xs text-muted-foreground">Cargando catálogo de colaboradores…</p>
+          ) : collaboratorsError || collaborators.length === 0 ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              No se pudo leer Colaboradores (Buk.pe){collaboratorsError ? `: ${collaboratorsError}` : ''}.
+              Se usan {staffOptions.length} personas de Gestión / Asistencia como respaldo.
+            </p>
           ) : (
             <p className="text-xs text-muted-foreground">
-              {staffOptions.length} colaborador{staffOptions.length === 1 ? '' : 'es'} disponible
-              {staffOptions.length === 1 ? '' : 's'} para el formulario.
+              {staffOptions.length} colaborador{staffOptions.length === 1 ? '' : 'es'} activo
+              {staffOptions.length === 1 ? '' : 's'} en Colaboradores, disponibles para el formulario.
             </p>
           )}
         </div>
@@ -252,6 +270,7 @@ export function AccidentesModule({
             <Input
               type="number"
               min={0}
+              placeholder={collaborators.length ? `Colaboradores: ${collaborators.length}` : undefined}
               value={settings.config.manualHeadcount ?? ''}
               disabled={!canEdit && !canConfigure}
               onChange={(e) =>
@@ -356,6 +375,8 @@ export function AccidentesModule({
         sedeOptions={formSedeOptions}
         canEdit={formCanWrite}
         reportedBy={reportedBy}
+        allRecords={settings.records}
+        collaboratorsLoading={collaboratorsLoading}
         onSave={handleSave}
       />
     </div>

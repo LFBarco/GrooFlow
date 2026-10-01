@@ -3,14 +3,7 @@ import { es } from 'date-fns/locale';
 
 import type { AsistenciaLiveSedeSummary, AsistenciaStaffLiveState } from '../types/asistencia';
 import { ASISTENCIA_LIVE_STATUS_LABELS } from '../types/asistencia';
-
-function escHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { escHtml, printHtmlDocument } from './printHtml';
 
 function staffRows(staff: AsistenciaStaffLiveState[]): string {
   if (staff.length === 0) {
@@ -66,11 +59,7 @@ export function printAsistenciaLive(input: {
 <h1>${escHtml(title)}</h1>
 <p class="meta">Impreso ${format(new Date(), "d/MM/yyyy HH:mm")}</p>
 ${blocks}
-<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};</script>
 </body></html>`;
 
-  const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  void printHtmlDocument(html);
 }

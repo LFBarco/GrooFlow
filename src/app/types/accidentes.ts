@@ -185,9 +185,33 @@ export interface WorkplaceAccidentRecord {
   workflowStatus?: AccidentWorkflowStatus;
   attachments?: AccidentAttachment[];
   correctiveActions?: AccidentCorrectiveAction[];
+  /** Snapshot Buk: jefe inmediato al momento del evento. */
+  supervisorName?: string;
+  /** yyyy-MM-dd — «Activo desde» en Colaboradores. */
+  hireDate?: string;
+  witnesses?: string;
+  insuranceCoverage?: AccidentInsuranceCoverage;
+  /** yyyy-MM-dd — descanso médico (CITT). */
+  medicalLeaveFrom?: string;
+  medicalLeaveTo?: string;
+  /** Certificado de Incapacidad Temporal para el Trabajo (EsSalud / EPS). */
+  cittNumber?: string;
+  /** yyyy-MM-dd — notificación al MTPE (obligatoria en 24 h para mortales e incidentes peligrosos). */
+  mtpeNotifiedAt?: string;
+  mtpeNotificationNumber?: string;
   createdAt: string;
   updatedAt?: string;
 }
+
+export type AccidentInsuranceCoverage = 'sctr' | 'essalud' | 'eps' | 'particular' | 'ninguno';
+
+export const ACCIDENT_INSURANCE_LABELS: Record<AccidentInsuranceCoverage, string> = {
+  sctr: 'SCTR (Seguro Complementario de Trabajo de Riesgo)',
+  essalud: 'EsSalud',
+  eps: 'EPS',
+  particular: 'Particular / pagado por la empresa',
+  ninguno: 'Sin atención médica',
+};
 
 export interface AccidentesKpiConfig {
   /** Horas hombre mensuales por trabajador (default 208). */
@@ -226,6 +250,12 @@ export interface AccidentesFilters {
 export interface AccidentesKpiSnapshot {
   totalAccidents: number;
   accidentsWithLostTime: number;
+  /** Trabajadores distintos con accidente con baja. */
+  affectedWorkers: number;
+  /** Acciones correctivas pendientes con fecha límite vencida. */
+  overdueCorrectiveActions: number;
+  /** Mortales sin notificación al MTPE registrada. */
+  pendingMtpeNotifications: number;
   totalLostDays: number;
   frequencyIndex: number;
   gravityIndex: number;

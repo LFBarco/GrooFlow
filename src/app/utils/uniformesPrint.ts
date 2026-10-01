@@ -7,14 +7,7 @@ import {
   UNIFORM_REASON_LABELS,
   UNIFORM_STATUS_LABELS,
 } from '../types/uniformes';
-
-function escHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { escHtml, printHtmlDocument } from './printHtml';
 
 function formatDateLabel(ymd: string): string {
   try {
@@ -106,11 +99,7 @@ ${confirmed}
   </div>
 </div>
 
-<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};</script>
 </body></html>`;
 
-  const win = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
+  void printHtmlDocument(html);
 }

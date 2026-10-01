@@ -19,10 +19,41 @@ export function AccidentesAlertBanner({ kpis, config }: Props) {
     config.alertMaxGravityIndex > 0 &&
     kpis.gravityIndex > config.alertMaxGravityIndex;
 
-  if (!freqAlert && !gravAlert && kpis.openInvestigations === 0) return null;
+  if (
+    !freqAlert &&
+    !gravAlert &&
+    kpis.openInvestigations === 0 &&
+    kpis.overdueCorrectiveActions === 0 &&
+    kpis.pendingMtpeNotifications === 0
+  ) {
+    return null;
+  }
 
   return (
     <div className="space-y-2">
+      {kpis.pendingMtpeNotifications > 0 ? (
+        <Alert variant="destructive" className="border-rose-400 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>
+            {kpis.pendingMtpeNotifications} accidente(s) mortal(es) sin notificación al MTPE
+          </AlertTitle>
+          <AlertDescription>
+            La notificación al Ministerio de Trabajo es obligatoria dentro de las 24 horas (DS
+            005-2012-TR, art. 110). Registre la fecha y el número de notificación en el caso.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+      {kpis.overdueCorrectiveActions > 0 ? (
+        <Alert className="border-amber-300 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/30">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-900 dark:text-amber-100">
+            {kpis.overdueCorrectiveActions} acción(es) correctiva(s) vencida(s)
+          </AlertTitle>
+          <AlertDescription>
+            Hay acciones pendientes cuya fecha límite ya pasó. Revise los responsables en cada caso.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {freqAlert ? (
         <Alert variant="destructive" className="border-rose-300 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/40">
           <AlertTriangle className="h-4 w-4" />
