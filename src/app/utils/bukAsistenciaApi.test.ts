@@ -27,8 +27,11 @@ describe('sanitizeBukBaseUrl', () => {
     const url = buildBukAsistenciaUrl(
       'https://app.ctrlit.cl/ctrl/api/v2/asistencia-empresa',
       1,
-      5
+      5,
+      { desde: '24-09-2026', hasta: '01-10-2026' }
     );
-    expect(url).toBe('https://app.ctrlit.cl/ctrl/api/v2/asistencia-empresa?page=1&page_size=5');
+    expect(url).toBe(
+      'https://app.ctrlit.cl/ctrl/api/v2/asistencia-empresa?page=1&page_size=5&desde=24-09-2026&hasta=01-10-2026'
+    );
   });
 });

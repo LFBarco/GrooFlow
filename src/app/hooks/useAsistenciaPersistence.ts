@@ -1,6 +1,7 @@
 import { useCallback, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { toast } from 'sonner';
 
+import { repository } from '../services/repository';
 import { saveAppKvKey } from '../services/repository/appKvSql';
 import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
@@ -11,7 +12,9 @@ import {
   ASISTENCIA_SETTINGS_KV_KEY,
   mergeAsistenciaIntoSystemSettings,
 } from '../utils/asistenciaPersistence';
+import { kvAtomicUpdate } from '../utils/kvAtomicUpdate';
 import { persistKvDomainNow } from '../utils/kvDomainPersistence';
+import { isKvPermissionDeniedError, markKvPermissionDenied } from '../utils/kvWriteAccess';
 import { PRODUCTION_REMOTE_COOLDOWN_MS } from '../utils/listRemoteSyncGuard';
 import { ensureSqlSave } from '../utils/sqlAutosaveBackup';
 import { type KvSaveResult } from '../utils/kvSerializedSave';
@@ -44,6 +47,7 @@ export function useAsistenciaPersistence(options: UseAsistenciaPersistenceOption
     kvApplyGenerationRef,
     lastSaveErrorAtRef,
   } = options;
+  const atomicChainRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const persistAsistenciaNow = useCallback(
     async (
@@ -55,6 +59,46 @@ export function useAsistenciaPersistence(options: UseAsistenciaPersistenceOption
           'Los datos siguen cargando desde la nube. Espera unos segundos y vuelve a intentar.'
         );
         return false;
+      }
+
+      if (!PRODUCTION_USE_SQL && repository.kv.setStrict) {
+        const run = atomicChainRef.current.then(async () => {
+          skipHydrateRef.current = true;
+          try {
+            const saved = await kvAtomicUpdate<AsistenciaSettings>({
+              kv: repository.kv,
+              key: ASISTENCIA_SETTINGS_KV_KEY,
+              merge: (raw) => mergeAsistenciaSettings(raw),
+              apply: (fresh) => mergeAsistenciaSettings(updater(fresh)),
+            });
+            const nextSettings = mergeAsistenciaIntoSystemSettings(
+              systemSettingsLatestRef.current,
+              saved
+            );
+            asistenciaLatestRef.current = saved;
+            systemSettingsLatestRef.current = nextSettings;
+            setSystemSettings(nextSettings);
+            cooldownUntilRef.current = Date.now() + PRODUCTION_REMOTE_COOLDOWN_MS;
+            if (successMessage) toast.success(successMessage);
+            return true;
+          } catch (e) {
+            if (isKvPermissionDeniedError(e)) {
+              markKvPermissionDenied(ASISTENCIA_SETTINGS_KV_KEY);
+            } else {
+              const now = Date.now();
+              const last = lastSaveErrorAtRef.current[ASISTENCIA_SETTINGS_KV_KEY] ?? 0;
+              if (now - last >= 8000) {
+                lastSaveErrorAtRef.current[ASISTENCIA_SETTINGS_KV_KEY] = now;
+                toast.error('No se pudo guardar la configuración de Asistencia en la nube.');
+              }
+            }
+            return false;
+          } finally {
+            skipHydrateRef.current = false;
+          }
+        });
+        atomicChainRef.current = run.catch(() => false);
+        return run;
       }
 
       const prevAsistencia = mergeAsistenciaSettings(asistenciaLatestRef.current);
