@@ -63,6 +63,10 @@ import { canRegisterPettyCashForOthers } from '../../utils/pettyCashAccess';
 import { filterPettyCashCustodianUsersForViewer } from '../../utils/pettyCashCustodianVisibility';
 import { userHasGlobalSedeAccess } from '../../utils/roleAccess';
 import { fetchSunatRucData } from '../../utils/sunatRucApi';
+import { parseSunatQr } from '../../utils/sunatQr';
+import { qrToPettyCashFields } from '../../utils/pettyCashQr';
+import { checkReceiptInCashback, deleteReceiptPhoto, saveReceiptPhoto } from '../../utils/receiptPhotosApi';
+import { ReceiptCapture } from '../common/ReceiptCapture';
 
 function pettyConfigKey(value: string | undefined) {
     return (value || '')
@@ -186,8 +190,16 @@ export function PettyCashModule({
     const [invoiceIgv10, setInvoiceIgv10] = useState(false);
     /** Factura: importe inafecto (no suma a base IGV, sí al total a pagar). */
     const [amountExempt, setAmountExempt] = useState('');
+    /** Foto/PDF del comprobante (opcional) en data URL. */
+    const [receiptPhoto, setReceiptPhoto] = useState('');
+    const [receiptPhotoProcessing, setReceiptPhotoProcessing] = useState(false);
+    /** Documento del adquirente leído del QR (para avisar si la factura no está a nombre de la empresa). */
+    const [qrBuyerDoc, setQrBuyerDoc] = useState('');
+    const [registeringExpense, setRegisteringExpense] = useState(false);
 
     const resetExpenseForm = () => {
+        setReceiptPhoto('');
+        setQrBuyerDoc('');
         setAmountBI('');
         setAmountExempt('');
         setDescription('');
@@ -473,7 +485,43 @@ export function PettyCashModule({
         return 'Solo se listan los motivos habilitados para este proveedor.';
     }, [docIdentityComplete, matchedProvider, hasPettyConfig, providerAllowsPettyCash]);
 
-    const handleRegisterExpense = () => {
+    const businessRucDigits = businessRuc.replace(/\D/g, '');
+    const buyerRucMismatch =
+        classification === 'Factura' &&
+        qrBuyerDoc !== '' &&
+        businessRucDigits.length === 11 &&
+        qrBuyerDoc !== businessRucDigits;
+
+    const applyReceiptQr = (raw: string): boolean => {
+        const parsed = parseSunatQr(raw);
+        if (!parsed) return false;
+        const f = qrToPettyCashFields(parsed);
+        setDocType('RUC');
+        setDocNumber(f.docNumber);
+        setDocSeries(f.docSeries);
+        setVoucherNumber(f.voucherNumber);
+        if (f.documentDate) setDocumentDate(f.documentDate);
+        if (f.classification) {
+            setClassification(f.classification);
+            if (f.amountBI) setAmountBI(f.amountBI);
+            setAmountExempt(f.amountExempt);
+            setInvoiceIgv10(f.invoiceIgv10);
+        }
+        setQrBuyerDoc(f.compradorDoc);
+        return true;
+    };
+
+    const handleRegisterExpense = async () => {
+        if (registeringExpense) return;
+        setRegisteringExpense(true);
+        try {
+            await registerExpense();
+        } finally {
+            setRegisteringExpense(false);
+        }
+    };
+
+    const registerExpense = async () => {
         if (sedeOptions.length === 0) {
             toast.error('No tiene sedes asignadas para registrar gastos. Contacte al administrador.');
             return;
@@ -573,6 +621,25 @@ export function PettyCashModule({
             return;
         }
 
+        if (docType === 'RUC') {
+            try {
+                const inCashback = await checkReceiptInCashback(
+                    'caja-chica',
+                    normalizedDoc,
+                    docSeries.trim(),
+                    voucherNumber.trim()
+                );
+                if (inCashback) {
+                    toast.error('Este comprobante ya fue presentado en Cashback.', {
+                        description: `Lo registró ${inCashback.usuarioNombre} como gasto pagado con su dinero; no puede rendirse también en Caja Chica.`,
+                    });
+                    return;
+                }
+            } catch {
+                /* el servidor vuelve a validar al guardar */
+            }
+        }
+
         let docDateParsed: Date;
         try {
             docDateParsed = documentDate
@@ -659,19 +726,37 @@ export function PettyCashModule({
             location: sedeOptions.includes(location) ? location : sedeOptions[0],
         };
 
-        onUpdateTransactions([newExpense, ...transactions]).then((saved) => {
-            if (saved === false) {
-                toast.error('El gasto no quedó guardado en la nube. No cierres sesión hasta reintentar.');
-                return;
+        if (receiptPhoto) {
+            try {
+                const { duplicateOf } = await saveReceiptPhoto('caja-chica', newExpense.id, receiptPhoto);
+                newExpense.hasReceiptPhoto = true;
+                if (duplicateOf) {
+                    toast.warning('Esta misma foto ya está adjunta a otro registro.', {
+                        description: 'Verifique que no esté rindiendo dos veces el mismo comprobante.',
+                    });
+                }
+            } catch (e) {
+                toast.warning('No se pudo subir la foto del comprobante; el gasto se registrará sin foto.', {
+                    description: e instanceof Error ? e.message : undefined,
+                });
             }
-            resetExpenseForm();
-            const forWhom =
-                canRegisterForOthers && custodianId !== currentUser.id
-                    ? ` · Fondo: ${expenseCustodian.name}`
-                    : '';
-            toast.success('Gasto guardado correctamente', {
-                description: `Semana ${weekForEntry}${forWhom} · Total: ${formatCurrencyEs(totalVal)} (${classification}). Puede registrar otro gasto.`,
-            });
+        }
+
+        const saved = await Promise.resolve(onUpdateTransactions([newExpense, ...transactions]));
+        if (saved === false) {
+            if (newExpense.hasReceiptPhoto) {
+                void deleteReceiptPhoto('caja-chica', newExpense.id).catch(() => undefined);
+            }
+            toast.error('El gasto no quedó guardado en la nube. No cierres sesión hasta reintentar.');
+            return;
+        }
+        resetExpenseForm();
+        const forWhom =
+            canRegisterForOthers && custodianId !== currentUser.id
+                ? ` · Fondo: ${expenseCustodian.name}`
+                : '';
+        toast.success('Gasto guardado correctamente', {
+            description: `Semana ${weekForEntry}${forWhom} · Total: ${formatCurrencyEs(totalVal)} (${classification}). Puede registrar otro gasto.`,
         });
     };
 
@@ -896,6 +981,26 @@ export function PettyCashModule({
 
                         <div className="space-y-3 p-4 rounded-xl border border-border/70 bg-muted/40">
                             <p className="text-xs font-bold text-primary uppercase tracking-wider">1. Comprobante y proveedor</p>
+
+                            <ReceiptCapture
+                                compact
+                                removable
+                                photo={receiptPhoto}
+                                onPhotoChange={setReceiptPhoto}
+                                onQr={applyReceiptQr}
+                                onProcessingChange={setReceiptPhotoProcessing}
+                                photoHint="Opcional · recomendado para auditoría"
+                            />
+                            {buyerRucMismatch ? (
+                                <Alert className="border-amber-500/50 bg-amber-500/10 text-amber-800 dark:text-amber-200">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    <AlertTitle className="text-sm font-semibold">Factura no emitida a la empresa</AlertTitle>
+                                    <AlertDescription className="text-xs">
+                                        El QR indica como adquirente el documento {qrBuyerDoc}, distinto al RUC de la
+                                        empresa ({businessRucDigits}). Contabilidad podría no aceptar el crédito fiscal.
+                                    </AlertDescription>
+                                </Alert>
+                            ) : null}
 
                             <div className="space-y-1.5">
                                 <Label htmlFor="voucherDate" className="text-xs font-medium">
@@ -1293,8 +1398,10 @@ export function PettyCashModule({
                         <Button
                             data-testid="petty-cash-submit-expense"
                             className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-11 text-sm rounded-xl shadow-md transition-all"
-                            onClick={handleRegisterExpense}
+                            onClick={() => void handleRegisterExpense()}
                             disabled={
+                                registeringExpense ||
+                                receiptPhotoProcessing ||
                                 availablePettyBalance.closed ||
                                 !area.trim() ||
                                 !providerName.trim() ||
@@ -1333,7 +1440,7 @@ export function PettyCashModule({
                                               : undefined
                             }
                         >
-                            Registrar salida
+                            {registeringExpense ? 'Guardando…' : 'Registrar salida'}
                         </Button>
                         </div>
                     </div>

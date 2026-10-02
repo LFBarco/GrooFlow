@@ -343,6 +343,8 @@ export interface PettyCashTransaction {
     docSeries?: string;
     /** Número / correlativo del comprobante (no confundir con N° de RUC/DNI). */
     voucherNumber?: string;
+    /** Hay foto/PDF del comprobante en `/receipts/caja-chica/{id}/photo`. */
+    hasReceiptPhoto?: boolean;
 
     // Nuevos campos
     docType?: 'RUC' | 'DNI' | 'CE';

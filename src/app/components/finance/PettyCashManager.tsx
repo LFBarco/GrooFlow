@@ -20,7 +20,9 @@ import {
     CheckCircle2,
     XCircle,
     Banknote,
+    Camera,
 } from 'lucide-react';
+import { ReceiptPhotoDialog } from '../common/ReceiptPhotoDialog';
 import { format, startOfWeek } from 'date-fns';
 import { receiptTypeUsesIgv } from '../../utils/pettyCashReceiptType';
 import {
@@ -212,6 +214,7 @@ export function PettyCashManager({
     const [searchTerm, setSearchTerm] = useState('');
 
     const [editOpen, setEditOpen] = useState(false);
+    const [photoRefId, setPhotoRefId] = useState<string | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editAmountBI, setEditAmountBI] = useState('');
     const [editDescription, setEditDescription] = useState('');
@@ -1770,7 +1773,21 @@ ${signatures}
                                                     </TableCell>
                                                     <TableCell className="text-xs">{tipoDoc}</TableCell>
                                                     <TableCell className="text-xs font-mono">{serie}</TableCell>
-                                                    <TableCell className="text-xs font-mono">{nroDoc}</TableCell>
+                                                    <TableCell className="text-xs font-mono">
+                                                        <span className="inline-flex items-center gap-1">
+                                                            {nroDoc}
+                                                            {expense.hasReceiptPhoto ? (
+                                                                <button
+                                                                    type="button"
+                                                                    title="Ver foto del comprobante"
+                                                                    className="text-emerald-500 hover:text-emerald-400"
+                                                                    onClick={() => setPhotoRefId(expense.id)}
+                                                                >
+                                                                    <Camera className="h-3.5 w-3.5" />
+                                                                </button>
+                                                            ) : null}
+                                                        </span>
+                                                    </TableCell>
                                                     <TableCell className="text-sm max-w-[200px]">
                                                         <div className="truncate" title={nombre}>
                                                             {nombre}
@@ -2418,6 +2435,7 @@ ${signatures}
                     </div>
                 </DialogContent>
             </Dialog>
+            <ReceiptPhotoDialog module="caja-chica" refId={photoRefId} onClose={() => setPhotoRefId(null)} />
         </div>
     );
 }

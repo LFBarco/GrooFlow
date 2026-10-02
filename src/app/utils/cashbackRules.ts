@@ -3,6 +3,9 @@ import type {
   CashbackInvoiceState,
   CashbackSettings,
 } from '../types/cashback';
+import type { ParsedSunatQr } from './sunatQr';
+
+export { parseSunatQr, type ParsedSunatQr } from './sunatQr';
 
 export const IGV_RATE = 0.18;
 /** IGV contenido en un total con IGV incluido (18/118). */
@@ -136,59 +139,6 @@ export function cashbackRuleWarnings(settings: CashbackSettings, avgTicket = 40)
     warnings.push('Configura el RUC de la empresa para validar que las facturas estén a su nombre.');
   }
   return warnings;
-}
-
-export type ParsedSunatQr = {
-  emisorRuc: string;
-  tipoDoc: string;
-  serie: string;
-  numero: string;
-  igv: number | null;
-  total: number | null;
-  fechaEmision: string;
-  compradorTipoDoc: string;
-  compradorDoc: string;
-};
-
-function normalizeQrDate(raw: string): string {
-  const s = raw.trim();
-  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  m = /^(\d{2})[/-](\d{2})[/-](\d{4})$/.exec(s);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-  m = /^(\d{4})(\d{2})(\d{2})$/.exec(s);
-  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-  return '';
-}
-
-/**
- * QR de comprobante electrónico SUNAT:
- * RUC emisor | tipo | serie | número | IGV | total | fecha | tipo doc adquirente | nro doc adquirente | ...
- */
-export function parseSunatQr(raw: string): ParsedSunatQr | null {
-  const text = (raw ?? '').trim();
-  if (!text) return null;
-  const sep = text.includes('|') ? '|' : text.includes(']') ? ']' : text.includes(';') ? ';' : null;
-  if (!sep) return null;
-  const parts = text.split(sep).map((p) => p.trim());
-  if (parts.length < 6) return null;
-  const emisorRuc = parts[0].replace(/\D/g, '');
-  if (emisorRuc.length !== 11) return null;
-  const tipoDoc = parts[1].replace(/\D/g, '').padStart(2, '0');
-  const serie = parts[2].toUpperCase();
-  const numero = parts[3].replace(/\D/g, '').replace(/^0+/, '');
-  if (!serie || !numero) return null;
-  return {
-    emisorRuc,
-    tipoDoc,
-    serie,
-    numero,
-    igv: parseMoney(parts[4]),
-    total: parseMoney(parts[5]),
-    fechaEmision: normalizeQrDate(parts[6] ?? ''),
-    compradorTipoDoc: (parts[7] ?? '').trim(),
-    compradorDoc: (parts[8] ?? '').replace(/\D/g, ''),
-  };
 }
 
 export function applyQrToDraft(draft: CashbackInvoiceDraft, qr: ParsedSunatQr, raw: string): CashbackInvoiceDraft {

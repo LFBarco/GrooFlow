@@ -10,8 +10,10 @@ import {
     ShieldCheck,
     XCircle,
     Eye,
+    Camera,
     User as UserIcon,
 } from 'lucide-react';
+import { ReceiptPhotoDialog } from '../common/ReceiptPhotoDialog';
 import type { PettyCashTransaction, User } from '../../types';
 import type { Role } from '../users/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
@@ -73,6 +75,7 @@ export function PettyCashAuditConsole({
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
     const [search, setSearch] = useState('');
     const [detail, setDetail] = useState<PettyCashTransaction | null>(null);
+    const [photoRefId, setPhotoRefId] = useState<string | null>(null);
 
     const viewerSeesAllSedes = useMemo(
         () => userHasGlobalSedeAccess(currentUser),
@@ -373,6 +376,17 @@ export function PettyCashAuditConsole({
                                                         <Eye className="h-3.5 w-3.5 mr-1" />
                                                         Ver
                                                     </Button>
+                                                    {t.hasReceiptPhoto ? (
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            title="Ver foto del comprobante"
+                                                            onClick={() => setPhotoRefId(t.id)}
+                                                        >
+                                                            <Camera className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    ) : null}
                                                     {canAct && t.status === 'pending_audit' ? (
                                                         <>
                                                             <Button
@@ -459,6 +473,19 @@ export function PettyCashAuditConsole({
                                     Serie: {detail.docSeries || '—'} · Nro: {detail.voucherNumber || detail.receiptNumber || '—'}
                                 </p>
                                 <p className="text-xs">Proveedor/emisor: {detail.providerName || '—'}</p>
+                                {detail.hasReceiptPhoto ? (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-1"
+                                        onClick={() => setPhotoRefId(detail.id)}
+                                    >
+                                        <Camera className="mr-1 h-4 w-4" />
+                                        Ver foto del comprobante
+                                    </Button>
+                                ) : (
+                                    <p className="text-[11px] text-muted-foreground">Sin foto adjunta.</p>
+                                )}
                             </div>
                             {detail.auditComment ? (
                                 <div className="rounded-md bg-destructive/10 border border-destructive/30 p-2 text-xs">
@@ -479,6 +506,7 @@ export function PettyCashAuditConsole({
                     ) : null}
                 </DialogContent>
             </Dialog>
+            <ReceiptPhotoDialog module="caja-chica" refId={photoRefId} onClose={() => setPhotoRefId(null)} />
         </div>
     );
 }

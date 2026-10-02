@@ -1,6 +1,5 @@
-import { useEffect, useId, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
-import { AlertTriangle, Camera, FileText, Loader2, QrCode, Search, Sparkles } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, Loader2, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { CashbackInvoice, CashbackInvoiceDraft, CashbackSettings } from '../../types/cashback';
@@ -17,7 +16,7 @@ import {
   round2,
 } from '../../utils/cashbackRules';
 import { fetchSunatRucData } from '../../utils/sunatRucApi';
-import { InventoryQrScannerDialog } from '../inventory/InventoryQrScannerDialog';
+import { ReceiptCapture } from '../common/ReceiptCapture';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
@@ -26,33 +25,6 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
 import { cn } from '../ui/utils';
-
-const MAX_IMAGE_SIDE = 1800;
-const MAX_FILE_BYTES = 2_500_000;
-
-async function compressImage(file: File): Promise<string> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_IMAGE_SIDE / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('canvas');
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  return canvas.toDataURL('image/jpeg', 0.82);
-}
-
-function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
 
 function draftFromInvoice(inv: CashbackInvoice): CashbackInvoiceDraft {
   return {
@@ -87,9 +59,6 @@ type Props = {
 };
 
 export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, onSaved }: Props) {
-  const rawId = useId();
-  const qrFileRegionId = `cb-qr-file-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [draft, setDraft] = useState<CashbackInvoiceDraft>(() => emptyCashbackDraft(settings));
   const [photoChanged, setPhotoChanged] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string>('');
@@ -97,7 +66,6 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
   const [saving, setSaving] = useState(false);
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const [lookingUpRuc, setLookingUpRuc] = useState(false);
-  const [scannerOpen, setScannerOpen] = useState(false);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
 
   const editingId = editing?.id ?? null;
@@ -165,57 +133,11 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
     return true;
   };
 
-  const handleScan = (raw: string) => {
-    setScannerOpen(false);
-    if (applyQr(raw)) toast.success('Datos de la factura leídos del QR.');
-    else toast.error('El código no corresponde a un QR de factura electrónica SUNAT.');
-  };
-
-  const tryReadQrFromFile = async (file: File) => {
-    let reader: Html5Qrcode | null = null;
-    try {
-      reader = new Html5Qrcode(qrFileRegionId, { verbose: false });
-      const text = await reader.scanFile(file, false);
-      if (applyQr(text)) toast.success('QR detectado en la foto: datos completados.');
-    } catch {
-      /* sin QR legible en la foto: se completa a mano */
-    } finally {
-      try {
-        reader?.clear();
-      } catch {
-        /* noop */
-      }
-    }
-  };
-
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
-    setProcessingPhoto(true);
-    try {
-      let dataUrl: string;
-      if (file.type === 'application/pdf') {
-        if (file.size > MAX_FILE_BYTES) {
-          toast.error('El PDF supera 2.5 MB.');
-          return;
-        }
-        dataUrl = await readAsDataUrl(file);
-      } else if (file.type.startsWith('image/')) {
-        dataUrl = await compressImage(file);
-        void tryReadQrFromFile(file);
-      } else {
-        toast.error('Formato no admitido. Usa una foto o un PDF.');
-        return;
-      }
-      set({ photo: dataUrl });
-      setPhotoChanged(true);
-      setPhotoPreview(dataUrl);
-      setServerErrors((e) => ({ ...e, photo: '' }));
-    } catch {
-      toast.error('No se pudo procesar el archivo. Intenta con otra foto.');
-    } finally {
-      setProcessingPhoto(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+  const handlePhoto = (dataUrl: string) => {
+    set({ photo: dataUrl });
+    setPhotoChanged(true);
+    setPhotoPreview(dataUrl);
+    setServerErrors((e) => ({ ...e, photo: '' }));
   };
 
   const fillIgvFromTotal = () => {
@@ -253,7 +175,6 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
   };
 
   const enabledCategories = settings.categories.filter((c) => c.enabled);
-  const isPdf = photoPreview.startsWith('data:application/pdf');
 
   return (
     <>
@@ -273,52 +194,14 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
             </div>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className={cn(
-                'flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-3 text-sm transition',
-                showError('photo') ? 'border-rose-500/60 bg-rose-500/5' : 'border-emerald-500/40 hover:bg-emerald-500/5'
-              )}
-            >
-              {processingPhoto ? (
-                <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
-              ) : photoPreview && !isPdf ? (
-                <img src={photoPreview} alt="Factura" className="max-h-40 rounded-md object-contain" />
-              ) : photoPreview && isPdf ? (
-                <>
-                  <FileText className="h-8 w-8 text-emerald-500" />
-                  <span className="font-medium">PDF adjunto</span>
-                </>
-              ) : (
-                <>
-                  <Camera className="h-8 w-8 text-emerald-500" />
-                  <span className="font-medium">Tomar foto o subir PDF</span>
-                </>
-              )}
-              {photoPreview ? <span className="text-xs text-muted-foreground">Toca para cambiar</span> : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => setScannerOpen(true)}
-              className="flex min-h-[120px] flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-sky-500/40 p-3 text-sm transition hover:bg-sky-500/5"
-            >
-              <QrCode className="h-8 w-8 text-sky-500" />
-              <span className="font-medium">Escanear QR de la factura</span>
-              <span className="text-xs text-muted-foreground">Completa RUC, serie, montos y fecha</span>
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,application/pdf"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => void handleFile(e.target.files?.[0])}
-            />
-          </div>
-          {showError('photo') ? <p className="text-xs text-rose-600">{showError('photo')}</p> : null}
-          <div id={qrFileRegionId} className="hidden" />
+          <ReceiptCapture
+            photo={photoPreview}
+            onPhotoChange={handlePhoto}
+            onQr={applyQr}
+            error={showError('photo')}
+            documentLabel="factura"
+            onProcessingChange={setProcessingPhoto}
+          />
 
           <div className="grid gap-3 sm:grid-cols-6">
             <div className="space-y-1 sm:col-span-3">
@@ -469,15 +352,6 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <InventoryQrScannerDialog
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        onScan={handleScan}
-        title="Escanear QR de la factura"
-        description="Apunta la cámara al código QR impreso en la factura electrónica."
-        placeholder="Pega aquí el texto del QR"
-      />
     </>
   );
 }
