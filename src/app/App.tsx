@@ -104,6 +104,7 @@ import {
   AccidentesModule,
   UniformesModule,
   MarketingEventosModule,
+  CashbackModule,
   RrhhModule,
   CatalogCrudPage,
   ReconciliationModule,
@@ -4568,6 +4569,14 @@ export default function App() {
             <div className="animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
                 <MarketingEventosModule canEdit={hasPermission('Marketing Eventos')} />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'cashback' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <CashbackModule />
               </Suspense>
             </div>
           )}

@@ -23,6 +23,7 @@ import {
   Menu,
   UserCheck,
   PartyPopper,
+  HandCoins,
 } from 'lucide-react';
 
 import type { ViewType } from '../routes';
@@ -298,6 +299,15 @@ export const MODULE_IDENTITY: Partial<Record<ViewType, ModuleIdentity>> = {
     title: 'Marketing · Eventos y cursos',
     subtitle: 'Presupuesto vs real e resultado simple del área.',
     icon: PartyPopper,
+  }),
+  cashback: id({
+    ambientA: GF_PALETTE.emerald,
+    ambientB: GF_PALETTE.cyan,
+    accent: '#a3e635',
+    accentGlow: 'rgba(163, 230, 53, 0.45)',
+    title: 'Cashback por facturas',
+    subtitle: 'Sube tus facturas, acumula y recibe tu reconocimiento.',
+    icon: HandCoins,
   }),
 };
 
