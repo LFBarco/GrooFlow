@@ -40,6 +40,7 @@ const SEED_BY_MODULO: Record<string, string> = {
   'Entrega de Uniformes': 'text-indigo-400 group-hover/btn:text-indigo-300',
   'Marketing Eventos': 'text-fuchsia-400 group-hover/btn:text-fuchsia-300',
   Cashback: 'text-emerald-400 group-hover/btn:text-emerald-300',
+  'Directorio Telefónico': 'text-sky-400 group-hover/btn:text-sky-300',
   'Recursos Humanos': 'text-blue-400 group-hover/btn:text-blue-300',
   Productos: 'text-fuchsia-400 group-hover/btn:text-fuchsia-300',
   Compras: 'text-purple-400 group-hover/btn:text-purple-300',

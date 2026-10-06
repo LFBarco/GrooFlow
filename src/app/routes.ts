@@ -32,6 +32,7 @@ export type ViewType =
   | 'uniformes'
   | 'marketingEventos'
   | 'cashback'
+  | 'telefonos'
   | 'rrhh'
   | 'rrhhAreas'
   | 'rrhhPuestos'
@@ -85,6 +86,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   uniformes: '/entrega-uniformes',
   marketingEventos: '/marketing-eventos',
   cashback: '/cashback',
+  telefonos: '/directorio-telefonico',
   rrhh: '/recursos-humanos',
   rrhhAreas: '/catalogo/areas',
   rrhhPuestos: '/catalogo/puestos',
@@ -158,6 +160,7 @@ export const VIEW_REQUIRED_MODULE: Record<ViewType, string> = {
   uniformes: 'Entrega de Uniformes',
   marketingEventos: 'Marketing Eventos',
   cashback: 'Cashback',
+  telefonos: 'Directorio Telefónico',
   rrhh: 'Recursos Humanos',
   rrhhAreas: 'Catálogo Áreas',
   rrhhPuestos: 'Catálogo Puestos',
@@ -199,6 +202,7 @@ export const VIEW_REDIRECT_PRIORITY: ViewType[] = [
   'uniformes',
   'marketingEventos',
   'cashback',
+  'telefonos',
   'rrhh',
   'rrhhAreas',
   'rrhhPuestos',

@@ -24,6 +24,7 @@ import {
   UserCheck,
   PartyPopper,
   HandCoins,
+  Phone,
 } from 'lucide-react';
 
 import type { ViewType } from '../routes';
@@ -308,6 +309,15 @@ export const MODULE_IDENTITY: Partial<Record<ViewType, ModuleIdentity>> = {
     title: 'Cashback por facturas',
     subtitle: 'Sube tus facturas, acumula y recibe tu reconocimiento.',
     icon: HandCoins,
+  }),
+  telefonos: id({
+    ambientA: GF_PALETTE.blue,
+    ambientB: GF_PALETTE.cyan,
+    accent: '#38bdf8',
+    accentGlow: 'rgba(56, 189, 248, 0.45)',
+    title: 'Directorio telefónico',
+    subtitle: 'Líneas corporativas por colaborador, bots y casos especiales.',
+    icon: Phone,
   }),
 };
 

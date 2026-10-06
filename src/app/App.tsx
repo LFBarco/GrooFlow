@@ -105,6 +105,7 @@ import {
   UniformesModule,
   MarketingEventosModule,
   CashbackModule,
+  TelefonosModule,
   RrhhModule,
   CatalogCrudPage,
   ReconciliationModule,
@@ -4577,6 +4578,14 @@ export default function App() {
             <div className="animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
                 <CashbackModule chartOfAccounts={chartOfAccounts} accountingLinks={systemSettings.accounting ?? {}} />
+              </Suspense>
+            </div>
+          )}
+
+          {view === 'telefonos' && (
+            <div className="animate-in fade-in duration-150">
+              <Suspense fallback={<RouteLoader />}>
+                <TelefonosModule />
               </Suspense>
             </div>
           )}

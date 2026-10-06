@@ -109,6 +109,7 @@ const loadMarketingEventosModule = named(
   'MarketingEventosModule'
 );
 const loadCashbackModule = named(() => import('./components/cashback/CashbackModule'), 'CashbackModule');
+const loadTelefonosModule = named(() => import('./components/telefonos/TelefonosModule'), 'TelefonosModule');
 const loadRrhhModule = named(() => import('./components/rrhh/RrhhModule'), 'RrhhModule');
 const loadCatalogCrudPage = named(() => import('./components/rrhh/CatalogCrudPage'), 'CatalogCrudPage');
 const loadReconciliationModule = named(
@@ -152,6 +153,7 @@ export const AccidentesModule = lazy(loadAccidentesModule);
 export const UniformesModule = lazy(loadUniformesModule);
 export const MarketingEventosModule = lazy(loadMarketingEventosModule);
 export const CashbackModule = lazy(loadCashbackModule);
+export const TelefonosModule = lazy(loadTelefonosModule);
 export const RrhhModule = lazy(loadRrhhModule);
 export const CatalogCrudPage = lazy(loadCatalogCrudPage);
 export const ReconciliationModule = lazy(loadReconciliationModule);
@@ -188,6 +190,7 @@ const VIEW_LOADERS: Record<ViewType, Array<() => Promise<unknown>>> = {
   uniformes: [loadUniformesModule],
   marketingEventos: [loadMarketingEventosModule],
   cashback: [loadCashbackModule],
+  telefonos: [loadTelefonosModule],
   rrhh: [loadRrhhModule],
   rrhhAreas: [loadCatalogCrudPage],
   rrhhPuestos: [loadCatalogCrudPage],

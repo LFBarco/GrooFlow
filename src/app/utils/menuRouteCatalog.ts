@@ -39,6 +39,7 @@ const LABEL_TO_PATH: Record<string, string> = {
   'marketing eventos': '/marketing-eventos',
   'cursos mkt': '/marketing-eventos',
   cashback: '/cashback',
+  telefonos: '/directorio-telefonico',
 };
 
 function normalizeLabelKey(value: string): string {
