@@ -124,13 +124,20 @@ export async function listCashbackInvoices(filters: {
 export async function reviewCashbackInvoice(
   id: string,
   action: CashbackReviewAction,
-  extra: { note?: string; igv?: number | null; total?: number | null } = {}
+  extra: { note?: string; igv?: number | null; total?: number | null; cuentaContable?: string } = {}
 ): Promise<CashbackInvoice> {
   const json = await request<{ item: CashbackInvoice }>(`/cashback/invoices/${encodeURIComponent(id)}/review`, {
     method: 'POST',
     body: JSON.stringify({ action, ...extra }),
   });
   return json.item;
+}
+
+export type CashbackProviderCheck = { registered: boolean; nombre: string | null; cuentaContable: string | null };
+
+export async function fetchCashbackProvider(ruc: string, categoria: string): Promise<CashbackProviderCheck> {
+  const qs = new URLSearchParams({ ruc, categoria });
+  return request<CashbackProviderCheck>(`/cashback/provider?${qs.toString()}`);
 }
 
 export async function fetchCashbackSettings(): Promise<CashbackSettings> {

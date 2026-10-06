@@ -49,6 +49,8 @@ export type CashbackInvoice = {
   categoria: string;
   motivo: string;
   centroCosto: string | null;
+  /** Cuenta de gasto (del proveedor, corregible por Contabilidad al aprobar). */
+  cuentaContable: string | null;
   alertas: string[];
   estado: CashbackInvoiceState;
   cashbackMonto: number | null;

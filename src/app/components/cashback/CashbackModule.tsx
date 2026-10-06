@@ -1,18 +1,25 @@
 import { useCallback, useEffect, useState } from 'react';
 import { HandCoins, Loader2, RefreshCw } from 'lucide-react';
 
+import type { AccountingLinkSettings, ChartOfAccountEntry } from '../../types';
 import type { CashbackInvoice, CashbackMeResponse, CashbackSettings } from '../../types/cashback';
 import { fetchCashbackMe } from '../../utils/cashbackApi';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { CashbackInvoiceDialog } from './CashbackInvoiceDialog';
+import { CashbackJournalPanel } from './CashbackJournalPanel';
 import { CashbackLiquidationPanel } from './CashbackLiquidationPanel';
 import { CashbackMyInvoices } from './CashbackMyInvoices';
 import { CashbackReportsPanel } from './CashbackReportsPanel';
 import { CashbackReviewPanel } from './CashbackReviewPanel';
 import { CashbackSettingsPanel } from './CashbackSettingsPanel';
 
-export function CashbackModule() {
+type Props = {
+  chartOfAccounts?: ChartOfAccountEntry[];
+  accountingLinks?: AccountingLinkSettings;
+};
+
+export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: Props) {
   const [data, setData] = useState<CashbackMeResponse | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -83,6 +90,7 @@ export function CashbackModule() {
           {canSeeTeam ? <TabsTrigger value="validacion">Validación</TabsTrigger> : null}
           {canSeeTeam ? <TabsTrigger value="liquidacion">Saldos y liquidación</TabsTrigger> : null}
           {canSeeTeam ? <TabsTrigger value="reportes">Reportes</TabsTrigger> : null}
+          {canSeeTeam ? <TabsTrigger value="asientos">Asientos</TabsTrigger> : null}
           {capabilities.configure ? <TabsTrigger value="config">Reglas</TabsTrigger> : null}
         </TabsList>
 
@@ -104,6 +112,7 @@ export function CashbackModule() {
           <TabsContent value="validacion" className="mt-4">
             <CashbackReviewPanel
               settings={settings}
+              chartOfAccounts={chartOfAccounts}
               canReview={capabilities.review}
               canExport={capabilities.export || capabilities.configure}
               onChanged={() => void load()}
@@ -118,6 +127,11 @@ export function CashbackModule() {
         {canSeeTeam ? (
           <TabsContent value="reportes" className="mt-4">
             <CashbackReportsPanel settings={settings} canExport={capabilities.export || capabilities.configure} />
+          </TabsContent>
+        ) : null}
+        {canSeeTeam ? (
+          <TabsContent value="asientos" className="mt-4">
+            <CashbackJournalPanel settings={settings} chartOfAccounts={chartOfAccounts} accounting={accountingLinks} />
           </TabsContent>
         ) : null}
         {capabilities.configure ? (

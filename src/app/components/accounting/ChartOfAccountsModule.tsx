@@ -194,6 +194,14 @@ export function ChartOfAccountsModule({
     [chartOfAccounts, accounting.pettyCashCreditAccountCode]
   );
 
+  const cashbackCreditLinkOptions = useMemo(
+    () =>
+      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.cashbackCreditAccountCode, {
+        useLevel: CHART_OPERATIVE_LEVEL,
+      }),
+    [chartOfAccounts, accounting.cashbackCreditAccountCode]
+  );
+
   const bankLinkOptions = useMemo(
     () =>
       chartSelectOptionsWithOrphan(chartOfAccounts, accounting.bankPaymentAccountCode, {
@@ -712,6 +720,35 @@ export function ChartOfAccountsModule({
               <p className="text-[11px] text-muted-foreground">
                 Se usa cuando un egreso ya registrado no tiene cuenta en el comprobante ni en el proveedor.
                 Así igual aparece en vista previa y export; contabilidad puede reclasificar en Starsoft.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Cashback: contrapartida de facturas (haber)</Label>
+              {chartOfAccounts.length > 0 ? (
+                <AccountCombobox
+                  options={cashbackCreditLinkOptions}
+                  value={accounting.cashbackCreditAccountCode}
+                  placeholder="Ej. cuenta por pagar a colaboradores"
+                  onChange={(v) =>
+                    setAccounting({
+                      cashbackCreditAccountCode: v === '__none__' ? undefined : v,
+                    })
+                  }
+                />
+              ) : (
+                <Input
+                  placeholder="Código cuenta (nivel 5)"
+                  value={accounting.cashbackCreditAccountCode || ''}
+                  onChange={(e) =>
+                    setAccounting({
+                      cashbackCreditAccountCode: e.target.value.trim() || undefined,
+                    })
+                  }
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Asiento de cada factura Cashback aprobada: Debe gasto (cuenta del proveedor) + Debe IGV, Haber esta
+                cuenta por el total pagado por el colaborador.
               </p>
             </div>
             <div className="space-y-2">

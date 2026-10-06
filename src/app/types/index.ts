@@ -615,6 +615,8 @@ export interface AccountingLinkSettings {
   pettyCashCreditAccountCode?: string;
   /** Cuenta de salida de caja chica por sede (prioriza sobre la global). */
   pettyCashCreditBySede?: Record<string, string>;
+  /** Contrapartida de facturas Cashback (haber del total; pagadas por el colaborador). */
+  cashbackCreditAccountCode?: string;
   /** Opcional: pago desde cuenta bancaria (si más adelante exportas tesorería). */
   bankPaymentAccountCode?: string;
   /** Cuentas bancarias operativas (Flujo de caja / transacciones). */

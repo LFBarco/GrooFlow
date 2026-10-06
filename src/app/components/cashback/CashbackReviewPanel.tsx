@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, Loader2, MessageSquareWarning, RefreshCw, RotateCcw, Search, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
+import type { ChartOfAccountEntry } from '../../types';
 import type { CashbackInvoice, CashbackReviewAction, CashbackSettings } from '../../types/cashback';
+import { chartSelectOptionsWithOrphanExpenseClasses } from '../../utils/chartOfAccountsHelpers';
+import { AccountCombobox } from '../ui/account-combobox';
 import { fetchCashbackPhoto, listCashbackInvoices, reviewCashbackInvoice } from '../../utils/cashbackApi';
 import { exportCashbackInvoicesExcel } from '../../utils/cashbackExport';
 import { categoryLabel, computeCashback, currentPeriod, formatPen, parseMoney, shiftPeriod } from '../../utils/cashbackRules';
@@ -17,6 +20,7 @@ import { CashbackPhotoDialog, CashbackStateBadge } from './CashbackShared';
 
 type Props = {
   settings: CashbackSettings;
+  chartOfAccounts: ChartOfAccountEntry[];
   canReview: boolean;
   canExport: boolean;
   onChanged: () => void;
@@ -32,7 +36,7 @@ const ESTADOS = [
   { id: 'todas', label: 'Todas' },
 ];
 
-export function CashbackReviewPanel({ settings, canReview, canExport, onChanged }: Props) {
+export function CashbackReviewPanel({ settings, chartOfAccounts, canReview, canExport, onChanged }: Props) {
   const [estado, setEstado] = useState('pendientes');
   const [desde, setDesde] = useState(shiftPeriod(currentPeriod(), -2));
   const [hasta, setHasta] = useState(currentPeriod());
@@ -180,6 +184,9 @@ export function CashbackReviewPanel({ settings, canReview, canExport, onChanged 
                     <p className="max-w-[220px] truncate text-xs text-muted-foreground" title={inv.motivo}>
                       {inv.motivo}
                     </p>
+                    <p className={`font-mono text-[11px] ${inv.cuentaContable ? 'text-muted-foreground' : 'text-amber-600'}`}>
+                      {inv.cuentaContable ? `Cta. ${inv.cuentaContable}` : 'Sin cuenta contable'}
+                    </p>
                   </td>
                   <td className="p-2 text-right tabular-nums">{formatPen(inv.total)}</td>
                   <td className="p-2 text-right tabular-nums">{formatPen(inv.igv)}</td>
@@ -211,7 +218,7 @@ export function CashbackReviewPanel({ settings, canReview, canExport, onChanged 
         </div>
       )}
 
-      <CashbackReviewDialog invoice={reviewing} settings={settings} onClose={() => setReviewing(null)} onReviewed={handleReviewed} />
+      <CashbackReviewDialog invoice={reviewing} settings={settings} chartOfAccounts={chartOfAccounts} onClose={() => setReviewing(null)} onReviewed={handleReviewed} />
       <CashbackPhotoDialog invoice={photoOf} onOpenChange={(v) => !v && setPhotoOf(null)} />
     </div>
   );
@@ -220,11 +227,13 @@ export function CashbackReviewPanel({ settings, canReview, canExport, onChanged 
 function CashbackReviewDialog({
   invoice,
   settings,
+  chartOfAccounts,
   onClose,
   onReviewed,
 }: {
   invoice: CashbackInvoice | null;
   settings: CashbackSettings;
+  chartOfAccounts: ChartOfAccountEntry[];
   onClose: () => void;
   onReviewed: (inv: CashbackInvoice) => void;
 }) {
@@ -232,6 +241,11 @@ function CashbackReviewDialog({
   const [note, setNote] = useState('');
   const [igv, setIgv] = useState('');
   const [total, setTotal] = useState('');
+  const [account, setAccount] = useState('');
+  const accountOptions = useMemo(
+    () => chartSelectOptionsWithOrphanExpenseClasses(chartOfAccounts, account),
+    [chartOfAccounts, account]
+  );
   const [busy, setBusy] = useState<CashbackReviewAction | null>(null);
   const id = invoice?.id ?? null;
 
@@ -241,6 +255,7 @@ function CashbackReviewDialog({
     if (!invoice) return;
     setIgv(invoice.igv.toFixed(2));
     setTotal(invoice.total.toFixed(2));
+    setAccount(invoice.cuentaContable ?? '');
     let cancelled = false;
     if (invoice.hasPhoto) {
       fetchCashbackPhoto(invoice.id)
@@ -266,6 +281,10 @@ function CashbackReviewDialog({
       toast.error('Escribe el motivo para el colaborador.');
       return;
     }
+    if (action === 'approve' && !account.trim()) {
+      toast.error('Asigna la cuenta contable de gasto antes de aprobar.');
+      return;
+    }
     setBusy(action);
     try {
       const corrected =
@@ -273,8 +292,11 @@ function CashbackReviewDialog({
           ? {
               igv: igvNum !== invoice.igv ? igvNum : null,
               total: totalNum !== invoice.total ? totalNum : null,
+              cuentaContable: account.trim(),
             }
-          : {};
+          : action === 'observe'
+            ? { cuentaContable: account.trim() }
+            : {};
       const updated = await reviewCashbackInvoice(invoice.id, action, { note: note.trim(), ...corrected });
       toast.success(
         action === 'approve'
@@ -363,6 +385,28 @@ function CashbackReviewDialog({
                 <Label>IGV</Label>
                 <Input inputMode="decimal" value={igv} onChange={(e) => setIgv(e.target.value)} disabled={!reviewable} />
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Cuenta contable de gasto</Label>
+              {chartOfAccounts.length > 0 ? (
+                <AccountCombobox
+                  options={accountOptions}
+                  value={account || undefined}
+                  disabled={!reviewable}
+                  placeholder="Buscar cuenta de gasto…"
+                  onChange={(v) => setAccount(v === '__none__' ? '' : v)}
+                />
+              ) : (
+                <Input
+                  value={account}
+                  disabled={!reviewable}
+                  onChange={(e) => setAccount(e.target.value.trim())}
+                  placeholder="Ej. 6311101"
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Sugerida desde la ficha del proveedor (igual que Caja Chica). Puedes corregirla antes de aprobar.
+              </p>
             </div>
             {reviewable ? (
               <p className="rounded-lg bg-emerald-500/10 p-2 text-emerald-800 dark:text-emerald-200">

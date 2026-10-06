@@ -4576,7 +4576,7 @@ export default function App() {
           {view === 'cashback' && (
             <div className="animate-in fade-in duration-150">
               <Suspense fallback={<RouteLoader />}>
-                <CashbackModule />
+                <CashbackModule chartOfAccounts={chartOfAccounts} accountingLinks={systemSettings.accounting ?? {}} />
               </Suspense>
             </div>
           )}

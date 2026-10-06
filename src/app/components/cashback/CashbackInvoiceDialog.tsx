@@ -3,7 +3,14 @@ import { AlertTriangle, Loader2, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { CashbackInvoice, CashbackInvoiceDraft, CashbackSettings } from '../../types/cashback';
-import { CashbackApiError, createCashbackInvoice, fetchCashbackPhoto, updateCashbackInvoice } from '../../utils/cashbackApi';
+import {
+  CashbackApiError,
+  type CashbackProviderCheck,
+  createCashbackInvoice,
+  fetchCashbackPhoto,
+  fetchCashbackProvider,
+  updateCashbackInvoice,
+} from '../../utils/cashbackApi';
 import {
   applyQrToDraft,
   checkCashbackDraft,
@@ -66,6 +73,7 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
   const [saving, setSaving] = useState(false);
   const [processingPhoto, setProcessingPhoto] = useState(false);
   const [lookingUpRuc, setLookingUpRuc] = useState(false);
+  const [providerCheck, setProviderCheck] = useState<(CashbackProviderCheck & { ruc: string }) | null>(null);
   const [serverErrors, setServerErrors] = useState<Record<string, string>>({});
 
   const editingId = editing?.id ?? null;
@@ -75,8 +83,10 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
     setServerErrors({});
     setPhotoChanged(false);
     setPhotoPreview('');
+    setProviderCheck(null);
     if (editing) {
       setDraft(draftFromInvoice(editing));
+      void lookupRuc(editing.emisorRuc);
       if (editing.hasPhoto) {
         fetchCashbackPhoto(editing.id)
           .then((p) => setPhotoPreview(p.dataUrl))
@@ -96,6 +106,9 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
   const errors = { ...check.errors, ...serverErrors } as Record<string, string | undefined>;
   const showError = (field: keyof CashbackInvoiceDraft) => (touched || serverErrors[field] ? errors[field] : undefined);
 
+  const rucDigits = draft.emisorRuc.replace(/\D/g, '');
+  const providerNotRegistered = providerCheck !== null && providerCheck.ruc === rucDigits && !providerCheck.registered;
+
   const igvNum = parseMoney(draft.igv) ?? 0;
   const totalNum = parseMoney(draft.total) ?? 0;
   const estimated = igvNum > 0 && totalNum > igvNum ? computeCashback(settings, igvNum, totalNum) : 0;
@@ -104,6 +117,9 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
     const digits = ruc.replace(/\D/g, '');
     if (digits.length !== 11) return;
     setLookingUpRuc(true);
+    fetchCashbackProvider(digits, draft.categoria)
+      .then((p) => setProviderCheck({ ruc: digits, ...p }))
+      .catch(() => setProviderCheck(null));
     try {
       const info = await fetchSunatRucData(digits);
       if (info) {
@@ -220,6 +236,16 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
                 </Button>
               </div>
               {showError('emisorRuc') ? <p className="text-xs text-rose-600">{showError('emisorRuc')}</p> : null}
+              {providerNotRegistered ? (
+                <p className="text-xs text-rose-600">
+                  Proveedor no registrado en el catálogo de Proveedores. Pide a Contabilidad que lo registre antes de subir
+                  la factura.
+                </p>
+              ) : providerCheck?.registered && providerCheck.ruc === rucDigits ? (
+                <p className="text-xs text-emerald-600">
+                  Proveedor registrado{providerCheck.cuentaContable ? ` · Cta. ${providerCheck.cuentaContable}` : ' (Contabilidad asignará la cuenta)'}
+                </p>
+              ) : null}
             </div>
             <div className="space-y-1 sm:col-span-3">
               <Label>Razón social</Label>
@@ -345,7 +371,7 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={() => void submit()} disabled={saving || processingPhoto} className="bg-emerald-600 text-white hover:bg-emerald-500">
+            <Button onClick={() => void submit()} disabled={saving || processingPhoto || providerNotRegistered} className="bg-emerald-600 text-white hover:bg-emerald-500">
               {saving ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
               {editing ? 'Reenviar a revisión' : 'Enviar factura'}
             </Button>
