@@ -90,6 +90,25 @@ describe('pettyCashAccess', () => {
     expect(filtered.map((t) => t.id)).toEqual(['a']);
   });
 
+  it('elevados ven dotaciones sin sede aunque su sede sea limitada', () => {
+    const viewer = user({
+      id: 'aud',
+      name: 'Aud',
+      role: 'auditoria',
+      nivelNombre: 'Auditoría',
+      sedes: ['Benavides'],
+    });
+    const txs = [
+      { id: 'fd', custodianId: 'u2', incomeSubtype: 'fund_delivery' as const },
+      { id: 'ok', custodianId: 'u2', location: 'Benavides' },
+      { id: 'out', custodianId: 'u3', location: 'Miraflores' },
+    ];
+    const filtered = filterPettyCashTransactionsForViewer(txs, viewer, {
+      canSeeSede: (s) => s === 'Benavides',
+    });
+    expect(filtered.map((t) => t.id)).toEqual(['fd', 'ok']);
+  });
+
   it('rol custom con Auditoría+Caja Chica puede auditar', () => {
     const roles: Role[] = [
       {

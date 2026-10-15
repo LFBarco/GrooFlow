@@ -243,6 +243,7 @@ import {
 } from "./utils/kvDomainPersistence";
 import { CloudSyncIndicator } from "./components/layout/CloudSyncIndicator";
 import { useKvCrossTabSync } from "./hooks/useKvCrossTabSync";
+import { useRestKvPollingSync } from "./hooks/useRestKvPollingSync";
 import {
   kvKeyDisplayLabel,
   kvPayloadsEqual,
@@ -1279,10 +1280,13 @@ export default function App() {
       const now = Date.now();
       if (now - remoteKvToastLastAtRef.current >= 4000) {
         remoteKvToastLastAtRef.current = now;
-        toast.info('Actualizado desde otra pestaña', {
-          description: kvKeyDisplayLabel(key),
-          duration: 2500,
-        });
+        toast.info(
+          isRestBackend() ? 'Datos actualizados desde el servidor' : 'Actualizado desde otra pestaña',
+          {
+            description: kvKeyDisplayLabel(key),
+            duration: 2500,
+          }
+        );
       }
       cloudSyncErrorRef.current = false;
       setCloudSyncPhase('synced');
@@ -1621,6 +1625,10 @@ export default function App() {
   };
 
   useKvCrossTabSync(isAuthenticated && isDataLoaded, applyRemoteKvRef);
+  useRestKvPollingSync(
+    isAuthenticated && isDataLoaded && isRestBackend(),
+    applyRemoteKvRef
+  );
 
   const applyFleetRemoteRef = useRef<((dataset: FleetDataset) => void) | null>(null);
   const fleetRemoteToastLastAtRef = useRef(0);
