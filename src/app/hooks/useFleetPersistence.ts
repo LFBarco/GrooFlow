@@ -30,11 +30,28 @@ import {
   type CloudSyncTracker,
   type KvDomainRefs,
 } from '../utils/kvDomainPersistence';
+import { takeKvPermissionDenied } from '../utils/kvWriteAccess';
 import { backupDomainSqlAfterKvSave } from '../utils/sqlAutosaveBackup';
 import {
   fleetRowKey,
   mergeFleetTimestampsFromDataset,
 } from '../utils/fleetSqlTimestamps';
+
+function fleetKvSaveErrorToast(kind: 'flota' | 'plantilla'): void {
+  if (takeKvPermissionDenied('data:fleet')) {
+    toast.error(
+      kind === 'plantilla'
+        ? 'No tienes permiso para guardar la plantilla del checklist. Pide «agregar» o «editar» en Gestión Vehicular.'
+        : 'No tienes permiso para guardar esta operación de flota. Pide «agregar» o «editar» en Gestión Vehicular (Asignación de menú).'
+    );
+    return;
+  }
+  toast.error(
+    kind === 'plantilla'
+      ? 'No se guardó la plantilla del checklist en la nube. Revisa conexión e intenta de nuevo.'
+      : 'No se guardó la flota en la nube. Revisa conexión e intenta de nuevo sin cerrar sesión.'
+  );
+}
 
 const FLEET_USE_SQL = isFleetSqlEnabled();
 const FLEET_KV_TIMEOUT_MS = 12_000;
@@ -249,9 +266,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         if (!kvSaveSucceeded(kvResult)) {
           cloudSync.onEnd(false, 'data:fleet');
           syncOpen = false;
-          if (!options?.silent) {
-            toast.error('No se guardó la plantilla del checklist en la nube. Revisa conexión e intenta de nuevo.');
-          }
+          if (!options?.silent) fleetKvSaveErrorToast('plantilla');
           return false;
         }
 
@@ -349,7 +364,7 @@ export function useFleetPersistence(options: UseFleetPersistenceOptions) {
         if (!kvSaveSucceeded(kvResult)) {
           cloudSync.onEnd(false, 'data:fleet');
           syncOpen = false;
-          toast.error('No se guardó la flota en la nube. Revisa conexión e intenta de nuevo sin cerrar sesión.');
+          fleetKvSaveErrorToast('flota');
           return false;
         }
 
