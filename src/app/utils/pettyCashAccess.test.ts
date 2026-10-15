@@ -106,4 +106,10 @@ describe('pettyCashAccess', () => {
     const u = user({ id: '7', name: 'X', role: 'jefe_audit' });
     expect(canAuditPettyCashFunds(u, roles)).toBe(true);
   });
+
+  it('Gerencia puede confirmar dotación (auditar fondos)', () => {
+    const u = user({ id: '8', name: 'G', role: 'groomer', nivelNombre: 'Gerencia' });
+    expect(canViewAllPettyCashFunds(u)).toBe(true);
+    expect(canAuditPettyCashFunds(u)).toBe(true);
+  });
 });

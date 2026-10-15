@@ -4,7 +4,7 @@
  * Reglas de negocio:
  * 1. Responsable: solo su fondo.
  * 2. Auditoría, Jefes, Gerencia, Contabilidad (+ admin): ven todos los fondos (según sedes).
- * 3. Auditoría (+ admin): aprueba gastos, confirma dotación y refuerzo.
+ * 3. Administrador, Auditoría y Gerencia: aprueban gastos, confirman dotación y refuerzo.
  * 4. Auditoría y Contabilidad: registran gastos a nombre de otros responsables.
  */
 import type { Role } from '../components/users/types';
@@ -29,9 +29,9 @@ const VIEW_ALL_NIVEL_HINTS = [
 
 const CONTABILIDAD_NIVEL_HINTS = ['contabilidad', 'contador', 'contadur'];
 
-/** Quién aprueba / dotación / refuerzo (más estricto que “ver todos”). */
-const AUDIT_ROLE_IDS = new Set(['auditoria', 'admin', 'super_admin']);
-const AUDIT_NIVEL_HINTS = ['auditor', 'auditoria'];
+/** Quién aprueba / dotación / refuerzo. */
+const AUDIT_ROLE_IDS = new Set(['auditoria', 'admin', 'super_admin', 'manager']);
+const AUDIT_NIVEL_HINTS = ['auditor', 'auditoria', 'gerencia', 'gerente', 'manager'];
 
 export type PettyCashMenuPermissions = Record<string, boolean> | null | undefined;
 
@@ -123,7 +123,8 @@ export function canViewAllPettyCashFunds(
 
 /**
  * Aprueba/rechaza, confirma dotación y registra refuerzo.
- * Contabilidad/Jefes/Gerencia ven fondos pero no aprueban (salvo rol RBAC auditoría).
+ * Contabilidad/Jefes ven fondos pero no aprueban (salvo rol RBAC auditoría).
+ * Gerencia sí puede confirmar dotación (misma regla que Auditoría).
  */
 export function canAuditPettyCashFunds(
   user: User | null | undefined,

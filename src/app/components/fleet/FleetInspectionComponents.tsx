@@ -9,6 +9,7 @@ import {
   Trash2,
   ChevronUp,
   ChevronDown,
+  ChevronRight,
   Paperclip,
   Image as ImageIcon,
   User,
@@ -669,7 +670,7 @@ export function FleetVehicleInspectionBar({
 }) {
   const [openNew, setOpenNew] = useState(false);
   const [openHist, setOpenHist] = useState(false);
-  const [detail, setDetail] = useState<FleetInspectionRecord | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const template = dataset.checklistSections?.length ? dataset.checklistSections : DEFAULT_FLEET_CHECKLIST;
   const templateIds = useMemo(() => getAllChecklistItemIds(template), [template]);
@@ -813,7 +814,7 @@ export function FleetVehicleInspectionBar({
       next,
       'Inspección eliminada.'
     );
-    if (ok && detail?.id === rec.id) setDetail(remaining[0] ?? null);
+    if (ok && expandedId === rec.id) setExpandedId(remaining[0]?.id ?? null);
   };
 
   return (
@@ -855,7 +856,7 @@ export function FleetVehicleInspectionBar({
               variant="outline"
               className="h-8 border-white/15"
               onClick={() => {
-                setDetail(vehicleInspections[0] ?? null);
+                setExpandedId(vehicleInspections[0]?.id ?? null);
                 setOpenHist(true);
               }}
             >
@@ -987,75 +988,119 @@ export function FleetVehicleInspectionBar({
         open={openHist}
         onOpenChange={(o) => {
           setOpenHist(o);
-          if (!o) setDetail(null);
+          if (!o) setExpandedId(null);
         }}
       >
-        <DialogContent className="flex h-[min(90vh,920px)] w-[min(96vw,80rem)] max-w-6xl flex-col gap-3 overflow-hidden p-5 sm:p-6">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Historial inspecciones — {vehicle.plate}</DialogTitle>
+        <DialogContent className="flex max-h-[94vh] w-[min(96vw,56rem)] max-w-4xl flex-col gap-3 overflow-hidden p-5 sm:p-6">
+          <DialogHeader className="shrink-0 space-y-1">
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5 text-sky-500" />
+              Historial de checklist — {vehicle.plate}
+            </DialogTitle>
             <DialogDescription>
-              {vehicleInspections.length} registro(s). Selecciona uno para ver el detalle completo.
+              {vehicleInspections.length} inspección(es). Expande una ficha para ver el acta completa.
             </DialogDescription>
           </DialogHeader>
-          <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.6fr)]">
-            <div className="min-h-0 overflow-y-auto rounded-xl border border-border bg-muted/20 p-2">
-              <div className="space-y-1.5">
-                {vehicleInspections.map((r) => {
-                  const selected = detail?.id === r.id;
+
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+            {vehicleInspections.length === 0 ? (
+              <p className="py-16 text-center text-sm text-muted-foreground">Sin inspecciones registradas.</p>
+            ) : (
+              <ol className="relative space-y-4 border-l-2 border-teal-500/30 pl-5 sm:pl-6">
+                {vehicleInspections.map((r, idx) => {
+                  const open = expandedId === r.id;
+                  const tone =
+                    r.compliancePercent >= 90
+                      ? 'text-emerald-600 dark:text-emerald-300'
+                      : r.compliancePercent >= 75
+                        ? 'text-amber-600 dark:text-amber-300'
+                        : 'text-red-600 dark:text-red-300';
                   return (
-                    <div
-                      key={r.id}
-                      className={cn(
-                        'flex items-center gap-1 rounded-lg border p-0.5 transition-colors',
-                        selected
-                          ? 'border-teal-500/50 bg-teal-500/10'
-                          : 'border-transparent hover:border-border hover:bg-muted/50'
-                      )}
-                    >
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 p-2 text-left"
-                        onClick={() => setDetail(r)}
+                    <li key={r.id} className="relative">
+                      <span
+                        className={cn(
+                          'absolute -left-[1.4rem] top-3 flex h-5 w-5 items-center justify-center rounded-full border-2 bg-card text-[10px] font-bold sm:-left-[1.65rem]',
+                          open ? 'border-teal-500 text-teal-600' : 'border-muted-foreground/40 text-muted-foreground'
+                        )}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium text-foreground">
-                            {format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}
-                          </span>
-                          <Badge variant="outline" className="shrink-0 border-teal-500/40 text-teal-700 dark:text-teal-200">
-                            {r.compliancePercent}%
-                          </Badge>
+                        {vehicleInspections.length - idx}
+                      </span>
+                      <div
+                        className={cn(
+                          'rounded-2xl border bg-card shadow-sm transition-colors',
+                          open ? 'border-teal-500/40 ring-1 ring-teal-500/20' : 'border-border'
+                        )}
+                      >
+                        <div className="flex flex-wrap items-start gap-2 p-3 sm:p-4">
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 text-left"
+                            onClick={() => setExpandedId(open ? null : r.id)}
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-base font-semibold tracking-tight text-foreground">
+                                {format(parseISO(r.dateTime), "EEEE d 'de' MMMM · HH:mm", { locale: es })}
+                              </span>
+                              <Badge variant="outline" className={cn('tabular-nums', tone)}>
+                                {r.compliancePercent}% cumplimiento
+                              </Badge>
+                            </div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              Chofer <span className="font-medium text-foreground">{r.driverName}</span>
+                              {r.supervisorName ? (
+                                <>
+                                  {' '}
+                                  · Supervisor <span className="font-medium text-foreground">{r.supervisorName}</span>
+                                </>
+                              ) : null}
+                              {r.odometerKm != null ? (
+                                <> · {r.odometerKm.toLocaleString('es-PE')} km</>
+                              ) : null}
+                            </p>
+                          </button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 gap-1"
+                              onClick={() => setExpandedId(open ? null : r.id)}
+                            >
+                              {open ? (
+                                <>
+                                  <ChevronUp className="h-4 w-4" /> Cerrar
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronRight className="h-4 w-4" /> Ver acta
+                                </>
+                              )}
+                            </Button>
+                            {canDeleteHistory ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-red-500 hover:bg-red-500/10 hover:text-red-600"
+                                onClick={() => void removeInspection(r)}
+                                title="Eliminar inspección"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{r.driverName}</p>
-                      </button>
-                      {canDeleteHistory ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 shrink-0 text-red-500 hover:bg-red-500/10 hover:text-red-600"
-                          onClick={() => void removeInspection(r)}
-                          title="Eliminar inspección"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : null}
-                    </div>
+                        {open ? (
+                          <div className="border-t border-border bg-muted/20 px-3 py-4 sm:px-4">
+                            <InspectionDetailView record={r} dataset={dataset} />
+                          </div>
+                        ) : null}
+                      </div>
+                    </li>
                   );
                 })}
-                {vehicleInspections.length === 0 ? (
-                  <p className="p-4 text-sm text-muted-foreground">Sin registros.</p>
-                ) : null}
-              </div>
-            </div>
-            <div className="min-h-0 overflow-y-auto rounded-xl border border-border bg-card p-3 sm:p-4">
-              {detail ? (
-                <InspectionDetailView record={detail} dataset={dataset} />
-              ) : (
-                <div className="flex h-full min-h-[280px] items-center justify-center text-sm text-muted-foreground">
-                  Elige una inspección de la lista para ver ítems, firmas y adjuntos.
-                </div>
-              )}
-            </div>
+              </ol>
+            )}
           </div>
         </DialogContent>
       </Dialog>
