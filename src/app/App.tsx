@@ -154,7 +154,11 @@ import type { RrhhSettings } from "./types/rrhh";
 import type { UniformesSettings } from "./types/uniformes";
 import { mergeUniformesSettings, UNIFORMES_SETTINGS_KV_KEY } from "./utils/uniformesData";
 import { canConfigureAsistencia } from "./utils/asistenciaAccess";
-import { canConfigureFleet } from "./utils/fleetAccess";
+import {
+  canConfigureFleet,
+  canDeleteFleetInspections,
+  canViewFleetInspectionHistory,
+} from "./utils/fleetAccess";
 import { hasMenuAction } from "./utils/menuActions";
 import { resetAsistenciaUiLocks } from "./utils/asistenciaUiCleanup";
 import { Toaster } from "./components/ui/sonner";
@@ -4458,6 +4462,8 @@ export default function App() {
                 canEdit={hasMenuAction(menuActions, 'Gestión Vehicular', 'editar', { isSuperAdmin })}
                 canDelete={hasMenuAction(menuActions, 'Gestión Vehicular', 'eliminar', { isSuperAdmin })}
                 canConfigure={canConfigureFleet(currentUser, userRole)}
+                canViewInspectionHistory={canViewFleetInspectionHistory(currentUser, userRole)}
+                canDeleteInspections={canDeleteFleetInspections(currentUser)}
                 users={users}
                 providers={providers}
               />

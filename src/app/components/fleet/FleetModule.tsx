@@ -125,6 +125,10 @@ export interface FleetModuleProps {
   canDelete?: boolean;
   /** Plantilla checklist + historial global de inspecciones. */
   canConfigure?: boolean;
+  /** Ver historial por vehículo (Auditoría / Gerencia / Encargado de sede / config). */
+  canViewInspectionHistory?: boolean;
+  /** Borrar inspecciones: solo administrador de sistema. */
+  canDeleteInspections?: boolean;
   /** Usuarios app (fallback choferes por cargo). */
   users?: User[];
   /** Catálogo de proveedores (talleres de mantenimiento). */
@@ -152,6 +156,8 @@ export function FleetModule({
   canEdit = false,
   canDelete = false,
   canConfigure = false,
+  canViewInspectionHistory = false,
+  canDeleteInspections = false,
   users = [],
   providers = [],
 }: FleetModuleProps) {
@@ -381,7 +387,8 @@ export function FleetModule({
             canAdd={canAdd}
             canEdit={canEdit}
             canDelete={canDelete}
-            canConfigure={canConfigure}
+            canViewInspectionHistory={canViewInspectionHistory}
+            canDeleteInspections={canDeleteInspections}
             choferes={choferes}
             choferesLoading={choferesLoading}
           />
@@ -453,6 +460,7 @@ export function FleetModule({
                   dataset={dataset}
                   setDataset={setDataset}
                   onPersistDataset={onPersistDataset}
+                  canDeleteHistory={canDeleteInspections}
                 />
               </TabsContent>
             </Tabs>
@@ -521,7 +529,8 @@ function FleetVehiclesSection({
   canAdd = false,
   canEdit = false,
   canDelete = false,
-  canConfigure = false,
+  canViewInspectionHistory = false,
+  canDeleteInspections = false,
   choferes = [],
   choferesLoading = false,
 }: {
@@ -533,7 +542,8 @@ function FleetVehiclesSection({
   canAdd?: boolean;
   canEdit?: boolean;
   canDelete?: boolean;
-  canConfigure?: boolean;
+  canViewInspectionHistory?: boolean;
+  canDeleteInspections?: boolean;
   choferes?: FleetChoferOption[];
   choferesLoading?: boolean;
 }) {
@@ -717,7 +727,8 @@ function FleetVehiclesSection({
                 setDataset={setDataset}
                 onPersistDataset={onPersistDataset}
                 canEdit={canAdd || canEdit}
-                canViewHistory={canConfigure}
+                canViewHistory={canViewInspectionHistory}
+                canDeleteHistory={canDeleteInspections}
                 choferes={choferes}
                 choferesLoading={choferesLoading}
               />

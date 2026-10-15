@@ -51,6 +51,7 @@ import { ScrollArea } from '../ui/scroll-area';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../ui/table';
 import { Textarea } from '../ui/textarea';
 import { appAlert, appConfirm } from '../ui/app-dialog';
+import { cn } from '../ui/utils';
 
 const MAX_FILE_BYTES = 1_800_000;
 
@@ -525,103 +526,120 @@ export function FleetChecklistConfigurator({
 function InspectionDetailView({ record, dataset }: { record: FleetInspectionRecord; dataset: FleetDataset }) {
   const template = dataset.checklistSections?.length ? dataset.checklistSections : DEFAULT_FLEET_CHECKLIST;
   const vehicle = dataset.vehicles.find((v) => v.id === record.vehicleId);
+  const items = [...template]
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .flatMap((sec) =>
+      [...sec.items]
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((it) => ({ sec: sec.title, it, r: record.responses[it.id] }))
+    );
 
   return (
-    <div className="space-y-4 text-sm">
-      <div className="flex flex-wrap gap-3 text-slate-300">
-        <Badge className="bg-emerald-500/20 text-emerald-200">{vehicle?.plate ?? record.vehicleId}</Badge>
-        <span>{format(parseISO(record.dateTime), "dd/MM/yyyy HH:mm", { locale: es })}</span>
-        <Badge variant="outline" className="border-amber-500/40 text-amber-200">
-          Cumplimiento {record.compliancePercent}%
-        </Badge>
-      </div>
-      <p>
-        <User className="inline h-4 w-4 mr-1 text-sky-400" />
-        Chofer: <strong className="text-white">{record.driverName}</strong>
-        {record.supervisorName && (
-          <>
-            {' '}
-            · <Shield className="inline h-4 w-4 mx-1 text-violet-400" />
-            Supervisor: <strong className="text-white">{record.supervisorName}</strong>
-          </>
-        )}
-      </p>
-      {record.odometerKm != null && <p className="text-slate-400">Odómetro: {record.odometerKm.toLocaleString('es-PE')} km</p>}
-      <div className="rounded-lg border border-white/10 overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-white/10 hover:bg-transparent">
-              <TableHead>Categoría</TableHead>
-              <TableHead>Ítem</TableHead>
-              <TableHead className="text-right">Estado</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {[...template]
-              .sort((a, b) => a.sortOrder - b.sortOrder)
-              .flatMap((sec) =>
-                [...sec.items]
-                  .sort((a, b) => a.sortOrder - b.sortOrder)
-                  .map((it) => {
-                    const r = record.responses[it.id];
-                    return (
-                      <TableRow key={it.id} className="border-white/10">
-                        <TableCell className="text-slate-500">{sec.title}</TableCell>
-                        <TableCell className="text-white">{it.label}</TableCell>
-                        <TableCell className="text-right">
-                          {r === 'pass' ? (
-                            <Badge className="bg-emerald-500/25 text-emerald-200">Cumple</Badge>
-                          ) : (
-                            <Badge className="bg-red-500/25 text-red-200">No cumple</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-              )}
-          </TableBody>
-        </Table>
-      </div>
-      {record.notes && (
-        <div>
-          <Label className="text-slate-500">Notas</Label>
-          <p className="text-slate-300 mt-1 whitespace-pre-wrap">{record.notes}</p>
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)] text-sm">
+      <div className="space-y-3 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
+          <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-200">
+            {vehicle?.plate ?? record.vehicleId}
+          </Badge>
+          <span className="text-foreground">
+            {format(parseISO(record.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}
+          </span>
+          <Badge variant="outline" className="border-amber-500/40 text-amber-700 dark:text-amber-200">
+            Cumplimiento {record.compliancePercent}%
+          </Badge>
+          {record.odometerKm != null ? (
+            <span>Odómetro {record.odometerKm.toLocaleString('es-PE')} km</span>
+          ) : null}
         </div>
-      )}
-      <div className="grid sm:grid-cols-2 gap-4">
-        {record.driverSignatureDataUrl && (
-          <div>
-            <Label className="text-slate-500 mb-1 block">Firma chofer</Label>
-            <img src={record.driverSignatureDataUrl} alt="Firma chofer" className="rounded border border-white/10 max-h-28 bg-slate-900" />
-          </div>
-        )}
-        {record.supervisorSignatureDataUrl && (
-          <div>
-            <Label className="text-slate-500 mb-1 block">Firma supervisor</Label>
-            <img src={record.supervisorSignatureDataUrl} alt="Firma supervisor" className="rounded border border-white/10 max-h-28 bg-slate-900" />
-          </div>
-        )}
-      </div>
-      {record.attachments.length > 0 && (
-        <div className="space-y-2">
-          <Label className="flex items-center gap-1 text-slate-400">
-            <Paperclip className="h-4 w-4" /> Adjuntos
-          </Label>
-          <div className="flex flex-wrap gap-3">
-            {record.attachments.map((a) => (
-              <a
-                key={a.id}
-                href={a.dataUrl}
-                download={a.fileName}
-                className="flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-sky-300 hover:bg-white/5"
-              >
-                <ImageIcon className="h-4 w-4" />
-                {a.fileName}
-              </a>
-            ))}
-          </div>
+        <p className="text-foreground">
+          <User className="inline h-4 w-4 mr-1 text-sky-500" />
+          Chofer: <strong>{record.driverName}</strong>
+          {record.supervisorName ? (
+            <>
+              {' '}
+              · <Shield className="inline h-4 w-4 mx-1 text-violet-500" />
+              Supervisor: <strong>{record.supervisorName}</strong>
+            </>
+          ) : null}
+        </p>
+        <div className="rounded-lg border border-border overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="h-9 py-2">Categoría</TableHead>
+                <TableHead className="h-9 py-2">Ítem</TableHead>
+                <TableHead className="h-9 py-2 text-right">Estado</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map(({ sec, it, r }) => (
+                <TableRow key={it.id}>
+                  <TableCell className="py-1.5 text-muted-foreground text-xs">{sec}</TableCell>
+                  <TableCell className="py-1.5 text-foreground">{it.label}</TableCell>
+                  <TableCell className="py-1.5 text-right">
+                    {r === 'pass' ? (
+                      <Badge className="bg-emerald-500/25 text-emerald-700 dark:text-emerald-200">Cumple</Badge>
+                    ) : (
+                      <Badge className="bg-red-500/25 text-red-700 dark:text-red-200">No cumple</Badge>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
-      )}
+      </div>
+
+      <div className="space-y-3 min-w-0">
+        {record.notes ? (
+          <div className="rounded-lg border border-border bg-muted/30 p-3">
+            <Label className="text-muted-foreground">Notas</Label>
+            <p className="mt-1 whitespace-pre-wrap text-foreground">{record.notes}</p>
+          </div>
+        ) : null}
+        <div className="grid gap-3">
+          {record.driverSignatureDataUrl && record.driverSignatureDataUrl !== 'sql' ? (
+            <div>
+              <Label className="mb-1 block text-muted-foreground">Firma chofer</Label>
+              <img
+                src={record.driverSignatureDataUrl}
+                alt="Firma chofer"
+                className="w-full rounded border border-border bg-background object-contain max-h-36"
+              />
+            </div>
+          ) : null}
+          {record.supervisorSignatureDataUrl && record.supervisorSignatureDataUrl !== 'sql' ? (
+            <div>
+              <Label className="mb-1 block text-muted-foreground">Firma supervisor</Label>
+              <img
+                src={record.supervisorSignatureDataUrl}
+                alt="Firma supervisor"
+                className="w-full rounded border border-border bg-background object-contain max-h-36"
+              />
+            </div>
+          ) : null}
+        </div>
+        {record.attachments.length > 0 ? (
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1 text-muted-foreground">
+              <Paperclip className="h-4 w-4" /> Adjuntos
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              {record.attachments.map((a) => (
+                <a
+                  key={a.id}
+                  href={a.dataUrl || undefined}
+                  download={a.fileName}
+                  className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-sky-600 hover:bg-muted dark:text-sky-300"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                  {a.fileName}
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -633,6 +651,7 @@ export function FleetVehicleInspectionBar({
   onPersistDataset,
   canEdit = true,
   canViewHistory = false,
+  canDeleteHistory = false,
   choferes = [],
   choferesLoading = false,
 }: {
@@ -641,8 +660,10 @@ export function FleetVehicleInspectionBar({
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
   onPersistDataset?: FleetPersistFn;
   canEdit?: boolean;
-  /** Historial por vehículo: solo perfiles de configuración. */
+  /** Historial por vehículo: Auditoría, Gerencia, Encargado de sede y perfiles de configuración. */
   canViewHistory?: boolean;
+  /** Eliminar del historial: solo administrador de sistema. */
+  canDeleteHistory?: boolean;
   choferes?: import('../../utils/fleetChoferOptions').FleetChoferOption[];
   choferesLoading?: boolean;
 }) {
@@ -781,6 +802,7 @@ export function FleetVehicleInspectionBar({
 
   const removeInspection = async (rec: FleetInspectionRecord) => {
     if (!await appConfirm('¿Eliminar esta inspección del historial?')) return;
+    const remaining = vehicleInspections.filter((i) => i.id !== rec.id);
     const next: FleetDataset = {
       ...dataset,
       inspections: dataset.inspections.filter((i) => i.id !== rec.id),
@@ -791,10 +813,7 @@ export function FleetVehicleInspectionBar({
       next,
       'Inspección eliminada.'
     );
-    if (ok) {
-      if (detail?.id === rec.id) setDetail(null);
-      setOpenHist(false);
-    }
+    if (ok && detail?.id === rec.id) setDetail(remaining[0] ?? null);
   };
 
   return (
@@ -830,7 +849,16 @@ export function FleetVehicleInspectionBar({
             </Button>
           ) : null}
           {canViewHistory ? (
-            <Button type="button" size="sm" variant="outline" className="h-8 border-white/15" onClick={() => setOpenHist(true)}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 border-white/15"
+              onClick={() => {
+                setDetail(vehicleInspections[0] ?? null);
+                setOpenHist(true);
+              }}
+            >
               <History className="h-3.5 w-3.5 mr-1" />
               Historial ({vehicleInspections.length})
             </Button>
@@ -955,56 +983,80 @@ export function FleetVehicleInspectionBar({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={openHist} onOpenChange={setOpenHist}>
-        <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
-          <DialogHeader>
+      <Dialog
+        open={openHist}
+        onOpenChange={(o) => {
+          setOpenHist(o);
+          if (!o) setDetail(null);
+        }}
+      >
+        <DialogContent className="flex h-[min(90vh,920px)] w-[min(96vw,80rem)] max-w-6xl flex-col gap-3 overflow-hidden p-5 sm:p-6">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Historial inspecciones — {vehicle.plate}</DialogTitle>
-            <DialogDescription>{vehicleInspections.length} registro(s)</DialogDescription>
+            <DialogDescription>
+              {vehicleInspections.length} registro(s). Selecciona uno para ver el detalle completo.
+            </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="flex-1 max-h-[55vh] pr-3">
-            <div className="space-y-2">
-              {vehicleInspections.map((r) => (
-                <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border p-1 hover:bg-muted/50">
-                  <button
-                    type="button"
-                    className="flex-1 text-left p-2 transition-colors"
-                    onClick={() => {
-                      setDetail(r);
-                      setOpenHist(false);
-                    }}
-                  >
-                    <div className="flex justify-between gap-2">
-                      <span className="text-sm font-medium text-foreground">{format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}</span>
-                      <Badge variant="outline" className="border-teal-500/40 text-teal-700 dark:text-teal-200">
-                        {r.compliancePercent}%
-                      </Badge>
+          <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(240px,0.85fr)_minmax(0,1.6fr)]">
+            <div className="min-h-0 overflow-y-auto rounded-xl border border-border bg-muted/20 p-2">
+              <div className="space-y-1.5">
+                {vehicleInspections.map((r) => {
+                  const selected = detail?.id === r.id;
+                  return (
+                    <div
+                      key={r.id}
+                      className={cn(
+                        'flex items-center gap-1 rounded-lg border p-0.5 transition-colors',
+                        selected
+                          ? 'border-teal-500/50 bg-teal-500/10'
+                          : 'border-transparent hover:border-border hover:bg-muted/50'
+                      )}
+                    >
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 p-2 text-left"
+                        onClick={() => setDetail(r)}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-foreground">
+                            {format(parseISO(r.dateTime), 'dd/MM/yyyy HH:mm', { locale: es })}
+                          </span>
+                          <Badge variant="outline" className="shrink-0 border-teal-500/40 text-teal-700 dark:text-teal-200">
+                            {r.compliancePercent}%
+                          </Badge>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">{r.driverName}</p>
+                      </button>
+                      {canDeleteHistory ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-red-500 hover:bg-red-500/10 hover:text-red-600"
+                          onClick={() => void removeInspection(r)}
+                          title="Eliminar inspección"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">{r.driverName}</p>
-                  </button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                    onClick={() => void removeInspection(r)}
-                    title="Eliminar inspección"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-              {vehicleInspections.length === 0 && <p className="text-sm text-muted-foreground">Sin registros.</p>}
+                  );
+                })}
+                {vehicleInspections.length === 0 ? (
+                  <p className="p-4 text-sm text-muted-foreground">Sin registros.</p>
+                ) : null}
+              </div>
             </div>
-          </ScrollArea>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Detalle inspección</DialogTitle>
-          </DialogHeader>
-          {detail && <InspectionDetailView record={detail} dataset={dataset} />}
+            <div className="min-h-0 overflow-y-auto rounded-xl border border-border bg-card p-3 sm:p-4">
+              {detail ? (
+                <InspectionDetailView record={detail} dataset={dataset} />
+              ) : (
+                <div className="flex h-full min-h-[280px] items-center justify-center text-sm text-muted-foreground">
+                  Elige una inspección de la lista para ver ítems, firmas y adjuntos.
+                </div>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </>
@@ -1016,10 +1068,12 @@ export function FleetInspectionsGlobalTable({
   dataset,
   setDataset,
   onPersistDataset,
+  canDeleteHistory = false,
 }: {
   dataset: FleetDataset;
   setDataset: React.Dispatch<React.SetStateAction<FleetDataset>>;
   onPersistDataset?: FleetPersistFn;
+  canDeleteHistory?: boolean;
 }) {
   const rows = useMemo(
     () =>
@@ -1054,7 +1108,7 @@ export function FleetInspectionsGlobalTable({
           <CardDescription>Últimos checklist registrados en la flota</CardDescription>
         </CardHeader>
         <CardContent>
-          <ScrollArea className="h-[min(420px,55vh)]">
+          <ScrollArea className="h-[min(520px,60vh)]">
             <Table>
               <TableHeader>
                 <TableRow className="border-border">
@@ -1083,16 +1137,18 @@ export function FleetInspectionsGlobalTable({
                           <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setDetail(r)}>
                             Ver
                           </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                            onClick={() => void removeInspection(r)}
-                            title="Eliminar inspección"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {canDeleteHistory ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                              onClick={() => void removeInspection(r)}
+                              title="Eliminar inspección"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          ) : null}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1106,11 +1162,13 @@ export function FleetInspectionsGlobalTable({
       </Card>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[94vh] w-[min(96vw,80rem)] max-w-6xl flex-col gap-3 overflow-hidden p-5 sm:p-6">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Detalle inspección</DialogTitle>
           </DialogHeader>
-          {detail && <InspectionDetailView record={detail} dataset={dataset} />}
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {detail ? <InspectionDetailView record={detail} dataset={dataset} /> : null}
+          </div>
         </DialogContent>
       </Dialog>
     </>

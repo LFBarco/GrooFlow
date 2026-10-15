@@ -9,6 +9,15 @@ const FLEET_CONFIG_APP_ROLES = new Set(['super_admin', 'admin', 'manager']);
 
 const RRHH_ROLE_HINTS = ['rrhh', 'recursos humanos', 'recurso humano', 'human resources'];
 const GERENCIA_ROLE_HINTS = ['gerencia', 'gerente', 'manager'];
+const AUDITORIA_ROLE_HINTS = ['auditoria', 'auditoría', 'auditor'];
+const ENCARGADO_SEDE_HINTS = [
+  'encargado de sede',
+  'encargado sede',
+  'encargado_sede',
+  'supervisor sede',
+  'jefe de sede',
+  'jefe sede',
+];
 
 function resolveUserRoleRecord(
   user: User,
@@ -25,7 +34,9 @@ function roleTextBlob(user: User, roleRecord?: Role | null): string {
   return [user.role, user.roleLabel, user.nivelNombre, user.jobTitle, roleRecord?.id, roleRecord?.name]
     .filter(Boolean)
     .join(' ')
-    .toLowerCase();
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 function isRrhhFleetRole(user: User, roleRecord?: Role | null): boolean {
@@ -39,6 +50,20 @@ function isGerenciaFleetRole(user: User, roleRecord?: Role | null): boolean {
   if (roleId === 'manager') return true;
   const blob = roleTextBlob(user, roleRecord);
   return GERENCIA_ROLE_HINTS.some((h) => blob.includes(h));
+}
+
+function isAuditoriaFleetRole(user: User, roleRecord?: Role | null): boolean {
+  const roleId = String(user.role || '').trim().toLowerCase();
+  if (roleId === 'auditoria' || roleId === 'auditor') return true;
+  const blob = roleTextBlob(user, roleRecord);
+  return AUDITORIA_ROLE_HINTS.some((h) => blob.includes(h.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+}
+
+function isEncargadoSedeFleetRole(user: User, roleRecord?: Role | null): boolean {
+  const roleId = String(user.role || '').trim().toLowerCase();
+  if (roleId === 'encargado_sede') return true;
+  const blob = roleTextBlob(user, roleRecord);
+  return ENCARGADO_SEDE_HINTS.some((h) => blob.includes(h));
 }
 
 /**
@@ -63,4 +88,27 @@ export function canConfigureFleet(
   if (isRrhhFleetRole(user, roleRecord)) return true;
 
   return false;
+}
+
+/**
+ * Ver historial de inspecciones por vehículo:
+ * admin, configuración flota, Auditoría, Gerencia y Encargado de sede.
+ */
+export function canViewFleetInspectionHistory(
+  user: User | null | undefined,
+  rolesOrRecord?: Role[] | Role | null
+): boolean {
+  if (!user) return false;
+  if (canConfigureFleet(user, rolesOrRecord)) return true;
+  const roleRecord = resolveUserRoleRecord(user, rolesOrRecord);
+  if (isGerenciaFleetRole(user, roleRecord)) return true;
+  if (isAuditoriaFleetRole(user, roleRecord)) return true;
+  if (isEncargadoSedeFleetRole(user, roleRecord)) return true;
+  return false;
+}
+
+/** Borrar inspecciones del historial: solo administrador de sistema. */
+export function canDeleteFleetInspections(user: User | null | undefined): boolean {
+  if (!user) return false;
+  return isAdminAppUser(user);
 }
