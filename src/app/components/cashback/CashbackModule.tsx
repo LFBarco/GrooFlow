@@ -113,6 +113,7 @@ export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: P
             <CashbackReviewPanel
               settings={settings}
               chartOfAccounts={chartOfAccounts}
+              accountingLinks={accountingLinks}
               canReview={capabilities.review}
               canExport={capabilities.export || capabilities.configure}
               onChanged={() => void load()}
@@ -145,6 +146,7 @@ export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: P
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         settings={settings}
+        accountingLinks={accountingLinks}
         editing={editing}
         onSaved={() => void load()}
       />

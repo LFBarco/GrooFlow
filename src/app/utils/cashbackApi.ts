@@ -133,7 +133,13 @@ export async function reviewCashbackInvoice(
   return json.item;
 }
 
-export type CashbackProviderCheck = { registered: boolean; nombre: string | null; cuentaContable: string | null };
+export type CashbackProviderCheck = {
+  registered: boolean;
+  nombre: string | null;
+  cuentaContable: string | null;
+  /** Cuenta global Cashback (opción A) si Contabilidad la configuró. */
+  cuentaGlobal?: string | null;
+};
 
 export async function fetchCashbackProvider(ruc: string, categoria: string): Promise<CashbackProviderCheck> {
   const qs = new URLSearchParams({ ruc, categoria });

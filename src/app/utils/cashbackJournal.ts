@@ -23,7 +23,8 @@ export function cashbackInvoiceHasJournal(inv: CashbackInvoice): boolean {
 
 /**
  * Asiento de la compra al aprobar (mismo formato que Caja Chica):
- * Debe gasto (base, cuenta del proveedor) + Debe IGV crédito fiscal, Haber contrapartida Cashback (total).
+ * Debe gasto (base) + Debe IGV crédito fiscal, Haber contrapartida Cashback (total).
+ * Opción A: la cuenta de gasto es la global `cashbackExpenseAccountCode` si está configurada.
  */
 export function buildCashbackInvoiceJournal(
   inv: CashbackInvoice,
@@ -34,10 +35,17 @@ export function buildCashbackInvoiceJournal(
   const documentDate = ymdLocal(inv.fechaEmision) ?? new Date();
   const date = ymdLocal(inv.revisadoAt) ?? ymdLocal(inv.createdAt) ?? documentDate;
   const warnings: string[] = [];
-  const expenseCode = (inv.cuentaContable || '').trim();
+  const globalExpense = (links?.cashbackExpenseAccountCode || '').trim();
+  const expenseCode = globalExpense || (inv.cuentaContable || '').trim();
   const igvCode = (links?.igvPurchaseCreditAccountCode || '').trim();
   const creditCode = (links?.cashbackCreditAccountCode || '').trim();
-  if (!expenseCode) warnings.push('Factura sin cuenta de gasto: asígnela al revisar o en la ficha del proveedor.');
+  if (!expenseCode) {
+    warnings.push(
+      globalExpense
+        ? 'Factura sin cuenta de gasto.'
+        : 'Falta configurar «Cashback: cuenta de gasto (debe)» en Contabilidad → Plan de cuentas, o asignar cuenta en la factura.'
+    );
+  }
   if (inv.igv > 0.009 && !igvCode) warnings.push('Falta configurar cuenta IGV (compras) en enlaces contables.');
   if (!creditCode) warnings.push('Falta configurar «Cashback: contrapartida de facturas» en Contabilidad → Plan de cuentas.');
 

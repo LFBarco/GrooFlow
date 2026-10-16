@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, Loader2, Search, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
+import type { AccountingLinkSettings } from '../../types';
 import type { CashbackInvoice, CashbackInvoiceDraft, CashbackSettings } from '../../types/cashback';
 import {
   CashbackApiError,
@@ -60,12 +61,21 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   settings: CashbackSettings;
+  accountingLinks?: AccountingLinkSettings;
   /** Factura observada a corregir; null para registrar una nueva. */
   editing: CashbackInvoice | null;
   onSaved: (invoice: CashbackInvoice) => void;
 };
 
-export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, onSaved }: Props) {
+export function CashbackInvoiceDialog({
+  open,
+  onOpenChange,
+  settings,
+  accountingLinks = {},
+  editing,
+  onSaved,
+}: Props) {
+  const globalExpenseAccount = (accountingLinks.cashbackExpenseAccountCode || '').trim();
   const [draft, setDraft] = useState<CashbackInvoiceDraft>(() => emptyCashbackDraft(settings));
   const [photoChanged, setPhotoChanged] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string>('');
@@ -243,7 +253,12 @@ export function CashbackInvoiceDialog({ open, onOpenChange, settings, editing, o
                 </p>
               ) : providerCheck?.registered && providerCheck.ruc === rucDigits ? (
                 <p className="text-xs text-emerald-600">
-                  Proveedor registrado{providerCheck.cuentaContable ? ` · Cta. ${providerCheck.cuentaContable}` : ' (Contabilidad asignará la cuenta)'}
+                  Proveedor registrado
+                  {globalExpenseAccount || providerCheck.cuentaContable
+                    ? ` · Cta. ${globalExpenseAccount || providerCheck.cuentaContable}${
+                        globalExpenseAccount ? ' (global Cashback)' : ''
+                      }`
+                    : ' (Contabilidad asignará la cuenta)'}
                 </p>
               ) : null}
             </div>

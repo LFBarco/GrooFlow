@@ -194,6 +194,14 @@ export function ChartOfAccountsModule({
     [chartOfAccounts, accounting.pettyCashCreditAccountCode]
   );
 
+  const cashbackExpenseLinkOptions = useMemo(
+    () =>
+      chartSelectOptionsWithOrphan(chartOfAccounts, accounting.cashbackExpenseAccountCode, {
+        useLevel: CHART_OPERATIVE_LEVEL,
+      }),
+    [chartOfAccounts, accounting.cashbackExpenseAccountCode]
+  );
+
   const cashbackCreditLinkOptions = useMemo(
     () =>
       chartSelectOptionsWithOrphan(chartOfAccounts, accounting.cashbackCreditAccountCode, {
@@ -723,6 +731,36 @@ export function ChartOfAccountsModule({
               </p>
             </div>
             <div className="space-y-2">
+              <Label>Cashback: cuenta de gasto (debe) — todas las facturas</Label>
+              {chartOfAccounts.length > 0 ? (
+                <AccountCombobox
+                  options={cashbackExpenseLinkOptions}
+                  value={accounting.cashbackExpenseAccountCode}
+                  noneLabel="— Sin cuenta global —"
+                  placeholder="Ej. 63xxxx gasto cashback"
+                  onChange={(v) =>
+                    setAccounting({
+                      cashbackExpenseAccountCode: v === '__none__' ? undefined : v,
+                    })
+                  }
+                />
+              ) : (
+                <Input
+                  placeholder="Código cuenta gasto (nivel 5)"
+                  value={accounting.cashbackExpenseAccountCode || ''}
+                  onChange={(e) =>
+                    setAccounting({
+                      cashbackExpenseAccountCode: e.target.value.trim() || undefined,
+                    })
+                  }
+                />
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Opción A: todas las facturas Cashback usan esta cuenta de gasto. Si está vacía, se usa la cuenta del
+                proveedor (comportamiento anterior).
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label>Cashback: contrapartida de facturas (haber)</Label>
               {chartOfAccounts.length > 0 ? (
                 <AccountCombobox
@@ -747,7 +785,7 @@ export function ChartOfAccountsModule({
                 />
               )}
               <p className="text-[11px] text-muted-foreground">
-                Asiento de cada factura Cashback aprobada: Debe gasto (cuenta del proveedor) + Debe IGV, Haber esta
+                Asiento de cada factura Cashback aprobada: Debe gasto (cuenta global o proveedor) + Debe IGV, Haber esta
                 cuenta por el total pagado por el colaborador.
               </p>
             </div>

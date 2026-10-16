@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, Eye, Loader2, MessageSquareWarning, RefreshCw, RotateCcw, Search, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
-import type { ChartOfAccountEntry } from '../../types';
+import type { AccountingLinkSettings, ChartOfAccountEntry } from '../../types';
 import type { CashbackInvoice, CashbackReviewAction, CashbackSettings } from '../../types/cashback';
 import { chartSelectOptionsWithOrphanExpenseClasses } from '../../utils/chartOfAccountsHelpers';
 import { AccountCombobox } from '../ui/account-combobox';
@@ -21,6 +21,7 @@ import { CashbackPhotoDialog, CashbackStateBadge } from './CashbackShared';
 type Props = {
   settings: CashbackSettings;
   chartOfAccounts: ChartOfAccountEntry[];
+  accountingLinks?: AccountingLinkSettings;
   canReview: boolean;
   canExport: boolean;
   onChanged: () => void;
@@ -36,7 +37,15 @@ const ESTADOS = [
   { id: 'todas', label: 'Todas' },
 ];
 
-export function CashbackReviewPanel({ settings, chartOfAccounts, canReview, canExport, onChanged }: Props) {
+export function CashbackReviewPanel({
+  settings,
+  chartOfAccounts,
+  accountingLinks = {},
+  canReview,
+  canExport,
+  onChanged,
+}: Props) {
+  const globalExpenseAccount = (accountingLinks.cashbackExpenseAccountCode || '').trim();
   const [estado, setEstado] = useState('pendientes');
   const [desde, setDesde] = useState(shiftPeriod(currentPeriod(), -2));
   const [hasta, setHasta] = useState(currentPeriod());
@@ -184,8 +193,16 @@ export function CashbackReviewPanel({ settings, chartOfAccounts, canReview, canE
                     <p className="max-w-[220px] truncate text-xs text-muted-foreground" title={inv.motivo}>
                       {inv.motivo}
                     </p>
-                    <p className={`font-mono text-[11px] ${inv.cuentaContable ? 'text-muted-foreground' : 'text-amber-600'}`}>
-                      {inv.cuentaContable ? `Cta. ${inv.cuentaContable}` : 'Sin cuenta contable'}
+                    <p
+                      className={`font-mono text-[11px] ${
+                        globalExpenseAccount || inv.cuentaContable ? 'text-muted-foreground' : 'text-amber-600'
+                      }`}
+                    >
+                      {globalExpenseAccount
+                        ? `Cta. ${globalExpenseAccount} (global)`
+                        : inv.cuentaContable
+                          ? `Cta. ${inv.cuentaContable}`
+                          : 'Sin cuenta contable'}
                     </p>
                   </td>
                   <td className="p-2 text-right tabular-nums">{formatPen(inv.total)}</td>
@@ -218,7 +235,14 @@ export function CashbackReviewPanel({ settings, chartOfAccounts, canReview, canE
         </div>
       )}
 
-      <CashbackReviewDialog invoice={reviewing} settings={settings} chartOfAccounts={chartOfAccounts} onClose={() => setReviewing(null)} onReviewed={handleReviewed} />
+      <CashbackReviewDialog
+        invoice={reviewing}
+        settings={settings}
+        chartOfAccounts={chartOfAccounts}
+        globalExpenseAccount={globalExpenseAccount}
+        onClose={() => setReviewing(null)}
+        onReviewed={handleReviewed}
+      />
       <CashbackPhotoDialog invoice={photoOf} onOpenChange={(v) => !v && setPhotoOf(null)} />
     </div>
   );
@@ -228,12 +252,14 @@ function CashbackReviewDialog({
   invoice,
   settings,
   chartOfAccounts,
+  globalExpenseAccount,
   onClose,
   onReviewed,
 }: {
   invoice: CashbackInvoice | null;
   settings: CashbackSettings;
   chartOfAccounts: ChartOfAccountEntry[];
+  globalExpenseAccount: string;
   onClose: () => void;
   onReviewed: (inv: CashbackInvoice) => void;
 }) {
@@ -242,6 +268,7 @@ function CashbackReviewDialog({
   const [igv, setIgv] = useState('');
   const [total, setTotal] = useState('');
   const [account, setAccount] = useState('');
+  const accountLocked = globalExpenseAccount !== '';
   const accountOptions = useMemo(
     () => chartSelectOptionsWithOrphanExpenseClasses(chartOfAccounts, account),
     [chartOfAccounts, account]
@@ -255,7 +282,7 @@ function CashbackReviewDialog({
     if (!invoice) return;
     setIgv(invoice.igv.toFixed(2));
     setTotal(invoice.total.toFixed(2));
-    setAccount(invoice.cuentaContable ?? '');
+    setAccount(globalExpenseAccount || invoice.cuentaContable || '');
     let cancelled = false;
     if (invoice.hasPhoto) {
       fetchCashbackPhoto(invoice.id)
@@ -281,8 +308,11 @@ function CashbackReviewDialog({
       toast.error('Escribe el motivo para el colaborador.');
       return;
     }
-    if (action === 'approve' && !account.trim()) {
-      toast.error('Asigna la cuenta contable de gasto antes de aprobar.');
+    const effectiveAccount = (globalExpenseAccount || account).trim();
+    if (action === 'approve' && !effectiveAccount) {
+      toast.error(
+        'Configura «Cashback: cuenta de gasto» en Contabilidad → Plan de cuentas, o asigna la cuenta aquí.'
+      );
       return;
     }
     setBusy(action);
@@ -292,10 +322,10 @@ function CashbackReviewDialog({
           ? {
               igv: igvNum !== invoice.igv ? igvNum : null,
               total: totalNum !== invoice.total ? totalNum : null,
-              cuentaContable: account.trim(),
+              cuentaContable: effectiveAccount,
             }
           : action === 'observe'
-            ? { cuentaContable: account.trim() }
+            ? { cuentaContable: effectiveAccount }
             : {};
       const updated = await reviewCashbackInvoice(invoice.id, action, { note: note.trim(), ...corrected });
       toast.success(
@@ -388,7 +418,9 @@ function CashbackReviewDialog({
             </div>
             <div className="space-y-1">
               <Label>Cuenta contable de gasto</Label>
-              {chartOfAccounts.length > 0 ? (
+              {accountLocked ? (
+                <Input value={globalExpenseAccount} disabled readOnly className="font-mono" />
+              ) : chartOfAccounts.length > 0 ? (
                 <AccountCombobox
                   options={accountOptions}
                   value={account || undefined}
@@ -405,7 +437,9 @@ function CashbackReviewDialog({
                 />
               )}
               <p className="text-[11px] text-muted-foreground">
-                Sugerida desde la ficha del proveedor (igual que Caja Chica). Puedes corregirla antes de aprobar.
+                {accountLocked
+                  ? 'Cuenta global Cashback (Contabilidad → Plan de cuentas). Todas las facturas usan esta cuenta.'
+                  : 'Sugerida desde la ficha del proveedor. Puedes corregirla antes de aprobar, o configura la cuenta global en Contabilidad.'}
               </p>
             </div>
             {reviewable ? (

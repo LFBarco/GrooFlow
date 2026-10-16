@@ -616,6 +616,11 @@ export interface AccountingLinkSettings {
   pettyCashCreditAccountCode?: string;
   /** Cuenta de salida de caja chica por sede (prioriza sobre la global). */
   pettyCashCreditBySede?: Record<string, string>;
+  /**
+   * Cuenta de gasto única para todas las facturas Cashback (debe / opción A).
+   * Si está definida, prevalece sobre la cuenta del proveedor.
+   */
+  cashbackExpenseAccountCode?: string;
   /** Contrapartida de facturas Cashback (haber del total; pagadas por el colaborador). */
   cashbackCreditAccountCode?: string;
   /** Opcional: pago desde cuenta bancaria (si más adelante exportas tesorería). */

@@ -40,7 +40,11 @@ const inv = (patch: Partial<CashbackInvoice> = {}): CashbackInvoice => ({
   ...patch,
 });
 
-const links = { igvPurchaseCreditAccountCode: '4011101', cashbackCreditAccountCode: '4699001' };
+const links = {
+  igvPurchaseCreditAccountCode: '4011101',
+  cashbackCreditAccountCode: '4699001',
+  cashbackExpenseAccountCode: '6311101',
+};
 
 describe('buildCashbackInvoiceJournal', () => {
   it('genera Debe gasto + Debe IGV y Haber contrapartida por el total', () => {
@@ -55,10 +59,25 @@ describe('buildCashbackInvoiceJournal', () => {
     expect(b.yearMonth).toBe('2026-09');
   });
 
+  it('la cuenta global de gasto Cashback prevalece sobre la de la factura', () => {
+    const b = buildCashbackInvoiceJournal(
+      inv({ cuentaContable: '6599999' }),
+      [],
+      { ...links, cashbackExpenseAccountCode: '6310001' },
+      'Alimentación'
+    );
+    expect(b.lines[0]?.accountCode).toBe('6310001');
+  });
+
   it('sin cuenta de gasto no exporta líneas y avisa', () => {
-    const b = buildCashbackInvoiceJournal(inv({ cuentaContable: null }), [], links, 'Alimentación');
+    const b = buildCashbackInvoiceJournal(
+      inv({ cuentaContable: null }),
+      [],
+      { igvPurchaseCreditAccountCode: '4011101', cashbackCreditAccountCode: '4699001' },
+      'Alimentación'
+    );
     expect(b.lines).toEqual([]);
-    expect(b.warnings[0]).toMatch(/sin cuenta de gasto/i);
+    expect(b.warnings[0]).toMatch(/cuenta de gasto/i);
   });
 
   it('sin contrapartida configurada no exporta líneas', () => {
