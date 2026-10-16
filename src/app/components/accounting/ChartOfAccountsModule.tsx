@@ -24,6 +24,7 @@ import {
   Link2,
   Download,
   Pencil,
+  Plus,
   Sparkles,
   ExternalLink,
 } from 'lucide-react';
@@ -35,8 +36,10 @@ import {
 } from '../../utils/chartOfAccountsHelpers';
 import {
   STARSOFT_CHART_HEADERS,
+  inferChartAccountKind,
   parseChartOfAccountsImportRows,
 } from '../../utils/chartOfAccountsImport';
+import { Switch } from '../ui/switch';
 import { format } from 'date-fns';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { getEnabledSedeNames } from '../../utils/sedesCatalog';
@@ -76,6 +79,8 @@ export function ChartOfAccountsModule({
   const fileRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const [editing, setEditing] = useState<ChartOfAccountEntry | null>(null);
+  /** true = alta individual; false = edición de fila existente. */
+  const [editingIsNew, setEditingIsNew] = useState(false);
   const [sedeConfigOpen, setSedeConfigOpen] = useState(false);
   const [importMode, setImportMode] = useState<ImportMode>('merge');
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
@@ -312,7 +317,15 @@ export function ChartOfAccountsModule({
         header: <span className="block text-right">Editar</span>,
         className: 'w-[80px] text-right',
         cell: (row) => (
-          <Button size="icon" variant="ghost" onClick={() => setEditing({ ...row })}>
+          <Button
+            size="icon"
+            variant="ghost"
+            title="Editar cuenta"
+            onClick={() => {
+              setEditingIsNew(false);
+              setEditing({ ...row });
+            }}
+          >
             <Pencil className="h-4 w-4" />
           </Button>
         ),
@@ -320,6 +333,21 @@ export function ChartOfAccountsModule({
     ],
     []
   );
+
+  const openNewAccount = () => {
+    setEditingIsNew(true);
+    setEditing({
+      id: `coa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      code: '',
+      name: '',
+      level: CHART_OPERATIVE_LEVEL,
+      kind: 'expense',
+      claseCuenta: 'GASTO',
+      conceptoIngGasto: 'GASTO',
+      porcentaje: '100',
+      active: true,
+    });
+  };
 
   const downloadTemplate = () => {
     const sample = [
@@ -438,6 +466,14 @@ export function ChartOfAccountsModule({
       toast.error('CUENTA y DESCRIPCION son obligatorias.');
       return;
     }
+    const levelNum =
+      editing.level != null && Number.isFinite(Number(editing.level))
+        ? Number(editing.level)
+        : undefined;
+    if (levelNum != null && (levelNum < 1 || levelNum > 9)) {
+      toast.error('El NIVEL debe ser un número entre 1 y 9.');
+      return;
+    }
     const duplicated = chartOfAccounts.some(
       (r) => r.id !== editing.id && normalizeAccountCode(r.code) === code
     );
@@ -445,20 +481,32 @@ export function ChartOfAccountsModule({
       toast.error('Ya existe otra cuenta con ese código.');
       return;
     }
-    const next = chartOfAccounts.map((r) =>
-      r.id === editing.id
-        ? {
-            ...editing,
-            code,
-            name,
-            level: editing.level ? Number(editing.level) : undefined,
-          }
-        : r
+    const kind =
+      editing.kind ||
+      inferChartAccountKind(editing.claseCuenta || editing.conceptoIngGasto) ||
+      'other';
+    const row: ChartOfAccountEntry = {
+      ...editing,
+      code,
+      name,
+      level: levelNum,
+      kind,
+      active: editing.active !== false,
+    };
+    const next = editingIsNew
+      ? [row, ...chartOfAccounts]
+      : chartOfAccounts.map((r) => (r.id === editing.id ? row : r));
+    const ok = await onUpdateChart(
+      next,
+      editingIsNew ? `Cuenta ${code} agregada al plan.` : 'Cuenta actualizada.'
     );
-    const ok = await onUpdateChart(next, 'Cuenta actualizada.');
     if (ok) {
       setEditing(null);
+      setEditingIsNew(false);
       if (useServerPaging) await serverList.reload();
+      if (editingIsNew && row.active) {
+        void runAutoMap([row]);
+      }
     }
   };
 
@@ -558,11 +606,15 @@ export function ChartOfAccountsModule({
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={openNewAccount}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva cuenta
+              </Button>
               <Button type="button" variant="secondary" onClick={downloadTemplate}>
                 <FileDown className="h-4 w-4 mr-2" />
                 Descargar plantilla
               </Button>
-              <Button type="button" onClick={() => fileRef.current?.click()}>
+              <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
                 <Upload className="h-4 w-4 mr-2" />
                 Subir Excel
               </Button>
@@ -820,24 +872,30 @@ export function ChartOfAccountsModule({
 
       <Card>
         <CardHeader className="flex flex-col gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Table2 className="h-5 w-5" />
-              Catálogo cargado ({useServerPaging ? serverList.total : chartOfAccounts.length})
-              {level5Count > 0 ? (
-                <Badge variant="secondary" className="ml-1 font-normal text-xs">
-                  NIVEL {CHART_OPERATIVE_LEVEL}: {level5Count}
-                </Badge>
-              ) : null}
-            </CardTitle>
-            <CardDescription>
-              Todas las columnas Starsoft se importan y se pueden editar (incl. PORCENTAJE y funciones PL).
-              {level5Count > 0 ? (
-                <span className="block mt-1">
-                  Referencia: {level5Count} cuenta(s) con NIVEL {CHART_OPERATIVE_LEVEL} (operativas).
-                </span>
-              ) : null}
-            </CardDescription>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Table2 className="h-5 w-5" />
+                Catálogo cargado ({useServerPaging ? serverList.total : chartOfAccounts.length})
+                {level5Count > 0 ? (
+                  <Badge variant="secondary" className="ml-1 font-normal text-xs">
+                    NIVEL {CHART_OPERATIVE_LEVEL}: {level5Count}
+                  </Badge>
+                ) : null}
+              </CardTitle>
+              <CardDescription>
+                Importa el plan completo o agrega / edita cuentas una a una (mismos campos Starsoft).
+                {level5Count > 0 ? (
+                  <span className="block mt-1">
+                    Referencia: {level5Count} cuenta(s) con NIVEL {CHART_OPERATIVE_LEVEL} (operativas).
+                  </span>
+                ) : null}
+              </CardDescription>
+            </div>
+            <Button type="button" onClick={openNewAccount}>
+              <Plus className="h-4 w-4 mr-2" />
+              Nueva cuenta
+            </Button>
           </div>
           <DataTableToolbar
             search={search}
@@ -858,7 +916,7 @@ export function ChartOfAccountsModule({
             page={Math.min(page, chartTotalPages)}
             pageSize={pageSize}
             serverPaged={useServerPaging}
-            emptyMessage="No hay plan importado. Descarga la plantilla y sube tu archivo."
+            emptyMessage="No hay cuentas. Usa «Nueva cuenta» o importa el Excel Starsoft."
           />
           <DataTablePaginationBar
             page={Math.min(page, chartTotalPages)}
@@ -868,40 +926,98 @@ export function ChartOfAccountsModule({
         </CardContent>
       </Card>
 
-      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+      <Dialog
+        open={!!editing}
+        onOpenChange={(o) => {
+          if (!o) {
+            setEditing(null);
+            setEditingIsNew(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Editar cuenta del plan</DialogTitle>
+            <DialogTitle>
+              {editingIsNew ? 'Nueva cuenta contable' : 'Editar cuenta del plan'}
+            </DialogTitle>
             <DialogDescription>
-              Metadatos Starsoft para exportación/asientos. La clasificación gerencial se edita en
-              P&amp;L Gerencial (mapping por cuenta).
+              Obligatorio: <strong>CUENTA</strong> y <strong>DESCRIPCION</strong>. El resto son metadatos
+              Starsoft (mismo Excel). La clasificación gerencial se edita en P&amp;L Gerencial.
             </DialogDescription>
           </DialogHeader>
           {editing && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 py-2">
               <div className="space-y-1">
-                <Label>CUENTA</Label>
+                <Label>
+                  CUENTA <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   value={editing.code}
                   onChange={(e) => setEditing({ ...editing, code: e.target.value })}
                   className="font-mono"
+                  placeholder="Ej. 6311101"
+                  autoFocus={editingIsNew}
                 />
               </div>
               <div className="space-y-1 md:col-span-2">
-                <Label>DESCRIPCION</Label>
+                <Label>
+                  DESCRIPCION <span className="text-red-500">*</span>
+                </Label>
                 <Input
                   value={editing.name}
                   onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                  placeholder="Nombre de la cuenta"
                 />
               </div>
               <div className="space-y-1">
                 <Label>NIVEL</Label>
                 <Input
+                  type="number"
+                  min={1}
+                  max={9}
                   value={editing.level ?? ''}
                   onChange={(e) =>
-                    setEditing({ ...editing, level: e.target.value ? Number(e.target.value) : undefined })
+                    setEditing({
+                      ...editing,
+                      level: e.target.value ? Number(e.target.value) : undefined,
+                    })
                   }
+                  placeholder={String(CHART_OPERATIVE_LEVEL)}
                 />
+                <p className="text-[10px] text-muted-foreground">
+                  Operativas para asientos: nivel {CHART_OPERATIVE_LEVEL}.
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label>Tipo operativo (GrooFlow)</Label>
+                <Select
+                  value={editing.kind || 'other'}
+                  onValueChange={(v: NonNullable<ChartOfAccountEntry['kind']>) =>
+                    setEditing({ ...editing, kind: v })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="expense">Gasto / costo</SelectItem>
+                    <SelectItem value="tax_igv">IGV / impuesto</SelectItem>
+                    <SelectItem value="cash_bank">Caja / banco</SelectItem>
+                    <SelectItem value="other">Otro</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 flex flex-col justify-end">
+                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <Label htmlFor="coa-active" className="cursor-pointer">
+                    Cuenta activa
+                  </Label>
+                  <Switch
+                    id="coa-active"
+                    checked={editing.active !== false}
+                    onCheckedChange={(v) => setEditing({ ...editing, active: v })}
+                  />
+                </div>
               </div>
               <div className="space-y-1">
                 <Label>TIPO ANEXO</Label>
@@ -913,7 +1029,18 @@ export function ChartOfAccountsModule({
               </div>
               <div className="space-y-1">
                 <Label>CLASE CUENTA</Label>
-                <Input value={editing.claseCuenta ?? ''} onChange={(e) => setEditing({ ...editing, claseCuenta: e.target.value || undefined })} />
+                <Input
+                  value={editing.claseCuenta ?? ''}
+                  onChange={(e) => {
+                    const claseCuenta = e.target.value || undefined;
+                    setEditing({
+                      ...editing,
+                      claseCuenta,
+                      kind: editing.kind || inferChartAccountKind(claseCuenta),
+                    });
+                  }}
+                  placeholder="GASTO, INGRESO…"
+                />
               </div>
               <div className="space-y-1">
                 <Label>DESTINO</Label>
@@ -974,10 +1101,18 @@ export function ChartOfAccountsModule({
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditing(null);
+                setEditingIsNew(false);
+              }}
+            >
               Cancelar
             </Button>
-            <Button onClick={saveEditing}>Guardar cambios</Button>
+            <Button onClick={() => void saveEditing()}>
+              {editingIsNew ? 'Agregar cuenta' : 'Guardar cambios'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

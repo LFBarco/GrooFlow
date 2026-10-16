@@ -150,11 +150,13 @@ export function getImportCell(
   return undefined;
 }
 
-function parseKind(raw: string | undefined): ChartOfAccountEntry['kind'] {
+/** Infere kind operativo GrooFlow desde clase/concepto Starsoft o texto libre. */
+export function inferChartAccountKind(raw: string | undefined): ChartOfAccountEntry['kind'] {
   const t = (raw || '').toLowerCase().trim();
   if (t.includes('igv') || t.includes('igc')) return 'tax_igv';
   if (t.includes('banco') || t.includes('caja') || t.includes('cash')) return 'cash_bank';
-  if (t.includes('gasto') || t.includes('expense')) return 'expense';
+  if (t.includes('gasto') || t.includes('expense') || t.includes('costo')) return 'expense';
+  if (t.includes('ingreso') || t.includes('venta') || t.includes('income')) return 'other';
   return 'other';
 }
 
@@ -220,7 +222,7 @@ export function parseChartOfAccountsImportRows(json: Record<string, unknown>[]):
       porcentaje: cellString(row, headerMap, 'PORCENTAJE'),
       plFuncionGroo: cellString(row, headerMap, 'PL FUNCION GROO'),
       plplFuncionGoo: cellString(row, headerMap, 'PLPL FUNCION GOO'),
-      kind: parseKind(tipo != null ? String(tipo) : undefined),
+      kind: inferChartAccountKind(tipo != null ? String(tipo) : undefined),
       active: true,
     });
   }
