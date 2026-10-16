@@ -8,7 +8,11 @@ import {
   filterPettyCashTransactionsForViewer,
   isContabilidadPettyCashProfile,
 } from './pettyCashAccess';
-import { canAdminFundTopUp, canApprovePettyCashMovements } from './pettyCashAudit';
+import {
+  canAdminFundTopUp,
+  canApprovePettyCashMovements,
+  canModifyAdminFundTopUp,
+} from './pettyCashAudit';
 import { canSelectMultiplePettyCashCustodians } from './pettyCashCustodianVisibility';
 
 function user(partial: Partial<User> & Pick<User, 'id' | 'name' | 'role'>): User {
@@ -61,6 +65,18 @@ describe('pettyCashAccess', () => {
     expect(canViewAllPettyCashFunds(u)).toBe(true);
     expect(canApprovePettyCashMovements(u)).toBe(true);
     expect(canAdminFundTopUp(u)).toBe(true);
+    expect(canModifyAdminFundTopUp(u)).toBe(true);
+  });
+
+  it('admin puede editar/eliminar refuerzo; responsable no', () => {
+    expect(
+      canModifyAdminFundTopUp(user({ id: 'a1', name: 'Admin', role: 'admin' }))
+    ).toBe(true);
+    expect(
+      canModifyAdminFundTopUp(
+        user({ id: '1', name: 'Iris', role: 'groomer', nivelNombre: 'Encargado de Sede' })
+      )
+    ).toBe(false);
   });
 
   it('Auditoría y Contabilidad pueden registrar gastos por otros', () => {

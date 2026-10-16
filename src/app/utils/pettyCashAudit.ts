@@ -52,6 +52,19 @@ export function canAdminFundTopUp(
     return canAuditPettyCashFunds(user, roles, menuPermissions);
 }
 
+/**
+ * Puede editar o eliminar un refuerzo ya otorgado.
+ * Auditoría + administrador de sistema (misma puerta que registrar el refuerzo).
+ */
+export function canModifyAdminFundTopUp(
+    user: User | null | undefined,
+    roles?: Role[] | null,
+    menuPermissions?: import('./pettyCashAccess').PettyCashMenuPermissions
+): boolean {
+    if (!user) return false;
+    return canAdminFundTopUp(user, roles, menuPermissions);
+}
+
 /** Puede confirmar entrega de dotación semanal (auditoría). */
 export function canConfirmPettyCashFundDelivery(
     user: User | null | undefined,

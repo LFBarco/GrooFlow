@@ -52,6 +52,7 @@ import {
     canApprovePettyCashMovements,
     allPettyCashWeekMovementsApproved,
     canAdminFundTopUp,
+    canModifyAdminFundTopUp,
     canConfirmPettyCashFundDelivery,
     ADMIN_FUND_TOPUP_CATEGORY,
     FUND_DELIVERY_CATEGORY,
@@ -233,6 +234,8 @@ export function PettyCashManager({
     const [editAmountExempt, setEditAmountExempt] = useState('');
 
     const [topupOpen, setTopupOpen] = useState(false);
+    /** Si hay id, el diálogo de refuerzo edita ese movimiento en lugar de crear uno nuevo. */
+    const [editingTopupId, setEditingTopupId] = useState<string | null>(null);
     const [topupAmount, setTopupAmount] = useState('');
     const [topupNote, setTopupNote] = useState('');
     const [topupSede, setTopupSede] = useState('');
@@ -926,12 +929,72 @@ export function PettyCashManager({
         });
     };
 
-    const handleSaveAdminTopup = async () => {
-        if (!canAdminFundTopUp(currentUser, roles)) {
-            toast.error('Sin permiso para asignar refuerzo de fondo.');
+    const closeTopupDialog = () => {
+        setTopupOpen(false);
+        setEditingTopupId(null);
+        setTopupAmount('');
+        setTopupNote('');
+    };
+
+    const openEditAdminTopup = (row: PettyCashTransaction) => {
+        if (!canModifyAdminFundTopUp(currentUser, roles, menuPermissions)) {
+            toast.error('Sin permiso para editar refuerzos de fondo.');
             return;
         }
-        if (!selectedCustodianId) return;
+        if (weekAlreadyClosed) {
+            toast.error('La semana está cerrada; no se puede editar el refuerzo.');
+            return;
+        }
+        if (!isAdminTopUpIncome(row)) return;
+        setEditingTopupId(row.id);
+        setTopupAmount(String(Math.round(Number(row.amount) * 100) / 100));
+        setTopupNote(row.description || '');
+        const loc =
+            row.location && sedeOptions.includes(row.location)
+                ? row.location
+                : sedeOptions[0] || row.location || 'Principal';
+        setTopupSede(loc);
+        setTopupOpen(true);
+    };
+
+    const deleteAdminTopup = async (row: PettyCashTransaction) => {
+        if (!canModifyAdminFundTopUp(currentUser, roles, menuPermissions)) {
+            toast.error('Sin permiso para eliminar refuerzos de fondo.');
+            return;
+        }
+        if (weekAlreadyClosed) {
+            toast.error('La semana está cerrada; no se puede eliminar el refuerzo.');
+            return;
+        }
+        if (!isAdminTopUpIncome(row)) return;
+        if (
+            !await appConfirm(
+                `¿Eliminar este refuerzo de fondo?\n\n` +
+                    `${formatCurrencyEs(row.amount)}\n` +
+                    `${(row.description || '').slice(0, 160)}\n\n` +
+                    `Se restará del saldo de la semana ${selectedWeek}.`
+            )
+        ) {
+            return;
+        }
+        const okDel = await commitTransactions(transactions.filter((t) => t.id !== row.id));
+        if (!okDel) return;
+        toast.success('Refuerzo de fondo eliminado.');
+    };
+
+    const handleSaveAdminTopup = async () => {
+        const canWrite = editingTopupId
+            ? canModifyAdminFundTopUp(currentUser, roles, menuPermissions)
+            : canAdminFundTopUp(currentUser, roles, menuPermissions);
+        if (!canWrite) {
+            toast.error(
+                editingTopupId
+                    ? 'Sin permiso para editar refuerzo de fondo.'
+                    : 'Sin permiso para asignar refuerzo de fondo.'
+            );
+            return;
+        }
+        if (!selectedCustodianId && !editingTopupId) return;
         const amt = parseFloat(topupAmount.replace(',', '.'));
         if (Number.isNaN(amt) || amt <= 0) {
             toast.error('Ingrese un monto válido mayor a 0.');
@@ -943,15 +1006,48 @@ export function PettyCashManager({
                     ? topupSede
                     : sedeOptions[0]!
                 : topupSede || 'Principal';
+        const note =
+            topupNote.trim() ||
+            `Refuerzo extraordinario de fondo — ${currentUser.name} → ${selectedCustodian?.name ?? 'responsable'}`;
+
+        if (editingTopupId) {
+            const prev = transactions.find((t) => t.id === editingTopupId);
+            if (!prev || !isAdminTopUpIncome(prev)) {
+                toast.error('No se encontró el refuerzo a editar.');
+                return;
+            }
+            if (weekAlreadyClosed) {
+                toast.error('La semana está cerrada; no se puede editar el refuerzo.');
+                return;
+            }
+            const okEdit = await commitTransactions(
+                transactions.map((t) =>
+                    t.id === editingTopupId
+                        ? {
+                              ...t,
+                              amount: amt,
+                              description: note,
+                              location: sedeVal,
+                              incomeSubtype: 'admin_topup' as const,
+                              category: ADMIN_FUND_TOPUP_CATEGORY,
+                              status: 'approved' as const,
+                          }
+                        : t
+                ),
+                'Refuerzo de fondo actualizado.'
+            );
+            if (!okEdit) return;
+            closeTopupDialog();
+            return;
+        }
+
         const row: PettyCashTransaction = {
             id: `pc-top-${Date.now()}`,
             date: new Date(),
             amount: amt,
             type: 'income',
             incomeSubtype: 'admin_topup',
-            description:
-                topupNote.trim() ||
-                `Refuerzo extraordinario de fondo — ${currentUser.name} → ${selectedCustodian?.name ?? 'responsable'}`,
+            description: note,
             category: ADMIN_FUND_TOPUP_CATEGORY,
             requester: currentUser.name,
             custodianId: selectedCustodianId,
@@ -965,9 +1061,7 @@ export function PettyCashManager({
         toast.success('Refuerzo de fondo registrado', {
             description: `${formatCurrencyEs(amt)} sumado al saldo de la semana ${selectedWeek}.`,
         });
-        setTopupOpen(false);
-        setTopupAmount('');
-        setTopupNote('');
+        closeTopupDialog();
     };
 
     const openFundDeliveryDialog = () => {
@@ -1577,12 +1671,13 @@ ${signatures}
                             Confirmar dotación semanal
                         </Button>
                     ) : null}
-                    {canAdminFundTopUp(currentUser, roles) && selectedCustodianId ? (
+                    {canAdminFundTopUp(currentUser, roles, menuPermissions) && selectedCustodianId ? (
                         <Button
                             size="lg"
                             className="w-full"
                             variant="outline"
                             onClick={() => {
+                                setEditingTopupId(null);
                                 setTopupAmount('');
                                 setTopupNote('');
                                 setTopupSede(sedeOptions[0] || 'Principal');
@@ -1747,6 +1842,11 @@ ${signatures}
                                                 !isVoidedOrRejected &&
                                                 !weekAlreadyClosed &&
                                                 Boolean(existingFundDelivery);
+                                            const canManageTopup =
+                                                isAdminTopUpIncome(expense) &&
+                                                canModifyAdminFundTopUp(currentUser, roles, menuPermissions) &&
+                                                !isVoidedOrRejected &&
+                                                !weekAlreadyClosed;
 
                                             return (
                                                 <TableRow
@@ -1868,6 +1968,29 @@ ${signatures}
                                                                     className="h-8 w-8 text-destructive hover:text-destructive"
                                                                     title="Revocar dotación semanal (super admin)"
                                                                     onClick={() => revokeFundDelivery(expense)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </Button>
+                                                            </div>
+                                                        ) : canManageTopup ? (
+                                                            <div className="flex justify-end gap-0.5">
+                                                                <Button
+                                                                    type="button"
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8"
+                                                                    title="Editar refuerzo de fondo"
+                                                                    onClick={() => openEditAdminTopup(expense)}
+                                                                >
+                                                                    <Pencil className="h-4 w-4" />
+                                                                </Button>
+                                                                <Button
+                                                                    type="button"
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    className="h-8 w-8 text-destructive hover:text-destructive"
+                                                                    title="Eliminar refuerzo de fondo"
+                                                                    onClick={() => deleteAdminTopup(expense)}
                                                                 >
                                                                     <Trash2 className="h-4 w-4" />
                                                                 </Button>
@@ -2004,17 +2127,36 @@ ${signatures}
                 </Tabs>
             </div>
 
-            <Dialog open={topupOpen} onOpenChange={setTopupOpen}>
+            <Dialog
+                open={topupOpen}
+                onOpenChange={(open) => {
+                    if (!open) closeTopupDialog();
+                    else setTopupOpen(true);
+                }}
+            >
                 <DialogContent className="sm:max-w-[440px]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Banknote className="h-5 w-5 text-amber-600" />
-                            Refuerzo extraordinario de fondo
+                            {editingTopupId
+                                ? 'Editar refuerzo de fondo'
+                                : 'Refuerzo extraordinario de fondo'}
                         </DialogTitle>
                         <DialogDescription>
-                            Se registra un <strong>ingreso aprobado</strong> para{' '}
-                            <strong>{selectedCustodian?.name ?? 'el responsable'}</strong> en la semana{' '}
-                            <strong>{selectedWeek}</strong>. Suma al saldo disponible (casos excepcionales).
+                            {editingTopupId ? (
+                                <>
+                                    Actualiza el monto o motivo del refuerzo de{' '}
+                                    <strong>{selectedCustodian?.name ?? 'el responsable'}</strong> en la
+                                    semana <strong>{selectedWeek}</strong>.
+                                </>
+                            ) : (
+                                <>
+                                    Se registra un <strong>ingreso aprobado</strong> para{' '}
+                                    <strong>{selectedCustodian?.name ?? 'el responsable'}</strong> en la
+                                    semana <strong>{selectedWeek}</strong>. Suma al saldo disponible
+                                    (casos excepcionales).
+                                </>
+                            )}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-3 py-2">
@@ -2056,11 +2198,11 @@ ${signatures}
                             />
                         </div>
                         <div className="flex justify-end gap-2 pt-2">
-                            <Button type="button" variant="outline" onClick={() => setTopupOpen(false)}>
+                            <Button type="button" variant="outline" onClick={closeTopupDialog}>
                                 Cancelar
                             </Button>
                             <Button type="button" onClick={handleSaveAdminTopup}>
-                                Registrar refuerzo
+                                {editingTopupId ? 'Guardar cambios' : 'Registrar refuerzo'}
                             </Button>
                         </div>
                     </div>
