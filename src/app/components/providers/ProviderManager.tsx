@@ -159,15 +159,24 @@ function parseImportBoolean(value: unknown, whenEmpty: boolean): boolean {
 function parseProviderTypeFromImport(value: unknown): NonNullable<Provider['type']> {
     const s = String(value ?? '')
         .trim()
-        .toLowerCase();
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
     if (!s) return 'Mercaderia';
-    if (s.includes('méd') || s.includes('medic') || s === 'médico externo') {
+    if (s.includes('med') || s === 'medico externo') {
         return 'Médico Externo';
+    }
+    if (
+        s.includes('gasto') ||
+        s.includes('general') ||
+        s.includes('administr') ||
+        s.includes('operativ') ||
+        s.includes('oficina')
+    ) {
+        return 'Gastos generales';
     }
     if (s.includes('servic')) return 'Servicios';
     if (s.includes('merc')) return 'Mercaderia';
-    if (s === 'servicios') return 'Servicios';
-    if (s === 'mercaderia' || s === 'mercadería') return 'Mercaderia';
     return 'Mercaderia';
 }
 
@@ -447,7 +456,7 @@ export function ProviderManager({
         const baseRowMercaderia = {
             Categoría: sampleCat,
             Área: sampleArea,
-            'Tipo (Mercaderia|Servicios|Médico Externo)': 'Mercaderia',
+            'Tipo (Mercaderia|Servicios|Médico Externo|Gastos generales)': 'Mercaderia',
             'Especialidad (solo Médico Externo)': '',
             'Clasif. flujo caja (reporte)': firstExpenseConcept,
             'Días crédito': 30,
@@ -470,7 +479,7 @@ export function ProviderManager({
             'Número documento': '20555123456',
             'Tipo documento (RUC|DNI|CE)': 'RUC',
             ...baseRowMercaderia,
-            'Tipo (Mercaderia|Servicios|Médico Externo)': 'Médico Externo',
+            'Tipo (Mercaderia|Servicios|Médico Externo|Gastos generales)': 'Médico Externo',
             'Especialidad (solo Médico Externo)': 'Cirugía / hospitalización',
             'Módulo caja chica (Sí/No)': 'No',
             'Motivos caja (Motivo1:cuenta1; Motivo2; …)': '',
@@ -496,6 +505,14 @@ export function ProviderManager({
                 ...baseRowMercaderia,
             },
             rowMedicoExterno,
+            {
+                'Razón Social': 'Minimarket / Útiles Oficina Ejemplo EIRL',
+                'Número documento': '20600987654',
+                'Tipo documento (RUC|DNI|CE)': 'RUC',
+                ...baseRowMercaderia,
+                'Tipo (Mercaderia|Servicios|Médico Externo|Gastos generales)': 'Gastos generales',
+                Categoría: 'Material Oficina',
+            },
         ];
 
         const worksheet = XLSX.utils.json_to_sheet(templateData);
@@ -551,7 +568,10 @@ export function ProviderManager({
             ['Tipo documento (RUC|DNI|CE)', 'Valores: RUC, DNI o CE (o vacío para inferencia). Alias: Tipo de documento.'],
             ['Categoría', 'Catálogo comercial. Alias: Categoría (Comercial), Categoria.'],
             ['Área', 'Área interna. Alias: Area.'],
-            ['Tipo (Mercaderia|Servicios|Médico Externo)', 'Valor exacto típico. Alias: Tipo, Tipo proveedor.'],
+            [
+                'Tipo (Mercaderia|Servicios|Médico Externo|Gastos generales)',
+                'Valor exacto típico. Alias: Tipo, Tipo proveedor. «Gastos generales» = oficina, limpieza, refrigerio, etc.',
+            ],
             ['Especialidad (solo Médico Externo)', 'Opcional si no es Médico Externo. Alias: Especialidad.'],
             [
                 'Clasif. flujo caja (reporte)',
@@ -740,6 +760,7 @@ export function ProviderManager({
                     const type = parseProviderTypeFromImport(
                         getImportCell(
                             row,
+                            'Tipo (Mercaderia|Servicios|Médico Externo|Gastos generales)',
                             'Tipo (Mercaderia|Servicios|Médico Externo)',
                             'Tipo',
                             'Tipo proveedor',
@@ -1271,7 +1292,7 @@ export function ProviderManager({
     }, [openSimplePettyOnMount]);
 
     const handleSaveSimplePetty = async () => {
-        if (!simplePetty.name.trim()) {
+        if (!(simplePetty.name ?? '').trim()) {
             toast.error('Ingrese la razón social');
             return;
         }
@@ -1799,6 +1820,7 @@ export function ProviderManager({
                                     <SelectItem value="Mercaderia">Mercadería</SelectItem>
                                     <SelectItem value="Servicios">Servicios</SelectItem>
                                     <SelectItem value="Médico Externo">Médico Externo</SelectItem>
+                                    <SelectItem value="Gastos generales">Gastos generales</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -2138,7 +2160,9 @@ export function ProviderManager({
                                                 if (info && info.razonSocial) {
                                                     setCurrentProvider((prev) => ({
                                                         ...prev,
-                                                        name: prev.name.trim() ? prev.name : info.razonSocial,
+                                                        name: (prev.name ?? '').trim()
+                                                            ? prev.name
+                                                            : info.razonSocial,
                                                     }));
                                                     if (info.source === 'bd') {
                                                         toast.success(`Proveedor registrado en BD: ${info.razonSocial}`, {
@@ -2191,6 +2215,7 @@ export function ProviderManager({
                                         <SelectItem value="Mercaderia">Mercadería</SelectItem>
                                         <SelectItem value="Servicios">Servicios</SelectItem>
                                         <SelectItem value="Médico Externo">Médico Externo</SelectItem>
+                                        <SelectItem value="Gastos generales">Gastos generales</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

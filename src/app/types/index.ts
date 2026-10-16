@@ -122,7 +122,8 @@ export interface Provider {
   /** Cuenta N5 sugerida para recibos por honorarios. Si no hay, aplica `accountingAccount`. */
   defaultProfessionalFeeAccount?: string;
   totalPurchased?: number; // Campo calculado para analítica
-  type?: 'Mercaderia' | 'Servicios' | 'Médico Externo'; // Nuevo: Tipo de proveedor
+  /** Naturaleza del proveedor. «Gastos generales» = soporte / no giro (oficina, limpieza, refrigerio…). */
+  type?: 'Mercaderia' | 'Servicios' | 'Médico Externo' | 'Gastos generales';
   specialty?: string; // Nuevo: Solo para 'Médico Externo'
 
   // —— Abastecimiento / procurement (opcionales; no afectan caja chica ni honorarios) ——
