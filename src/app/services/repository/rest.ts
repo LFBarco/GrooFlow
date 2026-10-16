@@ -258,16 +258,25 @@ class RestKVRepository implements IKVRepository {
         if (!isConflict || attempt === maxAttempts) {
           throw error;
         }
-        // Revisión obsoleta (hydrate paralelo, Sync Buk, otra pestaña): refrescar y reintentar.
+        // 409: refrescar. Si el servidor ya tiene el mismo payload, solo alinear revisión.
+        // Nunca reintentar un PUT ciego con value local sobre datos ajenos (evita wipe LWW).
         try {
-          const fresh = await restFetch<{ revision?: string }>(`/kv/${encodeURIComponent(key)}`);
+          const fresh = await restFetch<{ value?: unknown; revision?: string }>(
+            `/kv/${encodeURIComponent(key)}`
+          );
           if (typeof fresh.revision === 'string' && fresh.revision !== '') {
             resourceRevisions.set(key, fresh.revision);
           }
+          if (
+            Object.prototype.hasOwnProperty.call(fresh, 'value') &&
+            JSON.stringify(fresh.value) === JSON.stringify(value)
+          ) {
+            return;
+          }
         } catch {
-          /* el siguiente PUT volverá a fallar con el error original si no hay GET */
+          /* seguir al throw */
         }
-        await new Promise((r) => setTimeout(r, 120 * attempt));
+        throw error;
       }
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError));

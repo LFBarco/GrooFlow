@@ -1454,7 +1454,16 @@ export default function App() {
           documentDate:
             t.documentDate != null ? parseTransactionDate(t.documentDate) : undefined,
         }));
-        if (kvPayloadsEqual(pettyCashKvLatestRef.current, mapped)) return;
+        // Mismo guard que Realtime SQL: no pisar con [] ni durante cooldown post-guardado.
+        if (
+          !shouldApplyListRemoteSnapshot(
+            pettyCashKvLatestRef.current,
+            mapped,
+            pettyCashKvCooldownUntilRef.current
+          )
+        ) {
+          return;
+        }
         pettyCashKvLatestRef.current = mapped;
         pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
         setPettyCashTransactions(mapped);

@@ -38,7 +38,7 @@ interface PettyCashAuditConsoleProps {
     currentUser: User;
     roles?: Role[];
     visibleSedes: string[];
-    onUpdateTransactions: (txs: PettyCashTransaction[]) => void;
+    onUpdateTransactions: (txs: PettyCashTransaction[]) => void | Promise<boolean>;
     commercialCategories: string[];
     commercialAreas: string[];
 }
@@ -144,11 +144,14 @@ export function PettyCashAuditConsole({
         [transactions, visibleSedes]
     );
 
-    const approve = (row: PettyCashTransaction) => {
+    const approve = async (row: PettyCashTransaction) => {
         if (!canAct || row.status !== 'pending_audit') return;
-        onUpdateTransactions(
-            transactions.map((t) => (t.id === row.id ? { ...t, status: 'approved' as const } : t))
+        const ok = await Promise.resolve(
+            onUpdateTransactions(
+                transactions.map((t) => (t.id === row.id ? { ...t, status: 'approved' as const } : t))
+            )
         );
+        if (ok === false) return;
         toast.success('Movimiento aprobado');
         if (detail?.id === row.id) setDetail({ ...row, status: 'approved' });
     };
@@ -162,17 +165,20 @@ export function PettyCashAuditConsole({
         )
             return;
         const note = row.auditComment ?? '';
-        onUpdateTransactions(
-            transactions.map((t) =>
-                t.id === row.id
-                    ? {
-                          ...t,
-                          status: 'rejected' as const,
-                          auditComment: note.trim() || t.auditComment,
-                      }
-                    : t
+        const ok = await Promise.resolve(
+            onUpdateTransactions(
+                transactions.map((t) =>
+                    t.id === row.id
+                        ? {
+                              ...t,
+                              status: 'rejected' as const,
+                              auditComment: note.trim() || t.auditComment,
+                          }
+                        : t
+                )
             )
         );
+        if (ok === false) return;
         toast.message('Movimiento rechazado');
         if (detail?.id === row.id) setDetail({ ...row, status: 'rejected', auditComment: note.trim() || row.auditComment });
     };
