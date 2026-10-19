@@ -307,6 +307,10 @@ import {
 } from "./utils/pettyCashMeta";
 import { reconcilePettyCashMeta } from "./utils/pettyCashMetaReconcile";
 import {
+  evaluatePettyCashWeekReopen,
+  removePettyCashWeekClosure,
+} from "./utils/pettyCashWeekReopen";
+import {
   loadPettyCashMetaFromSql,
   migratePettyCashMetaKvToSql,
   savePettyCashMetaToSql,
@@ -3434,6 +3438,75 @@ export default function App() {
     [isDataLoaded]
   );
 
+  const handleReopenPettyCashWeek = useCallback(
+    (payload: { custodianId: string; weekNumber: string; reason: string }) => {
+      const reason = (payload.reason || '').trim();
+      if (reason.length < 8) {
+        toast.error('Indique el motivo de la reapertura (mínimo 8 caracteres).');
+        return;
+      }
+      const closures = systemSettings.pettyCash?.weekClosures ?? [];
+      const deliveries = systemSettings.pettyCash?.fundDeliveries ?? [];
+      const evaluation = evaluatePettyCashWeekReopen({
+        user: currentUser,
+        custodianId: payload.custodianId,
+        weekKey: payload.weekNumber,
+        closures,
+        deliveries,
+      });
+      if (!evaluation.ok) {
+        toast.error(evaluation.message);
+        return;
+      }
+      const removed = closures.find(
+        (c) =>
+          c.custodianId === payload.custodianId &&
+          weekKeyMatches(c.weekNumber, payload.weekNumber)
+      );
+      setSystemSettings((prev) => {
+        const next: SystemSettings = {
+          ...prev,
+          pettyCash: {
+            ...initialSystemSettings.pettyCash,
+            ...prev.pettyCash,
+            weekClosures: removePettyCashWeekClosure(
+              prev.pettyCash?.weekClosures,
+              payload.custodianId,
+              payload.weekNumber
+            ),
+          },
+        };
+        return next;
+      });
+      void writeAuditLogLazy(
+        'petty_cash_week_reopen',
+        {
+          custodianId: payload.custodianId,
+          weekNumber: payload.weekNumber,
+          reason,
+          previousClosure: removed
+            ? {
+                id: removed.id,
+                closedAt: removed.closedAt,
+                openingFund: removed.openingFund,
+                expensesTotal: removed.expensesTotal,
+                closingBalance: removed.closingBalance,
+                carriedForward: removed.carriedForward,
+              }
+            : null,
+          actorRole: currentUser.role,
+          actorName: currentUser.name,
+        },
+        payload.custodianId
+      );
+      toast.success(`Cierre de la semana ${payload.weekNumber} revertido`, {
+        description:
+          'El responsable ya puede corregir movimientos y cerrar la semana nuevamente.',
+      });
+    },
+    [systemSettings.pettyCash?.weekClosures, systemSettings.pettyCash?.fundDeliveries, currentUser]
+  );
+
   const handleConfirmPettyCashFundDelivery = useCallback(
     (delivery: PettyCashFundDelivery) => {
       setSystemSettings((prev) => {
@@ -4809,6 +4882,7 @@ export default function App() {
                     navigate(viewToPath('providers'));
                   }}
                   onClosePettyCashWeek={handleClosePettyCashWeek}
+                  onReopenPettyCashWeek={handleReopenPettyCashWeek}
                   onPreClosePettyCashWeek={handlePreClosePettyCashWeek}
                   onConfirmFundDelivery={handleConfirmPettyCashFundDelivery}
                   onConsumeOpeningCarry={handleConsumeOpeningCarry}

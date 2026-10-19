@@ -105,6 +105,12 @@ interface PettyCashModuleProps {
     businessLogo?: string;
     /** Persiste cierre de semana (arrastre de saldo en `settings.weekClosures`). */
     onClosePettyCashWeek?: (closure: PettyCashWeekClosure) => void;
+    /** Solo admin de sistema: revierte un cierre para permitir correcciones. */
+    onReopenPettyCashWeek?: (payload: {
+        custodianId: string;
+        weekNumber: string;
+        reason: string;
+    }) => void | Promise<void>;
     /** Pre-cierre presentado por el responsable (no bloquea gastos). */
     onPreClosePettyCashWeek?: (pre: PettyCashWeekPreClosure) => void;
     /** Auditoría confirma entrega de dotación semanal. */
@@ -144,6 +150,7 @@ export function PettyCashModule({
     onRequestProviderRegistration,
     businessLogo,
     onClosePettyCashWeek,
+    onReopenPettyCashWeek,
     onPreClosePettyCashWeek,
     onConfirmFundDelivery,
     onConsumeOpeningCarry,
@@ -1477,6 +1484,7 @@ export function PettyCashModule({
                         providers={providers}
                         onRequestProviderRegistration={onRequestProviderRegistration}
                         onClosePettyCashWeek={onClosePettyCashWeek}
+                        onReopenPettyCashWeek={onReopenPettyCashWeek}
                         onPreClosePettyCashWeek={onPreClosePettyCashWeek}
                         onConfirmFundDelivery={onConfirmFundDelivery}
                         onConsumeOpeningCarry={onConsumeOpeningCarry}

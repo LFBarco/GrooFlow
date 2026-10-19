@@ -14,6 +14,7 @@ import {
     Search,
     UserCircle,
     Lock,
+    Unlock,
     Pencil,
     Trash2,
     ClipboardCheck,
@@ -69,7 +70,11 @@ import {
 import { canViewAllPettyCashFunds } from '../../utils/pettyCashAccess';
 import { effectivePettyCashFundLimit, userHasPettyCashFund } from '../../utils/pettyCashFund';
 import { getPettyCashWeekKey, parsePettyCashWeekKey, weekKeyMatches } from '../../utils/pettyCashWeekKey';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog';
+import {
+    canReopenPettyCashWeekClosure,
+    evaluatePettyCashWeekReopen,
+} from '../../utils/pettyCashWeekReopen';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Switch } from '../ui/switch';
@@ -134,6 +139,15 @@ interface PettyCashManagerProps {
     onRequestProviderRegistration?: () => void;
     onClosePettyCashWeek?: (closure: PettyCashWeekClosure) => void;
     onPreClosePettyCashWeek?: (pre: PettyCashWeekPreClosure) => void;
+    /**
+     * Solo administrador de sistema: quita el cierre de la semana para permitir
+     * correcciones por el responsable y un nuevo cierre.
+     */
+    onReopenPettyCashWeek?: (payload: {
+        custodianId: string;
+        weekNumber: string;
+        reason: string;
+    }) => void | Promise<void>;
     /** Auditoría confirma entrega de dotación semanal (fondo fijo). */
     onConfirmFundDelivery?: (delivery: PettyCashFundDelivery) => void;
     /** Marca arrastre de apertura consumido en el usuario (apertura de periodo). */
@@ -188,6 +202,7 @@ export function PettyCashManager({
     onRequestProviderRegistration,
     onClosePettyCashWeek,
     onPreClosePettyCashWeek,
+    onReopenPettyCashWeek,
     onConfirmFundDelivery,
     onConsumeOpeningCarry,
     onRevokeFundDelivery,
@@ -244,6 +259,10 @@ export function PettyCashManager({
     const [deliveryAmount, setDeliveryAmount] = useState('');
     const [deliveryCarryAmount, setDeliveryCarryAmount] = useState('');
     const [deliveryReason, setDeliveryReason] = useState('');
+
+    const [reopenOpen, setReopenOpen] = useState(false);
+    const [reopenReason, setReopenReason] = useState('');
+    const [reopenBusy, setReopenBusy] = useState(false);
 
     const fundDeliveries = settings.fundDeliveries ?? [];
 
@@ -482,6 +501,12 @@ export function PettyCashManager({
         !!selectedCustodianId &&
         (selectedCustodianId === currentUser.id ||
             canViewAllPettyCashFunds(currentUser, roles, menuPermissions));
+
+    const canReopenWeek =
+        !!onReopenPettyCashWeek &&
+        !!selectedCustodianId &&
+        weekAlreadyClosed &&
+        canReopenPettyCashWeekClosure(currentUser);
 
     const fundDenominator = Math.max(openingFundForWeek, 1);
 
@@ -1228,6 +1253,70 @@ export function PettyCashManager({
         });
     };
 
+    const openReopenWeekDialog = () => {
+        if (!onReopenPettyCashWeek || !selectedCustodianId) return;
+        const evaluation = evaluatePettyCashWeekReopen({
+            user: currentUser,
+            custodianId: selectedCustodianId,
+            weekKey: String(selectedWeek),
+            closures: settings.weekClosures,
+            deliveries: fundDeliveries,
+        });
+        if (!evaluation.ok) {
+            toast.error(evaluation.message);
+            return;
+        }
+        setReopenReason('');
+        setReopenOpen(true);
+    };
+
+    const handleConfirmReopenWeek = async () => {
+        if (!onReopenPettyCashWeek || !selectedCustodianId) return;
+        const reason = reopenReason.trim();
+        if (reason.length < 8) {
+            toast.error('Indique el motivo (mínimo 8 caracteres).');
+            return;
+        }
+        const evaluation = evaluatePettyCashWeekReopen({
+            user: currentUser,
+            custodianId: selectedCustodianId,
+            weekKey: String(selectedWeek),
+            closures: settings.weekClosures,
+            deliveries: fundDeliveries,
+        });
+        if (!evaluation.ok) {
+            toast.error(evaluation.message);
+            setReopenOpen(false);
+            return;
+        }
+        const warn = evaluation.warning
+            ? `\n\nAdvertencia: ${evaluation.warning}`
+            : '';
+        if (
+            !await appConfirm(
+                `¿Revertir el cierre de la semana ${selectedWeek}?\n\n` +
+                    `La semana quedará abierta para que el responsable corrija y se vuelva a cerrar.` +
+                    warn
+            )
+        ) {
+            return;
+        }
+        setReopenBusy(true);
+        try {
+            await Promise.resolve(
+                onReopenPettyCashWeek({
+                    custodianId: selectedCustodianId,
+                    weekNumber: String(selectedWeek),
+                    reason,
+                })
+            );
+            setReopenOpen(false);
+            setReopenReason('');
+        } finally {
+            setReopenBusy(false);
+        }
+    };
+
     const handlePrintRendition = () => {
         const tmpl = mergePettyCashRenditionPrint(settings.renditionPrint);
         const rows = currentWeekExpenses.filter((e) => e.status !== 'voided' && e.status !== 'rejected');
@@ -1741,9 +1830,24 @@ ${signatures}
                         <Lock className="w-4 h-4 mr-2" />
                         Cerrar semana
                     </Button>
+                    {canReopenWeek ? (
+                        <Button
+                            size="lg"
+                            className="w-full"
+                            variant="destructive"
+                            onClick={openReopenWeekDialog}
+                            title="Quita el cierre para que el responsable pueda corregir y volver a liquidar"
+                        >
+                            <Unlock className="w-4 h-4 mr-2" />
+                            Reversar cierre
+                        </Button>
+                    ) : null}
                     <p className="text-xs text-muted-foreground">
                         Pre-cierre: presenta rendición sin bloquear gastos. Cierre: requiere 100% aprobado por auditoría y
                         saldo ≥ 0.
+                        {canReopenWeek
+                            ? ' Reversar cierre (solo admin de sistema): reabre la semana con motivo obligatorio.'
+                            : ''}
                     </p>
                 </Card>
             </div>
@@ -2126,6 +2230,60 @@ ${signatures}
                     </TabsContent>
                 </Tabs>
             </div>
+
+            <Dialog
+                open={reopenOpen}
+                onOpenChange={(open) => {
+                    if (reopenBusy) return;
+                    setReopenOpen(open);
+                    if (!open) setReopenReason('');
+                }}
+            >
+                <DialogContent className="sm:max-w-[480px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Unlock className="h-5 w-5 text-destructive" />
+                            Reversar cierre de semana
+                        </DialogTitle>
+                        <DialogDescription>
+                            Solo administrador de sistema. La semana {selectedWeek} volverá a quedar abierta para que el
+                            responsable corrija movimientos y se liquide de nuevo. Indique el motivo (queda en bitácora).
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-1">
+                        <Label htmlFor="reopen-reason">Motivo</Label>
+                        <Textarea
+                            id="reopen-reason"
+                            value={reopenReason}
+                            onChange={(e) => setReopenReason(e.target.value)}
+                            placeholder="Ej. Error en monto del gasto aprobado; se reabre para corrección del responsable."
+                            rows={4}
+                            disabled={reopenBusy}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={reopenBusy}
+                            onClick={() => {
+                                setReopenOpen(false);
+                                setReopenReason('');
+                            }}
+                        >
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={reopenBusy}
+                            onClick={() => void handleConfirmReopenWeek()}
+                        >
+                            {reopenBusy ? 'Revirtiendo…' : 'Revertir cierre'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog
                 open={topupOpen}
