@@ -3,7 +3,7 @@ import { normalizeFleetDataset } from './fleetData';
 import { mergeFleetKvAndSql, slimFleetDatasetForKv } from './fleetKvPayload';
 
 describe('fleetKvPayload', () => {
-  it('slimFleetDatasetForKv quita dataUrls de firmas', () => {
+  it('slimFleetDatasetForKv quita firmas pero conserva fotos de adjuntos', () => {
     vi.stubEnv('VITE_BACKEND', 'supabase');
     vi.stubEnv('VITE_FLEET_SQL', 'false');
     const dataset = normalizeFleetDataset({
@@ -32,7 +32,7 @@ describe('fleetKvPayload', () => {
     });
     const slim = slimFleetDatasetForKv(dataset);
     expect(slim.inspections[0]?.driverSignatureDataUrl).toBe('sql');
-    expect(slim.inspections[0]?.attachments[0]?.dataUrl).toBe('');
+    expect(slim.inspections[0]?.attachments[0]?.dataUrl).toBe('data:image/jpeg;base64,CCCC');
     vi.unstubAllEnvs();
   });
 

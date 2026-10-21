@@ -62,9 +62,15 @@ function mergeInspections(
   });
 }
 
-/** KV: metadata sin dataUrls pesados; inspecciones solo en SQL cuando está activo. */
+/**
+ * KV: omite firmas (placeholder `sql`); conserva fotos de adjuntos para poder verlas en el historial.
+ * Con SQL flota activo, las inspecciones no van a KV (viven en tablas SQL con body completo).
+ */
 export function slimFleetDatasetForKv(dataset: FleetDataset): FleetDataset {
-  const slimInspection = (ins: FleetInspectionRecord): FleetInspectionRecord => ({
+  const slimInspection = (
+    ins: FleetInspectionRecord,
+    keepAttachmentBodies: boolean
+  ): FleetInspectionRecord => ({
     ...ins,
     driverSignatureDataUrl: ins.driverSignatureDataUrl ? 'sql' : undefined,
     supervisorSignatureDataUrl: ins.supervisorSignatureDataUrl ? 'sql' : undefined,
@@ -73,7 +79,7 @@ export function slimFleetDatasetForKv(dataset: FleetDataset): FleetDataset {
       fileName: a.fileName,
       mimeType: a.mimeType,
       uploadedAt: a.uploadedAt,
-      dataUrl: '',
+      dataUrl: keepAttachmentBodies ? a.dataUrl || '' : '',
     })),
   });
 
@@ -84,11 +90,12 @@ export function slimFleetDatasetForKv(dataset: FleetDataset): FleetDataset {
     });
   }
 
-  let inspections = dataset.inspections.map(slimInspection);
+  // Modo KV: conservar adjuntos/fotos; si el payload crece demasiado, recortar historial antiguo.
+  let inspections = dataset.inspections.map((ins) => slimInspection(ins, true));
   let slim: FleetDataset = { ...dataset, inspections };
 
-  while (estimateFleetDatasetBytes(slim) > KV_TARGET_MAX_BYTES && inspections.length > 30) {
-    inspections = inspections.slice(0, inspections.length - 10);
+  while (estimateFleetDatasetBytes(slim) > KV_TARGET_MAX_BYTES && inspections.length > 10) {
+    inspections = inspections.slice(0, inspections.length - 5);
     slim = { ...slim, inspections };
   }
 

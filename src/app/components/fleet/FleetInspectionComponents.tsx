@@ -60,6 +60,12 @@ function fleetNewId(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 11)}_${Date.now().toString(36)}`;
 }
 
+function isFleetImageAttachment(a: FleetInspectionAttachment): boolean {
+  if ((a.mimeType || '').toLowerCase().startsWith('image/')) return true;
+  if ((a.dataUrl || '').startsWith('data:image/')) return true;
+  return /\.(jpe?g|png|gif|webp|bmp)$/i.test(a.fileName || '');
+}
+
 /** Lienzo de firma — guarda PNG data URL (Pointer Events: mouse + táctil estable) */
 export function SignaturePad({
   label,
@@ -527,6 +533,7 @@ export function FleetChecklistConfigurator({
 function InspectionDetailView({ record, dataset }: { record: FleetInspectionRecord; dataset: FleetDataset }) {
   const template = dataset.checklistSections?.length ? dataset.checklistSections : DEFAULT_FLEET_CHECKLIST;
   const vehicle = dataset.vehicles.find((v) => v.id === record.vehicleId);
+  const [previewAttachment, setPreviewAttachment] = useState<FleetInspectionAttachment | null>(null);
   const items = [...template]
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .flatMap((sec) =>
@@ -534,9 +541,11 @@ function InspectionDetailView({ record, dataset }: { record: FleetInspectionReco
         .sort((a, b) => a.sortOrder - b.sortOrder)
         .map((it) => ({ sec: sec.title, it, r: record.responses[it.id] }))
     );
+  const imageAttachments = record.attachments.filter(isFleetImageAttachment);
+  const otherAttachments = record.attachments.filter((a) => !isFleetImageAttachment(a));
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(260px,0.8fr)] text-sm">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.75fr)_minmax(280px,0.85fr)] text-sm">
       <div className="space-y-3 min-w-0">
         <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
           <Badge className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-200">
@@ -564,20 +573,29 @@ function InspectionDetailView({ record, dataset }: { record: FleetInspectionReco
           ) : null}
         </p>
         <div className="rounded-lg border border-border overflow-hidden">
-          <Table>
+          <table className="w-full table-fixed caption-bottom text-sm">
+            <colgroup>
+              <col className="w-[34%]" />
+              <col className="w-[46%]" />
+              <col className="w-[20%]" />
+            </colgroup>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
-                <TableHead className="h-9 py-2">Categoría</TableHead>
-                <TableHead className="h-9 py-2">Ítem</TableHead>
-                <TableHead className="h-9 py-2 text-right">Estado</TableHead>
+                <TableHead className="h-9 py-2 whitespace-normal">Categoría</TableHead>
+                <TableHead className="h-9 py-2 whitespace-normal">Ítem</TableHead>
+                <TableHead className="h-9 py-2 text-right whitespace-nowrap">Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {items.map(({ sec, it, r }) => (
                 <TableRow key={it.id}>
-                  <TableCell className="py-1.5 text-muted-foreground text-xs">{sec}</TableCell>
-                  <TableCell className="py-1.5 text-foreground">{it.label}</TableCell>
-                  <TableCell className="py-1.5 text-right">
+                  <TableCell className="py-1.5 text-muted-foreground text-xs whitespace-normal break-words align-top">
+                    {sec}
+                  </TableCell>
+                  <TableCell className="py-1.5 text-foreground whitespace-normal break-words align-top">
+                    {it.label}
+                  </TableCell>
+                  <TableCell className="py-1.5 text-right align-top whitespace-nowrap">
                     {r === 'pass' ? (
                       <Badge className="bg-emerald-500/25 text-emerald-700 dark:text-emerald-200">Cumple</Badge>
                     ) : (
@@ -587,7 +605,7 @@ function InspectionDetailView({ record, dataset }: { record: FleetInspectionReco
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+          </table>
         </div>
       </div>
 
@@ -624,23 +642,102 @@ function InspectionDetailView({ record, dataset }: { record: FleetInspectionReco
           <div className="space-y-2">
             <Label className="flex items-center gap-1 text-muted-foreground">
               <Paperclip className="h-4 w-4" /> Adjuntos
+              {imageAttachments.length > 0 ? (
+                <span className="font-normal">({imageAttachments.length} foto{imageAttachments.length === 1 ? '' : 's'})</span>
+              ) : null}
             </Label>
-            <div className="flex flex-wrap gap-2">
-              {record.attachments.map((a) => (
-                <a
-                  key={a.id}
-                  href={a.dataUrl || undefined}
-                  download={a.fileName}
-                  className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-sky-600 hover:bg-muted dark:text-sky-300"
-                >
-                  <ImageIcon className="h-4 w-4" />
-                  {a.fileName}
-                </a>
-              ))}
-            </div>
+            {imageAttachments.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {imageAttachments.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    className="group overflow-hidden rounded-lg border border-border bg-background text-left transition hover:border-sky-500/50 hover:ring-1 hover:ring-sky-500/30"
+                    onClick={() => setPreviewAttachment(a)}
+                    title={`Ver ${a.fileName}`}
+                  >
+                    <div className="aspect-[4/3] bg-muted/40">
+                      {a.dataUrl ? (
+                        <img
+                          src={a.dataUrl}
+                          alt={a.fileName}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-muted-foreground">
+                          <ImageIcon className="h-8 w-8 opacity-50" />
+                        </div>
+                      )}
+                    </div>
+                    <p className="truncate px-2 py-1.5 text-[11px] text-muted-foreground group-hover:text-foreground">
+                      {a.fileName}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {otherAttachments.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {otherAttachments.map((a) => (
+                  <a
+                    key={a.id}
+                    href={a.dataUrl || undefined}
+                    download={a.fileName}
+                    className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-sky-600 hover:bg-muted dark:text-sky-300"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                    {a.fileName}
+                  </a>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
+
+      {previewAttachment ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={previewAttachment.fileName}
+          onClick={() => setPreviewAttachment(null)}
+        >
+          <div
+            className="relative flex max-h-[92vh] w-[min(96vw,56rem)] flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p className="min-w-0 truncate text-sm font-medium text-foreground">
+                {previewAttachment.fileName}
+              </p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                onClick={() => setPreviewAttachment(null)}
+              >
+                Cerrar
+              </Button>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-lg bg-muted/30 p-2">
+              {previewAttachment.dataUrl ? (
+                <img
+                  src={previewAttachment.dataUrl}
+                  alt={previewAttachment.fileName}
+                  className="max-h-[75vh] max-w-full object-contain"
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No hay imagen disponible para este adjunto (puede haberse omitido al sincronizar).
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -991,7 +1088,7 @@ export function FleetVehicleInspectionBar({
           if (!o) setExpandedId(null);
         }}
       >
-        <DialogContent className="flex max-h-[94vh] w-[min(96vw,56rem)] max-w-4xl flex-col gap-3 overflow-hidden p-5 sm:p-6">
+        <DialogContent className="flex max-h-[94vh] w-[min(98vw,90rem)] max-w-[90rem] flex-col gap-3 overflow-hidden p-5 sm:p-6">
           <DialogHeader className="shrink-0 space-y-1">
             <DialogTitle className="flex items-center gap-2">
               <History className="h-5 w-5 text-sky-500" />
@@ -1207,7 +1304,7 @@ export function FleetInspectionsGlobalTable({
       </Card>
 
       <Dialog open={!!detail} onOpenChange={(o) => !o && setDetail(null)}>
-        <DialogContent className="flex max-h-[94vh] w-[min(96vw,80rem)] max-w-6xl flex-col gap-3 overflow-hidden p-5 sm:p-6">
+        <DialogContent className="flex max-h-[94vh] w-[min(98vw,90rem)] max-w-[90rem] flex-col gap-3 overflow-hidden p-5 sm:p-6">
           <DialogHeader className="shrink-0">
             <DialogTitle>Detalle inspección</DialogTitle>
           </DialogHeader>
