@@ -61,7 +61,9 @@ interface ChartOfAccountsModuleProps {
   chartOfAccounts: ChartOfAccountEntry[];
   onUpdateChart: (rows: ChartOfAccountEntry[], successMessage?: string) => Promise<boolean>;
   systemSettings: SystemSettings;
-  onUpdateSystemSettings: (s: SystemSettings) => void;
+  onUpdateSystemSettings: (
+    s: SystemSettings | ((prev: SystemSettings) => SystemSettings)
+  ) => void;
 }
 
 export function ChartOfAccountsModule({
@@ -102,10 +104,10 @@ export function ChartOfAccountsModule({
   const enabledSedes = useMemo(() => getEnabledSedeNames(systemSettings), [systemSettings]);
 
   const setAccounting = (patch: Partial<AccountingLinkSettings>) => {
-    onUpdateSystemSettings({
-      ...systemSettings,
-      accounting: { ...accounting, ...patch },
-    });
+    onUpdateSystemSettings((prev) => ({
+      ...prev,
+      accounting: { ...(prev.accounting ?? {}), ...patch },
+    }));
   };
 
   const norm = (v: string | undefined | null) => normalizeAccountCode(v || '');

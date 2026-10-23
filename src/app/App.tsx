@@ -725,7 +725,16 @@ export default function App() {
   const isSuperAdmin =
     currentUser.role === 'super_admin' ||
     !!(currentUser.email && getSuperAdminEmails().has(currentUser.email.trim().toLowerCase()));
-  const canPersistAdminKv = isSuperAdmin;
+  /**
+   * Persistencia de settings:system / catálogos admin.
+   * Debe incluir `admin` (además de super_admin): la UI de Config / enlaces contables
+   * (p. ej. cuentas Cashback) ya trata a ambos como administrador de sistema, y el
+   * backend (`grooflow_caller_is_admin`) también permite a admin escribir settings:system.
+   * Si solo super_admin podía guardar, los cambios se veían en pantalla y al refrescar
+   * desaparecían (p. ej. cashbackExpenseAccountCode / cashbackCreditAccountCode).
+   */
+  const canPersistAdminKv =
+    isSuperAdmin || String(currentUser.role || '').trim().toLowerCase() === 'admin';
 
   const kvPermissionsForWrite = useMemo((): Record<string, boolean> | null => {
     if (APP_BACKEND === 'rest') return menuPermissions;

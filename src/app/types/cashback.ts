@@ -72,7 +72,11 @@ export type CashbackBalance = {
   observadas: number;
   aprobadas: number;
   rechazadas: number;
+  /** Montos ya pagados (lote marcado como pagado). */
   liquidado: number;
+  recibido?: number;
+  /** Incluido en un lote aún no pagado. */
+  enLiquidacion?: number;
 };
 
 export type CashbackColaboradorLink = {
@@ -131,6 +135,7 @@ export type CashbackUserBalanceRow = {
   aprobadas: number;
   pendientes: number;
   liquidado: number;
+  enLiquidacion?: number;
   faltante: number;
   liberable: boolean;
 };

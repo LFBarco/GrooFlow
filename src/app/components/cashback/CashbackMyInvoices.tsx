@@ -47,10 +47,10 @@ export function CashbackMyInvoices({ data, onNew, onEdit, onChanged }: Props) {
   return (
     <div className="space-y-5">
       {!colaborador.linked ? (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+        <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          Tu usuario aún no está vinculado a tu ficha de colaborador. Puedes subir facturas, pero pide a RR.HH. que lo
-          vincule para poder liquidarte el cashback.
+          Tu usuario no está vinculado a una ficha de colaborador (opcional). Igual puedes subir facturas y cobrar el
+          cashback con tu usuario.
         </div>
       ) : null}
 
@@ -88,7 +88,17 @@ export function CashbackMyInvoices({ data, onNew, onEdit, onChanged }: Props) {
         <CashbackKpi title="En revisión" value={String(balance.enRevision)} hint="Contabilidad las está validando" icon={Clock} tone="text-sky-600 bg-sky-500/10" />
         <CashbackKpi title="Observadas" value={String(balance.observadas)} hint="Corrígelas para no perderlas" icon={AlertTriangle} tone="text-amber-600 bg-amber-500/10" />
         <CashbackKpi title="Aprobadas por pagar" value={String(balance.aprobadas)} hint={formatPen(balance.acumulado)} icon={Wallet} />
-        <CashbackKpi title="Ya recibido" value={formatPen(balance.liquidado)} hint="Total liquidado" icon={Gift} tone="text-violet-600 bg-violet-500/10" />
+        <CashbackKpi
+          title="Ya recibido"
+          value={formatPen(balance.recibido ?? balance.liquidado)}
+          hint={
+            (balance.enLiquidacion ?? 0) > 0
+              ? `${formatPen(balance.enLiquidacion)} en lote por pagar`
+              : 'Solo montos ya pagados'
+          }
+          icon={Gift}
+          tone="text-violet-600 bg-violet-500/10"
+        />
       </div>
 
       <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">

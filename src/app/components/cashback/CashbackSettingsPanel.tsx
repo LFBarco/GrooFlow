@@ -49,7 +49,11 @@ export function CashbackSettingsPanel({ settings, onSaved }: Props) {
     }
     setSaving(true);
     try {
-      const saved = await saveCashbackSettings(effective);
+      const saved = await saveCashbackSettings({
+        ...effective,
+        payoutTreatment: 'reembolso',
+        essaludRate: 0,
+      });
       toast.success('Reglas de Cashback guardadas.');
       onSaved(saved);
     } catch (e) {
@@ -143,25 +147,10 @@ export function CashbackSettingsPanel({ settings, onSaved }: Props) {
             <Input inputMode="numeric" value={String(form.maxDaysOld)} onChange={(e) => set({ maxDaysOld: Math.round(num(e.target.value)) })} />
           </div>
           <div className="space-y-1 sm:col-span-2">
-            <Label>Tratamiento del pago (lo define el contador)</Label>
-            <Select value={form.payoutTreatment} onValueChange={(v) => set({ payoutTreatment: v as CashbackSettings['payoutTreatment'] })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="reembolso">Reembolso de gastos</SelectItem>
-                <SelectItem value="remuneracion">Remuneración (planilla, afecta EsSalud)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label>Tasa EsSalud (%)</Label>
-            <Input
-              inputMode="decimal"
-              value={String(form.essaludRate)}
-              disabled={form.payoutTreatment !== 'remuneracion'}
-              onChange={(e) => set({ essaludRate: num(e.target.value) })}
-            />
+            <Label>Tratamiento del pago</Label>
+            <p className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+              Reembolso de gastos (sin EsSalud / planilla).
+            </p>
           </div>
         </CardContent>
       </Card>

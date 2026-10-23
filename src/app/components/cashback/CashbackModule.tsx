@@ -62,7 +62,9 @@ export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: P
   }
 
   const { capabilities, settings } = data;
-  const canSeeTeam = capabilities.review || capabilities.export || capabilities.configure;
+  const canReviewTeam = capabilities.review || capabilities.configure;
+  const canSeeReports = canReviewTeam || capabilities.export;
+  const canSeeJournal = canSeeReports;
   const setSettings = (next: CashbackSettings) => setData((d) => (d ? { ...d, settings: next } : d));
 
   return (
@@ -87,10 +89,10 @@ export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: P
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="mis">Mis facturas</TabsTrigger>
-          {canSeeTeam ? <TabsTrigger value="validacion">Validación</TabsTrigger> : null}
-          {canSeeTeam ? <TabsTrigger value="liquidacion">Saldos y liquidación</TabsTrigger> : null}
-          {canSeeTeam ? <TabsTrigger value="reportes">Reportes</TabsTrigger> : null}
-          {canSeeTeam ? <TabsTrigger value="asientos">Asientos</TabsTrigger> : null}
+          {canReviewTeam ? <TabsTrigger value="validacion">Validación</TabsTrigger> : null}
+          {canReviewTeam ? <TabsTrigger value="liquidacion">Saldos y liquidación</TabsTrigger> : null}
+          {canSeeReports ? <TabsTrigger value="reportes">Reportes</TabsTrigger> : null}
+          {canSeeJournal ? <TabsTrigger value="asientos">Asientos</TabsTrigger> : null}
           {capabilities.configure ? <TabsTrigger value="config">Reglas</TabsTrigger> : null}
         </TabsList>
 
@@ -108,7 +110,7 @@ export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: P
             onChanged={() => void load()}
           />
         </TabsContent>
-        {canSeeTeam ? (
+        {canReviewTeam ? (
           <TabsContent value="validacion" className="mt-4">
             <CashbackReviewPanel
               settings={settings}
@@ -120,17 +122,17 @@ export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: P
             />
           </TabsContent>
         ) : null}
-        {canSeeTeam ? (
+        {canReviewTeam ? (
           <TabsContent value="liquidacion" className="mt-4">
             <CashbackLiquidationPanel settings={settings} canConfigure={capabilities.configure} onChanged={() => void load()} />
           </TabsContent>
         ) : null}
-        {canSeeTeam ? (
+        {canSeeReports ? (
           <TabsContent value="reportes" className="mt-4">
             <CashbackReportsPanel settings={settings} canExport={capabilities.export || capabilities.configure} />
           </TabsContent>
         ) : null}
-        {canSeeTeam ? (
+        {canSeeJournal ? (
           <TabsContent value="asientos" className="mt-4">
             <CashbackJournalPanel settings={settings} chartOfAccounts={chartOfAccounts} accounting={accountingLinks} />
           </TabsContent>

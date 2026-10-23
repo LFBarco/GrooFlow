@@ -190,6 +190,13 @@ export async function markCashbackLiquidationPaid(id: string): Promise<CashbackL
   return json.item;
 }
 
+export async function cancelCashbackLiquidation(id: string): Promise<{ id: string; anulada: true; facturas: number }> {
+  return request<{ id: string; anulada: true; facturas: number }>(
+    `/cashback/liquidations/${encodeURIComponent(id)}/cancel`,
+    { method: 'POST' }
+  );
+}
+
 export async function fetchCashbackReport(range: { desde?: string; hasta?: string }): Promise<CashbackReport> {
   const params = new URLSearchParams();
   if (range.desde) params.set('desde', range.desde);

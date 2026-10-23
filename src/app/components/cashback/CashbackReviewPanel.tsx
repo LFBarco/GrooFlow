@@ -33,7 +33,7 @@ const ESTADOS = [
   { id: 'observada', label: 'Observadas' },
   { id: 'aprobada', label: 'Aprobadas' },
   { id: 'rechazada', label: 'Rechazadas' },
-  { id: 'liquidada', label: 'Liquidadas' },
+  { id: 'liquidada', label: 'En liquidación' },
   { id: 'todas', label: 'Todas' },
 ];
 

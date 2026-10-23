@@ -69,7 +69,7 @@ export function exportCashbackLiquidationExcel(liq: CashbackLiquidation): void {
     ['Liquidación', liq.id],
     ['Periodo', liq.periodo],
     ['Tratamiento', liq.tratamiento === 'remuneracion' ? 'Remuneración (planilla)' : 'Reembolso'],
-    ['Estado', liq.estado === 'pagada' ? 'Pagada' : 'Generada'],
+    ['Estado', liq.estado === 'pagada' ? 'Pagada' : 'Por pagar'],
     ['Generada por', liq.creadoPorNombre ?? ''],
     ['Fecha', liq.createdAt],
     ['Nota', liq.nota ?? ''],
@@ -83,12 +83,12 @@ export function exportCashbackReportExcel(report: CashbackReport, rangeLabel: st
   const wb = XLSX.utils.book_new();
   const monthly = report.monthly.map((m) => {
     const eff = cashbackNetEffect(s, m.igv, m.cashback);
-    return [m.periodo, m.colaboradores ?? 0, m.facturas, m.total, m.igv, m.cashback, eff.essalud, eff.neto, eff.retencionPct];
+    return [m.periodo, m.colaboradores ?? 0, m.facturas, m.total, m.igv, m.cashback, eff.neto, eff.retencionPct];
   });
   XLSX.utils.book_append_sheet(
     wb,
     sheet(
-      ['Periodo', 'Colaboradores', 'Facturas', 'Compras', 'IGV recuperado', 'Cashback', 'EsSalud', 'Beneficio neto', '% IGV retenido'],
+      ['Periodo', 'Colaboradores', 'Facturas', 'Compras', 'IGV recuperado', 'Cashback', 'Beneficio neto', '% IGV retenido'],
       monthly
     ),
     'Mensual'

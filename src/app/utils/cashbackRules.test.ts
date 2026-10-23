@@ -98,6 +98,11 @@ describe('checkCashbackDraft', () => {
     expect(checkCashbackDraft({ ...valid, igv: '5.00', total: '118.00' }, settings, now).warnings[0]).toMatch(/18%/);
     expect(checkCashbackDraft({ ...valid, igv: '10.00', total: '110.00' }, settings, now).warnings).toEqual([]);
   });
+
+  it('bloquea sin RUC de empresa y emisor = adquirente', () => {
+    expect(checkCashbackDraft(valid, { ...settings, companyRucs: [] }, now).errors.compradorRuc).toMatch(/Configura/);
+    expect(checkCashbackDraft({ ...valid, emisorRuc: '20601234567' }, settings, now).errors.emisorRuc).toMatch(/adquirente/);
+  });
 });
 
 describe('simulateCashback', () => {
@@ -114,14 +119,14 @@ describe('simulateCashback', () => {
     expect(r.mesesParaLiberar).toBe(2);
   });
 
-  it('descuenta EsSalud si se paga como remuneración', () => {
+  it('no aplica EsSalud (solo reembolso)', () => {
     const r = simulateCashback(
       { ...settings, pctIgv: 50, payoutTreatment: 'remuneracion', essaludRate: 9 },
       { colaboradores: 10, facturasPorColaboradorMes: 10, ticketPromedio: 118 }
     );
     expect(r.cashbackMes).toBe(900);
-    expect(r.essaludMes).toBe(81);
-    expect(r.beneficioNetoMes).toBe(819);
+    expect(r.essaludMes).toBe(0);
+    expect(r.beneficioNetoMes).toBe(900);
   });
 
   it('efecto neto real', () => {

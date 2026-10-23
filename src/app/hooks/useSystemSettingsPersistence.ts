@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, t
 import { toast } from 'sonner';
 
 import { mergeSystemSettings } from '../data/initialData';
-import { mergeSystemSettingsSqlAndKv } from '../services/repository/appKvSql';
 import { saveAppKvKey } from '../services/repository/appKvSql';
 import { savePettyCashMetaToSql } from '../services/repository/pettyCashMetaSql';
 import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
@@ -112,14 +111,29 @@ export function useSystemSettingsPersistence(
       nextOrUpdater: SystemSettings | ((prev: SystemSettings) => SystemSettings),
       successMessage?: string
     ): Promise<boolean> => {
+      // Updater funcional: parte de latestRef (evita closures stale).
+      // Objeto completo: fusiona sobre latestRef para no pisar campos nuevos
+      // (p. ej. accounting.cashback*) con un snapshot viejo del componente.
       const next =
         typeof nextOrUpdater === 'function'
           ? nextOrUpdater(latestRef.current)
-          : mergeSystemSettingsSqlAndKv(
-              mergeSystemSettings(nextOrUpdater),
-              latestRef.current
-            );
-      const merged = mergeSystemSettings(next);
+          : {
+              ...latestRef.current,
+              ...nextOrUpdater,
+              accounting: {
+                ...latestRef.current.accounting,
+                ...nextOrUpdater.accounting,
+              },
+              pettyCash: {
+                ...latestRef.current.pettyCash,
+                ...nextOrUpdater.pettyCash,
+              },
+              providers: {
+                ...latestRef.current.providers,
+                ...nextOrUpdater.providers,
+              },
+            };
+      const merged = mergeSystemSettings(next, latestRef.current);
       setSystemSettings(merged);
       if (!canPersistSystemSettings) {
         toast.error('No tienes permiso para modificar la configuración del sistema.');

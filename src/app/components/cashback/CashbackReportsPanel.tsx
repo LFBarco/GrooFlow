@@ -60,7 +60,7 @@ export function CashbackReportsPanel({ settings, canExport }: Props) {
 
   const chartData = (report?.monthly ?? []).map((m) => {
     const eff = cashbackNetEffect(s, m.igv, m.cashback);
-    return { periodo: periodLabel(m.periodo), IGV: m.igv, Cashback: m.cashback + eff.essalud, Neto: eff.neto };
+    return { periodo: periodLabel(m.periodo), IGV: m.igv, Cashback: m.cashback, Neto: eff.neto };
   });
 
   const pendientes = (report?.byEstado ?? []).filter((e) => e.estado === 'en_revision' || e.estado === 'observada');
@@ -101,7 +101,7 @@ export function CashbackReportsPanel({ settings, canExport }: Props) {
             <CashbackKpi
               title="Cashback reconocido"
               value={formatPen(totals.cashback)}
-              hint={totals.essalud > 0 ? `+ EsSalud ${formatPen(totals.essalud)}` : 'Pago como reembolso'}
+              hint="Pago como reembolso"
               icon={Wallet}
               tone="text-violet-600 bg-violet-500/10"
             />
@@ -139,7 +139,7 @@ export function CashbackReportsPanel({ settings, canExport }: Props) {
                     <Tooltip formatter={(v: number) => formatPen(v)} />
                     <Legend />
                     <Bar dataKey="IGV" fill="#38bdf8" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Cashback" name="Cashback (+EsSalud)" fill="#a78bfa" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Cashback" name="Cashback" fill="#a78bfa" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="Neto" name="Beneficio neto" fill="#34d399" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -262,7 +262,7 @@ function CashbackSimulator({ settings }: { settings: CashbackSettings }) {
             <p className="text-xs text-muted-foreground">Cashback / mes</p>
             <p className="text-lg font-bold tabular-nums">{formatPen(sim.cashbackMes)}</p>
             <p className="text-xs text-muted-foreground">
-              {sim.essaludMes > 0 ? `+ EsSalud ${formatPen(sim.essaludMes)}` : 'Sin EsSalud (reembolso)'}
+              Reembolso (sin EsSalud)
             </p>
           </div>
           <div className="rounded-lg bg-emerald-500/10 p-3">

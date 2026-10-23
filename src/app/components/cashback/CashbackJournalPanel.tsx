@@ -72,9 +72,10 @@ export function CashbackJournalPanel({ settings, chartOfAccounts, accounting }: 
       <CardHeader>
         <CardTitle className="text-lg">Vista previa — asientos Cashback</CardTitle>
         <CardDescription>
-          Una línea por cuenta de cada factura <strong>aprobada o liquidada</strong> (periodo por fecha de emisión): Debe
-          gasto con la cuenta del proveedor, Debe IGV crédito fiscal y Haber la contrapartida de Cashback configurada en
-          Contabilidad → Plan de cuentas.
+          Asiento de compra por factura <strong>aprobada o en liquidación</strong> (periodo = fecha de emisión): Debe
+          gasto (cuenta global de Cashback si está configurada; si no, la de la factura/proveedor), Debe IGV crédito
+          fiscal y Haber la contrapartida de Cashback en Contabilidad → Plan de cuentas. El pago al colaborador se
+          registra aparte (Excel de liquidación / tesorería).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

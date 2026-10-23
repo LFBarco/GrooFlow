@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BadgeCheck, Download, HandCoins, Loader2, RefreshCw, Users } from 'lucide-react';
+import { BadgeCheck, Download, HandCoins, Loader2, RefreshCw, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { CashbackLiquidation, CashbackSettings, CashbackUserBalanceRow } from '../../types/cashback';
 import {
+  cancelCashbackLiquidation,
   createCashbackLiquidation,
   fetchCashbackBalances,
   fetchCashbackLiquidations,
@@ -54,8 +55,8 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
   const releasable = useMemo(() => balances.filter((b) => b.liberable), [balances]);
   const pendingTotal = balances.reduce((s, b) => s + b.acumulado, 0);
   const releasableTotal = releasable.reduce((s, b) => s + b.acumulado, 0);
-  const essaludRate = settings.payoutTreatment === 'remuneracion' ? settings.essaludRate / 100 : 0;
-  const unlinked = releasable.filter((b) => !b.vinculado).length;
+  const enLiquidacionTotal = balances.reduce((s, b) => s + (b.enLiquidacion ?? 0), 0);
+  const pendingLiqs = liquidations.filter((l) => l.estado === 'generada').length;
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -68,8 +69,8 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
   const generate = async (forceSelected: boolean) => {
     const ids = [...selected];
     const msg = forceSelected
-      ? `¿Liquidar a ${ids.length} colaborador(es) seleccionados aunque no alcancen la meta (p. ej. por cese)?`
-      : `¿Generar la liquidación de ${periodLabel(periodo)} para ${releasable.length} colaborador(es) por ${formatPen(releasableTotal)}?`;
+      ? `¿Liquidar a ${ids.length} persona(s) seleccionada(s) aunque no alcancen la meta (p. ej. por cese)?`
+      : `¿Generar la liquidación de ${periodLabel(periodo)} para ${releasable.length} persona(s) por ${formatPen(releasableTotal)}?`;
     if (!(await appConfirm(msg))) return;
     setCreating(true);
     try {
@@ -78,7 +79,7 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
         nota: nota.trim() || undefined,
         ...(forceSelected ? { usuarioIds: ids, ignorarUmbral: true } : {}),
       });
-      toast.success(`Liquidación #${liq.id} generada: ${formatPen(liq.montoTotal)}.`);
+      toast.success(`Liquidación #${liq.id} generada: ${formatPen(liq.montoTotal)} (pendiente de pago).`);
       exportCashbackLiquidationExcel(liq);
       setSelected(new Set());
       setNota('');
@@ -97,8 +98,27 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
       const updated = await markCashbackLiquidationPaid(liq.id);
       setLiquidations((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
       toast.success('Liquidación marcada como pagada.');
+      onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo actualizar.');
+    }
+  };
+
+  const cancelLiq = async (liq: CashbackLiquidation) => {
+    if (
+      !(await appConfirm(
+        `¿Anular la liquidación #${liq.id}? Las ${liq.facturas} factura(s) volverán a «aprobada» y el saldo quedará liberable de nuevo.`
+      ))
+    ) {
+      return;
+    }
+    try {
+      const res = await cancelCashbackLiquidation(liq.id);
+      toast.success(`Liquidación anulada (${res.facturas} factura(s) liberadas).`);
+      await load();
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo anular.');
     }
   };
 
@@ -113,16 +133,33 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <CashbackKpi title="Saldo aprobado sin pagar" value={formatPen(pendingTotal)} hint={`${balances.filter((b) => b.acumulado > 0).length} colaboradores`} icon={HandCoins} />
-        <CashbackKpi title="Listo para liberar" value={formatPen(releasableTotal)} hint={`${releasable.length} alcanzaron ${formatPen(settings.releaseThreshold)}`} icon={BadgeCheck} tone="text-violet-600 bg-violet-500/10" />
         <CashbackKpi
-          title="EsSalud estimado"
-          value={formatPen(releasableTotal * essaludRate)}
-          hint={settings.payoutTreatment === 'remuneracion' ? `${settings.essaludRate}% (pago por planilla)` : 'No aplica (reembolso)'}
-          icon={Users}
+          title="Saldo aprobado sin lote"
+          value={formatPen(pendingTotal)}
+          hint={`${balances.filter((b) => b.acumulado > 0).length} personas`}
+          icon={HandCoins}
+        />
+        <CashbackKpi
+          title="Listo para liberar"
+          value={formatPen(releasableTotal)}
+          hint={`${releasable.length} alcanzaron ${formatPen(settings.releaseThreshold)}`}
+          icon={BadgeCheck}
+          tone="text-violet-600 bg-violet-500/10"
+        />
+        <CashbackKpi
+          title="En lote por pagar"
+          value={formatPen(enLiquidacionTotal)}
+          hint={`${pendingLiqs} liquidación(es) generadas`}
+          icon={Download}
           tone="text-amber-600 bg-amber-500/10"
         />
-        <CashbackKpi title="Liquidaciones" value={String(liquidations.length)} hint={`${liquidations.filter((l) => l.estado === 'generada').length} por pagar`} icon={Download} tone="text-sky-600 bg-sky-500/10" />
+        <CashbackKpi
+          title="Liquidaciones"
+          value={String(liquidations.length)}
+          hint={`${liquidations.filter((l) => l.estado === 'pagada').length} pagadas`}
+          icon={Download}
+          tone="text-sky-600 bg-sky-500/10"
+        />
       </div>
 
       {canConfigure ? (
@@ -138,18 +175,21 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
               </div>
               <div className="space-y-1">
                 <Label>Nota (opcional)</Label>
-                <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej. Pago con planilla de octubre" />
+                <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ej. Reembolso octubre" />
               </div>
-              <Button onClick={() => void generate(false)} disabled={creating || releasable.length === 0} className="bg-emerald-600 text-white hover:bg-emerald-500">
+              <Button
+                onClick={() => void generate(false)}
+                disabled={creating || releasable.length === 0}
+                className="bg-emerald-600 text-white hover:bg-emerald-500"
+              >
                 {creating ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <HandCoins className="mr-1 h-4 w-4" />}
-                Liquidar {releasable.length} colaborador(es)
+                Liquidar {releasable.length} persona(s)
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Incluye a quienes alcanzaron la meta de {formatPen(settings.releaseThreshold)}. Las facturas pasan a «liquidada» y se
-              descarga el Excel para Contabilidad/Tesorería. Tratamiento configurado:{' '}
-              <strong>{settings.payoutTreatment === 'remuneracion' ? 'remuneración (planilla)' : 'reembolso'}</strong>.
-              {unlinked > 0 ? ` Atención: ${unlinked} colaborador(es) sin ficha Buk vinculada.` : ''}
+              Incluye a quienes alcanzaron la meta de {formatPen(settings.releaseThreshold)}. Las facturas pasan a «en
+              liquidación» (aún no pagadas) y se descarga el Excel para Tesorería. Tratamiento: reembolso. No hace falta
+              ficha Buk.
             </p>
             {selected.size > 0 ? (
               <Button variant="outline" size="sm" onClick={() => void generate(true)} disabled={creating}>
@@ -162,7 +202,7 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
-          <CardTitle className="text-base">Saldos por colaborador</CardTitle>
+          <CardTitle className="text-base">Saldos por persona</CardTitle>
           <Button variant="ghost" size="sm" onClick={() => void load()}>
             <RefreshCw className="mr-1 h-4 w-4" /> Actualizar
           </Button>
@@ -172,19 +212,20 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
               <tr>
                 {canConfigure ? <th className="w-8 p-2" /> : null}
-                <th className="p-2">Colaborador</th>
+                <th className="p-2">Persona</th>
                 <th className="p-2">Sede</th>
                 <th className="p-2 text-right">Aprobadas</th>
                 <th className="p-2 text-right">Pendientes</th>
                 <th className="p-2 text-right">Acumulado</th>
                 <th className="p-2 text-right">Falta</th>
+                <th className="p-2 text-right">En lote</th>
                 <th className="p-2 text-right">Ya pagado</th>
               </tr>
             </thead>
             <tbody>
               {balances.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-muted-foreground">
+                  <td colSpan={9} className="p-6 text-center text-muted-foreground">
                     Aún no hay facturas registradas.
                   </td>
                 </tr>
@@ -193,20 +234,25 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
                   <tr key={b.usuarioId} className="border-t border-border">
                     {canConfigure ? (
                       <td className="p-2">
-                        <Checkbox checked={selected.has(b.usuarioId)} onCheckedChange={() => toggle(b.usuarioId)} disabled={b.acumulado <= 0} />
+                        <Checkbox
+                          checked={selected.has(b.usuarioId)}
+                          onCheckedChange={() => toggle(b.usuarioId)}
+                          disabled={b.acumulado <= 0}
+                        />
                       </td>
                     ) : null}
                     <td className="p-2">
                       <p className="font-medium">{b.usuarioNombre}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {b.colaboradorDoc ?? ''} {!b.vinculado ? <span className="text-amber-600">· sin ficha Buk</span> : null}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{b.colaboradorDoc ?? ''}</p>
                     </td>
                     <td className="p-2">{b.sede ?? '—'}</td>
                     <td className="p-2 text-right">{b.aprobadas}</td>
                     <td className="p-2 text-right">{b.pendientes}</td>
-                    <td className={`p-2 text-right font-semibold tabular-nums ${b.liberable ? 'text-emerald-600' : ''}`}>{formatPen(b.acumulado)}</td>
+                    <td className={`p-2 text-right font-semibold tabular-nums ${b.liberable ? 'text-emerald-600' : ''}`}>
+                      {formatPen(b.acumulado)}
+                    </td>
                     <td className="p-2 text-right tabular-nums">{b.liberable ? 'Listo' : formatPen(b.faltante)}</td>
+                    <td className="p-2 text-right tabular-nums">{formatPen(b.enLiquidacion ?? 0)}</td>
                     <td className="p-2 text-right tabular-nums">{formatPen(b.liquidado)}</td>
                   </tr>
                 ))
@@ -226,7 +272,7 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
               <tr>
                 <th className="p-2">#</th>
                 <th className="p-2">Periodo</th>
-                <th className="p-2 text-right">Colaboradores</th>
+                <th className="p-2 text-right">Personas</th>
                 <th className="p-2 text-right">Facturas</th>
                 <th className="p-2 text-right">IGV sustentado</th>
                 <th className="p-2 text-right">Monto</th>
@@ -266,9 +312,14 @@ export function CashbackLiquidationPanel({ settings, canConfigure, onChanged }: 
                           <Download className="mr-1 h-4 w-4" /> Excel
                         </Button>
                         {canConfigure && l.estado === 'generada' ? (
-                          <Button variant="outline" size="sm" onClick={() => void markPaid(l)}>
-                            Marcar pagada
-                          </Button>
+                          <>
+                            <Button variant="outline" size="sm" onClick={() => void markPaid(l)}>
+                              Marcar pagada
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => void cancelLiq(l)}>
+                              <Undo2 className="mr-1 h-4 w-4" /> Anular
+                            </Button>
+                          </>
                         ) : null}
                       </div>
                     </td>

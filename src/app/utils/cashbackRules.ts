@@ -16,7 +16,7 @@ export const CASHBACK_STATE_LABEL: Record<CashbackInvoiceState, string> = {
   observada: 'Observada',
   aprobada: 'Aprobada',
   rechazada: 'Rechazada',
-  liquidada: 'Pagada / liquidada',
+  liquidada: 'En liquidación',
 };
 
 export const CASHBACK_STATE_TONE: Record<CashbackInvoiceState, string> = {
@@ -38,7 +38,7 @@ export function defaultCashbackSettings(): CashbackSettings {
     releaseThreshold: 50,
     maxDaysOld: 45,
     payoutTreatment: 'reembolso',
-    essaludRate: 9,
+    essaludRate: 0,
     categories: [
       { id: 'alimentacion', label: 'Alimentación', enabled: true },
       { id: 'traslados', label: 'Traslados', enabled: true },
@@ -225,8 +225,13 @@ export function checkCashbackDraft(
   }
 
   const buyer = draft.compradorRuc.replace(/\D/g, '');
-  if (settings.companyRucs.length > 0 && !settings.companyRucs.includes(buyer)) {
+  if (settings.companyRucs.length === 0) {
+    errors.compradorRuc = 'Configura el RUC de la empresa en Cashback → Reglas antes de registrar facturas.';
+  } else if (!settings.companyRucs.includes(buyer)) {
     errors.compradorRuc = `La factura debe estar a nombre de la empresa (RUC ${settings.companyRucs.join(' / ')}).`;
+  }
+  if (ruc.length === 11 && settings.companyRucs.includes(ruc)) {
+    errors.emisorRuc = 'El RUC del emisor no puede ser el de la empresa (adquirente).';
   }
 
   if (!settings.categories.some((c) => c.enabled && c.id === draft.categoria)) {
@@ -277,8 +282,8 @@ export function simulateCashback(
   const facturasMes = colaboradores * perUser;
   const igvMes = round2(igvPorFactura * facturasMes);
   const cashbackMes = round2(cbPorFactura * facturasMes);
-  const essaludMes =
-    settings.payoutTreatment === 'remuneracion' ? round2((cashbackMes * settings.essaludRate) / 100) : 0;
+  // Producto: solo reembolso (EsSalud desactivado).
+  const essaludMes = 0;
   const beneficioNetoMes = round2(igvMes - cashbackMes - essaludMes);
   const cashbackPorColaboradorMes = round2(cbPorFactura * perUser);
   return {
@@ -298,12 +303,12 @@ export function simulateCashback(
 
 /** Efecto neto real a partir de montos acumulados (reportes). */
 export function cashbackNetEffect(
-  settings: Pick<CashbackSettings, 'payoutTreatment' | 'essaludRate'>,
+  _settings: Pick<CashbackSettings, 'payoutTreatment' | 'essaludRate'>,
   igv: number,
   cashback: number
 ): { essalud: number; neto: number; retencionPct: number } {
-  const essalud = settings.payoutTreatment === 'remuneracion' ? round2((cashback * settings.essaludRate) / 100) : 0;
-  const neto = round2(igv - cashback - essalud);
+  const essalud = 0;
+  const neto = round2(igv - cashback);
   return { essalud, neto, retencionPct: igv > 0 ? round2((neto / igv) * 100) : 0 };
 }
 
