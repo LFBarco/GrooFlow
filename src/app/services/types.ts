@@ -85,8 +85,9 @@ export interface IKVRepository {
    * Si `ok === false`, no se debe sobrescribir la clave en la nube (p. ej. sesión no lista).
    */
   getWithStatus?<T = unknown>(
-    key: string
-  ): Promise<{ ok: boolean; value: T | null }>;
+    key: string,
+    options?: { updateRevision?: boolean }
+  ): Promise<{ ok: boolean; value: T | null; revision?: string }>;
 
   /** Lectura en lote (REST Hostinger: un solo round-trip). */
   getMany?(keys: string[]): Promise<Record<string, unknown>>;

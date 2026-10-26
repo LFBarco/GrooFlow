@@ -7,7 +7,7 @@ import { subscribeKvCrossTab } from '../utils/kvCrossTabSync';
  */
 export function useKvCrossTabSync(
   enabled: boolean,
-  applyRef: MutableRefObject<((key: string, value: unknown) => void) | null>
+  applyRef: MutableRefObject<((key: string, value: unknown) => boolean | void) | null>
 ): void {
   useEffect(() => {
     if (!enabled) return;

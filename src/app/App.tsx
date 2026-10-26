@@ -1278,17 +1278,17 @@ export default function App() {
     [isDataLoaded]
   );
 
-  const applyRemoteKvRef = useRef<((key: string, value: unknown) => void) | null>(null);
+  const applyRemoteKvRef = useRef<((key: string, value: unknown) => boolean) | null>(null);
   const remoteKvToastLastAtRef = useRef(0);
 
-  applyRemoteKvRef.current = (key: string, value: unknown) => {
-    if (!isDataLoaded || signingOutRef.current) return;
-    if (key === 'maintenance:transactionsClearedAt') return;
+  applyRemoteKvRef.current = (key: string, value: unknown): boolean => {
+    if (!isDataLoaded || signingOutRef.current) return false;
+    if (key === 'maintenance:transactionsClearedAt') return false;
 
     let applied = false;
 
-    const finish = () => {
-      if (!applied) return;
+    const finish = (): boolean => {
+      if (!applied) return false;
       markCrossTabEchoWindow(key);
       const now = Date.now();
       if (now - remoteKvToastLastAtRef.current >= 4000) {
@@ -1303,14 +1303,15 @@ export default function App() {
       }
       cloudSyncErrorRef.current = false;
       setCloudSyncPhase('synced');
+      return true;
     };
 
     switch (key) {
       case 'settings:config': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!configHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!configHydratedFromKvRef.current) return false;
         const next = mergeConfigStructure(value as ConfigStructure);
-        if (kvPayloadsEqual(configKvLatestRef.current, next)) return;
+        if (kvPayloadsEqual(configKvLatestRef.current, next)) return false;
         configKvLatestRef.current = next;
         configKvCooldownUntilRef.current = Date.now() + CONFIG_KV_COOLDOWN_MS;
         setConfig(next);
@@ -1318,8 +1319,8 @@ export default function App() {
         break;
       }
       case 'settings:system': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!systemSettingsHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!systemSettingsHydratedFromKvRef.current) return false;
         const base = mergeSystemSettings(
           value as Partial<SystemSettings>,
           systemSettingsKvLatestRef.current
@@ -1328,7 +1329,7 @@ export default function App() {
           base,
           pettyCashMetaKvLatestRef.current
         );
-        if (kvPayloadsEqual(systemSettingsKvLatestRef.current, merged)) return;
+        if (kvPayloadsEqual(systemSettingsKvLatestRef.current, merged)) return false;
         systemSettingsKvLatestRef.current = merged;
         systemSettingsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setSystemSettings(merged);
@@ -1336,7 +1337,7 @@ export default function App() {
         break;
       }
       case PETTY_CASH_META_KV_KEY: {
-        if (!systemSettingsHydratedFromKvRef.current) return;
+        if (!systemSettingsHydratedFromKvRef.current) return false;
         setSystemSettings((prev) => {
           const next = applyPettyCashMetaRemoteUpdate(
             prev,
@@ -1357,10 +1358,10 @@ export default function App() {
         break;
       }
       case 'settings:theme': {
-        if (PRODUCTION_USE_SQL || isRestBackend()) return;
-        if (!themeHydratedFromKvRef.current) return;
-        if (value !== 'dark' && value !== 'light') return;
-        if (kvPayloadsEqual(themeKvLatestRef.current, value)) return;
+        if (PRODUCTION_USE_SQL || isRestBackend()) return false;
+        if (!themeHydratedFromKvRef.current) return false;
+        if (value !== 'dark' && value !== 'light') return false;
+        if (kvPayloadsEqual(themeKvLatestRef.current, value)) return false;
         themeKvLatestRef.current = value;
         themeKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         markCrossTabEchoWindow(key);
@@ -1370,10 +1371,10 @@ export default function App() {
         break;
       }
       case 'settings:alertThresholds': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!alertThresholdsHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!alertThresholdsHydratedFromKvRef.current) return false;
         const next = value as AlertThresholds;
-        if (kvPayloadsEqual(alertThresholdsKvLatestRef.current, next)) return;
+        if (kvPayloadsEqual(alertThresholdsKvLatestRef.current, next)) return false;
         alertThresholdsKvLatestRef.current = next;
         alertThresholdsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setAlertThresholds(next);
@@ -1381,12 +1382,12 @@ export default function App() {
         break;
       }
       case 'data:transactions': {
-        if (!transactionsCloudHydrationDoneRef.current) return;
-        if (TRANSACTIONS_USE_SQL) return;
-        if (Date.now() < transactionsKvCooldownUntilRef.current) return;
+        if (!transactionsCloudHydrationDoneRef.current) return false;
+        if (TRANSACTIONS_USE_SQL) return false;
+        if (Date.now() < transactionsKvCooldownUntilRef.current) return false;
         const remote = Array.isArray(value) ? hydrateTransactions(value) : [];
         const unique = Array.from(new Map(remote.map((t) => [t.id, t])).values());
-        if (kvPayloadsEqual(transactionsKvLatestRef.current, unique)) return;
+        if (kvPayloadsEqual(transactionsKvLatestRef.current, unique)) return false;
         transactionsKvLatestRef.current = unique;
         transactionsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setTransactions(unique);
@@ -1395,14 +1396,14 @@ export default function App() {
         break;
       }
       case 'data:invoices': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!invoicesHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!invoicesHydratedFromKvRef.current) return false;
         const unique = Array.isArray(value)
           ? (Array.from(
               new Map((value as InvoiceDraft[]).map((i) => [i.id, i])).values()
             ) as InvoiceDraft[])
           : [];
-        if (kvPayloadsEqual(invoicesKvLatestRef.current, unique)) return;
+        if (kvPayloadsEqual(invoicesKvLatestRef.current, unique)) return false;
         invoicesKvLatestRef.current = unique;
         invoicesKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setInvoices(unique);
@@ -1410,12 +1411,12 @@ export default function App() {
         break;
       }
       case 'data:providers': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!providersHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!providersHydratedFromKvRef.current) return false;
         const list = Array.isArray(value)
           ? (Array.from(new Map((value as Provider[]).map((p) => [p.id, p])).values()) as Provider[])
           : [];
-        if (kvPayloadsEqual(providersKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(providersKvLatestRef.current, list)) return false;
         providersKvLatestRef.current = list;
         providersKvCooldownUntilRef.current = Date.now() + PROVIDERS_KV_COOLDOWN_MS;
         setProviders(list);
@@ -1423,8 +1424,8 @@ export default function App() {
         break;
       }
       case 'data:products': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!productsHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!productsHydratedFromKvRef.current) return false;
         const unique = Array.isArray(value)
           ? (Array.from(
               new Map((value as Product[]).map((p) => [p.id, p])).values()
@@ -1435,7 +1436,7 @@ export default function App() {
           createdAt: p.createdAt instanceof Date ? p.createdAt : new Date(p.createdAt),
           updatedAt: p.updatedAt instanceof Date ? p.updatedAt : new Date(p.updatedAt),
         }));
-        if (kvPayloadsEqual(productsKvLatestRef.current, mapped)) return;
+        if (kvPayloadsEqual(productsKvLatestRef.current, mapped)) return false;
         productsKvLatestRef.current = mapped;
         productsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setProducts(mapped);
@@ -1443,14 +1444,14 @@ export default function App() {
         break;
       }
       case 'data:requests': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!requestsHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!requestsHydratedFromKvRef.current) return false;
         const unique = Array.isArray(value)
           ? (Array.from(
               new Map((value as PurchaseRequest[]).map((r) => [r.id, r])).values()
             ) as PurchaseRequest[])
           : [];
-        if (kvPayloadsEqual(requestsKvLatestRef.current, unique)) return;
+        if (kvPayloadsEqual(requestsKvLatestRef.current, unique)) return false;
         requestsKvLatestRef.current = unique;
         requestsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setRequests(unique);
@@ -1458,8 +1459,8 @@ export default function App() {
         break;
       }
       case 'data:pettyCash': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!pettyCashHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!pettyCashHydratedFromKvRef.current) return false;
         const ptx = Array.isArray(value) ? (value as PettyCashTransaction[]) : [];
         const mapped = ptx.map((t) => ({
           ...t,
@@ -1475,7 +1476,7 @@ export default function App() {
             pettyCashKvCooldownUntilRef.current
           )
         ) {
-          return;
+          return false;
         }
         pettyCashKvLatestRef.current = mapped;
         pettyCashKvCooldownUntilRef.current = Date.now() + PETTY_CASH_KV_COOLDOWN_MS;
@@ -1484,11 +1485,11 @@ export default function App() {
         break;
       }
       case 'data:users': {
-        if (PRODUCTION_USE_SQL && !usersAdminReloadRef.current) return;
-        if (!canSaveUsers || !usersHydratedFromKvRef.current || !Array.isArray(value)) return;
+        if (PRODUCTION_USE_SQL && !usersAdminReloadRef.current) return false;
+        if (!canSaveUsers || !usersHydratedFromKvRef.current || !Array.isArray(value)) return false;
         let list = dedupeUsersByEmail(value as User[]);
         list = applySuperAdminRoleFromConfig(list);
-        if (kvPayloadsEqual(usersKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(usersKvLatestRef.current, list)) return false;
         usersKvLatestRef.current = list;
         usersKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setUsers(list);
@@ -1501,10 +1502,10 @@ export default function App() {
         break;
       }
       case 'data:roles': {
-        if (PRODUCTION_USE_SQL && !usersAdminReloadRef.current) return;
-        if (!rolesHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL && !usersAdminReloadRef.current) return false;
+        if (!rolesHydratedFromKvRef.current) return false;
         const merged = mergeRolesWithDefaults(Array.isArray(value) ? (value as Role[]) : []);
-        if (kvPayloadsEqual(rolesKvLatestRef.current, merged)) return;
+        if (kvPayloadsEqual(rolesKvLatestRef.current, merged)) return false;
         rolesKvLatestRef.current = merged;
         rolesKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setRoles(merged);
@@ -1512,8 +1513,8 @@ export default function App() {
         break;
       }
       case 'data:feeReceipts': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!feeReceiptsHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!feeReceiptsHydratedFromKvRef.current) return false;
         const list = (Array.isArray(value) ? value : []).map((row) => {
           const r = row as FeeReceiptGlobal;
           return {
@@ -1532,7 +1533,7 @@ export default function App() {
               : undefined,
           };
         });
-        if (kvPayloadsEqual(feeReceiptsKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(feeReceiptsKvLatestRef.current, list)) return false;
         feeReceiptsKvLatestRef.current = list;
         feeReceiptsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setFeeReceipts(list);
@@ -1540,10 +1541,10 @@ export default function App() {
         break;
       }
       case 'data:treasuryInvoices': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!treasuryHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!treasuryHydratedFromKvRef.current) return false;
         const list = normalizeTreasuryInvoices(value);
-        if (kvPayloadsEqual(treasuryInvoicesKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(treasuryInvoicesKvLatestRef.current, list)) return false;
         treasuryInvoicesKvLatestRef.current = list;
         treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setTreasuryInvoices(list);
@@ -1551,11 +1552,11 @@ export default function App() {
         break;
       }
       case 'data:treasuryBankBalance': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!treasuryBankBalanceLoadedFromKvRef.current && !treasuryHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!treasuryBankBalanceLoadedFromKvRef.current && !treasuryHydratedFromKvRef.current) return false;
         const bal =
           value !== undefined && value !== null ? Number(value) : undefined;
-        if (kvPayloadsEqual(treasuryBankBalanceKvLatestRef.current, bal)) return;
+        if (kvPayloadsEqual(treasuryBankBalanceKvLatestRef.current, bal)) return false;
         treasuryBankBalanceKvLatestRef.current = bal;
         treasuryBankBalanceLoadedFromKvRef.current = true;
         treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
@@ -1564,10 +1565,10 @@ export default function App() {
         break;
       }
       case 'data:treasuryPaidHistory': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!treasuryHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!treasuryHydratedFromKvRef.current) return false;
         const list = normalizeTreasuryInvoices(value);
-        if (kvPayloadsEqual(treasuryPaidHistoryKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(treasuryPaidHistoryKvLatestRef.current, list)) return false;
         treasuryPaidHistoryKvLatestRef.current = list;
         treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setTreasuryPaidHistory(list);
@@ -1575,10 +1576,10 @@ export default function App() {
         break;
       }
       case 'data:treasurySubscriptions': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!treasuryHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!treasuryHydratedFromKvRef.current) return false;
         const list = normalizeTreasurySubscriptions(value);
-        if (kvPayloadsEqual(treasurySubscriptionsKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(treasurySubscriptionsKvLatestRef.current, list)) return false;
         treasurySubscriptionsKvLatestRef.current = list;
         treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setTreasurySubscriptions(list);
@@ -1586,10 +1587,10 @@ export default function App() {
         break;
       }
       case 'data:treasuryBankMovements': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!treasuryHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!treasuryHydratedFromKvRef.current) return false;
         const list = normalizeTreasuryBankMovements(value);
-        if (kvPayloadsEqual(treasuryBankMovementsKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(treasuryBankMovementsKvLatestRef.current, list)) return false;
         treasuryBankMovementsKvLatestRef.current = list;
         treasuryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setTreasuryBankMovements(list);
@@ -1597,10 +1598,10 @@ export default function App() {
         break;
       }
       case 'data:fleet': {
-        if (FLEET_USE_SQL) return;
-        if (!fleetHydratedFromKvRef.current) return;
+        if (FLEET_USE_SQL) return false;
+        if (!fleetHydratedFromKvRef.current) return false;
         const next = normalizeFleetDataset(value as Partial<FleetDataset>);
-        if (kvPayloadsEqual(fleetKvLatestRef.current, next)) return;
+        if (kvPayloadsEqual(fleetKvLatestRef.current, next)) return false;
         fleetKvLatestRef.current = next;
         fleetKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setFleetDataset(next);
@@ -1608,10 +1609,10 @@ export default function App() {
         break;
       }
       case 'data:inventory': {
-        if (INVENTORY_USE_SQL) return;
-        if (!inventoryHydratedFromKvRef.current) return;
+        if (INVENTORY_USE_SQL) return false;
+        if (!inventoryHydratedFromKvRef.current) return false;
         const next = normalizeInventoryDataset(value as Partial<InventoryDataset>);
-        if (kvPayloadsEqual(inventoryKvLatestRef.current, next)) return;
+        if (kvPayloadsEqual(inventoryKvLatestRef.current, next)) return false;
         inventoryKvLatestRef.current = next;
         inventoryKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setInventoryDataset(next);
@@ -1619,10 +1620,10 @@ export default function App() {
         break;
       }
       case 'data:chartOfAccounts': {
-        if (PRODUCTION_USE_SQL) return;
-        if (!chartOfAccountsHydratedFromKvRef.current) return;
+        if (PRODUCTION_USE_SQL) return false;
+        if (!chartOfAccountsHydratedFromKvRef.current) return false;
         const list = Array.isArray(value) ? (value as ChartOfAccountEntry[]) : [];
-        if (kvPayloadsEqual(chartOfAccountsKvLatestRef.current, list)) return;
+        if (kvPayloadsEqual(chartOfAccountsKvLatestRef.current, list)) return false;
         chartOfAccountsKvLatestRef.current = list;
         chartOfAccountsKvCooldownUntilRef.current = Date.now() + KV_DOMAIN_COOLDOWN_MS;
         setChartOfAccounts(list);
@@ -1640,10 +1641,10 @@ export default function App() {
         break;
       }
       default:
-        return;
+        return false;
     }
 
-    finish();
+    return finish();
   };
 
   useKvCrossTabSync(isAuthenticated && isDataLoaded, applyRemoteKvRef);

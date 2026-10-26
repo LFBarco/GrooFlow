@@ -39,6 +39,28 @@ function toAuthUser(payload: {
   };
 }
 
+/**
+ * Tras un 409 en listas KV: conserva lo local (altas/edits del usuario) y agrega
+ * filas remotas cuyo id aún no está en el payload local (altas concurrentes).
+ */
+function mergeKvListPreferLocal(remote: unknown[], local: unknown[]): unknown[] {
+  const localIds = new Set<string>();
+  for (const row of local) {
+    if (row && typeof row === 'object' && 'id' in row) {
+      const id = String((row as { id: unknown }).id ?? '');
+      if (id) localIds.add(id);
+    }
+  }
+  const remoteOnly: unknown[] = [];
+  for (const row of remote) {
+    if (!row || typeof row !== 'object' || !('id' in row)) continue;
+    const id = String((row as { id: unknown }).id ?? '');
+    if (!id || localIds.has(id)) continue;
+    remoteOnly.push(row);
+  }
+  return remoteOnly.length === 0 ? local : [...local, ...remoteOnly];
+}
+
 // Hydration triggers autosaves for many domains at once. Keep that burst from
 // exhausting the shared Hostinger MySQL connection pool.
 const MAX_CONCURRENT_REQUESTS = 4;
@@ -219,11 +241,20 @@ class RestKVRepository implements IKVRepository {
     return out;
   }
 
-  async getWithStatus<T = unknown>(key: string): Promise<{ ok: boolean; value: T | null }> {
+  async getWithStatus<T = unknown>(
+    key: string,
+    options?: { updateRevision?: boolean }
+  ): Promise<{ ok: boolean; value: T | null; revision?: string }> {
     try {
       const data = await restFetch<{ value?: T | null; revision?: string }>(`/kv/${encodeURIComponent(key)}`);
-      if (data.revision) resourceRevisions.set(key, data.revision);
-      return { ok: true, value: (data.value ?? null) as T | null };
+      if (data.revision && options?.updateRevision !== false) {
+        resourceRevisions.set(key, data.revision);
+      }
+      return {
+        ok: true,
+        value: (data.value ?? null) as T | null,
+        revision: typeof data.revision === 'string' ? data.revision : undefined,
+      };
     } catch {
       return { ok: false, value: null };
     }
@@ -237,12 +268,13 @@ class RestKVRepository implements IKVRepository {
   async set(key: string, value: unknown): Promise<void> {
     const maxAttempts = 3;
     let lastError: unknown;
+    let payload = value;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const data = await restFetch<{ revision: string }>(`/kv/${encodeURIComponent(key)}`, {
           method: 'PUT',
           body: JSON.stringify({
-            value,
+            value: payload,
             // Si no hay revisión local, el servidor responde 409; abajo se refresca y reintenta.
             revision: resourceRevisions.get(key) ?? null,
           }),
@@ -258,8 +290,9 @@ class RestKVRepository implements IKVRepository {
         if (!isConflict || attempt === maxAttempts) {
           throw error;
         }
-        // 409: refrescar. Si el servidor ya tiene el mismo payload, solo alinear revisión.
-        // Nunca reintentar un PUT ciego con value local sobre datos ajenos (evita wipe LWW).
+        // 409: alinear revisión. Si el servidor ya tiene el mismo payload, listo.
+        // Si no, reintentar PUT con revisión fresca (y unión por id en listas para no
+        // perder altas concurrentes de otros usuarios en el mismo scope).
         try {
           const fresh = await restFetch<{ value?: unknown; revision?: string }>(
             `/kv/${encodeURIComponent(key)}`
@@ -269,14 +302,17 @@ class RestKVRepository implements IKVRepository {
           }
           if (
             Object.prototype.hasOwnProperty.call(fresh, 'value') &&
-            JSON.stringify(fresh.value) === JSON.stringify(value)
+            JSON.stringify(fresh.value) === JSON.stringify(payload)
           ) {
             return;
           }
+          if (Array.isArray(fresh.value) && Array.isArray(payload)) {
+            payload = mergeKvListPreferLocal(fresh.value, payload);
+          }
         } catch {
-          /* seguir al throw */
+          /* reintentar con la revisión actualizada si el GET falló a medias */
         }
-        throw error;
+        // Continuar el loop: reintenta PUT con revisión actualizada.
       }
     }
     throw lastError instanceof Error ? lastError : new Error(String(lastError));

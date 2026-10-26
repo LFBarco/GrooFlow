@@ -53,6 +53,40 @@ it('refreshes revision and retries KV PUT after HTTP 409 conflict', async () => 
   expect(putCount).toBe(2);
 });
 
+it('on 409 merges remote-only list rows before retry', async () => {
+  let putCount = 0;
+  let secondBody: unknown;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_url: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (method === 'PUT') {
+        putCount += 1;
+        if (putCount === 1) {
+          return new Response(JSON.stringify({ ok: false, error: 'Los datos cambiaron.' }), {
+            status: 409,
+          });
+        }
+        secondBody = JSON.parse(String(init?.body ?? '{}'));
+        return new Response(JSON.stringify({ ok: true, revision: 'rev-2' }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          value: [{ id: 'remote-1', amount: 1 }],
+          revision: 'rev-1',
+        }),
+        { status: 200 }
+      );
+    })
+  );
+
+  await restRepository.kv.set('data:pettyCash', [{ id: 'local-1', amount: 2 }]);
+  expect(putCount).toBe(2);
+  const value = (secondBody as { value: Array<{ id: string }> }).value;
+  expect(value.map((r) => r.id).sort()).toEqual(['local-1', 'remote-1']);
+});
+
 it('setStrict no reintenta ante 409 (no reenvía datos viejos)', async () => {
   let putCount = 0;
   vi.stubGlobal(
