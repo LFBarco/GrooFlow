@@ -95,7 +95,9 @@ describe('checkCashbackDraft', () => {
 
   it('exige IGV y advierte tasas raras', () => {
     expect(checkCashbackDraft({ ...valid, igv: '0' }, settings, now).errors.igv).toBeDefined();
-    expect(checkCashbackDraft({ ...valid, igv: '5.00', total: '118.00' }, settings, now).warnings[0]).toMatch(/18%/);
+    expect(checkCashbackDraft({ ...valid, igv: '5.00', total: '118.00' }, settings, now).warnings[0]).toMatch(
+      /18% ni 10\.5%/
+    );
     expect(checkCashbackDraft({ ...valid, igv: '10.00', total: '110.00' }, settings, now).warnings).toEqual([]);
   });
 

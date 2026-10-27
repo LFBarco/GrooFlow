@@ -19,6 +19,7 @@ import {
   emptyCashbackDraft,
   formatPen,
   IGV_SHARE_OF_TOTAL,
+  IGV_SHARE_OF_TOTAL_10_5,
   parseMoney,
   parseSunatQr,
   round2,
@@ -166,10 +167,10 @@ export function CashbackInvoiceDialog({
     setServerErrors((e) => ({ ...e, photo: '' }));
   };
 
-  const fillIgvFromTotal = () => {
+  const fillIgvFromTotal = (shareOfTotal: number = IGV_SHARE_OF_TOTAL) => {
     const total = parseMoney(draft.total);
     if (!total) return;
-    const igv = round2(total * IGV_SHARE_OF_TOTAL);
+    const igv = round2(total * shareOfTotal);
     set({ igv: igv.toFixed(2), base: round2(total - igv).toFixed(2) });
   };
 
@@ -288,15 +289,35 @@ export function CashbackInvoiceDialog({
             </div>
             <div className="space-y-1 sm:col-span-2">
               <Label>Total (S/)</Label>
-              <Input inputMode="decimal" value={draft.total} onChange={(e) => set({ total: e.target.value })} onBlur={() => !draft.igv && fillIgvFromTotal()} placeholder="0.00" />
+              <Input
+                inputMode="decimal"
+                value={draft.total}
+                onChange={(e) => set({ total: e.target.value })}
+                onBlur={() => !draft.igv && fillIgvFromTotal()}
+                placeholder="0.00"
+              />
               {showError('total') ? <p className="text-xs text-rose-600">{showError('total')}</p> : null}
             </div>
             <div className="space-y-1 sm:col-span-2">
-              <Label className="flex items-center justify-between">
-                IGV (S/)
-                <button type="button" className="text-[11px] font-normal text-sky-600 hover:underline" onClick={fillIgvFromTotal}>
-                  Calcular 18%
-                </button>
+              <Label className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                <span>IGV (S/)</span>
+                <span className="flex items-center gap-2 text-[11px] font-normal">
+                  <button
+                    type="button"
+                    className="text-sky-600 hover:underline"
+                    onClick={() => fillIgvFromTotal(IGV_SHARE_OF_TOTAL)}
+                  >
+                    Calcular 18%
+                  </button>
+                  <span className="text-muted-foreground">·</span>
+                  <button
+                    type="button"
+                    className="text-sky-600 hover:underline"
+                    onClick={() => fillIgvFromTotal(IGV_SHARE_OF_TOTAL_10_5)}
+                  >
+                    Calcular 10.5%
+                  </button>
+                </span>
               </Label>
               <Input inputMode="decimal" value={draft.igv} onChange={(e) => set({ igv: e.target.value })} placeholder="0.00" />
               {showError('igv') ? <p className="text-xs text-rose-600">{showError('igv')}</p> : null}

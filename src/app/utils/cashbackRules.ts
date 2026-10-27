@@ -8,8 +8,12 @@ import type { ParsedSunatQr } from './sunatQr';
 export { parseSunatQr, type ParsedSunatQr } from './sunatQr';
 
 export const IGV_RATE = 0.18;
+/** Tasa reducida (p. ej. hospedaje / algunos servicios). */
+export const IGV_RATE_10_5 = 0.105;
 /** IGV contenido en un total con IGV incluido (18/118). */
 export const IGV_SHARE_OF_TOTAL = IGV_RATE / (1 + IGV_RATE);
+/** IGV contenido en un total con IGV 10.5% incluido (10.5/110.5). */
+export const IGV_SHARE_OF_TOTAL_10_5 = IGV_RATE_10_5 / (1 + IGV_RATE_10_5);
 
 export const CASHBACK_STATE_LABEL: Record<CashbackInvoiceState, string> = {
   en_revision: 'En revisión',
@@ -220,7 +224,9 @@ export function checkCashbackDraft(
       const base = parseMoney(draft.base) ?? round2(total - igv);
       const rate = base > 0 ? igv / base : 0;
       const okRate = (rate >= 0.17 && rate <= 0.19) || (rate >= 0.095 && rate <= 0.105);
-      if (!okRate) warnings.push(`El IGV no parece 18% de la base (${(rate * 100).toFixed(1)}%). Revisa los montos.`);
+      if (!okRate) {
+        warnings.push(`El IGV no parece 18% ni 10.5% de la base (${(rate * 100).toFixed(1)}%). Revisa los montos.`);
+      }
     }
   }
 
