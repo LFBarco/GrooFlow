@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { toast } from 'sonner';
 
+import { getLastKvSaveError } from '../services/api';
 import { savePettyCashToSql } from '../services/repository/businessDomainsSql';
 import { isProductionSqlEnabled } from '../services/repository/sqlDomainUtils';
 import { getSupabaseClientLazy } from '../services/repository/supabaseLazy';
@@ -147,9 +148,11 @@ export function usePettyCashTransactionsPersistence(
           return false;
         }
         if (!kvSaveSucceeded(result)) {
-          toast.error(
-            'No se pudo guardar Caja chica en la nube. Revisa sesión/red antes de cerrar o actualizar la página.'
-          );
+          const detail = getLastKvSaveError('data:pettyCash');
+          toast.error('No se pudo guardar Caja chica en la nube.', {
+            description: detail || 'Revisa sesión/red antes de cerrar o actualizar la página.',
+            duration: 8000,
+          });
           return false;
         }
 

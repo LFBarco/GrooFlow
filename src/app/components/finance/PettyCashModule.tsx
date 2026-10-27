@@ -754,7 +754,7 @@ export function PettyCashModule({
             if (newExpense.hasReceiptPhoto) {
                 void deleteReceiptPhoto('caja-chica', newExpense.id).catch(() => undefined);
             }
-            toast.error('El gasto no quedó guardado en la nube. No cierres sesión hasta reintentar.');
+            // El detalle del error ya lo muestra persistPettyCashNow.
             return;
         }
         resetExpenseForm();

@@ -28,6 +28,17 @@ import { toast } from 'sonner';
 /** Evitar spam por cada autosave si la sesión murió */
 let kvSessionFatalToastAt = 0;
 
+/** Último error de `saveKey` por clave (para toasts de dominio con detalle útil). */
+const lastKvSaveErrorByKey = new Map<string, string>();
+
+export function getLastKvSaveError(key: string): string | null {
+  return lastKvSaveErrorByKey.get(key) ?? null;
+}
+
+export function clearLastKvSaveError(key: string): void {
+  lastKvSaveErrorByKey.delete(key);
+}
+
 /**
  * Opcional: cuando el KV detecta JWT irrecuperable, la app puede forzar logout
  * para que el estado coincide con Supabase (evita “medio logueado” con autosave en bucle).
@@ -357,8 +368,13 @@ export const api = {
         if (shouldBroadcastKvUpdate(key)) {
           broadcastKvUpdate(key, data);
         }
+        clearLastKvSaveError(key);
         return true;
-      } catch {
+      } catch (error) {
+        lastKvSaveErrorByKey.set(
+          key,
+          error instanceof Error ? error.message : 'No se pudo guardar en almacenamiento local.'
+        );
         return false;
       }
     }
@@ -396,8 +412,11 @@ export const api = {
         if (shouldBroadcastKvUpdate(key)) {
           broadcastKvUpdate(key, data);
         }
+        clearLastKvSaveError(key);
         return true;
       } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        lastKvSaveErrorByKey.set(key, msg);
         if (isSupabaseBackend() && (await isSupabaseKvFatalAuthErrorLazy(error))) {
           toastKvSessionFatalOnce();
           try {
@@ -421,7 +440,6 @@ export const api = {
         const last = attempt === maxAttempts;
         console.warn(`[api] saveKey failed for "${key}" (attempt ${attempt}/${maxAttempts}):`, error);
         if (last) return false;
-        const msg = error instanceof Error ? error.message : String(error);
         const isDbPressure =
           /base de datos|503|max_connections|circuit|Service Unavailable/i.test(msg);
         const isConflict =
