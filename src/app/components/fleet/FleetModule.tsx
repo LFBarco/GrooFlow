@@ -207,11 +207,15 @@ export function FleetModule({
             <Truck className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight" style={{ color: s.pageTitle }}>
-              Gestión vehicular — Flota clínica
+            <h2 className="text-lg sm:text-xl font-bold tracking-tight" style={{ color: s.pageTitle }}>
+              <span className="sm:hidden">Flota clínica</span>
+              <span className="hidden sm:inline">Gestión vehicular — Flota clínica</span>
             </h2>
-            <p className="text-sm max-w-xl" style={{ color: s.pageSubtitle }}>
+            <p className="text-sm max-w-xl hidden sm:block" style={{ color: s.pageSubtitle }}>
               Control integral de disponibilidad, mantenimiento, combustible y cumplimiento (SOAT · revisión técnica).
+            </p>
+            <p className="text-sm sm:hidden" style={{ color: s.pageSubtitle }}>
+              Vehículos, mantención, combustible y alertas.
             </p>
           </div>
         </div>
@@ -231,20 +235,34 @@ export function FleetModule({
       <div className="min-w-0">
         <div className="space-y-4">
       <Tabs value={fleetTab} onValueChange={(v) => setFleetTab(v as FleetTab)} className="space-y-4">
-        <TabsList className="flex-wrap h-auto gap-1 border border-border bg-muted/60 p-1 rounded-xl">
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="fleet" data-testid="fleet-tab-fleet">Flota</TabsTrigger>
-          <TabsTrigger value="maintenance">Mantenimiento</TabsTrigger>
-          <TabsTrigger value="fuel">Combustible</TabsTrigger>
-          <TabsTrigger value="alerts">Alertas ({alerts.filter((a) => a.severity !== 'info').length})</TabsTrigger>
-          <TabsTrigger value="reports">Reportes</TabsTrigger>
+        <div className="-mx-1 overflow-x-auto pb-1">
+        <TabsList className="inline-flex w-max min-w-full sm:min-w-0 sm:flex-wrap h-auto gap-1 border border-border bg-muted/60 p-1 rounded-xl">
+          <TabsTrigger value="dashboard" className="shrink-0">
+            <span className="sm:hidden">Inicio</span>
+            <span className="hidden sm:inline">Dashboard</span>
+          </TabsTrigger>
+          <TabsTrigger value="fleet" data-testid="fleet-tab-fleet" className="shrink-0">Flota</TabsTrigger>
+          <TabsTrigger value="maintenance" className="shrink-0">
+            <span className="sm:hidden">Mant.</span>
+            <span className="hidden sm:inline">Mantenimiento</span>
+          </TabsTrigger>
+          <TabsTrigger value="fuel" className="shrink-0">
+            <span className="sm:hidden">Comb.</span>
+            <span className="hidden sm:inline">Combustible</span>
+          </TabsTrigger>
+          <TabsTrigger value="alerts" className="shrink-0">
+            Alertas ({alerts.filter((a) => a.severity !== 'info').length})
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="shrink-0">Reportes</TabsTrigger>
           {canConfigure ? (
-            <TabsTrigger value="config" data-testid="fleet-tab-config">
+            <TabsTrigger value="config" data-testid="fleet-tab-config" className="shrink-0">
               <Settings className="h-3.5 w-3.5 mr-1" />
-              Configuración
+              <span className="sm:hidden">Config</span>
+              <span className="hidden sm:inline">Configuración</span>
             </TabsTrigger>
           ) : null}
         </TabsList>
+        </div>
 
         <TabsContent value="dashboard" className="space-y-6 focus-visible:outline-none">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">

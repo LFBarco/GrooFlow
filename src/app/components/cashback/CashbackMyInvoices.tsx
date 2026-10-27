@@ -63,7 +63,11 @@ export function CashbackMyInvoices({ data, onNew, onEdit, onChanged }: Props) {
               <p className="text-xs text-muted-foreground">Regla vigente: {describeCashbackRule(settings)}</p>
             </div>
             {capabilities.submit ? (
-              <Button size="lg" onClick={onNew} className="bg-emerald-600 text-white hover:bg-emerald-500">
+              <Button
+                size="lg"
+                onClick={onNew}
+                className="hidden sm:inline-flex bg-emerald-600 text-white hover:bg-emerald-500"
+              >
                 <Camera className="mr-2 h-5 w-5" /> Subir factura
               </Button>
             ) : null}
@@ -178,6 +182,21 @@ export function CashbackMyInvoices({ data, onNew, onEdit, onChanged }: Props) {
       )}
 
       <CashbackPhotoDialog invoice={photoOf} onOpenChange={(v) => !v && setPhotoOf(null)} />
+
+      {capabilities.submit ? (
+        <div
+          className="sm:hidden fixed inset-x-0 z-30 px-3"
+          style={{ bottom: 'calc(3.75rem + env(safe-area-inset-bottom))' }}
+        >
+          <Button
+            size="lg"
+            onClick={onNew}
+            className="w-full shadow-lg bg-emerald-600 text-white hover:bg-emerald-500 min-h-12"
+          >
+            <Camera className="mr-2 h-5 w-5" /> Subir factura
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

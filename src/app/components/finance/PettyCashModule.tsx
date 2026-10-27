@@ -814,7 +814,7 @@ export function PettyCashModule({
                     </TabsList>
                 </Tabs>
 
-                <div className="flex flex-wrap gap-2 justify-end shrink-0">
+                <div className="hidden sm:flex flex-wrap gap-2 justify-end shrink-0">
                     <Button
                         type="button"
                         variant="outline"
@@ -843,6 +843,31 @@ export function PettyCashModule({
                         Registrar Gasto
                     </Button>
                 </div>
+            </div>
+
+            <div
+              className="sm:hidden fixed inset-x-0 z-30 flex gap-2 px-3"
+              style={{ bottom: 'calc(3.75rem + env(safe-area-inset-bottom))' }}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 min-h-12 bg-background/95 backdrop-blur shadow-lg"
+                onClick={() => setPrintFormsOpen(true)}
+                disabled={sedeOptions.length === 0}
+              >
+                <Printer className="mr-1.5 h-4 w-4" />
+                Recibo
+              </Button>
+              <Button
+                data-testid="petty-cash-add-expense-mobile"
+                onClick={() => setIsExpenseModalOpen(true)}
+                className="flex-[1.4] min-h-12 bg-cyan-500 hover:bg-cyan-600 text-black font-medium shadow-lg"
+                disabled={sedeOptions.length === 0 && !canRegisterForOthers}
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Gasto
+              </Button>
             </div>
 
             <PettyCashPrintableFormsDialog

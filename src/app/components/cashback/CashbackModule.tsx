@@ -68,33 +68,52 @@ export function CashbackModule({ chartOfAccounts = [], accountingLinks = {} }: P
   const setSettings = (next: CashbackSettings) => setData((d) => (d ? { ...d, settings: next } : d));
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border bg-card p-6 shadow-sm dark:border-slate-700">
-        <div className="space-y-1">
+    <div className="space-y-4 sm:space-y-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border bg-card p-4 sm:p-6 shadow-sm dark:border-slate-700">
+        <div className="space-y-1 min-w-0">
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-300">
-            <HandCoins className="h-5 w-5" />
+            <HandCoins className="h-5 w-5 shrink-0" />
             <span className="text-sm font-medium">Finanzas · Beneficio colaborador</span>
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">Cashback por facturas</h2>
-          <p className="max-w-2xl text-sm text-muted-foreground">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">Cashback por facturas</h2>
+          <p className="max-w-2xl text-sm text-muted-foreground hidden sm:block">
             Trae tu factura a nombre de la empresa y te reconocemos un importe. Contabilidad valida cada comprobante, el
             saldo se acumula mes a mes y se libera al alcanzar la meta.
           </p>
+          <p className="text-sm text-muted-foreground sm:hidden">
+            Sube tu factura a nombre de la empresa y acumula tu cashback.
+          </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}>
-          <RefreshCw className="mr-1 h-4 w-4" /> Actualizar
+        <Button variant="outline" size="sm" onClick={() => void load()} className="shrink-0">
+          <RefreshCw className="h-4 w-4 sm:mr-1" />
+          <span className="hidden sm:inline">Actualizar</span>
         </Button>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="mis">Mis facturas</TabsTrigger>
-          {canReviewTeam ? <TabsTrigger value="validacion">Validación</TabsTrigger> : null}
-          {canReviewTeam ? <TabsTrigger value="liquidacion">Saldos y liquidación</TabsTrigger> : null}
-          {canSeeReports ? <TabsTrigger value="reportes">Reportes</TabsTrigger> : null}
-          {canSeeJournal ? <TabsTrigger value="asientos">Asientos</TabsTrigger> : null}
-          {capabilities.configure ? <TabsTrigger value="config">Reglas</TabsTrigger> : null}
-        </TabsList>
+        <div className="-mx-1 overflow-x-auto pb-1">
+          <TabsList className="inline-flex w-max min-w-full sm:min-w-0 sm:flex-wrap h-auto gap-1 p-1">
+            <TabsTrigger value="mis" className="shrink-0">
+              <span className="sm:hidden">Mías</span>
+              <span className="hidden sm:inline">Mis facturas</span>
+            </TabsTrigger>
+            {canReviewTeam ? (
+              <TabsTrigger value="validacion" className="shrink-0">
+                <span className="sm:hidden">Revisar</span>
+                <span className="hidden sm:inline">Validación</span>
+              </TabsTrigger>
+            ) : null}
+            {canReviewTeam ? (
+              <TabsTrigger value="liquidacion" className="shrink-0">
+                <span className="sm:hidden">Saldos</span>
+                <span className="hidden sm:inline">Saldos y liquidación</span>
+              </TabsTrigger>
+            ) : null}
+            {canSeeReports ? <TabsTrigger value="reportes" className="shrink-0">Reportes</TabsTrigger> : null}
+            {canSeeJournal ? <TabsTrigger value="asientos" className="shrink-0">Asientos</TabsTrigger> : null}
+            {capabilities.configure ? <TabsTrigger value="config" className="shrink-0">Reglas</TabsTrigger> : null}
+          </TabsList>
+        </div>
 
         <TabsContent value="mis" className="mt-4">
           <CashbackMyInvoices

@@ -2,6 +2,19 @@
 @import './tailwind.css';
 @import './theme.css';
 
+/* Campo móvil: botones táctiles y tablas con scroll horizontal */
+@media (max-width: 639px) {
+  .mobile-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  button,
+  [role='button'],
+  a {
+    touch-action: manipulation;
+  }
+}
+
 /* Turnos — tokens y modo impresión (fase G) */
 :root {
   --turno-day-bg: #fef3c7;

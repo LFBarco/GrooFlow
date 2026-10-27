@@ -242,6 +242,7 @@ import {
   type CloudSyncPhase,
 } from "./utils/kvDomainPersistence";
 import { CloudSyncIndicator } from "./components/layout/CloudSyncIndicator";
+import { MobileFieldDock } from "./components/layout/MobileFieldDock";
 import { useKvCrossTabSync } from "./hooks/useKvCrossTabSync";
 import { useRestKvPollingSync } from "./hooks/useRestKvPollingSync";
 import {
@@ -4019,7 +4020,7 @@ export default function App() {
       <main className={`min-h-dvh relative z-10 min-w-0 ${isSidebarCollapsed ? 'md:pl-[76px]' : 'md:pl-[256px]'}`}
         style={{ transition: 'padding-left 180ms cubic-bezier(0.2, 0, 0, 1)' }}
       >
-        <div className={`w-full min-w-0 ${(!routeNotFound && !accessDeniedModule && view === 'treasury') ? '' : 'px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-4 sm:py-6 lg:py-8'}`}>
+        <div className={`w-full min-w-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0 ${(!routeNotFound && !accessDeniedModule && view === 'treasury') ? '' : 'px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-4 sm:py-6 lg:py-8'}`}>
           {routeNotFound ? (
             <NotFoundPage path={location.pathname} onGoHome={goHomeFromRouteGuard} />
           ) : accessDeniedModule ? (
@@ -5000,6 +5001,13 @@ export default function App() {
           )}
         </div>
       </main>
+      {isAuthenticated ? (
+        <MobileFieldDock
+          canPettyCash={hasPermission('Caja Chica')}
+          canCashback={hasPermission('Cashback')}
+          canFleet={hasPermission('Gestión Vehicular')}
+        />
+      ) : null}
       <Toaster />
       </AppProvider>
     </div>
